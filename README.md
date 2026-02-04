@@ -82,6 +82,10 @@ window.craftBuddyDebug.toggleCompact()       // Toggle compact mode
 
 // Log all game data sources to console
 window.craftBuddyDebug.logGameData()
+
+// Check for mod conflicts
+window.craftBuddyDebug.getConflicts()    // View detected conflicts
+window.craftBuddyDebug.checkConflicts()  // Manually check for conflicts
 ```
 
 ## Building from Source
@@ -101,11 +105,12 @@ npm run build
 CraftBuddy ports the algorithm from the [Python Crafting Optimizer](../Ascend%20From%20Nine%20Mountains%20Crafting%20Optimizer/) to TypeScript and integrates it directly into the game's crafting UI.
 
 The optimizer uses a **lookahead search** algorithm that:
-1. Evaluates all available skills
+1. Evaluates all available skills using move ordering (promising skills first)
 2. Simulates applying each skill
 3. Recursively searches several moves ahead
 4. Uses memoization to avoid redundant calculations
 5. Scores states based on progress toward targets
+6. Detects conflicts with other mods that override harmony types
 
 ## Technical Details
 
@@ -128,8 +133,8 @@ CraftBuddy reads **all values directly from the game** - no hardcoded assumption
 
 ## Limitations
 
-- May conflict with other mods that override harmony types
-- Some edge cases (special conditions, equipment bonuses) may not be fully handled
+- May conflict with other mods that override harmony types (conflict detection will warn you)
+- Equipment bonuses and realm modifiers are detected and logged but may vary by game version
 
 ## License
 

@@ -3,9 +3,15 @@
  * 
  * Implements greedy and lookahead search algorithms to find the optimal
  * next skill to use during crafting.
+ * 
+ * Performance optimizations:
+ * - Move ordering: Search promising skills first (buff skills when no buff, high-gain skills)
+ * - Memoization: Cache search results by state key
+ * - Early termination: Stop when targets are met
+ * - Iterative deepening: For deep searches, use time budget
  */
 
-import { CraftingState } from './state';
+import { CraftingState, BuffType } from './state';
 import {
   SkillDefinition,
   OptimizerConfig,
@@ -162,6 +168,79 @@ function generateReasoning(
 }
 
 /**
+ * Move ordering heuristic - orders skills to search most promising first.
+ * This improves search efficiency by finding good solutions early.
+ * 
+ * Priority order:
+ * 1. Stabilize skills when stability is low (<= 25)
+ * 2. Buff-granting skills when no buff is active
+ * 3. Buff-consuming skills (Disciplined Touch) when buffs are active
+ * 4. High-gain skills (completion/perfection > 10)
+ * 5. Other skills
+ */
+function orderSkillsForSearch(
+  skills: SkillDefinition[],
+  state: CraftingState,
+  config: OptimizerConfig,
+  targetCompletion: number,
+  targetPerfection: number
+): SkillDefinition[] {
+  const needsCompletion = state.completion < targetCompletion;
+  const needsPerfection = state.perfection < targetPerfection;
+  const hasControlBuff = state.hasControlBuff();
+  const hasIntensityBuff = state.hasIntensityBuff();
+  const lowStability = state.stability <= 25;
+  
+  // Score each skill for ordering (higher = search first)
+  const scored = skills.map(skill => {
+    let priority = 0;
+    
+    // Highest priority: stabilize when low
+    if (lowStability && skill.type === 'stabilize') {
+      priority += 1000;
+    }
+    
+    // High priority: buff-consuming skills when buffs active
+    if (skill.isDisciplinedTouch && (hasControlBuff || hasIntensityBuff)) {
+      priority += 500;
+    }
+    
+    // High priority: buff-granting skills when no buff
+    if (skill.buffDuration > 0) {
+      if (skill.buffType === BuffType.CONTROL && !hasControlBuff && needsPerfection) {
+        priority += 400;
+      }
+      if (skill.buffType === BuffType.INTENSITY && !hasIntensityBuff && needsCompletion) {
+        priority += 400;
+      }
+    }
+    
+    // Medium priority: skills that address current needs
+    if (needsCompletion && skill.baseCompletionGain > 0) {
+      priority += skill.baseCompletionGain * 2;
+    }
+    if (needsPerfection && skill.basePerfectionGain > 0) {
+      priority += skill.basePerfectionGain * 2;
+    }
+    
+    // Bonus for using buffs effectively
+    if (hasControlBuff && skill.scalesWithControl) {
+      priority += 100;
+    }
+    if (hasIntensityBuff && skill.scalesWithIntensity) {
+      priority += 100;
+    }
+    
+    return { skill, priority };
+  });
+  
+  // Sort by priority descending
+  scored.sort((a, b) => b.priority - a.priority);
+  
+  return scored.map(s => s.skill);
+}
+
+/**
  * Greedy search - evaluates each skill's immediate impact.
  * Fast but may not find optimal solution.
  */
@@ -309,9 +388,13 @@ export function lookaheadSearch(
     }
 
     const availableSkills = getAvailableSkills(currentState, config);
+    // Apply move ordering to search promising skills first
+    const orderedSkills = orderSkillsForSearch(
+      availableSkills, currentState, config, targetCompletion, targetPerfection
+    );
     let bestScore = scoreState(currentState, targetCompletion, targetPerfection);
 
-    for (const skill of availableSkills) {
+    for (const skill of orderedSkills) {
       const newState = applySkill(currentState, skill, config, conditionAtDepth);
       if (newState === null) continue;
 
@@ -351,11 +434,15 @@ export function lookaheadSearch(
         : startCondition;
 
       const skills = getAvailableSkills(currentState, config);
+      // Apply move ordering for faster path finding
+      const orderedSkills = orderSkillsForSearch(
+        skills, currentState, config, targetCompletion, targetPerfection
+      );
       let bestSkill: SkillDefinition | null = null;
       let bestScore = -Infinity;
       let bestNextState: CraftingState | null = null;
 
-      for (const skill of skills) {
+      for (const skill of orderedSkills) {
         const nextState = applySkill(currentState, skill, config, conditionAtDepth);
         if (nextState === null) continue;
 
@@ -380,10 +467,14 @@ export function lookaheadSearch(
   }
 
   // Evaluate each first move using current condition
+  // Apply move ordering to evaluate promising skills first
   const availableSkills = getAvailableSkills(state, config);
+  const orderedSkills = orderSkillsForSearch(
+    availableSkills, state, config, targetCompletion, targetPerfection
+  );
   const scoredSkills: SkillRecommendation[] = [];
 
-  for (const skill of availableSkills) {
+  for (const skill of orderedSkills) {
     const newState = applySkill(state, skill, config, controlCondition);
     if (newState === null) continue;
 

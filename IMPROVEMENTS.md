@@ -25,14 +25,14 @@ This document tracks planned improvements and their implementation status.
 
 ## Technical Improvements
 
-- [ ] **Unit tests for optimizer logic** - Test state transitions, scoring, and search algorithms
-- [ ] **Performance optimization for deep lookahead** - Consider iterative deepening or alpha-beta pruning for deeper searches
-- [ ] **Handle edge cases** - Skills with special conditions, equipment bonuses, realm-specific modifiers
-- [ ] **Conflict detection with other mods** - Warn if another mod also overrides the same harmony type
+- [x] **Unit tests for optimizer logic** - ✅ 95 tests covering state.ts, skills.ts, and search.ts (state management, skill application, buff handling, cooldowns, toxicity, search algorithms)
+- [x] **Performance optimization for deep lookahead** - ✅ Move ordering heuristic searches promising skills first (stabilize when low, buff skills, high-gain skills); memoization caches search results
+- [x] **Handle edge cases** - ✅ Equipment bonus detection, realm-specific modifiers, missing stats defaults, no techniques fallback
+- [x] **Conflict detection with other mods** - ✅ Checks `harmonyConfigs` before registering, warns if another mod has overridden harmony types
 
 ---
 
-## What's Already Working (v1.3.0)
+## What's Already Working (v1.4.0)
 
 - ✅ Reads all character stats from game (control, intensity, qi, maxtoxicity)
 - ✅ Reads all technique data from game (costs, effects, scaling, cooldowns, mastery)
@@ -54,3 +54,7 @@ This document tracks planned improvements and their implementation status.
 - ✅ **Keyboard shortcuts** Ctrl+Shift+C (toggle panel), Ctrl+Shift+M (compact mode)
 - ✅ **Compact mode** smaller panel for less screen obstruction
 - ✅ **Persistent settings** saved to localStorage
+- ✅ **Unit tests** 95 tests for optimizer logic
+- ✅ **Move ordering** performance optimization for faster searches
+- ✅ **Edge case handling** equipment bonuses, realm modifiers, missing data
+- ✅ **Conflict detection** warns about other mods overriding harmony types

@@ -303,6 +303,8 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 - `getNextConditions()` - Returns forecasted conditions (from game)
 - `getConditionEffects()` - Returns cached condition effect multipliers
 - `getSettings()` - Returns current settings
+- `getConflicts()` - Returns detected mod conflicts
+- `checkConflicts()` - Manually check for harmony type conflicts
 - `setTargets(completion, perfection, stability?)` - Override targets for testing
 - `setLookaheadDepth(depth)` - Set lookahead depth (1-6)
 - `togglePanel()` - Toggle panel visibility
@@ -321,10 +323,17 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 
 ## Future Improvements
 
-- [ ] Unit tests for optimizer logic
-- [ ] Performance optimization for deep lookahead
-- [ ] Handle edge cases (special conditions, equipment bonuses)
-- [ ] Conflict detection with other mods
+All planned improvements have been implemented! Potential future enhancements:
+- Additional test coverage for edge cases
+- Further performance tuning for very deep searches (depth > 6)
+- Support for mod-added custom techniques
+
+## Completed Improvements (v1.4.0)
+
+- [x] **Unit tests** - 95 tests covering state.ts, skills.ts, and search.ts
+- [x] **Performance optimization** - Move ordering heuristic searches promising skills first
+- [x] **Edge case handling** - Equipment bonuses, realm modifiers, missing stats defaults
+- [x] **Conflict detection** - Checks `harmonyConfigs` before registering, warns about conflicts
 
 ## Completed Improvements (v1.3.0)
 

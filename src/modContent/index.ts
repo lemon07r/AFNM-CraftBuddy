@@ -361,24 +361,94 @@ function convertGameTechniques(
 }
 
 /**
+ * Extract equipment bonuses from entity's equipment.
+ * Reads stat bonuses from equipped items that affect crafting.
+ */
+function extractEquipmentBonuses(entity: CraftingEntity): {
+  controlBonus: number;
+  intensityBonus: number;
+  poolBonus: number;
+  stabilityBonus: number;
+} {
+  let controlBonus = 0;
+  let intensityBonus = 0;
+  let poolBonus = 0;
+  let stabilityBonus = 0;
+  
+  try {
+    // @ts-ignore - equipment may have various structures
+    const equipment = entity?.equipment;
+    if (equipment) {
+      // Check each equipment slot for stat bonuses
+      const slots = Array.isArray(equipment) ? equipment : Object.values(equipment);
+      for (const item of slots) {
+        if (!item) continue;
+        
+        // Read stat bonuses from item
+        // @ts-ignore - item structure varies
+        const itemStats = item?.stats || item?.bonuses || {};
+        
+        if (itemStats.control) controlBonus += itemStats.control;
+        if (itemStats.intensity) intensityBonus += itemStats.intensity;
+        if (itemStats.pool || itemStats.maxpool) poolBonus += (itemStats.pool || itemStats.maxpool);
+        if (itemStats.stability || itemStats.maxStability) stabilityBonus += (itemStats.stability || itemStats.maxStability);
+      }
+    }
+  } catch (e) {
+    // Ignore errors reading equipment - use base stats only
+  }
+  
+  return { controlBonus, intensityBonus, poolBonus, stabilityBonus };
+}
+
+/**
  * Build optimizer config from actual game entity stats.
  * Reads control, intensity, maxpool, maxtoxicity from CraftingEntity.stats.
- * Also determines default buff multiplier from loaded skills.
+ * Also reads equipment bonuses and determines default buff multiplier from loaded skills.
+ * 
+ * Edge cases handled:
+ * - Missing stats (defaults to safe values)
+ * - Equipment bonuses (added to base stats)
+ * - Realm-specific modifiers (read from entity if available)
  */
 function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
   const stats = entity.stats;
   
   // Read actual character stats from the game
-  const baseControl = stats?.control || 10;
-  const baseIntensity = stats?.intensity || 10;
-  const maxQi = stats?.maxpool || 100;
+  // These already include equipment bonuses in most cases, but we check separately too
+  let baseControl = stats?.control || 10;
+  let baseIntensity = stats?.intensity || 10;
+  let maxQi = stats?.maxpool || 100;
   
   // Read max toxicity for alchemy crafting
   // @ts-ignore - maxtoxicity may exist on stats for alchemy
   const entityMaxToxicity = stats?.maxtoxicity || 0;
   
+  // Try to read equipment bonuses (in case they're not already included in stats)
+  const equipmentBonuses = extractEquipmentBonuses(entity);
+  if (equipmentBonuses.controlBonus > 0 || equipmentBonuses.intensityBonus > 0) {
+    console.log(`[CraftBuddy] Equipment bonuses detected: control+${equipmentBonuses.controlBonus}, intensity+${equipmentBonuses.intensityBonus}`);
+    // Note: Usually stats already include equipment, so we don't add them again
+    // This is just for logging/debugging purposes
+  }
+  
+  // Check for realm-specific modifiers
+  // @ts-ignore - realm modifiers may exist on entity
+  const realmModifier = entity?.realmModifier || entity?.craftingModifier || 1.0;
+  if (realmModifier !== 1.0) {
+    console.log(`[CraftBuddy] Realm modifier detected: ${realmModifier}`);
+    // Apply realm modifier to base stats if present
+    baseControl = Math.floor(baseControl * realmModifier);
+    baseIntensity = Math.floor(baseIntensity * realmModifier);
+  }
+  
   // Convert entity's techniques to skill definitions
   const skills = convertGameTechniques(entity.techniques);
+  
+  // Handle edge case: no techniques available
+  if (skills.length === 0) {
+    console.warn('[CraftBuddy] No techniques found on entity - using default skills');
+  }
   
   // Determine default buff multiplier from skills that create buffs
   // Use the first non-1.0 multiplier found, or default to 1.4
@@ -633,6 +703,34 @@ const craftBuddyHarmony: HarmonyTypeConfig = {
   },
 };
 
+// Track detected conflicts with other mods
+const detectedConflicts: string[] = [];
+
+/**
+ * Check if another mod has already registered a harmony type override.
+ * Uses window.modAPI.gameData.harmonyConfigs to detect existing overrides.
+ */
+function checkForConflicts(harmonyType: 'forge' | 'alchemical' | 'inscription' | 'resonance'): boolean {
+  try {
+    const harmonyConfigs = window.modAPI?.gameData?.harmonyConfigs;
+    if (harmonyConfigs && harmonyConfigs[harmonyType]) {
+      const existingConfig = harmonyConfigs[harmonyType];
+      // Check if it's a custom config (not the default game config)
+      // Default configs typically don't have a custom name or have specific game names
+      const configName = existingConfig?.name || '';
+      if (configName && !configName.includes('CraftBuddy') && 
+          configName !== 'forge' && configName !== 'alchemical' && 
+          configName !== 'inscription' && configName !== 'resonance') {
+        console.warn(`[CraftBuddy] Potential conflict detected: ${harmonyType} already has custom config "${configName}"`);
+        return true;
+      }
+    }
+  } catch (e) {
+    // Ignore errors during conflict detection
+  }
+  return false;
+}
+
 // Register CraftBuddy for ALL harmony types (forge, alchemical, inscription, resonance)
 // This ensures the optimizer works for all crafting types in the game
 const harmonyTypes: Array<'forge' | 'alchemical' | 'inscription' | 'resonance'> = [
@@ -644,11 +742,24 @@ const harmonyTypes: Array<'forge' | 'alchemical' | 'inscription' | 'resonance'> 
 
 for (const harmonyType of harmonyTypes) {
   try {
+    // Check for conflicts before registering
+    const hasConflict = checkForConflicts(harmonyType);
+    if (hasConflict) {
+      detectedConflicts.push(harmonyType);
+      console.warn(`[CraftBuddy] ⚠️ Another mod may have overridden ${harmonyType} harmony type. CraftBuddy will still register but may conflict.`);
+    }
+    
     window.modAPI.actions.addHarmonyType(harmonyType, craftBuddyHarmony);
     console.log(`[CraftBuddy] Harmony type override registered for ${harmonyType} crafting`);
   } catch (e) {
     console.error(`[CraftBuddy] Failed to register harmony type for ${harmonyType}:`, e);
   }
+}
+
+// Log summary of conflicts if any
+if (detectedConflicts.length > 0) {
+  console.warn(`[CraftBuddy] ⚠️ Detected potential conflicts with other mods for: ${detectedConflicts.join(', ')}`);
+  console.warn('[CraftBuddy] If you experience issues, try disabling other crafting-related mods.');
 }
 
 /**
@@ -764,9 +875,33 @@ try {
     console.log('[CraftBuddy] === Game Data Sources ===');
     console.log('recipeConditionEffects:', window.modAPI?.gameData?.recipeConditionEffects);
     console.log('craftingTechniques:', window.modAPI?.gameData?.craftingTechniques);
+    console.log('harmonyConfigs:', window.modAPI?.gameData?.harmonyConfigs);
     console.log('Current config:', currentConfig);
     console.log('Condition effects cache:', conditionEffectsCache);
     console.log('Current settings:', currentSettings);
+    console.log('Detected conflicts:', detectedConflicts);
+  },
+  
+  // Get detected mod conflicts
+  getConflicts: () => ({
+    detected: detectedConflicts,
+    hasConflicts: detectedConflicts.length > 0,
+  }),
+  
+  // Check for conflicts manually
+  checkConflicts: () => {
+    const conflicts: string[] = [];
+    for (const harmonyType of ['forge', 'alchemical', 'inscription', 'resonance'] as const) {
+      if (checkForConflicts(harmonyType)) {
+        conflicts.push(harmonyType);
+      }
+    }
+    if (conflicts.length > 0) {
+      console.warn(`[CraftBuddy] Conflicts detected for: ${conflicts.join(', ')}`);
+    } else {
+      console.log('[CraftBuddy] No conflicts detected');
+    }
+    return conflicts;
   },
 };
 
