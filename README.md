@@ -29,6 +29,16 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 
 **Verify installation:** Look for the "🔮 AFNM-CraftBuddy Loaded" indicator in the top-right corner when the game starts. It will appear briefly for 5 seconds then fade away.
 
+### Enabling Debug Mode (Recommended for Troubleshooting)
+
+To see detailed logs and diagnose issues:
+
+1. Go to your game directory (same folder as the game executable)
+2. Create an empty file called `devMode` (no file extension)
+3. Restart the game
+
+A console window will appear showing detailed logs including all `[CraftBuddy]` messages.
+
 ## Usage
 
 During any crafting session (forge, alchemical, inscription, or resonance), AFNM-CraftBuddy will display a recommendation panel showing:
