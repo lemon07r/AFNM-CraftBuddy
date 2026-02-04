@@ -4,6 +4,7 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 
 ## Features
 
+- ✅ **Mod Loaded Indicator**: Visual confirmation on the title screen that the mod is installed correctly
 - 🔮 **Real-time Recommendations**: Shows the best skill to use based on current crafting state
 - 📊 **Expected Gains**: Displays completion, perfection, and stability gains for each skill
 - 💡 **Reasoning**: Explains why a skill is recommended (buff active, low stability, etc.)

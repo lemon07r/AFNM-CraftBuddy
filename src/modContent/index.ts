@@ -935,6 +935,58 @@ try {
   console.warn('[CraftBuddy] Failed to register keyboard shortcuts:', e);
 }
 
+/**
+ * Create a visual indicator on the title screen to show the mod is loaded.
+ * This helps players confirm the mod was installed correctly.
+ */
+function createTitleScreenIndicator(): void {
+  try {
+    // Check if indicator already exists
+    if (document.getElementById('craftbuddy-indicator')) {
+      return;
+    }
+
+    const indicator = document.createElement('div');
+    indicator.id = 'craftbuddy-indicator';
+    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.5.0 Loaded';
+    
+    // Style the indicator to appear in the bottom-left corner
+    Object.assign(indicator.style, {
+      position: 'fixed',
+      bottom: '10px',
+      left: '10px',
+      padding: '8px 12px',
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      color: '#FFD700',
+      fontFamily: 'sans-serif',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      borderRadius: '4px',
+      border: '1px solid rgba(255, 215, 0, 0.5)',
+      zIndex: '9999',
+      pointerEvents: 'none',
+      textShadow: '0 0 5px rgba(255, 215, 0, 0.5)',
+      transition: 'opacity 0.3s ease',
+    });
+
+    document.body.appendChild(indicator);
+    console.log('[CraftBuddy] Title screen indicator created');
+
+    // Fade out the indicator after 10 seconds on non-crafting screens
+    // but keep it visible during crafting
+    setTimeout(() => {
+      if (indicator && !currentConfig) {
+        indicator.style.opacity = '0.5';
+      }
+    }, 10000);
+  } catch (e) {
+    console.warn('[CraftBuddy] Failed to create title screen indicator:', e);
+  }
+}
+
+// Create the indicator when the mod loads
+createTitleScreenIndicator();
+
 console.log('[CraftBuddy] Mod loaded successfully!');
 console.log('[CraftBuddy] All values are read from game API - no hardcoded defaults');
 console.log('[CraftBuddy] Debug: window.craftBuddyDebug.logGameData() to inspect data sources');

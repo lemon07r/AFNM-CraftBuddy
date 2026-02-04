@@ -328,6 +328,11 @@ All planned improvements have been implemented! Potential future enhancements:
 - Further performance tuning for very deep searches (depth > 6)
 - Support for mod-added custom techniques
 
+## Completed Improvements (v1.5.0)
+
+- [x] **Title screen indicator** - Visual confirmation that mod is loaded (bottom-left corner)
+- [x] **Default lookahead depth increased** - Changed from 3 to 4 for better recommendations
+
 ## Completed Improvements (v1.4.0)
 
 - [x] **Unit tests** - 95 tests covering state.ts, skills.ts, and search.ts
@@ -338,7 +343,7 @@ All planned improvements have been implemented! Potential future enhancements:
 ## Completed Improvements (v1.3.0)
 
 - [x] **Settings panel** - In-game UI to configure lookahead depth, display options, and reset to defaults
-- [x] **Configurable lookahead depth** - Adjustable from 1-6 (default: 3) via settings panel
+- [x] **Configurable lookahead depth** - Adjustable from 1-6 (default: 4) via settings panel
 - [x] **Keyboard shortcuts** - Ctrl+Shift+C (toggle panel), Ctrl+Shift+M (toggle compact mode)
 - [x] **Compact mode** - Smaller panel showing only essential info for less screen obstruction
 - [x] **Persistent settings** - Settings saved to localStorage and restored on reload
