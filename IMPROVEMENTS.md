@@ -1,4 +1,4 @@
-# CraftBuddy - Improvements Checklist
+# AFNM-CraftBuddy - Improvements Checklist
 
 This document tracks planned improvements and their implementation status.
 
@@ -10,18 +10,18 @@ This document tracks planned improvements and their implementation status.
 
 ## Medium Priority - Enhanced Features
 
-- [ ] **Show full optimal rotation, not just next skill** - Display the complete recommended sequence of skills to reach targets
+- [x] **Show full optimal rotation, not just next skill** - ✅ Displays suggested rotation (up to 5 skills) with arrows between them
 - [ ] **Configurable lookahead depth** - Allow users to adjust search depth (currently hardcoded to 3)
 - [ ] **Settings panel for customization** - In-game UI to configure optimizer behavior (lookahead depth, scoring weights, etc.)
 - [x] **Handle technique cooldowns** - ✅ Reads currentCooldown from techniques, tracks cooldowns in state, prevents using skills on cooldown
 
 ## Lower Priority - Polish & UX
 
-- [ ] **Visual indicator for buff-consuming skills** - Highlight when Disciplined Touch or similar skills would be optimal
-- [ ] **Show expected final state** - Display projected completion/perfection if following recommendations
+- [x] **Visual indicator for buff-consuming skills** - ✅ Shows "⚡ Uses Buff" chip when Disciplined Touch or similar skills are recommended
+- [x] **Show expected final state** - ✅ Displays projected completion/perfection/stability after following the rotation
 - [ ] **Keyboard shortcut to toggle panel** - Quick way to show/hide the recommendation panel
 - [ ] **Compact mode for UI** - Smaller panel option for less screen obstruction
-- [ ] **Color-coded skill recommendations** - Visual indication of how good each alternative is
+- [x] **Color-coded skill recommendations** - ✅ Quality ratings (0-100%) with color coding from green (optimal) to red (poor)
 
 ## Technical Improvements
 
@@ -32,7 +32,7 @@ This document tracks planned improvements and their implementation status.
 
 ---
 
-## What's Already Working (v1.1.0)
+## What's Already Working (v1.2.0)
 
 - ✅ Reads all character stats from game (control, intensity, qi, maxtoxicity)
 - ✅ Reads all technique data from game (costs, effects, scaling, cooldowns, mastery)
@@ -46,3 +46,7 @@ This document tracks planned improvements and their implementation status.
 - ✅ **Toxicity tracking** for alchemy crafting with UI display
 - ✅ **Mastery bonuses** applied to skill calculations
 - ✅ **Cooldown tracking** prevents recommending skills on cooldown
+- ✅ **Optimal rotation display** shows suggested sequence of skills
+- ✅ **Expected final state** shows projected outcome after rotation
+- ✅ **Quality ratings** color-coded skill alternatives (0-100%)
+- ✅ **Buff consumer indicator** highlights skills that use active buffs

@@ -17,6 +17,23 @@ const SKILL_TYPE_COLORS: Record<string, string> = {
   support: '#eb34db',   // pink/magenta
 };
 
+// Quality rating colors (0-100 scale)
+function getQualityColor(rating: number): string {
+  if (rating >= 90) return '#00ff00';  // Excellent - bright green
+  if (rating >= 70) return '#90EE90';  // Good - light green
+  if (rating >= 50) return '#FFD700';  // Okay - gold
+  if (rating >= 30) return '#FFA500';  // Poor - orange
+  return '#FF6B6B';                     // Bad - red
+}
+
+function getQualityLabel(rating: number): string {
+  if (rating >= 90) return 'Optimal';
+  if (rating >= 70) return 'Good';
+  if (rating >= 50) return 'Okay';
+  if (rating >= 30) return 'Suboptimal';
+  return 'Poor';
+}
+
 // Condition colors matching game UI
 const CONDITION_COLORS: Record<CraftingConditionType, string> = {
   veryPositive: '#00ff00',  // bright green
@@ -59,12 +76,16 @@ interface RecommendationPanelProps {
  */
 function SkillCard({ 
   rec, 
-  isPrimary = false 
+  isPrimary = false,
+  showQuality = false,
 }: { 
   rec: SkillRecommendation; 
   isPrimary?: boolean;
+  showQuality?: boolean;
 }) {
   const typeColor = SKILL_TYPE_COLORS[rec.skill.type] || '#ffffff';
+  const qualityRating = rec.qualityRating ?? 100;
+  const qualityColor = getQualityColor(qualityRating);
   
   return (
     <Box
@@ -76,7 +97,7 @@ function SkillCard({
         border: isPrimary ? '2px solid rgba(0, 255, 0, 0.5)' : '1px solid rgba(100, 100, 100, 0.5)',
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
         <Typography
           variant={isPrimary ? 'h6' : 'body1'}
           sx={{ 
@@ -97,10 +118,37 @@ function SkillCard({
             height: 20,
           }}
         />
+        {/* Buff consumer indicator */}
+        {rec.consumesBuff && (
+          <Chip
+            label="⚡ Uses Buff"
+            size="small"
+            sx={{
+              backgroundColor: '#FFD700',
+              color: '#000',
+              fontSize: '0.65rem',
+              height: 18,
+            }}
+          />
+        )}
+        {/* Quality rating for alternatives */}
+        {showQuality && !isPrimary && (
+          <Chip
+            label={`${qualityRating}% ${getQualityLabel(qualityRating)}`}
+            size="small"
+            sx={{
+              backgroundColor: 'transparent',
+              color: qualityColor,
+              border: `1px solid ${qualityColor}`,
+              fontSize: '0.65rem',
+              height: 18,
+            }}
+          />
+        )}
       </Box>
       
       {/* Expected gains */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 0.5 }}>
+      <Box sx={{ display: 'flex', gap: 2, mb: 0.5, flexWrap: 'wrap' }}>
         {rec.expectedGains.completion > 0 && (
           <Typography variant="body2" sx={{ color: '#90EE90' }}>
             +{rec.expectedGains.completion} Completion
@@ -306,6 +354,71 @@ export function RecommendationPanel({
       {/* Primary recommendation */}
       <SkillCard rec={result.recommendation} isPrimary />
 
+      {/* Optimal rotation preview */}
+      {result.optimalRotation && result.optimalRotation.length > 1 && (
+        <Box sx={{ mb: 1.5 }}>
+          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)', mb: 0.5 }}>
+            Suggested rotation:
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
+            {result.optimalRotation.slice(0, 5).map((skillName, idx) => (
+              <React.Fragment key={idx}>
+                <Chip
+                  label={skillName}
+                  size="small"
+                  sx={{
+                    backgroundColor: idx === 0 ? 'rgba(0, 255, 0, 0.2)' : 'rgba(80, 80, 80, 0.6)',
+                    color: idx === 0 ? '#00ff00' : 'rgba(255, 255, 255, 0.8)',
+                    fontSize: '0.7rem',
+                    height: 22,
+                    border: idx === 0 ? '1px solid rgba(0, 255, 0, 0.5)' : '1px solid rgba(100, 100, 100, 0.5)',
+                  }}
+                />
+                {idx < Math.min(result.optimalRotation!.length - 1, 4) && (
+                  <Typography sx={{ color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.8rem' }}>→</Typography>
+                )}
+              </React.Fragment>
+            ))}
+            {result.optimalRotation.length > 5 && (
+              <Typography sx={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.7rem' }}>
+                +{result.optimalRotation.length - 5} more
+              </Typography>
+            )}
+          </Box>
+        </Box>
+      )}
+
+      {/* Expected final state */}
+      {result.expectedFinalState && (
+        <Box sx={{ mb: 1.5, p: 1, backgroundColor: 'rgba(0, 50, 100, 0.3)', borderRadius: 1 }}>
+          <Typography variant="body2" sx={{ color: 'rgba(100, 200, 255, 0.8)', mb: 0.5, fontWeight: 'bold' }}>
+            📊 After {result.optimalRotation?.length || 1} turns:
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Typography variant="body2" sx={{ color: '#90EE90' }}>
+              Comp: {result.expectedFinalState.completion}/{targetCompletion}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#87CEEB' }}>
+              Perf: {result.expectedFinalState.perfection}/{targetPerfection}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#FFA500' }}>
+              Stab: {result.expectedFinalState.stability}
+            </Typography>
+          </Box>
+          {result.expectedFinalState.completion >= targetCompletion && 
+           result.expectedFinalState.perfection >= targetPerfection && (
+            <Typography variant="body2" sx={{ color: '#00ff00', mt: 0.5, fontStyle: 'italic' }}>
+              ✓ Targets will be met!
+            </Typography>
+          )}
+          {result.expectedFinalState.turnsRemaining > 0 && (
+            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)', mt: 0.5 }}>
+              ~{result.expectedFinalState.turnsRemaining} more turns needed after
+            </Typography>
+          )}
+        </Box>
+      )}
+
       {/* Alternative skills */}
       {result.alternativeSkills.length > 0 && (
         <>
@@ -317,7 +430,7 @@ export function RecommendationPanel({
             Alternatives:
           </Typography>
           {result.alternativeSkills.slice(0, 2).map((rec, idx) => (
-            <SkillCard key={idx} rec={rec} />
+            <SkillCard key={idx} rec={rec} showQuality />
           ))}
         </>
       )}

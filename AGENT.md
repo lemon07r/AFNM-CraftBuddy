@@ -1,13 +1,16 @@
-# CraftBuddy - AFNM Crafting Optimizer Mod
+# AFNM-CraftBuddy - Crafting Optimizer Mod
 
 ## Project Overview
 
-CraftBuddy is a mod for "Ascend From Nine Mountains" that automatically calculates and displays the optimal next skill to use during crafting. It ports the algorithm from the Python crafting optimizer tool to TypeScript and integrates it directly into the game's crafting UI.
+AFNM-CraftBuddy is a mod for "Ascend From Nine Mountains" that automatically calculates and displays the optimal next skill to use during crafting. It ports the algorithm from the Python crafting optimizer tool to TypeScript and integrates it directly into the game's crafting UI.
+
+**Author:** [lemon07r](https://github.com/lemon07r)  
+**Repository:** https://github.com/lemon07r/AFNM-CraftBuddy
 
 ## Project Structure
 
 ```
-AFNM - CraftBuddy/
+AFNM-CraftBuddy/
 ├── src/
 │   ├── mod.ts              # Mod entry point with metadata
 │   ├── modContent/
@@ -310,13 +313,21 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 
 ## Future Improvements
 
-- [ ] Configurable lookahead depth
-- [ ] Show full optimal rotation, not just next skill
+- [ ] Configurable lookahead depth (settings panel)
 - [ ] Settings panel for customization
-- [ ] Visual indicator for buff-consuming skills
-- [ ] Show expected final state
+- [ ] Keyboard shortcut to toggle panel
+- [ ] Compact mode for UI
 - [ ] Unit tests for optimizer logic
 - [ ] Performance optimization for deep lookahead
+- [ ] Handle edge cases (special conditions, equipment bonuses)
+- [ ] Conflict detection with other mods
+
+## Completed Improvements (v1.2.0)
+
+- [x] **Optimal rotation display** - Shows suggested sequence of skills (up to 5) with arrows
+- [x] **Expected final state** - Displays projected completion/perfection/stability after rotation
+- [x] **Quality ratings** - Color-coded skill alternatives (0-100%) from green to red
+- [x] **Buff consumer indicator** - Shows "⚡ Uses Buff" chip for Disciplined Touch etc.
 
 ## Completed Improvements (v1.1.0)
 

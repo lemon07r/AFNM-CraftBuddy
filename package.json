@@ -1,9 +1,9 @@
 {
-  "name": "craftbuddy",
-  "version": "1.1.0",
+  "name": "afnm-craftbuddy",
+  "version": "1.2.0",
   "description": "Automatically calculates and displays the optimal next skill to use during crafting in Ascend From Nine Mountains",
   "author": {
-    "name": "CraftBuddy Team"
+    "name": "lemon07r"
   },
   "main": "dist/mod.js",
   "scripts": {

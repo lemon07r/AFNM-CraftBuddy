@@ -1,4 +1,4 @@
-# CraftBuddy - AFNM Crafting Optimizer Mod
+# AFNM-CraftBuddy - Crafting Optimizer Mod
 
 A mod for **Ascend From Nine Mountains** that automatically calculates and displays the optimal next skill to use during crafting.
 
@@ -12,7 +12,7 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 
 ## Installation
 
-1. Download the latest release (`craftbuddy-x.x.x.zip`)
+1. Download the latest release (`afnm-craftbuddy-x.x.x.zip`) from [Releases](https://github.com/lemon07r/AFNM-CraftBuddy/releases)
 2. Copy the zip file to your game's mods folder:
    - **Linux**: `~/.local/share/AscendFromNineMountains/mods/`
    - **Windows**: `%APPDATA%/AscendFromNineMountains/mods/`
@@ -20,7 +20,7 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 
 ## Usage
 
-During any **forge-type crafting** session, CraftBuddy will display a recommendation panel showing:
+During any crafting session (forge, alchemical, inscription, or resonance), AFNM-CraftBuddy will display a recommendation panel showing:
 
 - The recommended next skill with its type (fusion/refine/stabilize/support)
 - Expected gains from using that skill
@@ -101,9 +101,8 @@ CraftBuddy reads **all values directly from the game** - no hardcoded assumption
 
 ## Limitations
 
-- Currently only works with **forge-type crafting** (not alchemical, inscription, or resonance)
-- May conflict with other mods that override the forge harmony type
-- Mastery bonuses on techniques may not be fully accounted for
+- May conflict with other mods that override harmony types
+- Some edge cases (special conditions, equipment bonuses) may not be fully handled
 
 ## License
 
@@ -111,6 +110,7 @@ MIT License - See LICENSE file for details
 
 ## Credits
 
+- Author: [lemon07r](https://github.com/lemon07r)
 - Based on the Python Crafting Optimizer tool
 - Uses the [AFNM Example Mod](https://github.com/Lyeeedar/AfnmExampleMod) template
 - Game: [Ascend From Nine Mountains](https://store.steampowered.com/app/1843760/Ascend_From_Nine_Mountains/)

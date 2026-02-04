@@ -24,6 +24,10 @@ export interface SkillRecommendation {
   };
   score: number;
   reasoning: string;
+  /** Quality rating from 0-100 based on how close to optimal this choice is */
+  qualityRating?: number;
+  /** Whether this skill consumes buffs for gains (e.g., Disciplined Touch) */
+  consumesBuff?: boolean;
 }
 
 export interface SearchResult {
@@ -31,6 +35,16 @@ export interface SearchResult {
   alternativeSkills: SkillRecommendation[];
   isTerminal: boolean;
   targetsMet: boolean;
+  /** Full optimal rotation (sequence of skills) to reach targets */
+  optimalRotation?: string[];
+  /** Expected final state if following the optimal rotation */
+  expectedFinalState?: {
+    completion: number;
+    perfection: number;
+    stability: number;
+    qi: number;
+    turnsRemaining: number;
+  };
 }
 
 /**
@@ -311,6 +325,60 @@ export function lookaheadSearch(
     return bestScore;
   }
 
+  /**
+   * Find the optimal path (rotation) from a given state
+   * Returns the sequence of skill names and the final state
+   */
+  function findOptimalPath(
+    startState: CraftingState,
+    maxDepth: number,
+    startCondition: number
+  ): { path: string[]; finalState: CraftingState } {
+    const path: string[] = [];
+    let currentState = startState;
+    let currentDepth = 0;
+
+    while (currentDepth < maxDepth && !isTerminalState(currentState, config)) {
+      // Check if targets met
+      if (targetCompletion > 0 && targetPerfection > 0) {
+        if (currentState.targetsMet(targetCompletion, targetPerfection)) {
+          break;
+        }
+      }
+
+      const conditionAtDepth = currentDepth < forecastedConditions.length
+        ? forecastedConditions[currentDepth]
+        : startCondition;
+
+      const skills = getAvailableSkills(currentState, config);
+      let bestSkill: SkillDefinition | null = null;
+      let bestScore = -Infinity;
+      let bestNextState: CraftingState | null = null;
+
+      for (const skill of skills) {
+        const nextState = applySkill(currentState, skill, config, conditionAtDepth);
+        if (nextState === null) continue;
+
+        const score = search(nextState, maxDepth - currentDepth - 1, currentDepth + 1);
+        if (score > bestScore) {
+          bestScore = score;
+          bestSkill = skill;
+          bestNextState = nextState;
+        }
+      }
+
+      if (bestSkill && bestNextState) {
+        path.push(bestSkill.name);
+        currentState = bestNextState;
+        currentDepth++;
+      } else {
+        break;
+      }
+    }
+
+    return { path, finalState: currentState };
+  }
+
   // Evaluate each first move using current condition
   const availableSkills = getAvailableSkills(state, config);
   const scoredSkills: SkillRecommendation[] = [];
@@ -323,12 +391,16 @@ export function lookaheadSearch(
     // Start recursive search from depth index 1 (next turn uses first forecasted condition)
     const score = search(newState, depth - 1, 1);
     const reasoning = generateReasoning(skill, state, gains, targetCompletion, targetPerfection);
+    
+    // Check if this skill consumes buffs
+    const consumesBuff = skill.isDisciplinedTouch === true;
 
     scoredSkills.push({
       skill,
       expectedGains: gains,
       score,
       reasoning,
+      consumesBuff,
     });
   }
 
@@ -344,11 +416,53 @@ export function lookaheadSearch(
     };
   }
 
+  // Calculate quality ratings (0-100) based on score difference from best
+  const bestScore = scoredSkills[0].score;
+  const worstScore = scoredSkills.length > 1 ? scoredSkills[scoredSkills.length - 1].score : bestScore;
+  const scoreRange = bestScore - worstScore;
+  
+  for (const rec of scoredSkills) {
+    if (scoreRange > 0) {
+      rec.qualityRating = Math.round(((rec.score - worstScore) / scoreRange) * 100);
+    } else {
+      rec.qualityRating = 100; // All skills are equally good
+    }
+  }
+
+  // Find the optimal rotation starting from the best first move
+  const bestFirstMove = scoredSkills[0].skill;
+  const stateAfterFirstMove = applySkill(state, bestFirstMove, config, controlCondition);
+  
+  let optimalRotation: string[] = [bestFirstMove.name];
+  let expectedFinalState: SearchResult['expectedFinalState'] = undefined;
+  
+  if (stateAfterFirstMove) {
+    // Find the rest of the optimal path
+    const { path, finalState } = findOptimalPath(stateAfterFirstMove, depth - 1, controlCondition);
+    optimalRotation = [bestFirstMove.name, ...path];
+    
+    // Calculate turns remaining (estimate based on progress needed)
+    const compRemaining = Math.max(0, targetCompletion - finalState.completion);
+    const perfRemaining = Math.max(0, targetPerfection - finalState.perfection);
+    const avgGainPerTurn = 15; // Rough estimate
+    const turnsRemaining = Math.ceil((compRemaining + perfRemaining) / avgGainPerTurn);
+    
+    expectedFinalState = {
+      completion: finalState.completion,
+      perfection: finalState.perfection,
+      stability: finalState.stability,
+      qi: finalState.qi,
+      turnsRemaining: turnsRemaining > 0 ? turnsRemaining : 0,
+    };
+  }
+
   return {
     recommendation: scoredSkills[0],
     alternativeSkills: scoredSkills.slice(1),
     isTerminal: false,
     targetsMet: false,
+    optimalRotation,
+    expectedFinalState,
   };
 }
 
