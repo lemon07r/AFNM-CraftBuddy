@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { Box, Typography, Paper, Chip, Divider } from '@mui/material';
+import { Box, Typography, Paper, Chip, Divider, Avatar } from '@mui/material';
 import { SearchResult, SkillRecommendation, CraftingConditionType } from '../optimizer';
 import { CraftBuddySettings } from '../settings';
 import { SettingsPanel } from './SettingsPanel';
@@ -79,19 +79,25 @@ interface RecommendationPanelProps {
 
 /**
  * Compact skill display for half-width layout
+ * Layout: Large icon on left, info on right
  */
 function CompactSkillDisplay({
   name,
   type,
   gains,
+  icon,
   isFollowUp = false,
 }: {
   name: string;
   type: string;
   gains: { completion: number; perfection: number; stability: number };
+  icon?: string;
   isFollowUp?: boolean;
 }) {
   const typeColor = SKILL_TYPE_COLORS[type] || '#ffffff';
+  
+  // Icon sizes: current turn fills 3 rows (~56px in compact), follow-up fills 2 rows (~40px)
+  const iconSize = isFollowUp ? 40 : 56;
   
   return (
     <Box
@@ -104,35 +110,60 @@ function CompactSkillDisplay({
         border: isFollowUp ? '1px solid rgba(80, 80, 80, 0.5)' : '1px solid rgba(0, 200, 0, 0.4)',
       }}
     >
-      <Typography
-        variant="body2"
-        sx={{
-          color: typeColor,
-          fontWeight: 'bold',
-          fontSize: '0.85rem',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {name}
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 0.25 }}>
-        {gains.completion > 0 && (
-          <Typography variant="caption" sx={{ color: '#90EE90' }}>
-            +{gains.completion} C
-          </Typography>
+      {/* Main layout: Icon on left, info on right */}
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+        {/* Large skill icon */}
+        {icon && (
+          <Avatar
+            src={icon}
+            alt={name}
+            variant="rounded"
+            sx={{
+              width: iconSize,
+              height: iconSize,
+              border: `2px solid ${typeColor}60`,
+              borderRadius: 1,
+              flexShrink: 0,
+            }}
+          />
         )}
-        {gains.perfection > 0 && (
-          <Typography variant="caption" sx={{ color: '#87CEEB' }}>
-            +{gains.perfection} P
+        
+        {/* Info section on the right */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {/* Skill name */}
+          <Typography
+            variant="body2"
+            sx={{
+              color: typeColor,
+              fontWeight: 'bold',
+              fontSize: '0.85rem',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {name}
           </Typography>
-        )}
-        {gains.stability > 0 && (
-          <Typography variant="caption" sx={{ color: '#FFA500' }}>
-            +{gains.stability} S
-          </Typography>
-        )}
+          
+          {/* Gains row */}
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 0.25 }}>
+            {gains.completion > 0 && (
+              <Typography variant="caption" sx={{ color: '#90EE90' }}>
+                +{gains.completion} C
+              </Typography>
+            )}
+            {gains.perfection > 0 && (
+              <Typography variant="caption" sx={{ color: '#87CEEB' }}>
+                +{gains.perfection} P
+              </Typography>
+            )}
+            {gains.stability > 0 && (
+              <Typography variant="caption" sx={{ color: '#FFA500' }}>
+                +{gains.stability} S
+              </Typography>
+            )}
+          </Box>
+        </Box>
       </Box>
     </Box>
   );
@@ -140,11 +171,13 @@ function CompactSkillDisplay({
 
 /**
  * Single skill box component - displays one skill with its gains and costs
+ * Layout: Large icon on left filling all rows, tooltip info on right
  */
 function SingleSkillBox({
   name,
   type,
   gains,
+  icon,
   qiCost = 0,
   stabilityCost = 0,
   buffGranted,
@@ -157,6 +190,7 @@ function SingleSkillBox({
   name: string;
   type: string;
   gains: { completion: number; perfection: number; stability: number };
+  icon?: string;
   qiCost?: number;
   stabilityCost?: number;
   buffGranted?: string;
@@ -186,6 +220,9 @@ function SingleSkillBox({
     bgColor = 'rgba(50, 50, 50, 0.4)';
   }
   
+  // Icon sizes: primary (current turn) fills 3 rows (~72px), follow-up (next turn) fills 2 rows (~48px)
+  const iconSize = isPrimary && !isFollowUp ? 72 : (isFollowUp ? 48 : 40);
+  
   return (
     <Box
       sx={{
@@ -195,82 +232,108 @@ function SingleSkillBox({
         border: `1px solid ${borderColor}`,
       }}
     >
-      <Typography
-        variant="body2"
-        sx={{
-          color: typeColor,
-          fontWeight: 'bold',
-          fontSize: isPrimary && !isFollowUp ? '0.95rem' : '0.85rem',
-        }}
-      >
-        {name}
-      </Typography>
-      
-      {/* Costs row */}
-      <Box sx={{ display: 'flex', gap: 0.75, mt: 0.25, flexWrap: 'wrap' }}>
-        {qiCost > 0 && (
-          <Typography variant="caption" sx={{ color: '#ADD8E6' }}>
-            {qiCost} Qi
-          </Typography>
+      {/* Main layout: Icon on left, info on right */}
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+        {/* Large skill icon */}
+        {icon && (
+          <Avatar
+            src={icon}
+            alt={name}
+            variant="rounded"
+            sx={{
+              width: iconSize,
+              height: iconSize,
+              border: `2px solid ${typeColor}60`,
+              borderRadius: 1,
+              flexShrink: 0,
+            }}
+          />
         )}
-        {stabilityCost > 0 && (
-          <Typography variant="caption" sx={{ color: '#FFB6C1' }}>
-            -{stabilityCost} Stab
+        
+        {/* Info section on the right */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {/* Skill name */}
+          <Typography
+            variant="body2"
+            sx={{
+              color: typeColor,
+              fontWeight: 'bold',
+              fontSize: isPrimary && !isFollowUp ? '0.95rem' : '0.85rem',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {name}
           </Typography>
-        )}
+          
+          {/* Costs row */}
+          <Box sx={{ display: 'flex', gap: 0.75, mt: 0.25, flexWrap: 'wrap' }}>
+            {qiCost > 0 && (
+              <Typography variant="caption" sx={{ color: '#ADD8E6' }}>
+                {qiCost} Qi
+              </Typography>
+            )}
+            {stabilityCost > 0 && (
+              <Typography variant="caption" sx={{ color: '#FFB6C1' }}>
+                -{stabilityCost} Stab
+              </Typography>
+            )}
+          </Box>
+          
+          {/* Gains row */}
+          <Box sx={{ display: 'flex', gap: 0.75, mt: 0.25, flexWrap: 'wrap' }}>
+            {gains.completion > 0 && (
+              <Typography variant="caption" sx={{ color: '#90EE90' }}>
+                +{gains.completion} C
+              </Typography>
+            )}
+            {gains.perfection > 0 && (
+              <Typography variant="caption" sx={{ color: '#87CEEB' }}>
+                +{gains.perfection} P
+              </Typography>
+            )}
+            {gains.stability > 0 && (
+              <Typography variant="caption" sx={{ color: '#FFA500' }}>
+                +{gains.stability} S
+              </Typography>
+            )}
+          </Box>
+          
+          {/* Buff indicators row */}
+          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.25, flexWrap: 'wrap' }}>
+            {/* Buff granted indicator */}
+            {buffGranted && buffDuration > 0 && (
+              <Chip
+                label={`🔮 ${buffGranted} x${buffDuration}`}
+                size="small"
+                sx={{
+                  backgroundColor: buffGranted.toLowerCase().includes('control') ? '#87CEEB' : '#90EE90',
+                  color: '#000',
+                  fontSize: '0.6rem',
+                  height: 16,
+                }}
+              />
+            )}
+            
+            {/* Buff consumer indicator */}
+            {consumesBuff && (
+              <Chip
+                label="⚡ Uses Buff"
+                size="small"
+                sx={{
+                  backgroundColor: '#FFD700',
+                  color: '#000',
+                  fontSize: '0.6rem',
+                  height: 16,
+                }}
+              />
+            )}
+          </Box>
+        </Box>
       </Box>
       
-      {/* Gains row */}
-      <Box sx={{ display: 'flex', gap: 0.75, mt: 0.25, flexWrap: 'wrap' }}>
-        {gains.completion > 0 && (
-          <Typography variant="caption" sx={{ color: '#90EE90' }}>
-            +{gains.completion} Completion
-          </Typography>
-        )}
-        {gains.perfection > 0 && (
-          <Typography variant="caption" sx={{ color: '#87CEEB' }}>
-            +{gains.perfection} Perfection
-          </Typography>
-        )}
-        {gains.stability > 0 && (
-          <Typography variant="caption" sx={{ color: '#FFA500' }}>
-            +{gains.stability} Stability
-          </Typography>
-        )}
-      </Box>
-      
-      {/* Buff granted indicator */}
-      {buffGranted && buffDuration > 0 && (
-        <Chip
-          label={`🔮 ${buffGranted} x${buffDuration}`}
-          size="small"
-          sx={{
-            backgroundColor: buffGranted.toLowerCase().includes('control') ? '#87CEEB' : '#90EE90',
-            color: '#000',
-            fontSize: '0.65rem',
-            height: 18,
-            mt: 0.5,
-            mr: 0.5,
-          }}
-        />
-      )}
-      
-      {/* Buff consumer indicator */}
-      {consumesBuff && (
-        <Chip
-          label="⚡ Uses Buff"
-          size="small"
-          sx={{
-            backgroundColor: '#FFD700',
-            color: '#000',
-            fontSize: '0.65rem',
-            height: 18,
-            mt: 0.5,
-          }}
-        />
-      )}
-      
-      {/* Reasoning - only for primary skill */}
+      {/* Reasoning - only for primary skill, below the main content */}
       {reasoning && isPrimary && !isFollowUp && (
         <Typography 
           variant="body2" 
@@ -278,7 +341,7 @@ function SingleSkillBox({
             color: 'rgba(255, 255, 255, 0.7)', 
             fontStyle: 'italic',
             fontSize: '0.8rem',
-            mt: 0.5,
+            mt: 0.75,
           }}
         >
           {reasoning}
@@ -346,6 +409,7 @@ function SkillCard({
             name={rec.skill.name}
             type={rec.skill.type}
             gains={rec.expectedGains}
+            icon={rec.skill.icon}
             qiCost={qiCost}
             stabilityCost={stabilityCost}
             buffGranted={buffGranted}
@@ -368,6 +432,7 @@ function SkillCard({
                 name={rec.followUpSkill.name}
                 type={rec.followUpSkill.type}
                 gains={rec.followUpSkill.expectedGains}
+                icon={rec.followUpSkill.icon}
                 isPrimary={isPrimary}
                 isFollowUp={true}
               />

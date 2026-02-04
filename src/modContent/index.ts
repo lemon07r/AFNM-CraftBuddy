@@ -371,6 +371,9 @@ function convertGameTechniques(
       }
     }
 
+    // Extract icon from technique (game provides icon as string path)
+    const icon = tech.icon as string | undefined;
+
     skills.push({
       name: techName,
       key: techName.toLowerCase().replace(/\s+/g, '_'),
@@ -384,6 +387,7 @@ function convertGameTechniques(
       buffDuration,
       buffMultiplier,
       type: techType,
+      icon,
       scalesWithControl,
       scalesWithIntensity,
       isDisciplinedTouch,
@@ -1044,7 +1048,7 @@ try {
   },
   
   setLookaheadDepth: (depth: number) => {
-    currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(12, depth)) });
+    currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(18, depth)) });
     console.log(`[CraftBuddy] Lookahead depth set to: ${currentSettings.lookaheadDepth}`);
   },
   

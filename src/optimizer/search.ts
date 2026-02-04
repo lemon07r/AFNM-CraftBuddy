@@ -39,6 +39,7 @@ export interface SkillRecommendation {
   followUpSkill?: {
     name: string;
     type: string;
+    icon?: string;
     expectedGains: {
       completion: number;
       perfection: number;
@@ -594,6 +595,7 @@ export function lookaheadSearch(
       return {
         name: bestFollowUp.name,
         type: bestFollowUp.type,
+        icon: bestFollowUp.icon,
         expectedGains: bestFollowUpGains,
       };
     }

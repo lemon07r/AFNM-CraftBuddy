@@ -22,6 +22,8 @@ export interface SkillDefinition {
   /** Buff multiplier value (e.g., 1.4 for 40% boost) - read from game buff data */
   buffMultiplier: number;
   type: 'fusion' | 'refine' | 'stabilize' | 'support';
+  /** Icon/image path for the skill (from game's CraftingTechnique.icon) */
+  icon?: string;
   /** Whether this skill scales with control */
   scalesWithControl?: boolean;
   /** Whether this skill scales with intensity */
