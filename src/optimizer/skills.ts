@@ -90,6 +90,19 @@ export interface OptimizerConfig {
   maxToxicity?: number;
   /** Crafting type: forge, alchemical, inscription, resonance */
   craftingType?: 'forge' | 'alchemical' | 'inscription' | 'resonance';
+  /** 
+   * Whether this is sublime/harmony crafting mode.
+   * Sublime crafting allows exceeding normal target limits:
+   * - Standard sublime: 2x normal targets
+   * - Equipment crafting: potentially higher multipliers
+   */
+  isSublimeCraft?: boolean;
+  /**
+   * Target multiplier for sublime crafting.
+   * Default: 1.0 (normal), 2.0 (sublime), higher for equipment.
+   * This affects how the optimizer evaluates "overshoot" penalties.
+   */
+  targetMultiplier?: number;
 }
 
 /**
@@ -563,4 +576,91 @@ export function isTerminalState(
   currentCondition?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
 ): boolean {
   return getAvailableSkills(state, config, currentCondition).length === 0;
+}
+
+/**
+ * Diagnostic info for why a skill is blocked.
+ */
+export interface SkillBlockedReason {
+  skillName: string;
+  reason: 'cooldown' | 'qi' | 'stability' | 'toxicity' | 'condition';
+  details: string;
+}
+
+/**
+ * Get diagnostic information about why each skill is blocked.
+ * Returns an array of reasons for all skills that cannot be used.
+ */
+export function getBlockedSkillReasons(
+  state: CraftingState,
+  config: OptimizerConfig,
+  currentCondition?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
+): SkillBlockedReason[] {
+  const reasons: SkillBlockedReason[] = [];
+  const maxToxicity = config.maxToxicity || 0;
+
+  for (const skill of config.skills) {
+    // Check cooldown
+    if (state.isOnCooldown(skill.key)) {
+      const turnsLeft = state.cooldowns.get(skill.key) || 0;
+      reasons.push({
+        skillName: skill.name,
+        reason: 'cooldown',
+        details: `On cooldown (${turnsLeft} turn${turnsLeft > 1 ? 's' : ''} left)`,
+      });
+      continue;
+    }
+
+    // Check condition requirement
+    if (skill.conditionRequirement && currentCondition) {
+      const conditionMet = checkConditionRequirement(skill.conditionRequirement, currentCondition);
+      if (!conditionMet) {
+        reasons.push({
+          skillName: skill.name,
+          reason: 'condition',
+          details: `Requires ${skill.conditionRequirement} condition (current: ${currentCondition})`,
+        });
+        continue;
+      }
+    }
+
+    // Get effective costs after mastery reductions
+    const effectiveQiCost = getEffectiveQiCost(skill);
+    const effectiveStabilityCost = getEffectiveStabilityCost(skill);
+
+    // Check qi requirement
+    if (state.qi < effectiveQiCost) {
+      reasons.push({
+        skillName: skill.name,
+        reason: 'qi',
+        details: `Need ${effectiveQiCost} Qi (have ${state.qi})`,
+      });
+      continue;
+    }
+
+    // Check stability requirement
+    if (effectiveStabilityCost > 0 && state.stability - effectiveStabilityCost < config.minStability) {
+      const stabilityAfter = state.stability - effectiveStabilityCost;
+      reasons.push({
+        skillName: skill.name,
+        reason: 'stability',
+        details: `Would drop stability to ${stabilityAfter} (min: ${config.minStability})`,
+      });
+      continue;
+    }
+
+    // Check toxicity requirement
+    if (maxToxicity > 0 && skill.toxicityCost) {
+      if (state.toxicity + skill.toxicityCost > maxToxicity) {
+        reasons.push({
+          skillName: skill.name,
+          reason: 'toxicity',
+          details: `Would exceed max toxicity (${state.toxicity} + ${skill.toxicityCost} > ${maxToxicity})`,
+        });
+        continue;
+      }
+    }
+  }
+
+  return reasons;
 }

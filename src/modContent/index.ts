@@ -61,6 +61,12 @@ let currentCooldowns: Map<string, number> = new Map();
 // Current crafting type
 let currentCraftingType: 'forge' | 'alchemical' | 'inscription' | 'resonance' = 'forge';
 
+// Sublime crafting mode (harmony type crafting that allows exceeding normal targets)
+// - Standard sublime: 2x normal targets
+// - Equipment crafting: potentially higher multipliers
+let isSublimeCraft = false;
+let sublimeTargetMultiplier = 2.0;
+
 // Settings
 let currentSettings: CraftBuddySettings = loadSettings();
 
@@ -442,7 +448,7 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     }
   }
   
-  console.log(`[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}`);
+  console.log(`[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}`);
   
   return {
     maxQi,
@@ -454,6 +460,8 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     defaultBuffMultiplier,
     maxToxicity: maxToxicity || entityMaxToxicity,
     craftingType: currentCraftingType,
+    isSublimeCraft,
+    targetMultiplier: sublimeTargetMultiplier,
   };
 }
 
@@ -996,7 +1004,48 @@ try {
       currentCraftingType = recipeHarmonyType as typeof currentCraftingType;
     }
     
+    // Detect sublime/harmony crafting mode
+    // Sublime crafting allows exceeding normal target limits
+    // Check various indicators that this might be sublime crafting:
+    // 1. Recipe explicitly marked as sublime
+    // 2. Harmony type crafting (usually sublime)
+    // 3. Equipment crafting (can have higher multipliers)
+    const recipeAny = recipe as any;
     const recipeStatsAny = recipeStats as any;
+    
+    // Check for sublime indicators
+    const isSublimeRecipe = recipeAny?.isSublime || 
+                            recipeAny?.sublime || 
+                            recipeStatsAny?.isSublime ||
+                            recipeStatsAny?.sublime ||
+                            recipeAny?.craftingMode === 'sublime' ||
+                            recipeAny?.craftingMode === 'harmony';
+    
+    // Check if this is equipment crafting (higher multiplier potential)
+    const isEquipmentCraft = recipeAny?.isEquipment || 
+                             recipeAny?.category === 'equipment' ||
+                             recipeAny?.type === 'equipment' ||
+                             recipeAny?.resultType === 'equipment';
+    
+    // Harmony type is usually used for sublime craft
+    const isHarmonyType = recipeHarmonyType === 'resonance' || 
+                          recipeAny?.usesHarmony ||
+                          recipeStatsAny?.harmonyBased;
+    
+    // Set sublime crafting mode
+    isSublimeCraft = isSublimeRecipe || isHarmonyType;
+    
+    // Set target multiplier based on craft type
+    if (isEquipmentCraft) {
+      sublimeTargetMultiplier = 3.0; // Equipment can go even higher
+    } else if (isSublimeCraft) {
+      sublimeTargetMultiplier = 2.0; // Standard sublime is 2x
+    } else {
+      sublimeTargetMultiplier = 1.0; // Normal crafting
+    }
+    
+    console.log(`[CraftBuddy] Sublime craft detection: isSublime=${isSublimeCraft}, isEquipment=${isEquipmentCraft}, isHarmony=${isHarmonyType}, multiplier=${sublimeTargetMultiplier}`);
+    
     if (recipeStatsAny?.maxToxicity) {
       maxToxicity = recipeStatsAny.maxToxicity;
     } else if (currentCraftingType === 'alchemical') {
@@ -1045,6 +1094,8 @@ try {
     currentToxicity,
     maxToxicity,
     craftingType: currentCraftingType,
+    isSublimeCraft,
+    sublimeTargetMultiplier,
   }),
   getCooldowns: () => Object.fromEntries(currentCooldowns),
   getNextConditions: () => nextConditions,
@@ -1059,6 +1110,32 @@ try {
     if (stability !== undefined) targetStability = stability;
     console.log(`[CraftBuddy] Targets set to: completion=${completion}, perfection=${perfection}, stability=${targetStability}`);
     renderOverlay();
+  },
+  
+  setSublimeMode: (enabled: boolean, multiplier?: number) => {
+    isSublimeCraft = enabled;
+    if (multiplier !== undefined) {
+      sublimeTargetMultiplier = multiplier;
+    } else {
+      sublimeTargetMultiplier = enabled ? 2.0 : 1.0;
+    }
+    console.log(`[CraftBuddy] Sublime mode: ${enabled}, multiplier: ${sublimeTargetMultiplier}`);
+    // Rebuild config with new sublime settings
+    if (lastEntity) {
+      currentConfig = buildConfigFromEntity(lastEntity);
+    }
+    renderOverlay();
+  },
+  
+  toggleSublime: () => {
+    isSublimeCraft = !isSublimeCraft;
+    sublimeTargetMultiplier = isSublimeCraft ? 2.0 : 1.0;
+    console.log(`[CraftBuddy] Sublime mode toggled: ${isSublimeCraft}, multiplier: ${sublimeTargetMultiplier}`);
+    if (lastEntity) {
+      currentConfig = buildConfigFromEntity(lastEntity);
+    }
+    renderOverlay();
+    return isSublimeCraft;
   },
   
   setLookaheadDepth: (depth: number) => {

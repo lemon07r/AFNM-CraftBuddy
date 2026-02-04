@@ -21,6 +21,8 @@ import {
   getAvailableSkills,
   calculateSkillGains,
   isTerminalState,
+  getBlockedSkillReasons,
+  SkillBlockedReason as SkillsBlockedReason,
 } from './skills';
 import { debugLog } from '../utils/debug';
 
@@ -50,11 +52,20 @@ export interface SkillRecommendation {
   };
 }
 
+/** Diagnostic info for why skills are unavailable */
+export interface SkillBlockedReason {
+  skillName: string;
+  reason: 'cooldown' | 'qi' | 'stability' | 'toxicity' | 'condition';
+  details: string;
+}
+
 export interface SearchResult {
   recommendation: SkillRecommendation | null;
   alternativeSkills: SkillRecommendation[];
   isTerminal: boolean;
   targetsMet: boolean;
+  /** Diagnostic info for why no skills are available (when isTerminal is true) */
+  blockedReasons?: SkillBlockedReason[];
   /** Full optimal rotation (sequence of skills) to reach targets */
   optimalRotation?: string[];
   /** Expected final state if following the optimal rotation */
@@ -150,7 +161,7 @@ function getNormalizedCacheKey(
  * 1. Progress toward completion and perfection targets (primary)
  * 2. Large bonus for meeting both targets
  * 3. Bonus for active buffs (they enable higher gains on future turns)
- * 4. Penalty for going over targets (wasted resources)
+ * 4. Penalty for going over targets (wasted resources) - reduced/removed for sublime crafting
  * 5. Resource efficiency bonuses (qi and stability remaining)
  * 6. Penalty for risky states (low stability)
  * 
@@ -158,39 +169,71 @@ function getNormalizedCacheKey(
  * - Strongly prefer states that meet targets
  * - Value buff setup as investment for future gains
  * - Balance progress with resource conservation
+ * - For sublime crafting: encourage exceeding targets (up to multiplier limit)
+ * 
+ * @param state - Current crafting state
+ * @param targetCompletion - Base target completion value
+ * @param targetPerfection - Base target perfection value
+ * @param isSublimeCraft - Whether this is sublime/harmony crafting (allows exceeding targets)
+ * @param targetMultiplier - Multiplier for sublime targets (default 2.0 for sublime, higher for equipment)
  */
 function scoreState(
   state: CraftingState,
   targetCompletion: number,
-  targetPerfection: number
+  targetPerfection: number,
+  isSublimeCraft: boolean = false,
+  targetMultiplier: number = 2.0
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
     // No targets - maximize minimum of both (balanced progress)
     return Math.min(state.completion, state.perfection);
   }
 
+  // For sublime crafting, the effective target is multiplied
+  // This allows the optimizer to aim for higher values without penalty
+  const effectiveCompTarget = isSublimeCraft ? targetCompletion * targetMultiplier : targetCompletion;
+  const effectivePerfTarget = isSublimeCraft ? targetPerfection * targetMultiplier : targetPerfection;
+
   // Calculate progress toward each target as a percentage (0-1)
   // Guard against zero targets (e.g., recipes that only require completion OR perfection)
-  const compProgressPct = targetCompletion > 0 ? Math.min(state.completion / targetCompletion, 1) : 1;
-  const perfProgressPct = targetPerfection > 0 ? Math.min(state.perfection / targetPerfection, 1) : 1;
+  const compProgressPct = effectiveCompTarget > 0 ? Math.min(state.completion / effectiveCompTarget, 1) : 1;
+  const perfProgressPct = effectivePerfTarget > 0 ? Math.min(state.perfection / effectivePerfTarget, 1) : 1;
   
   // Score based on progress toward targets (primary scoring)
   // Use actual progress values for the base score
-  const compProgress = targetCompletion > 0 ? Math.min(state.completion, targetCompletion) : 0;
-  const perfProgress = targetPerfection > 0 ? Math.min(state.perfection, targetPerfection) : 0;
+  const compProgress = effectiveCompTarget > 0 ? Math.min(state.completion, effectiveCompTarget) : 0;
+  const perfProgress = effectivePerfTarget > 0 ? Math.min(state.perfection, effectivePerfTarget) : 0;
   let score = compProgress + perfProgress;
 
-  // Large bonus for meeting both targets - this is the goal
-  const targetsMet =
+  // Large bonus for meeting both BASE targets - this is the minimum goal
+  const baseTargetsMet =
     (targetCompletion <= 0 || state.completion >= targetCompletion) &&
     (targetPerfection <= 0 || state.perfection >= targetPerfection);
-  if (targetsMet) {
-    score += 200; // Significant bonus for achieving the goal
+  
+  // For sublime crafting, also check if we've met the extended targets
+  const sublimeTargetsMet = isSublimeCraft && 
+    (effectiveCompTarget <= 0 || state.completion >= effectiveCompTarget) &&
+    (effectivePerfTarget <= 0 || state.perfection >= effectivePerfTarget);
+    
+  if (sublimeTargetsMet) {
+    score += 300; // Even bigger bonus for hitting sublime targets
+    score += state.qi * 0.05;
+    score += state.stability * 0.05;
+  } else if (baseTargetsMet) {
+    score += 200; // Significant bonus for achieving the base goal
     
     // Additional bonus for resource efficiency when targets are met
     // Prefer paths that leave more qi and stability for safety margin
     score += state.qi * 0.05;  // Bonus for remaining qi
     score += state.stability * 0.05;  // Bonus for remaining stability
+    
+    // For sublime crafting, add bonus for progress beyond base targets
+    if (isSublimeCraft) {
+      const compBeyondBase = Math.max(0, state.completion - targetCompletion);
+      const perfBeyondBase = Math.max(0, state.perfection - targetPerfection);
+      // Reward progress toward sublime targets (but less than base progress)
+      score += (compBeyondBase + perfBeyondBase) * 0.5;
+    }
   } else {
     // Bonus for active buffs when targets not yet met
     // Buffs are valuable because they amplify future skill gains
@@ -215,10 +258,18 @@ function scoreState(
   }
 
   // Penalize going over targets (wasted resources)
-  // Use a smaller penalty to not overly discourage skills that overshoot slightly
-  const compOver = targetCompletion > 0 ? Math.max(0, state.completion - targetCompletion) : 0;
-  const perfOver = targetPerfection > 0 ? Math.max(0, state.perfection - targetPerfection) : 0;
-  score -= (compOver + perfOver) * 0.3;
+  // For sublime crafting: no penalty until we exceed the multiplied target
+  // For normal crafting: small penalty for overshooting
+  if (!isSublimeCraft) {
+    const compOver = targetCompletion > 0 ? Math.max(0, state.completion - targetCompletion) : 0;
+    const perfOver = targetPerfection > 0 ? Math.max(0, state.perfection - targetPerfection) : 0;
+    score -= (compOver + perfOver) * 0.3;
+  } else {
+    // For sublime: only penalize if we exceed the multiplied target
+    const compOver = effectiveCompTarget > 0 ? Math.max(0, state.completion - effectiveCompTarget) : 0;
+    const perfOver = effectivePerfTarget > 0 ? Math.max(0, state.perfection - effectivePerfTarget) : 0;
+    score -= (compOver + perfOver) * 0.3;
+  }
 
   // Penalty for low stability (risky state)
   // Graduated penalty that increases as stability gets dangerously low
@@ -405,18 +456,23 @@ export function greedySearch(
       alternativeSkills: [],
       isTerminal: true,
       targetsMet: false,
+      blockedReasons: getBlockedSkillReasons(state, config, currentConditionType),
     };
   }
 
   const availableSkills = getAvailableSkills(state, config, currentConditionType);
   const scoredSkills: SkillRecommendation[] = [];
+  
+  // Extract sublime crafting settings from config
+  const isSublime = config.isSublimeCraft || false;
+  const targetMult = config.targetMultiplier || 2.0;
 
   for (const skill of availableSkills) {
     const newState = applySkill(state, skill, config, controlCondition);
     if (newState === null) continue;
 
     const gains = calculateSkillGains(state, skill, config, controlCondition);
-    const score = scoreState(newState, targetCompletion, targetPerfection);
+    const score = scoreState(newState, targetCompletion, targetPerfection, isSublime, targetMult);
     const reasoning = generateReasoning(skill, state, gains, targetCompletion, targetPerfection);
 
     scoredSkills.push({
@@ -436,6 +492,7 @@ export function greedySearch(
       alternativeSkills: [],
       isTerminal: true,
       targetsMet: false,
+      blockedReasons: getBlockedSkillReasons(state, config, currentConditionType),
     };
   }
 
@@ -563,9 +620,13 @@ export function lookaheadSearch(
   ): number {
     metrics.nodesExplored++;
     
+    // Extract sublime crafting settings from config
+    const isSublime = config.isSublimeCraft || false;
+    const targetMult = config.targetMultiplier || 2.0;
+    
     // Check budget constraints
     if (checkBudget()) {
-      return scoreState(currentState, targetCompletion, targetPerfection);
+      return scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult);
     }
     
     // Get condition type for this depth from forecasted conditions
@@ -576,13 +637,14 @@ export function lookaheadSearch(
 
     // Base case: depth exhausted or terminal
     if (remainingDepth === 0 || isTerminalState(currentState, config, conditionTypeAtDepth)) {
-      return scoreState(currentState, targetCompletion, targetPerfection);
+      return scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult);
     }
 
     // Check if targets met - early termination with bonus
-    if (targetCompletion > 0 && targetPerfection > 0) {
+    // For sublime crafting, don't terminate early - we want to exceed targets
+    if (!isSublime && targetCompletion > 0 && targetPerfection > 0) {
       if (currentState.targetsMet(targetCompletion, targetPerfection)) {
-        return scoreState(currentState, targetCompletion, targetPerfection);
+        return scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult);
       }
     }
 
@@ -615,7 +677,7 @@ export function lookaheadSearch(
     // Apply beam search: limit the number of branches explored
     const beamSkills = orderedSkills.slice(0, cfg.beamWidth);
     
-    let bestScore = scoreState(currentState, targetCompletion, targetPerfection);
+    let bestScore = scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult);
 
     for (const skill of beamSkills) {
       const newState = applySkill(currentState, skill, config, conditionAtDepth);
@@ -818,6 +880,7 @@ export function lookaheadSearch(
       alternativeSkills: [],
       isTerminal: true,
       targetsMet: false,
+      blockedReasons: getBlockedSkillReasons(state, config, currentConditionType),
       searchMetrics: metrics,
     };
   }

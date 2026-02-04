@@ -18,8 +18,9 @@ export {
   isTerminalState,
   getEffectiveQiCost,
   getEffectiveStabilityCost,
+  getBlockedSkillReasons,
 } from './skills';
-export type { SkillDefinition, SkillGains, OptimizerConfig, SkillMastery } from './skills';
+export type { SkillDefinition, SkillGains, OptimizerConfig, SkillMastery, SkillBlockedReason } from './skills';
 
 export {
   findBestSkill,

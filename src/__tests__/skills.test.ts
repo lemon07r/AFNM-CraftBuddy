@@ -768,3 +768,43 @@ describe('Disciplined Touch accuracy', () => {
     expect(gains.perfection).toBe(12);
   });
 });
+
+describe('canApplySkill edge cases', () => {
+  it('should allow skill with 0 stability cost when stability is below minStability', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 5, // Below minStability of 10
+    });
+    const skill = createTestSkill({ qiCost: 10, stabilityCost: 0 });
+    
+    // Stability is 5 (below minStability=10), but skill costs 0 stability
+    // Should be allowed because 5 - 0 = 5 is not checked when stabilityCost is 0
+    expect(canApplySkill(state, skill, 10)).toBe(true);
+  });
+
+  it('should allow stabilize skill when stability is critically low', () => {
+    const state = new CraftingState({
+      qi: 10,
+      stability: 3, // Critically low
+    });
+    // Stabilize skill: 0 stability cost, restores stability
+    const skill = createTestSkill({ 
+      qiCost: 10, 
+      stabilityCost: 0,
+      stabilityGain: 20,
+      type: 'stabilize',
+    });
+    
+    expect(canApplySkill(state, skill, 10)).toBe(true);
+  });
+
+  it('should block all skills when qi is 0 and all skills cost qi', () => {
+    const state = new CraftingState({
+      qi: 0,
+      stability: 50,
+    });
+    const skill = createTestSkill({ qiCost: 10, stabilityCost: 0 });
+    
+    expect(canApplySkill(state, skill, 10)).toBe(false);
+  });
+});

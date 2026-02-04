@@ -557,6 +557,15 @@ export function RecommendationPanel({
 
   // Terminal state (no valid moves)
   if (result.isTerminal || !result.recommendation) {
+    const blockedReasons = result.blockedReasons || [];
+    
+    // Group blocked reasons by type for better display
+    const qiBlocked = blockedReasons.filter(r => r.reason === 'qi');
+    const stabilityBlocked = blockedReasons.filter(r => r.reason === 'stability');
+    const cooldownBlocked = blockedReasons.filter(r => r.reason === 'cooldown');
+    const conditionBlocked = blockedReasons.filter(r => r.reason === 'condition');
+    const toxicityBlocked = blockedReasons.filter(r => r.reason === 'toxicity');
+    
     return (
       <Paper
         sx={{
@@ -564,15 +573,132 @@ export function RecommendationPanel({
           backgroundColor: 'rgba(50, 0, 0, 0.9)',
           border: '2px solid rgba(255, 0, 0, 0.7)',
           borderRadius: 2,
+          maxHeight: 400,
+          overflow: 'auto',
         }}
       >
         <Typography variant="h6" sx={{ color: '#FF6B6B', mb: 1 }}>
           ⚠ No Valid Actions
         </Typography>
-        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 1 }}>
           No skills can be used with current resources.
         </Typography>
-        <Typography variant="body2" sx={{ color: 'rgba(255, 200, 200, 0.8)', mt: 1 }}>
+        
+        {/* Show diagnostic info if available */}
+        {blockedReasons.length > 0 && (
+          <Box sx={{ mt: 1.5 }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255, 200, 200, 0.9)', fontWeight: 'bold', mb: 1 }}>
+              Why skills are blocked:
+            </Typography>
+            
+            {/* Qi blocked skills */}
+            {qiBlocked.length > 0 && (
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="caption" sx={{ color: '#87CEEB', fontWeight: 'bold' }}>
+                  💧 Insufficient Qi ({qiBlocked.length} skills):
+                </Typography>
+                <Box sx={{ pl: 1, mt: 0.5 }}>
+                  {qiBlocked.slice(0, 3).map((r, i) => (
+                    <Typography key={i} variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block' }}>
+                      • {r.skillName}: {r.details}
+                    </Typography>
+                  ))}
+                  {qiBlocked.length > 3 && (
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                      ...and {qiBlocked.length - 3} more
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
+            
+            {/* Stability blocked skills */}
+            {stabilityBlocked.length > 0 && (
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="caption" sx={{ color: '#FFA500', fontWeight: 'bold' }}>
+                  🛡️ Stability too low ({stabilityBlocked.length} skills):
+                </Typography>
+                <Box sx={{ pl: 1, mt: 0.5 }}>
+                  {stabilityBlocked.slice(0, 3).map((r, i) => (
+                    <Typography key={i} variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block' }}>
+                      • {r.skillName}: {r.details}
+                    </Typography>
+                  ))}
+                  {stabilityBlocked.length > 3 && (
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                      ...and {stabilityBlocked.length - 3} more
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
+            
+            {/* Cooldown blocked skills */}
+            {cooldownBlocked.length > 0 && (
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="caption" sx={{ color: '#9370DB', fontWeight: 'bold' }}>
+                  ⏳ On Cooldown ({cooldownBlocked.length} skills):
+                </Typography>
+                <Box sx={{ pl: 1, mt: 0.5 }}>
+                  {cooldownBlocked.slice(0, 3).map((r, i) => (
+                    <Typography key={i} variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block' }}>
+                      • {r.skillName}: {r.details}
+                    </Typography>
+                  ))}
+                  {cooldownBlocked.length > 3 && (
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                      ...and {cooldownBlocked.length - 3} more
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
+            
+            {/* Condition blocked skills */}
+            {conditionBlocked.length > 0 && (
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="caption" sx={{ color: '#90EE90', fontWeight: 'bold' }}>
+                  🌟 Wrong Condition ({conditionBlocked.length} skills):
+                </Typography>
+                <Box sx={{ pl: 1, mt: 0.5 }}>
+                  {conditionBlocked.slice(0, 3).map((r, i) => (
+                    <Typography key={i} variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block' }}>
+                      • {r.skillName}: {r.details}
+                    </Typography>
+                  ))}
+                  {conditionBlocked.length > 3 && (
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                      ...and {conditionBlocked.length - 3} more
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
+            
+            {/* Toxicity blocked skills */}
+            {toxicityBlocked.length > 0 && (
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="caption" sx={{ color: '#FF6B6B', fontWeight: 'bold' }}>
+                  ☠️ Toxicity Limit ({toxicityBlocked.length} skills):
+                </Typography>
+                <Box sx={{ pl: 1, mt: 0.5 }}>
+                  {toxicityBlocked.slice(0, 3).map((r, i) => (
+                    <Typography key={i} variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block' }}>
+                      • {r.skillName}: {r.details}
+                    </Typography>
+                  ))}
+                  {toxicityBlocked.length > 3 && (
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                      ...and {toxicityBlocked.length - 3} more
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
+          </Box>
+        )}
+        
+        <Typography variant="body2" sx={{ color: 'rgba(255, 200, 200, 0.8)', mt: 1.5 }}>
           Consider finishing the craft or check your Qi/Stability.
         </Typography>
       </Paper>
