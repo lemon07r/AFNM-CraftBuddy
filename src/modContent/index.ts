@@ -1,24 +1,23 @@
 /**
  * CraftBuddy - Main Mod Content
  * 
- * Integrates the crafting optimizer with the game by wrapping existing harmony types
- * to inject our recommendation panel into the crafting UI.
+ * Integrates the crafting optimizer with the game using a DOM-based overlay
+ * that detects crafting state and displays recommendations.
  * 
- * Approach: We wrap the existing harmony type configs to add our processEffect
- * and renderComponent logic while preserving the original behavior.
+ * Approach: Since addHarmonyType doesn't override existing harmony types,
+ * we use DOM observation to detect when crafting UI is visible and inject
+ * our recommendation panel as an overlay.
  */
 
 import React from 'react';
+import ReactDOM from 'react-dom/client';
 import { 
-  HarmonyTypeConfig, 
   CraftingEntity, 
   ProgressState, 
-  CraftingState as GameCraftingState,
   CraftingTechnique,
   CraftingCondition,
   RecipeConditionEffect,
   CraftingBuff,
-  RecipeHarmonyType,
 } from 'afnm-types';
 import {
   CraftingState,
@@ -65,6 +64,15 @@ let currentSettings: CraftBuddySettings = loadSettings();
 // Store the last entity for rendering
 let lastEntity: CraftingEntity | null = null;
 let lastProgressState: ProgressState | null = null;
+
+// DOM overlay elements
+let overlayContainer: HTMLDivElement | null = null;
+let reactRoot: ReactDOM.Root | null = null;
+let isOverlayVisible = false;
+
+// Polling interval for crafting state detection
+let pollingInterval: number | null = null;
+const POLL_INTERVAL_MS = 500;
 
 /**
  * Extract buff information from game's CraftingBuff array.
@@ -426,143 +434,338 @@ function updateRecommendation(
   if (currentRecommendation?.recommendation) {
     console.log(`[CraftBuddy] Recommended: ${currentRecommendation.recommendation.skill.name}`);
   }
+  
+  // Update the overlay
+  renderOverlay();
 }
 
 /**
- * Create the CraftBuddy harmony type config that wraps existing behavior.
+ * Create the overlay container for our panel.
  */
-function createCraftBuddyHarmonyConfig(originalConfig: HarmonyTypeConfig | undefined, harmonyType: RecipeHarmonyType): HarmonyTypeConfig {
-  return {
-    name: originalConfig?.name || harmonyType,
-    description: originalConfig?.description || '',
-    
-    initEffect: (harmonyData, entity: CraftingEntity) => {
-      console.log(`[CraftBuddy] initEffect called for ${harmonyType}`);
-      
-      // Call original initEffect if it exists
-      if (originalConfig?.initEffect) {
-        originalConfig.initEffect(harmonyData, entity);
-      }
-      
-      // Initialize our state
-      currentRecommendation = null;
-      currentCompletion = 0;
-      currentPerfection = 0;
-      currentStability = 0;
-      currentMaxStability = targetStability;
-      currentToxicity = 0;
-      currentCooldowns = new Map();
-      nextConditions = [];
-      
-      // Build initial config from entity
-      currentConfig = buildConfigFromEntity(entity);
-      lastEntity = entity;
-      
-      console.log(`[CraftBuddy] Initialized for ${harmonyType} crafting with ${entity.techniques?.length || 0} techniques`);
-    },
-    
-    processEffect: (harmonyData, technique: CraftingTechnique, progressState: ProgressState, entity: CraftingEntity, state: GameCraftingState) => {
-      console.log(`[CraftBuddy] processEffect called after ${technique.name}`);
-      
-      // Call original processEffect if it exists
-      if (originalConfig?.processEffect) {
-        originalConfig.processEffect(harmonyData, technique, progressState, entity, state);
-      }
-      
-      // Track max stability decay
-      // @ts-ignore
-      const gameMaxStability = progressState?.maxStability ?? state?.maxStability;
-      if (gameMaxStability === undefined || gameMaxStability <= 0) {
-        const preventsDecay = technique?.noMaxStabilityLoss === true;
-        if (!preventsDecay && currentMaxStability > 10) {
-          currentMaxStability = Math.max(10, currentMaxStability - 1);
-        }
-        const effects = technique?.effects || [];
-        for (const effect of effects) {
-          if (effect?.kind === 'maxStability') {
-            const change = effect.amount?.value || 0;
-            currentMaxStability = Math.max(10, currentMaxStability + change);
-          }
-        }
-      }
-      
-      // Update our recommendation
-      updateRecommendation(entity, progressState);
-    },
-    
-    renderComponent: (harmonyData) => {
-      // Render original component if it exists
-      const originalComponent = originalConfig?.renderComponent ? originalConfig.renderComponent(harmonyData) : null;
-      
-      // Create settings change handler
-      const handleSettingsChange = (newSettings: CraftBuddySettings) => {
-        currentSettings = newSettings;
-      };
-      
-      // Create our recommendation panel
-      const craftBuddyPanel = React.createElement(
-        'div',
-        {
-          key: 'craftbuddy-panel',
-          style: {
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            zIndex: 1000,
-            pointerEvents: 'auto',
-          }
-        },
-        React.createElement(RecommendationPanel, {
-          result: currentRecommendation,
-          currentCompletion,
-          currentPerfection,
-          targetCompletion,
-          targetPerfection,
-          currentStability,
-          currentMaxStability,
-          settings: currentSettings,
-          onSettingsChange: handleSettingsChange,
-          targetStability,
-          nextConditions,
-          currentToxicity,
-          maxToxicity,
-          craftingType: currentCraftingType,
-        })
+function createOverlayContainer(): void {
+  if (overlayContainer) return;
+  
+  overlayContainer = document.createElement('div');
+  overlayContainer.id = 'craftbuddy-overlay';
+  Object.assign(overlayContainer.style, {
+    position: 'fixed',
+    top: '10px',
+    right: '10px',
+    zIndex: '10000',
+    pointerEvents: 'auto',
+  });
+  
+  document.body.appendChild(overlayContainer);
+  reactRoot = ReactDOM.createRoot(overlayContainer);
+  console.log('[CraftBuddy] Overlay container created');
+}
+
+/**
+ * Render the recommendation panel in the overlay.
+ */
+function renderOverlay(): void {
+  if (!overlayContainer || !reactRoot) {
+    createOverlayContainer();
+  }
+  
+  if (!reactRoot || !currentSettings.panelVisible) {
+    if (reactRoot && overlayContainer) {
+      overlayContainer.style.display = 'none';
+    }
+    return;
+  }
+  
+  overlayContainer!.style.display = 'block';
+  
+  const handleSettingsChange = (newSettings: CraftBuddySettings) => {
+    currentSettings = newSettings;
+    renderOverlay();
+  };
+  
+  const panel = React.createElement(RecommendationPanel, {
+    result: currentRecommendation,
+    currentCompletion,
+    currentPerfection,
+    targetCompletion,
+    targetPerfection,
+    currentStability,
+    currentMaxStability,
+    settings: currentSettings,
+    onSettingsChange: handleSettingsChange,
+    targetStability,
+    nextConditions,
+    currentToxicity,
+    maxToxicity,
+    craftingType: currentCraftingType,
+  });
+  
+  reactRoot.render(panel);
+}
+
+/**
+ * Hide the overlay.
+ */
+function hideOverlay(): void {
+  if (overlayContainer) {
+    overlayContainer.style.display = 'none';
+  }
+  isOverlayVisible = false;
+}
+
+/**
+ * Show the overlay.
+ */
+function showOverlay(): void {
+  if (overlayContainer) {
+    overlayContainer.style.display = 'block';
+  }
+  isOverlayVisible = true;
+  renderOverlay();
+}
+
+/**
+ * Try to find the Redux store from the window object or React fiber tree.
+ * The game uses React 19 with a different fiber structure.
+ */
+function findReduxStore(): any {
+  const win = window as any;
+  
+  // Check common locations for Redux store
+  if (win.store) return win.store;
+  if (win.__REDUX_STORE__) return win.__REDUX_STORE__;
+  if (win.reduxStore) return win.reduxStore;
+  if (win.__store__) return win.__store__;
+  
+  // Check if modAPI exposes any state access
+  if (win.modAPI?.gameState) return { getState: () => win.modAPI.gameState };
+  
+  // Try to find store from React fiber tree
+  try {
+    const rootElement = document.getElementById('root') || document.getElementById('app');
+    if (rootElement) {
+      // Find React fiber key (React 18/19 format)
+      const reactKey = Object.keys(rootElement).find(key => 
+        key.startsWith('__reactContainer$') || 
+        key.startsWith('__reactFiber$') ||
+        key.startsWith('_reactRootContainer')
       );
       
-      // Return both the original component and our panel
-      if (originalComponent) {
-        return React.createElement(
-          React.Fragment,
-          null,
-          originalComponent,
-          craftBuddyPanel
-        );
+      if (reactKey) {
+        let fiber = (rootElement as any)[reactKey];
+        
+        // Traverse fiber tree looking for Redux Provider
+        const visited = new Set();
+        const queue = [fiber];
+        
+        while (queue.length > 0 && visited.size < 1000) {
+          const current = queue.shift();
+          if (!current || visited.has(current)) continue;
+          visited.add(current);
+          
+          // Check for store in various locations
+          if (current.memoizedState?.store) {
+            return current.memoizedState.store;
+          }
+          if (current.stateNode?.store) {
+            return current.stateNode.store;
+          }
+          // Check pendingProps for Provider
+          if (current.pendingProps?.store) {
+            return current.pendingProps.store;
+          }
+          if (current.memoizedProps?.store) {
+            return current.memoizedProps.store;
+          }
+          // Check for context with store
+          if (current.memoizedState?.memoizedState?.store) {
+            return current.memoizedState.memoizedState.store;
+          }
+          
+          // Add children and siblings to queue
+          if (current.child) queue.push(current.child);
+          if (current.sibling) queue.push(current.sibling);
+          if (current.return) queue.push(current.return);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[CraftBuddy] Fiber traversal failed:', e);
+  }
+  
+  return null;
+}
+
+// Cache the Redux store once found
+let cachedStore: any = null;
+
+/**
+ * Try to extract crafting state from Redux store or DOM.
+ */
+function detectCraftingState(): { isActive: boolean; entity?: CraftingEntity; progress?: ProgressState } {
+  // Method 1: Try to access Redux store - this is the best source
+  if (!cachedStore) {
+    cachedStore = findReduxStore();
+  }
+  
+  if (cachedStore) {
+    try {
+      const state = cachedStore.getState();
+      const craftingState = state?.crafting;
+      
+      // Check if we have an active crafting session with player and progressState
+      if (craftingState?.player && craftingState?.progressState) {
+        return { 
+          isActive: true, 
+          entity: craftingState.player as CraftingEntity,
+          progress: craftingState.progressState as ProgressState
+        };
       }
       
-      return craftBuddyPanel;
-    },
-  };
+      // Also check nested paths
+      const gameCrafting = state?.game?.crafting;
+      if (gameCrafting?.player && gameCrafting?.progressState) {
+        return {
+          isActive: true,
+          entity: gameCrafting.player as CraftingEntity,
+          progress: gameCrafting.progressState as ProgressState
+        };
+      }
+    } catch (e) {
+      // Store access failed
+    }
+  }
+  
+  // Method 2: Check for crafting UI elements in the DOM
+  const craftingPanel = document.querySelector('[class*="crafting"]') || 
+                        document.querySelector('[class*="Crafting"]') ||
+                        document.querySelector('[data-testid*="crafting"]');
+  
+  // Method 3: Look for specific crafting-related text/elements
+  const stabilityElement = document.querySelector('[class*="stability"]') ||
+                           Array.from(document.querySelectorAll('*')).find(el => 
+                             el.textContent?.includes('Stability:') && el.children.length < 5
+                           );
+  
+  const completionElement = document.querySelector('[class*="completion"]') ||
+                            Array.from(document.querySelectorAll('*')).find(el => 
+                              el.textContent?.includes('Completion:') && el.children.length < 5
+                            );
+  
+  // Method 4: Check for technique buttons (crafting skills)
+  const techniqueButtons = document.querySelectorAll('button');
+  let hasCraftingButtons = false;
+  techniqueButtons.forEach(btn => {
+    const text = btn.textContent?.toLowerCase() || '';
+    if (text.includes('fusion') || text.includes('refine') || text.includes('stabilize')) {
+      hasCraftingButtons = true;
+    }
+  });
+  
+  const isActive = !!(craftingPanel || stabilityElement || completionElement || hasCraftingButtons);
+  
+  return { isActive };
 }
 
 /**
- * Register CraftBuddy for all harmony types by wrapping existing configs.
+ * Parse crafting values from the DOM.
  */
-const harmonyTypes: RecipeHarmonyType[] = ['forge', 'alchemical', 'inscription', 'resonance'];
-
-for (const harmonyType of harmonyTypes) {
+function parseCraftingValuesFromDOM(): { 
+  completion: number; 
+  perfection: number; 
+  stability: number;
+  pool: number;
+} | null {
   try {
-    // Get the existing harmony config if any
-    const existingConfig = window.modAPI?.gameData?.harmonyConfigs?.[harmonyType];
+    // Look for progress bars or text showing crafting values
+    const allText = document.body.innerText;
     
-    // Create our wrapped config
-    const craftBuddyConfig = createCraftBuddyHarmonyConfig(existingConfig, harmonyType);
+    // Try to find patterns like "Completion: 45/100" or "45 / 100"
+    const completionMatch = allText.match(/Completion[:\s]+(\d+)\s*[\/]\s*(\d+)/i);
+    const perfectionMatch = allText.match(/Perfection[:\s]+(\d+)\s*[\/]\s*(\d+)/i);
+    const stabilityMatch = allText.match(/Stability[:\s]+(\d+)\s*[\/]\s*(\d+)/i);
+    const poolMatch = allText.match(/(?:Qi|Pool)[:\s]+(\d+)\s*[\/]\s*(\d+)/i);
     
-    // Register it
-    window.modAPI.actions.addHarmonyType(harmonyType, craftBuddyConfig);
-    console.log(`[CraftBuddy] Registered harmony type wrapper for ${harmonyType}`);
+    if (completionMatch || perfectionMatch || stabilityMatch) {
+      return {
+        completion: completionMatch ? parseInt(completionMatch[1]) : 0,
+        perfection: perfectionMatch ? parseInt(perfectionMatch[1]) : 0,
+        stability: stabilityMatch ? parseInt(stabilityMatch[1]) : 0,
+        pool: poolMatch ? parseInt(poolMatch[1]) : 0,
+      };
+    }
   } catch (e) {
-    console.error(`[CraftBuddy] Failed to register harmony type for ${harmonyType}:`, e);
+    console.warn('[CraftBuddy] Failed to parse DOM values:', e);
+  }
+  
+  return null;
+}
+
+/**
+ * Poll for crafting state changes.
+ */
+function pollCraftingState(): void {
+  const { isActive, entity, progress } = detectCraftingState();
+  
+  if (isActive && !isOverlayVisible) {
+    console.log('[CraftBuddy] Crafting detected, showing overlay');
+    showOverlay();
+  } else if (!isActive && isOverlayVisible) {
+    console.log('[CraftBuddy] Crafting ended, hiding overlay');
+    hideOverlay();
+  }
+  
+  // If we have entity and progress from Redux, use them directly
+  if (isActive && entity && progress) {
+    // Check if state changed
+    const newCompletion = progress.completion || 0;
+    const newPerfection = progress.perfection || 0;
+    const newStability = progress.stability || 0;
+    
+    if (newCompletion !== currentCompletion || 
+        newPerfection !== currentPerfection ||
+        newStability !== currentStability ||
+        !lastEntity) {
+      console.log(`[CraftBuddy] Redux state: Completion=${newCompletion}, Perfection=${newPerfection}, Stability=${newStability}`);
+      updateRecommendation(entity, progress);
+    }
+    return;
+  }
+  
+  // Fallback: If crafting is active but no Redux data, try to update values from DOM
+  if (isActive) {
+    const domValues = parseCraftingValuesFromDOM();
+    if (domValues) {
+      // Only update if values changed
+      if (domValues.completion !== currentCompletion || 
+          domValues.perfection !== currentPerfection ||
+          domValues.stability !== currentStability) {
+        console.log('[CraftBuddy] DOM values changed:', domValues);
+        currentCompletion = domValues.completion;
+        currentPerfection = domValues.perfection;
+        currentStability = domValues.stability;
+        renderOverlay();
+      }
+    }
+  }
+}
+
+/**
+ * Start polling for crafting state.
+ */
+function startPolling(): void {
+  if (pollingInterval) return;
+  
+  pollingInterval = window.setInterval(pollCraftingState, POLL_INTERVAL_MS);
+  console.log('[CraftBuddy] Started polling for crafting state');
+}
+
+/**
+ * Stop polling.
+ */
+function stopPolling(): void {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
   }
 }
 
@@ -612,6 +815,12 @@ try {
     currentConfig = null;
     nextConditions = [];
     
+    // Force panel visible and show overlay when crafting starts
+    currentSettings.panelVisible = true;
+    isOverlayVisible = false; // Reset so showOverlay will work
+    console.log('[CraftBuddy] Crafting starting, forcing panel visible');
+    showOverlay();
+    
     return recipeStats;
   });
   
@@ -648,6 +857,7 @@ try {
     targetPerfection = perfection;
     if (stability !== undefined) targetStability = stability;
     console.log(`[CraftBuddy] Targets set to: completion=${completion}, perfection=${perfection}, stability=${targetStability}`);
+    renderOverlay();
   },
   
   setLookaheadDepth: (depth: number) => {
@@ -657,11 +867,17 @@ try {
   
   togglePanel: () => {
     currentSettings = saveSettings({ panelVisible: !currentSettings.panelVisible });
+    if (currentSettings.panelVisible) {
+      showOverlay();
+    } else {
+      hideOverlay();
+    }
     return currentSettings.panelVisible;
   },
   
   toggleCompact: () => {
     currentSettings = saveSettings({ compactMode: !currentSettings.compactMode });
+    renderOverlay();
     return currentSettings.compactMode;
   },
   
@@ -675,6 +891,110 @@ try {
     console.log('Current settings:', currentSettings);
     console.log('Last entity:', lastEntity);
     console.log('Last progressState:', lastProgressState);
+    
+    // Check screenAPI
+    const screenAPI = (window.modAPI as any)?.screenAPI;
+    console.log('[CraftBuddy] screenAPI:', screenAPI);
+    if (screenAPI) {
+      console.log('[CraftBuddy] screenAPI keys:', Object.keys(screenAPI));
+      // Try to use useSelector if available
+      if (typeof screenAPI.useSelector === 'function') {
+        try {
+          // This might fail if not in React context
+          const craftingState = screenAPI.useSelector((state: any) => state.crafting);
+          console.log('[CraftBuddy] Crafting state from useSelector:', craftingState);
+        } catch (e) {
+          console.log('[CraftBuddy] useSelector failed (expected if not in React context):', e);
+        }
+      }
+    }
+  },
+  
+  // Find Redux store location
+  findStore: () => {
+    const win = window as any;
+    console.log('[CraftBuddy] === Searching for Redux Store ===');
+    
+    // Check common locations
+    const locations = [
+      'store', '__REDUX_STORE__', 'reduxStore', '__store__', 
+      'gameStore', 'appStore', '__STORE__', 'Store'
+    ];
+    
+    for (const loc of locations) {
+      if (win[loc]) {
+        console.log(`[CraftBuddy] Found store at window.${loc}:`, win[loc]);
+        if (typeof win[loc].getState === 'function') {
+          const state = win[loc].getState();
+          console.log(`[CraftBuddy] State keys:`, Object.keys(state || {}));
+          if (state?.crafting) {
+            console.log(`[CraftBuddy] Crafting state:`, state.crafting);
+          }
+        }
+      }
+    }
+    
+    // Check modAPI
+    console.log('[CraftBuddy] modAPI:', win.modAPI);
+    if (win.modAPI) {
+      console.log('[CraftBuddy] modAPI keys:', Object.keys(win.modAPI));
+      // Check for any state-related properties
+      for (const key of Object.keys(win.modAPI)) {
+        const val = win.modAPI[key];
+        if (val && typeof val === 'object') {
+          console.log(`[CraftBuddy] modAPI.${key} keys:`, Object.keys(val).slice(0, 20));
+        }
+      }
+    }
+    
+    // Try React root with detailed fiber inspection
+    const rootEl = document.getElementById('root') || document.getElementById('app');
+    if (rootEl) {
+      console.log('[CraftBuddy] Found root element:', rootEl.id);
+      const reactKeys = Object.keys(rootEl).filter(k => k.startsWith('__react'));
+      console.log('[CraftBuddy] React keys on root:', reactKeys);
+      
+      // Try to traverse fiber tree
+      for (const key of reactKeys) {
+        try {
+          const fiber = (rootEl as any)[key];
+          console.log(`[CraftBuddy] Fiber at ${key}:`, fiber?.tag, fiber?.type?.name || fiber?.type);
+          
+          // Look for store in first few levels
+          let current = fiber;
+          for (let i = 0; i < 10 && current; i++) {
+            if (current.memoizedProps?.store) {
+              console.log('[CraftBuddy] Found store in memoizedProps at depth', i);
+              const store = current.memoizedProps.store;
+              if (typeof store.getState === 'function') {
+                const state = store.getState();
+                console.log('[CraftBuddy] Store state keys:', Object.keys(state || {}));
+                return store;
+              }
+            }
+            if (current.pendingProps?.store) {
+              console.log('[CraftBuddy] Found store in pendingProps at depth', i);
+              return current.pendingProps.store;
+            }
+            current = current.child || current.sibling;
+          }
+        } catch (e) {
+          console.warn('[CraftBuddy] Error inspecting fiber:', e);
+        }
+      }
+    }
+    
+    const store = findReduxStore();
+    if (store) {
+      console.log('[CraftBuddy] findReduxStore() returned:', store);
+      if (typeof store.getState === 'function') {
+        const state = store.getState();
+        console.log('[CraftBuddy] Store state keys:', Object.keys(state || {}));
+      }
+    } else {
+      console.log('[CraftBuddy] No Redux store found');
+    }
+    return store;
   },
   
   // Force update recommendation with stored entity/state
@@ -685,6 +1005,106 @@ try {
     } else {
       console.log('[CraftBuddy] No entity/state stored yet');
     }
+  },
+  
+  // Show overlay manually
+  showPanel: () => {
+    showOverlay();
+    console.log('[CraftBuddy] Panel shown');
+  },
+  
+  // Hide overlay manually
+  hidePanel: () => {
+    hideOverlay();
+    console.log('[CraftBuddy] Panel hidden');
+  },
+  
+  // Check crafting detection
+  detectCrafting: () => {
+    const result = detectCraftingState();
+    console.log('[CraftBuddy] Crafting detection:', result);
+    
+    // Also log the raw Redux state for debugging
+    if (cachedStore) {
+      const state = cachedStore.getState();
+      console.log('[CraftBuddy] Redux crafting state:', state?.crafting);
+      console.log('[CraftBuddy] Has player:', !!state?.crafting?.player);
+      console.log('[CraftBuddy] Has progressState:', !!state?.crafting?.progressState);
+    }
+    
+    return result;
+  },
+  
+  // Parse DOM values
+  parseDOMValues: () => {
+    const result = parseCraftingValuesFromDOM();
+    console.log('[CraftBuddy] DOM values:', result);
+    return result;
+  },
+  
+  // Start/stop polling
+  startPolling: () => {
+    startPolling();
+    console.log('[CraftBuddy] Polling started');
+  },
+  
+  stopPolling: () => {
+    stopPolling();
+    console.log('[CraftBuddy] Polling stopped');
+  },
+  
+  // Test with mock data
+  testWithMockData: () => {
+    console.log('[CraftBuddy] Testing with mock data...');
+    
+    // Create mock entity
+    const mockEntity: any = {
+      stats: {
+        control: 16,
+        intensity: 12,
+        pool: 150,
+        maxpool: 200,
+      },
+      techniques: [
+        {
+          name: 'Simple Fusion',
+          poolCost: 0,
+          stabilityCost: 10,
+          type: 'fusion',
+          effects: [{ kind: 'completion', amount: { value: 12, stat: 'intensity' } }],
+        },
+        {
+          name: 'Stabilize',
+          poolCost: 10,
+          stabilityCost: 0,
+          type: 'stabilize',
+          noMaxStabilityLoss: true,
+          effects: [{ kind: 'stability', amount: { value: 20 } }],
+        },
+      ],
+      buffs: [],
+    };
+    
+    // Create mock progress state
+    const mockProgress: any = {
+      stability: 45,
+      completion: 30,
+      perfection: 20,
+      condition: 'neutral',
+      nextConditions: ['positive', 'neutral'],
+    };
+    
+    // Set targets
+    targetCompletion = 100;
+    targetPerfection = 100;
+    targetStability = 60;
+    currentMaxStability = 55;
+    
+    // Update with mock data
+    updateRecommendation(mockEntity, mockProgress);
+    showOverlay();
+    
+    console.log('[CraftBuddy] Mock test complete - panel should be visible');
   },
 };
 
@@ -698,11 +1118,17 @@ try {
         case 'c':
           event.preventDefault();
           currentSettings = saveSettings({ panelVisible: !currentSettings.panelVisible });
+          if (currentSettings.panelVisible) {
+            showOverlay();
+          } else {
+            hideOverlay();
+          }
           console.log(`[CraftBuddy] Panel visibility: ${currentSettings.panelVisible}`);
           break;
         case 'm':
           event.preventDefault();
           currentSettings = saveSettings({ compactMode: !currentSettings.compactMode });
+          renderOverlay();
           console.log(`[CraftBuddy] Compact mode: ${currentSettings.compactMode}`);
           break;
       }
@@ -724,7 +1150,7 @@ function createTitleScreenIndicator(): void {
 
     const indicator = document.createElement('div');
     indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.9.0 Loaded';
+    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.11.0 Loaded';
     
     Object.assign(indicator.style, {
       position: 'fixed',
@@ -763,161 +1189,46 @@ function createTitleScreenIndicator(): void {
   }
 }
 
+// Initialize
 createTitleScreenIndicator();
+createOverlayContainer();
+startPolling();
+
+// Subscribe to Redux store for state changes
+setTimeout(() => {
+  const store = findReduxStore();
+  if (store && typeof store.subscribe === 'function') {
+    cachedStore = store;
+    console.log('[CraftBuddy] Subscribing to Redux store for state changes');
+    store.subscribe(() => {
+      const state = store.getState();
+      const craftingState = state?.crafting;
+      
+      // Check if crafting is active
+      if (craftingState?.player && craftingState?.progressState) {
+        const progress = craftingState.progressState;
+        const entity = craftingState.player;
+        
+        // Check if state changed
+        if (progress.completion !== currentCompletion || 
+            progress.perfection !== currentPerfection ||
+            progress.stability !== currentStability ||
+            !lastEntity) {
+          console.log(`[CraftBuddy] Redux update: Completion=${progress.completion}, Perfection=${progress.perfection}, Stability=${progress.stability}`);
+          
+          // Ensure panel is visible
+          if (!isOverlayVisible) {
+            currentSettings.panelVisible = true;
+            showOverlay();
+          }
+          
+          updateRecommendation(entity, progress);
+        }
+      }
+    });
+  }
+}, 1000); // Wait 1 second for game to initialize
 
 console.log('[CraftBuddy] Mod loaded successfully!');
-console.log('[CraftBuddy] Debug: window.craftBuddyDebug.logGameData() to inspect data sources');
-
-/**
- * Poll for Redux store and crafting state.
- * This is a fallback approach since harmony type wrappers don't work for existing types.
- */
-let pollingInterval: ReturnType<typeof setInterval> | null = null;
-let craftingPanelElement: HTMLElement | null = null;
-
-function findReduxStore(): any {
-  // Try common Redux store locations
-  const w = window as any;
-  return w.__REDUX_STORE__ || w.store || w.__store || w.reduxStore || null;
-}
-
-function getCraftingStateFromStore(store: any): any {
-  if (!store || typeof store.getState !== 'function') return null;
-  try {
-    const state = store.getState();
-    return state?.crafting || null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function createOrUpdateCraftingPanel(): void {
-  if (!craftingPanelElement) {
-    craftingPanelElement = document.createElement('div');
-    craftingPanelElement.id = 'craftbuddy-panel';
-    Object.assign(craftingPanelElement.style, {
-      position: 'fixed',
-      top: '80px',
-      right: '10px',
-      width: '320px',
-      padding: '12px',
-      backgroundColor: 'rgba(20, 20, 30, 0.95)',
-      color: '#fff',
-      fontFamily: 'sans-serif',
-      fontSize: '13px',
-      borderRadius: '8px',
-      border: '1px solid rgba(255, 215, 0, 0.4)',
-      zIndex: '10000',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-      display: 'none',
-    });
-    document.body.appendChild(craftingPanelElement);
-    console.log('[CraftBuddy] Crafting panel created');
-  }
-}
-
-function updatePanelContent(): void {
-  if (!craftingPanelElement || !currentRecommendation) return;
-  
-  const rec = currentRecommendation.recommendation;
-  if (!rec) {
-    craftingPanelElement.innerHTML = `
-      <div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">🔮 CraftBuddy</div>
-      <div style="color: #aaa;">${currentRecommendation.targetsMet ? '✓ Targets met!' : 'No valid actions available'}</div>
-    `;
-    return;
-  }
-  
-  const typeColors: Record<string, string> = { fusion: '#00ff00', refine: '#00ffff', stabilize: '#ffa500', support: '#eb34db' };
-  const color = typeColors[rec.skill.type] || '#fff';
-  
-  craftingPanelElement.innerHTML = `
-    <div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">🔮 CraftBuddy Recommends</div>
-    <div style="margin-bottom: 6px; color: #aaa; font-size: 11px;">
-      Completion: ${currentCompletion}/${targetCompletion} | Perfection: ${currentPerfection}/${targetPerfection}
-    </div>
-    <div style="padding: 8px; background: rgba(0,100,0,0.3); border: 1px solid rgba(0,255,0,0.4); border-radius: 4px; margin-bottom: 8px;">
-      <div style="color: ${color}; font-weight: bold; font-size: 15px;">${rec.skill.name}</div>
-      <div style="color: #90EE90; font-size: 12px; margin-top: 4px;">
-        ${rec.expectedGains.completion > 0 ? `+${rec.expectedGains.completion} Completion ` : ''}
-        ${rec.expectedGains.perfection > 0 ? `+${rec.expectedGains.perfection} Perfection ` : ''}
-        ${rec.expectedGains.stability > 0 ? `+${rec.expectedGains.stability} Stability` : ''}
-      </div>
-      <div style="color: #888; font-size: 11px; margin-top: 4px; font-style: italic;">${rec.reasoning}</div>
-    </div>
-  `;
-}
-
-function startCraftingPolling(): void {
-  if (pollingInterval) return;
-  
-  createOrUpdateCraftingPanel();
-  
-  pollingInterval = setInterval(() => {
-    const store = findReduxStore();
-    const craftingState = getCraftingStateFromStore(store);
-    
-    if (craftingState?.player && craftingState?.progressState) {
-      // We have active crafting!
-      if (craftingPanelElement) craftingPanelElement.style.display = 'block';
-      
-      const entity = craftingState.player as CraftingEntity;
-      const progress = craftingState.progressState as ProgressState;
-      
-      // Update if state changed
-      if (progress.completion !== currentCompletion || progress.perfection !== currentPerfection || progress.stability !== currentStability) {
-        updateRecommendation(entity, progress);
-        updatePanelContent();
-      }
-    } else {
-      // No active crafting
-      if (craftingPanelElement) craftingPanelElement.style.display = 'none';
-    }
-  }, 500);
-  
-  console.log('[CraftBuddy] Started crafting state polling');
-}
-
-// Start polling after a short delay to let the game initialize
-setTimeout(startCraftingPolling, 2000);
-
-// Add debug function to find Redux store
-(window as any).craftBuddyDebug.findStore = () => {
-  console.log('[CraftBuddy] Searching for Redux store...');
-  const w = window as any;
-  
-  // Check common locations
-  const locations = ['__REDUX_STORE__', 'store', '__store', 'reduxStore', '__PRELOADED_STATE__'];
-  for (const loc of locations) {
-    if (w[loc]) {
-      console.log(`[CraftBuddy] Found: window.${loc}`, w[loc]);
-    }
-  }
-  
-  // Search all window properties
-  const found: string[] = [];
-  for (const key of Object.keys(w)) {
-    const val = w[key];
-    if (val && typeof val === 'object') {
-      if (typeof val.getState === 'function' || typeof val.dispatch === 'function') {
-        found.push(key);
-        console.log(`[CraftBuddy] Potential store at window.${key}:`, val);
-      }
-      if (key.toLowerCase().includes('redux') || key.toLowerCase().includes('store')) {
-        console.log(`[CraftBuddy] Named match window.${key}:`, val);
-      }
-    }
-  }
-  
-  // Check modAPI for store access
-  if (w.modAPI) {
-    console.log('[CraftBuddy] modAPI available:', Object.keys(w.modAPI));
-    if (w.modAPI.screenAPI) {
-      console.log('[CraftBuddy] screenAPI available:', Object.keys(w.modAPI.screenAPI));
-    }
-  }
-  
-  return found;
-};
-
-console.log('[CraftBuddy] Debug: Use window.craftBuddyDebug.findStore() to search for Redux store');
+console.log('[CraftBuddy] Debug: window.craftBuddyDebug.testWithMockData() to test the panel');
+console.log('[CraftBuddy] Debug: window.craftBuddyDebug.showPanel() to show panel manually');
