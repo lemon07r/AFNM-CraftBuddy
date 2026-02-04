@@ -228,17 +228,34 @@ export const DEFAULT_CONFIG: OptimizerConfig = {
 /**
  * Calculate gains for Disciplined Touch skill.
  * Converts existing buffs into completion and perfection gains.
+ * 
+ * The skill uses the current buff states to calculate gains:
+ * - Completion gain scales with intensity (boosted by intensity buff if active)
+ * - Perfection gain scales with control (boosted by control buff if active)
+ * 
+ * @param state - Current crafting state with buff information
+ * @param skill - The Disciplined Touch skill definition with multipliers
+ * @param config - Optimizer config with base stats
+ * @param controlCondition - Current condition multiplier for control
  */
 export function calculateDisciplinedTouchGains(
   state: CraftingState,
-  baseIntensity: number
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  controlCondition: number = 1.0
 ): SkillGains {
-  const intensity = state.getIntensity(baseIntensity);
-  // Base is 6 at 12 intensity, scales proportionally
-  const gain = Math.floor((6 * intensity) / 12);
+  // Get effective stats with buffs applied
+  const effectiveIntensity = state.getIntensity(config.baseIntensity);
+  const effectiveControl = state.getControl(config.baseControl) * controlCondition;
+  
+  // Use skill's multipliers (baseCompletionGain and basePerfectionGain)
+  // These are typically 0.5 each for Disciplined Touch
+  const completionGain = Math.floor(skill.baseCompletionGain * effectiveIntensity);
+  const perfectionGain = Math.floor(skill.basePerfectionGain * effectiveControl);
+  
   return {
-    completion: gain,
-    perfection: gain,
+    completion: completionGain,
+    perfection: perfectionGain,
     stability: 0,
   };
 }
@@ -258,9 +275,9 @@ export function calculateSkillGains(
   config: OptimizerConfig,
   controlCondition: number = 1.0
 ): SkillGains {
-  // Handle Disciplined Touch specially
+  // Handle Disciplined Touch specially - it uses both intensity and control with buffs
   if (skill.isDisciplinedTouch) {
-    return calculateDisciplinedTouchGains(state, config.baseIntensity);
+    return calculateDisciplinedTouchGains(state, skill, config, controlCondition);
   }
 
   let completionGain = skill.baseCompletionGain;
@@ -463,6 +480,13 @@ export function applySkill(
   // Decrement existing buff durations
   let newControlBuffTurns = state.controlBuffTurns > 0 ? state.controlBuffTurns - 1 : 0;
   let newIntensityBuffTurns = state.intensityBuffTurns > 0 ? state.intensityBuffTurns - 1 : 0;
+
+  // Disciplined Touch consumes all active buffs after using them for gains
+  // This is the key mechanic - buffs are converted to gains and then removed
+  if (skill.isDisciplinedTouch) {
+    newControlBuffTurns = 0;
+    newIntensityBuffTurns = 0;
+  }
 
   // Apply NEW buffs from this skill (active next turn)
   // Also update buff multipliers if the skill provides them

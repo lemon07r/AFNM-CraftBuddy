@@ -609,3 +609,162 @@ describe('isTerminalState', () => {
     expect(isTerminalState(state, config)).toBe(false);
   });
 });
+
+describe('Disciplined Touch accuracy', () => {
+  const config = createTestConfig();
+
+  it('should calculate gains using skill multipliers with intensity', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      intensityBuffTurns: 0,
+      controlBuffTurns: 0,
+    });
+    const skill = createTestSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      baseCompletionGain: 0.5, // Multiplier for completion
+      basePerfectionGain: 0.5, // Multiplier for perfection
+      isDisciplinedTouch: true,
+      scalesWithIntensity: true,
+    });
+    
+    const gains = calculateSkillGains(state, skill, config);
+    
+    // Completion: 0.5 * 12 (base intensity) = 6
+    // Perfection: 0.5 * 16 (base control) = 8
+    expect(gains.completion).toBe(6);
+    expect(gains.perfection).toBe(8);
+  });
+
+  it('should apply intensity buff to completion gains', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      intensityBuffTurns: 2,
+      intensityBuffMultiplier: 1.4,
+      controlBuffTurns: 0,
+    });
+    const skill = createTestSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      baseCompletionGain: 0.5,
+      basePerfectionGain: 0.5,
+      isDisciplinedTouch: true,
+      scalesWithIntensity: true,
+    });
+    
+    const gains = calculateSkillGains(state, skill, config);
+    
+    // Intensity with buff: 12 * 1.4 = 16.8 -> 16 (floored)
+    // Completion: 0.5 * 16 = 8
+    // Perfection: 0.5 * 16 (base control, no buff) = 8
+    expect(gains.completion).toBe(8);
+    expect(gains.perfection).toBe(8);
+  });
+
+  it('should apply control buff to perfection gains', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      intensityBuffTurns: 0,
+      controlBuffTurns: 2,
+      controlBuffMultiplier: 1.4,
+    });
+    const skill = createTestSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      baseCompletionGain: 0.5,
+      basePerfectionGain: 0.5,
+      isDisciplinedTouch: true,
+      scalesWithIntensity: true,
+    });
+    
+    const gains = calculateSkillGains(state, skill, config);
+    
+    // Completion: 0.5 * 12 (base intensity, no buff) = 6
+    // Control with buff: 16 * 1.4 = 22.4 -> 22 (floored)
+    // Perfection: 0.5 * 22 = 11
+    expect(gains.completion).toBe(6);
+    expect(gains.perfection).toBe(11);
+  });
+
+  it('should apply both buffs when active', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      intensityBuffTurns: 2,
+      intensityBuffMultiplier: 1.4,
+      controlBuffTurns: 2,
+      controlBuffMultiplier: 1.4,
+    });
+    const skill = createTestSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      baseCompletionGain: 0.5,
+      basePerfectionGain: 0.5,
+      isDisciplinedTouch: true,
+      scalesWithIntensity: true,
+    });
+    
+    const gains = calculateSkillGains(state, skill, config);
+    
+    // Intensity with buff: 12 * 1.4 = 16.8 -> 16 (floored)
+    // Completion: 0.5 * 16 = 8
+    // Control with buff: 16 * 1.4 = 22.4 -> 22 (floored)
+    // Perfection: 0.5 * 22 = 11
+    expect(gains.completion).toBe(8);
+    expect(gains.perfection).toBe(11);
+  });
+
+  it('should consume all buffs when applied', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      maxStability: 60,
+      controlBuffTurns: 2,
+      intensityBuffTurns: 3,
+    });
+    const skill = createTestSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      baseCompletionGain: 0.5,
+      basePerfectionGain: 0.5,
+      isDisciplinedTouch: true,
+      scalesWithIntensity: true,
+    });
+    
+    const newState = applySkill(state, skill, config);
+    
+    expect(newState).not.toBeNull();
+    // Both buffs should be consumed (set to 0)
+    expect(newState!.controlBuffTurns).toBe(0);
+    expect(newState!.intensityBuffTurns).toBe(0);
+  });
+
+  it('should apply condition multiplier to control for perfection', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      intensityBuffTurns: 0,
+      controlBuffTurns: 0,
+    });
+    const skill = createTestSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      baseCompletionGain: 0.5,
+      basePerfectionGain: 0.5,
+      isDisciplinedTouch: true,
+      scalesWithIntensity: true,
+    });
+    
+    // Good condition (1.5x multiplier)
+    const gains = calculateSkillGains(state, skill, config, 1.5);
+    
+    // Completion: 0.5 * 12 = 6 (intensity not affected by condition)
+    // Control with condition: 16 * 1.5 = 24
+    // Perfection: 0.5 * 24 = 12
+    expect(gains.completion).toBe(6);
+    expect(gains.perfection).toBe(12);
+  });
+});

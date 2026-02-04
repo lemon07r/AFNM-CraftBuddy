@@ -20,8 +20,17 @@ AFNM-CraftBuddy/
 │   │   ├── state.ts        # CraftingState class
 │   │   ├── skills.ts       # Skill definitions and application
 │   │   └── search.ts       # Search algorithm (greedy/lookahead)
+│   ├── settings/
+│   │   └── index.ts        # Settings management with localStorage persistence
 │   ├── ui/
-│   │   └── RecommendationPanel.tsx  # React UI component
+│   │   ├── RecommendationPanel.tsx  # Main recommendation UI component
+│   │   └── SettingsPanel.tsx        # Settings configuration UI
+│   ├── __tests__/
+│   │   ├── __mocks__/
+│   │   │   └── afnm-types.ts  # Mock game types for testing
+│   │   ├── state.test.ts      # CraftingState unit tests
+│   │   ├── skills.test.ts     # Skill application tests
+│   │   └── search.test.ts     # Search algorithm tests
 │   ├── assets/             # Images and icons
 │   ├── custom.d.ts         # Custom type declarations
 │   └── global.d.ts         # Global type declarations
@@ -229,8 +238,8 @@ npm run build
 ## Implementation Notes
 
 ### Build Output
-- Build creates `builds/craftbuddy-1.0.0.zip`
-- Contains `mod.js` (~60KB) with all optimizer logic bundled
+- Build creates `builds/afnm-craftbuddy.zip`
+- Contains `mod.js` (~628KB) with all optimizer logic bundled
 
 ### Integration Approach
 CraftBuddy overrides ALL harmony types (forge, alchemical, inscription, resonance) to inject the recommendation panel into all crafting sessions. This means:
@@ -306,7 +315,7 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 - `getLastEntity()` - Returns last CraftingEntity received
 - `getLastProgressState()` - Returns last ProgressState received
 - `setTargets(completion, perfection, stability?)` - Override targets for testing
-- `setLookaheadDepth(depth)` - Set lookahead depth (1-6)
+- `setLookaheadDepth(depth)` - Set lookahead depth (1-10)
 - `togglePanel()` - Toggle panel visibility
 - `toggleCompact()` - Toggle compact mode
 - `logGameData()` - Logs all game data sources to console
@@ -408,7 +417,7 @@ The game uses `DebouncedSaveManager` which saves the ENTIRE Redux state every 10
 
 All planned improvements have been implemented! Potential future enhancements:
 - Additional test coverage for edge cases
-- Further performance tuning for very deep searches (depth > 6)
+- Further performance tuning for very deep searches (depth > 10)
 - Support for mod-added custom techniques
 
 ## Completed Improvements (v1.8.0)
@@ -438,7 +447,7 @@ All planned improvements have been implemented! Potential future enhancements:
 ## Completed Improvements (v1.3.0)
 
 - [x] **Settings panel** - In-game UI to configure lookahead depth, display options, and reset to defaults
-- [x] **Configurable lookahead depth** - Adjustable from 1-6 (default: 4) via settings panel
+- [x] **Configurable lookahead depth** - Adjustable from 1-10 (default: 4) via settings panel
 - [x] **Keyboard shortcuts** - Ctrl+Shift+C (toggle panel), Ctrl+Shift+M (toggle compact mode)
 - [x] **Compact mode** - Smaller panel showing only essential info for less screen obstruction
 - [x] **Persistent settings** - Settings saved to localStorage and restored on reload

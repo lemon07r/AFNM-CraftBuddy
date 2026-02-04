@@ -1039,7 +1039,7 @@ try {
   },
   
   setLookaheadDepth: (depth: number) => {
-    currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(6, depth)) });
+    currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(10, depth)) });
     console.log(`[CraftBuddy] Lookahead depth set to: ${currentSettings.lookaheadDepth}`);
   },
   

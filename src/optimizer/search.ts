@@ -68,9 +68,16 @@ export interface SearchResult {
  * 
  * Scoring priorities:
  * 1. Progress toward completion and perfection targets (primary)
- * 2. Bonus for meeting both targets
- * 3. Penalty for going over targets (wasted resources)
- * 4. Small bonus for resource efficiency (qi and stability remaining)
+ * 2. Large bonus for meeting both targets
+ * 3. Bonus for active buffs (they enable higher gains on future turns)
+ * 4. Penalty for going over targets (wasted resources)
+ * 5. Resource efficiency bonuses (qi and stability remaining)
+ * 6. Penalty for risky states (low stability)
+ * 
+ * The scoring is designed to:
+ * - Strongly prefer states that meet targets
+ * - Value buff setup as investment for future gains
+ * - Balance progress with resource conservation
  */
 function scoreState(
   state: CraftingState,
@@ -78,11 +85,16 @@ function scoreState(
   targetPerfection: number
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
-    // No targets - maximize minimum of both
+    // No targets - maximize minimum of both (balanced progress)
     return Math.min(state.completion, state.perfection);
   }
 
+  // Calculate progress toward each target as a percentage (0-1)
+  const compProgressPct = Math.min(state.completion / targetCompletion, 1);
+  const perfProgressPct = Math.min(state.perfection / targetPerfection, 1);
+  
   // Score based on progress toward targets (primary scoring)
+  // Use actual progress values for the base score
   const compProgress = Math.min(state.completion, targetCompletion);
   const perfProgress = Math.min(state.perfection, targetPerfection);
   let score = compProgress + perfProgress;
@@ -90,22 +102,51 @@ function scoreState(
   // Large bonus for meeting both targets - this is the goal
   const targetsMet = state.completion >= targetCompletion && state.perfection >= targetPerfection;
   if (targetsMet) {
-    score += 100; // Significant bonus for achieving the goal
+    score += 200; // Significant bonus for achieving the goal
     
     // Additional bonus for resource efficiency when targets are met
     // Prefer paths that leave more qi and stability for safety margin
-    score += state.qi * 0.01;  // Small bonus for remaining qi
-    score += state.stability * 0.01;  // Small bonus for remaining stability
+    score += state.qi * 0.05;  // Bonus for remaining qi
+    score += state.stability * 0.05;  // Bonus for remaining stability
+  } else {
+    // Bonus for active buffs when targets not yet met
+    // Buffs are valuable because they amplify future skill gains
+    // The value of buffs decreases as we get closer to targets (less future turns to use them)
+    const remainingWorkPct = 1 - (compProgressPct + perfProgressPct) / 2;
+    
+    if (state.hasControlBuff()) {
+      // Control buff helps with perfection - value it more when perfection is needed
+      const perfNeedPct = 1 - perfProgressPct;
+      score += state.controlBuffTurns * 3 * perfNeedPct * remainingWorkPct;
+    }
+    if (state.hasIntensityBuff()) {
+      // Intensity buff helps with completion - value it more when completion is needed
+      const compNeedPct = 1 - compProgressPct;
+      score += state.intensityBuffTurns * 3 * compNeedPct * remainingWorkPct;
+    }
+    
+    // Small bonus for resource efficiency even when targets not met
+    // This helps break ties between similar states
+    score += state.qi * 0.01;
+    score += state.stability * 0.01;
   }
 
   // Penalize going over targets (wasted resources)
+  // Use a smaller penalty to not overly discourage skills that overshoot slightly
   const compOver = Math.max(0, state.completion - targetCompletion);
   const perfOver = Math.max(0, state.perfection - targetPerfection);
-  score -= (compOver + perfOver) * 0.5;
+  score -= (compOver + perfOver) * 0.3;
 
-  // Small penalty for low stability (risky state)
-  if (state.stability < 20) {
-    score -= (20 - state.stability) * 0.1;
+  // Penalty for low stability (risky state)
+  // Graduated penalty that increases as stability gets dangerously low
+  if (state.stability < 25) {
+    const stabilityRisk = (25 - state.stability) / 25; // 0 to 1
+    score -= stabilityRisk * stabilityRisk * 10; // Quadratic penalty for very low stability
+  }
+
+  // Small penalty for high toxicity in alchemy crafting
+  if (state.maxToxicity > 0 && state.hasDangerousToxicity()) {
+    score -= 5;
   }
 
   return score;

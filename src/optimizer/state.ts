@@ -174,7 +174,10 @@ export class CraftingState implements CraftingStateData {
 
   /**
    * Create a cache key for memoization.
-   * Includes maxStability, toxicity, and cooldowns since they change during crafting.
+   * Includes all state that affects skill outcomes:
+   * - Resources: qi, stability, maxStability, toxicity
+   * - Buffs: turns remaining AND multipliers (different multipliers = different gains)
+   * - Cooldowns: which skills are available
    */
   getCacheKey(): string {
     // Convert cooldowns to a sorted string for consistent caching
@@ -183,7 +186,11 @@ export class CraftingState implements CraftingStateData {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}:${v}`)
       .join(',');
-    return `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${this.intensityBuffTurns}:${this.toxicity}:${cooldownStr}`;
+    // Include buff multipliers in cache key - different multipliers produce different gains
+    // Round multipliers to 2 decimal places to avoid floating point comparison issues
+    const ctrlMult = this.controlBuffTurns > 0 ? this.controlBuffMultiplier.toFixed(2) : '0';
+    const intMult = this.intensityBuffTurns > 0 ? this.intensityBuffMultiplier.toFixed(2) : '0';
+    return `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${cooldownStr}`;
   }
 
   toString(): string {
