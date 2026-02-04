@@ -22,9 +22,10 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 4. Launch the game - the mod will be loaded automatically
 
 **Example paths:**
+- **Windows (Steam)**: `C:\Program Files (x86)\Steam\steamapps\common\Ascend From Nine Mountains\mods\`
+- **Windows (Direct)**: `C:\Games\Ascend From Nine Mountains\mods\`
 - **Linux (Steam)**: `~/.steam/steam/steamapps/common/Ascend From Nine Mountains/mods/`
 - **Linux (Direct)**: `/path/to/AFNM_Linux/mods/`
-- **Windows (Steam)**: `C:\Program Files (x86)\Steam\steamapps\common\Ascend From Nine Mountains\mods\`
 
 **Verify installation:** Look for the "🔮 AFNM-CraftBuddy Loaded" indicator in the top-right corner when the game starts. It will appear briefly for 5 seconds then fade away.
 
