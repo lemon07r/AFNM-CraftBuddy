@@ -30,12 +30,42 @@ export interface SkillDefinition {
   isDisciplinedTouch?: boolean;
   /** Whether this skill prevents the normal max stability decay of 1 per turn */
   preventsMaxStabilityDecay?: boolean;
+  /** Toxicity cost for alchemy crafting */
+  toxicityCost?: number;
+  /** Toxicity cleanse amount (for cleanse skills) */
+  toxicityCleanse?: number;
+  /** Cooldown in turns after use */
+  cooldown?: number;
+  /** Mastery bonuses applied to this skill */
+  mastery?: SkillMastery;
+}
+
+/**
+ * Mastery bonuses that modify skill effectiveness.
+ * Read from CraftingTechnique.mastery array.
+ */
+export interface SkillMastery {
+  /** Percentage bonus to control scaling (e.g., 0.1 = +10%) */
+  controlBonus?: number;
+  /** Percentage bonus to intensity scaling (e.g., 0.1 = +10%) */
+  intensityBonus?: number;
+  /** Flat reduction to qi cost */
+  poolCostReduction?: number;
+  /** Flat reduction to stability cost */
+  stabilityCostReduction?: number;
+  /** Bonus to success chance */
+  successChanceBonus?: number;
+  /** Bonus to crit chance */
+  critChanceBonus?: number;
+  /** Bonus to crit multiplier */
+  critMultiplierBonus?: number;
 }
 
 export interface SkillGains {
   completion: number;
   perfection: number;
   stability: number;
+  toxicityCleanse?: number;
 }
 
 export interface OptimizerConfig {
@@ -47,6 +77,10 @@ export interface OptimizerConfig {
   skills: SkillDefinition[];
   /** Default buff multiplier if not specified per-skill (e.g., 1.4 for 40%) */
   defaultBuffMultiplier: number;
+  /** Max toxicity for alchemy crafting (0 for non-alchemy) */
+  maxToxicity?: number;
+  /** Crafting type: forge, alchemical, inscription, resonance */
+  craftingType?: 'forge' | 'alchemical' | 'inscription' | 'resonance';
 }
 
 /**
@@ -201,6 +235,7 @@ export function calculateDisciplinedTouchGains(
 /**
  * Calculate the gains from applying a skill to the current state.
  * Important: Uses CURRENT state's buffs, not buffs granted by this skill.
+ * Now includes mastery bonuses for control/intensity scaling.
  */
 export function calculateSkillGains(
   state: CraftingState,
@@ -216,18 +251,26 @@ export function calculateSkillGains(
   let completionGain = skill.baseCompletionGain;
   let perfectionGain = skill.basePerfectionGain;
   let stabilityGain = skill.stabilityGain;
+  let toxicityCleanse = skill.toxicityCleanse || 0;
 
-  // Apply control scaling for refine skills
+  // Get mastery bonuses
+  const mastery = skill.mastery || {};
+  const controlMasteryBonus = 1 + (mastery.controlBonus || 0);
+  const intensityMasteryBonus = 1 + (mastery.intensityBonus || 0);
+
+  // Apply control scaling for refine skills (with mastery bonus)
   if (skill.scalesWithControl) {
-    const control = Math.floor(state.getControl(config.baseControl) * controlCondition);
+    const baseControl = config.baseControl * controlMasteryBonus;
+    const control = Math.floor(state.getControl(baseControl) * controlCondition);
     // Scale based on base control of 16
     perfectionGain = Math.floor((skill.basePerfectionGain * control) / 16);
     completionGain = 0;
   }
 
-  // Apply intensity scaling for fusion skills (if applicable)
+  // Apply intensity scaling for fusion skills (with mastery bonus)
   if (skill.scalesWithIntensity && skill.type === 'fusion') {
-    const intensity = state.getIntensity(config.baseIntensity);
+    const baseIntensity = config.baseIntensity * intensityMasteryBonus;
+    const intensity = state.getIntensity(baseIntensity);
     // Scale based on base intensity of 12
     completionGain = Math.floor((skill.baseCompletionGain * intensity) / 12);
   }
@@ -236,25 +279,61 @@ export function calculateSkillGains(
     completion: completionGain,
     perfection: perfectionGain,
     stability: stabilityGain,
+    toxicityCleanse,
   };
 }
 
 /**
+ * Get effective qi cost after mastery reductions.
+ */
+export function getEffectiveQiCost(skill: SkillDefinition): number {
+  const mastery = skill.mastery || {};
+  return Math.max(0, skill.qiCost - (mastery.poolCostReduction || 0));
+}
+
+/**
+ * Get effective stability cost after mastery reductions.
+ */
+export function getEffectiveStabilityCost(skill: SkillDefinition): number {
+  const mastery = skill.mastery || {};
+  return Math.max(0, skill.stabilityCost - (mastery.stabilityCostReduction || 0));
+}
+
+/**
  * Check if a skill can be applied given the current state.
+ * Now handles cooldowns, toxicity, and mastery cost reductions.
  */
 export function canApplySkill(
   state: CraftingState,
   skill: SkillDefinition,
-  minStability: number
+  minStability: number,
+  maxToxicity: number = 0
 ): boolean {
+  // Check cooldown
+  if (state.isOnCooldown(skill.key)) {
+    return false;
+  }
+
+  // Get effective costs after mastery reductions
+  const effectiveQiCost = getEffectiveQiCost(skill);
+  const effectiveStabilityCost = getEffectiveStabilityCost(skill);
+
   // Check qi requirement
-  if (state.qi < skill.qiCost) {
+  if (state.qi < effectiveQiCost) {
     return false;
   }
 
   // Check stability requirement - must stay >= minStability after action
-  if (skill.stabilityCost > 0 && state.stability - skill.stabilityCost < minStability) {
+  if (effectiveStabilityCost > 0 && state.stability - effectiveStabilityCost < minStability) {
     return false;
+  }
+
+  // Check toxicity requirement for alchemy crafting
+  // Skill cannot be used if it would push toxicity over max
+  if (maxToxicity > 0 && skill.toxicityCost) {
+    if (state.toxicity + skill.toxicityCost > maxToxicity) {
+      return false;
+    }
   }
 
   return true;
@@ -268,6 +347,9 @@ export function canApplySkill(
  * - Max stability decay (decreases by 1 each turn unless skill prevents it)
  * - Max stability changes from skill effects
  * - Buff multipliers read from game data
+ * - Toxicity costs and cleansing for alchemy
+ * - Cooldowns for skills
+ * - Mastery cost reductions
  */
 export function applySkill(
   state: CraftingState,
@@ -275,16 +357,22 @@ export function applySkill(
   config: OptimizerConfig,
   controlCondition: number = 1.0
 ): CraftingState | null {
+  const maxToxicity = config.maxToxicity || 0;
+  
   // Validate skill can be applied
-  if (!canApplySkill(state, skill, config.minStability)) {
+  if (!canApplySkill(state, skill, config.minStability, maxToxicity)) {
     return null;
   }
 
   // Calculate gains BEFORE applying buffs from this skill
   const gains = calculateSkillGains(state, skill, config, controlCondition);
 
+  // Get effective costs after mastery reductions
+  const effectiveQiCost = getEffectiveQiCost(skill);
+  const effectiveStabilityCost = getEffectiveStabilityCost(skill);
+
   // Calculate new resource values
-  let newQi = state.qi - skill.qiCost;
+  let newQi = state.qi - effectiveQiCost;
   
   // Handle max stability changes:
   // 1. Apply any direct max stability change from the skill effect
@@ -297,11 +385,21 @@ export function applySkill(
   }
   
   // Calculate new stability (current stability, not max)
-  let newStability = state.stability - skill.stabilityCost + gains.stability;
+  let newStability = state.stability - effectiveStabilityCost + gains.stability;
 
   // Cap stability at new max stability
   if (newStability > newMaxStability) {
     newStability = newMaxStability;
+  }
+
+  // Handle toxicity for alchemy crafting
+  let newToxicity = state.toxicity;
+  if (skill.toxicityCost) {
+    newToxicity += skill.toxicityCost;
+  }
+  // Apply toxicity cleanse
+  if (gains.toxicityCleanse && gains.toxicityCleanse > 0) {
+    newToxicity = Math.max(0, newToxicity - gains.toxicityCleanse);
   }
 
   // Decrement existing buff durations
@@ -331,7 +429,19 @@ export function applySkill(
     }
   }
 
-  // Create new state with updated max stability
+  // Update cooldowns: decrement all existing cooldowns by 1, then set this skill's cooldown
+  const newCooldowns = new Map<string, number>();
+  state.cooldowns.forEach((turns, key) => {
+    if (turns > 1) {
+      newCooldowns.set(key, turns - 1);
+    }
+  });
+  // Set cooldown for the skill just used
+  if (skill.cooldown && skill.cooldown > 0) {
+    newCooldowns.set(skill.key, skill.cooldown);
+  }
+
+  // Create new state with all updates
   return state.copy({
     qi: newQi,
     stability: newStability,
@@ -342,18 +452,22 @@ export function applySkill(
     intensityBuffTurns: newIntensityBuffTurns,
     controlBuffMultiplier: newControlBuffMultiplier,
     intensityBuffMultiplier: newIntensityBuffMultiplier,
+    toxicity: newToxicity,
+    cooldowns: newCooldowns,
     history: [...state.history, skill.name],
   });
 }
 
 /**
  * Get all skills that can be applied in the current state.
+ * Now considers cooldowns and toxicity limits.
  */
 export function getAvailableSkills(
   state: CraftingState,
   config: OptimizerConfig
 ): SkillDefinition[] {
-  return config.skills.filter(skill => canApplySkill(state, skill, config.minStability));
+  const maxToxicity = config.maxToxicity || 0;
+  return config.skills.filter(skill => canApplySkill(state, skill, config.minStability, maxToxicity));
 }
 
 /**

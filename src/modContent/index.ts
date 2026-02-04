@@ -30,6 +30,7 @@ import {
   BuffType,
   OptimizerConfig,
   SkillDefinition,
+  SkillMastery,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 
@@ -45,6 +46,16 @@ let currentStability = 0;
 let currentMaxStability = 60; // Tracks the current max stability (decreases each turn)
 let nextConditions: CraftingCondition[] = [];
 let conditionEffectsCache: RecipeConditionEffect | null = null;
+
+// Toxicity tracking for alchemy crafting
+let currentToxicity = 0;
+let maxToxicity = 0;
+
+// Cooldown tracking (skill key -> turns remaining)
+let currentCooldowns: Map<string, number> = new Map();
+
+// Current crafting type
+let currentCraftingType: 'forge' | 'alchemical' | 'inscription' | 'resonance' = 'forge';
 
 /**
  * Extract buff information from game's CraftingBuff array.
@@ -140,13 +151,55 @@ function getConditionMultiplier(
 }
 
 /**
+ * Extract mastery bonuses from a technique's mastery array.
+ * Reads all mastery types: control, intensity, poolcost, stabilitycost, etc.
+ */
+function extractMasteryBonuses(mastery: any[] | undefined): SkillMastery {
+  const result: SkillMastery = {};
+  
+  if (!mastery || mastery.length === 0) return result;
+  
+  for (const m of mastery) {
+    if (!m) continue;
+    
+    switch (m.kind) {
+      case 'control':
+        result.controlBonus = (result.controlBonus || 0) + (m.percentage || 0);
+        break;
+      case 'intensity':
+        result.intensityBonus = (result.intensityBonus || 0) + (m.percentage || 0);
+        break;
+      case 'poolcost':
+        result.poolCostReduction = (result.poolCostReduction || 0) + (m.change || 0);
+        break;
+      case 'stabilitycost':
+        result.stabilityCostReduction = (result.stabilityCostReduction || 0) + (m.change || 0);
+        break;
+      case 'successchance':
+        result.successChanceBonus = (result.successChanceBonus || 0) + (m.change || 0);
+        break;
+      case 'critchance':
+        result.critChanceBonus = (result.critChanceBonus || 0) + (m.percentage || 0);
+        break;
+      case 'critmultiplier':
+        result.critMultiplierBonus = (result.critMultiplierBonus || 0) + (m.percentage || 0);
+        break;
+    }
+  }
+  
+  return result;
+}
+
+/**
  * Convert game CraftingTechnique array to our skill definitions.
  * Reads ALL technique data directly from the game's technique objects.
  * This includes:
- * - Costs (qi, stability)
- * - Effects with scaling (completion, perfection, stability, maxStability)
+ * - Costs (qi, stability, toxicity)
+ * - Effects with scaling (completion, perfection, stability, maxStability, cleanseToxicity)
  * - Buff creation with multipliers read from buff stats
  * - noMaxStabilityLoss flag for preventing decay
+ * - Cooldowns
+ * - Mastery bonuses
  */
 function convertGameTechniques(
   techniques: CraftingTechnique[] | undefined
@@ -164,17 +217,25 @@ function convertGameTechniques(
     // Read costs directly from technique
     const qiCost = tech.poolCost || 0;
     const stabilityCost = tech.stabilityCost || 0;
+    const toxicityCost = tech.toxicityCost || 0;
     const techType = tech.type || 'support';
     const techName = tech.name || 'Unknown';
     
+    // Read cooldown from technique
+    const cooldown = tech.cooldown || 0;
+    
     // Read noMaxStabilityLoss flag - if true, this skill prevents max stability decay
     const preventsMaxStabilityDecay = tech.noMaxStabilityLoss === true;
+    
+    // Extract mastery bonuses
+    const mastery = extractMasteryBonuses(tech.mastery);
 
     // Extract effect values from the technique's effects array
     let baseCompletionGain = 0;
     let basePerfectionGain = 0;
     let stabilityGain = 0;
     let maxStabilityChange = 0;
+    let toxicityCleanse = 0;
     let buffType = BuffType.NONE;
     let buffDuration = 0;
     let buffMultiplier = 1.0;
@@ -206,6 +267,10 @@ function convertGameTechniques(
           // Read max stability change from the effect
           // Positive values increase max stability, negative decrease it
           maxStabilityChange = effect.amount?.value || 0;
+          break;
+        case 'cleanseToxicity':
+          // Read toxicity cleanse amount
+          toxicityCleanse = effect.amount?.value || 0;
           break;
         case 'createBuff':
           // Read buff type from the actual buff object
@@ -262,16 +327,28 @@ function convertGameTechniques(
       scalesWithIntensity,
       isDisciplinedTouch,
       preventsMaxStabilityDecay,
+      toxicityCost: toxicityCost > 0 ? toxicityCost : undefined,
+      toxicityCleanse: toxicityCleanse > 0 ? toxicityCleanse : undefined,
+      cooldown: cooldown > 0 ? cooldown : undefined,
+      mastery: Object.keys(mastery).length > 0 ? mastery : undefined,
     });
   }
 
-  console.log(`[CraftBuddy] Loaded ${skills.length} techniques from game:`, skills.map(s => `${s.name} (maxStabDecay: ${!s.preventsMaxStabilityDecay}, maxStabChange: ${s.maxStabilityChange})`));
+  console.log(`[CraftBuddy] Loaded ${skills.length} techniques from game:`, skills.map(s => {
+    const extras: string[] = [];
+    if (!s.preventsMaxStabilityDecay) extras.push('maxStabDecay');
+    if (s.maxStabilityChange) extras.push(`maxStabChange:${s.maxStabilityChange}`);
+    if (s.cooldown) extras.push(`cd:${s.cooldown}`);
+    if (s.toxicityCost) extras.push(`tox:${s.toxicityCost}`);
+    if (s.mastery) extras.push('mastery');
+    return `${s.name} (${extras.join(', ') || 'none'})`;
+  }));
   return skills;
 }
 
 /**
  * Build optimizer config from actual game entity stats.
- * Reads control, intensity, maxpool from CraftingEntity.stats.
+ * Reads control, intensity, maxpool, maxtoxicity from CraftingEntity.stats.
  * Also determines default buff multiplier from loaded skills.
  */
 function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
@@ -281,6 +358,10 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
   const baseControl = stats?.control || 10;
   const baseIntensity = stats?.intensity || 10;
   const maxQi = stats?.maxpool || 100;
+  
+  // Read max toxicity for alchemy crafting
+  // @ts-ignore - maxtoxicity may exist on stats for alchemy
+  const entityMaxToxicity = stats?.maxtoxicity || 0;
   
   // Convert entity's techniques to skill definitions
   const skills = convertGameTechniques(entity.techniques);
@@ -295,7 +376,10 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     }
   }
   
-  console.log(`[CraftBuddy] Character stats from game: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, defaultBuffMult=${defaultBuffMultiplier}`);
+  console.log(`[CraftBuddy] Character stats from game: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, defaultBuffMult=${defaultBuffMultiplier}, craftingType=${currentCraftingType}`);
+  if (entityMaxToxicity > 0 || maxToxicity > 0) {
+    console.log(`[CraftBuddy] Toxicity tracking: maxToxicity=${maxToxicity || entityMaxToxicity}, currentToxicity=${currentToxicity}`);
+  }
   
   return {
     maxQi,
@@ -305,6 +389,8 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     minStability: 10, // This is typically fixed in the game
     skills,
     defaultBuffMultiplier,
+    maxToxicity: maxToxicity || entityMaxToxicity,
+    craftingType: currentCraftingType,
   };
 }
 
@@ -317,6 +403,8 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
  * - Current max stability from game state or tracked internally
  * - Buff multipliers from active buff stats
  * - Techniques from entity.techniques
+ * - Toxicity for alchemy crafting
+ * - Cooldowns for techniques
  * 
  * No caching of config - rebuilt every turn to ensure fresh values.
  */
@@ -340,6 +428,11 @@ function updateRecommendation(
   currentCompletion = completion;
   currentPerfection = perfection;
   currentStability = stability;
+  
+  // Read toxicity from game state for alchemy crafting
+  // @ts-ignore - toxicity may exist on progressState or entity.stats
+  const gameToxicity = progressState?.toxicity ?? entity?.stats?.toxicity ?? 0;
+  currentToxicity = gameToxicity;
 
   // Extract buff information from game's buff array (fresh each turn)
   const { 
@@ -348,6 +441,16 @@ function updateRecommendation(
     controlBuffMultiplier,
     intensityBuffMultiplier 
   } = extractBuffInfo(buffs);
+  
+  // Read cooldowns from entity's techniques (fresh each turn)
+  const techniques = entity?.techniques || [];
+  currentCooldowns = new Map();
+  for (const tech of techniques) {
+    if (tech && tech.currentCooldown && tech.currentCooldown > 0) {
+      const key = tech.name.toLowerCase().replace(/\s+/g, '_');
+      currentCooldowns.set(key, tech.currentCooldown);
+    }
+  }
 
   // ALWAYS rebuild config from entity to ensure fresh stats and techniques
   // This ensures we never use stale baseControl, baseIntensity, maxQi, or skill data
@@ -382,6 +485,9 @@ function updateRecommendation(
     intensityBuffTurns,
     controlBuffMultiplier,
     intensityBuffMultiplier,
+    toxicity: currentToxicity,
+    maxToxicity: currentConfig?.maxToxicity || maxToxicity,
+    cooldowns: currentCooldowns,
     history: [],
   });
 
@@ -409,6 +515,12 @@ function updateRecommendation(
   
   console.log(`[CraftBuddy] Recommendation updated. Pool: ${pool}, Stability: ${stability}/${currentMaxStability}, Condition: ${condition} (ctrl x${controlMultiplier})`);
   console.log(`[CraftBuddy] Buff multipliers: control=${controlBuffMultiplier}, intensity=${intensityBuffMultiplier}`);
+  if (currentToxicity > 0 || maxToxicity > 0) {
+    console.log(`[CraftBuddy] Toxicity: ${currentToxicity}/${maxToxicity}`);
+  }
+  if (currentCooldowns.size > 0) {
+    console.log(`[CraftBuddy] Cooldowns: ${Array.from(currentCooldowns.entries()).map(([k, v]) => `${k}:${v}`).join(', ')}`);
+  }
   if (nextConditions.length > 0) {
     console.log(`[CraftBuddy] Forecasted conditions: ${nextConditions.join(', ')} -> multipliers: ${forecastedMultipliers.join(', ')}`);
   }
@@ -431,12 +543,20 @@ const craftBuddyHarmony: HarmonyTypeConfig = {
     currentMaxStability = targetStability; // Reset to initial max stability
     nextConditions = [];
     
+    // Reset toxicity and cooldowns for new session
+    currentToxicity = 0;
+    currentCooldowns = new Map();
+    
     // Build config from entity's actual stats and techniques
     currentConfig = buildConfigFromEntity(entity);
     
     console.log('[CraftBuddy] Initialized for crafting session');
     console.log(`[CraftBuddy] Entity has ${entity.techniques?.length || 0} techniques`);
     console.log(`[CraftBuddy] Initial max stability: ${currentMaxStability}`);
+    console.log(`[CraftBuddy] Crafting type: ${currentCraftingType}`);
+    if (maxToxicity > 0) {
+      console.log(`[CraftBuddy] Max toxicity: ${maxToxicity}`);
+    }
   },
   
   processEffect: (harmonyData, technique, progressState: ProgressState, entity: CraftingEntity, state: GameCraftingState) => {
@@ -481,19 +601,29 @@ const craftBuddyHarmony: HarmonyTypeConfig = {
       currentMaxStability,
       targetStability,
       nextConditions,
+      currentToxicity,
+      maxToxicity,
+      craftingType: currentCraftingType,
     });
   },
 };
 
-// Note: addHarmonyType only accepts predefined RecipeHarmonyType values
-// ('forge', 'alchemical', 'inscription', 'resonance'), so we can't add a custom type.
-// Instead, we'll override the 'forge' harmony type to include our recommendations.
-// This means CraftBuddy will show during forge-type crafting.
-try {
-  window.modAPI.actions.addHarmonyType('forge', craftBuddyHarmony);
-  console.log('[CraftBuddy] Harmony type override registered for forge crafting');
-} catch (e) {
-  console.error('[CraftBuddy] Failed to register harmony type:', e);
+// Register CraftBuddy for ALL harmony types (forge, alchemical, inscription, resonance)
+// This ensures the optimizer works for all crafting types in the game
+const harmonyTypes: Array<'forge' | 'alchemical' | 'inscription' | 'resonance'> = [
+  'forge',
+  'alchemical', 
+  'inscription',
+  'resonance'
+];
+
+for (const harmonyType of harmonyTypes) {
+  try {
+    window.modAPI.actions.addHarmonyType(harmonyType, craftBuddyHarmony);
+    console.log(`[CraftBuddy] Harmony type override registered for ${harmonyType} crafting`);
+  } catch (e) {
+    console.error(`[CraftBuddy] Failed to register harmony type for ${harmonyType}:`, e);
+  }
 }
 
 /**
@@ -520,12 +650,32 @@ try {
       console.log(`[CraftBuddy] Targets from recipe: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}`);
     }
     
+    // Determine crafting type from recipe
+    // @ts-ignore - harmonyType may exist on recipe
+    const recipeHarmonyType = recipe?.harmonyType || recipe?.type;
+    if (recipeHarmonyType && ['forge', 'alchemical', 'inscription', 'resonance'].includes(recipeHarmonyType)) {
+      currentCraftingType = recipeHarmonyType as typeof currentCraftingType;
+    }
+    
+    // Read max toxicity for alchemy crafting from recipe stats
+    const recipeStatsAny = recipeStats as any;
+    if (recipeStatsAny?.maxToxicity) {
+      maxToxicity = recipeStatsAny.maxToxicity;
+    } else if (currentCraftingType === 'alchemical') {
+      // Default max toxicity for alchemy if not specified
+      maxToxicity = 100;
+    } else {
+      maxToxicity = 0;
+    }
+    
     // Reset state for new crafting session
     currentRecommendation = null;
     currentCompletion = 0;
     currentPerfection = 0;
     currentStability = 0;
     currentMaxStability = targetStability; // Reset to initial max stability from recipe
+    currentToxicity = 0;
+    currentCooldowns = new Map();
     currentConfig = null; // Will be rebuilt from entity in initEffect
     nextConditions = [];
     
@@ -546,7 +696,16 @@ try {
   getConfig: () => currentConfig,
   getRecommendation: () => currentRecommendation,
   getTargets: () => ({ targetCompletion, targetPerfection, targetStability }),
-  getCurrentState: () => ({ currentCompletion, currentPerfection, currentStability, currentMaxStability }),
+  getCurrentState: () => ({ 
+    currentCompletion, 
+    currentPerfection, 
+    currentStability, 
+    currentMaxStability,
+    currentToxicity,
+    maxToxicity,
+    craftingType: currentCraftingType,
+  }),
+  getCooldowns: () => Object.fromEntries(currentCooldowns),
   getNextConditions: () => nextConditions,
   getConditionEffects: () => conditionEffectsCache,
   

@@ -46,6 +46,12 @@ interface RecommendationPanelProps {
   /** Initial/target max stability from recipe */
   targetStability?: number;
   nextConditions?: CraftingConditionType[];
+  /** Current toxicity for alchemy crafting */
+  currentToxicity?: number;
+  /** Max toxicity threshold */
+  maxToxicity?: number;
+  /** Current crafting type */
+  craftingType?: 'forge' | 'alchemical' | 'inscription' | 'resonance';
 }
 
 /**
@@ -142,6 +148,9 @@ export function RecommendationPanel({
   currentMaxStability = 0,
   targetStability = 0,
   nextConditions = [],
+  currentToxicity = 0,
+  maxToxicity = 0,
+  craftingType = 'forge',
 }: RecommendationPanelProps) {
   // No result yet
   if (!result) {
@@ -242,6 +251,26 @@ export function RecommendationPanel({
               {currentMaxStability > 0 && currentMaxStability < targetStability && (
                 <span style={{ color: 'rgba(255, 165, 0, 0.7)', marginLeft: 4 }}>
                   (max decayed from {targetStability})
+                </span>
+              )}
+            </Typography>
+          )}
+          {/* Toxicity display for alchemy crafting */}
+          {maxToxicity > 0 && (
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: currentToxicity >= maxToxicity * 0.8 
+                  ? '#FF6B6B' 
+                  : currentToxicity >= maxToxicity * 0.5 
+                    ? '#FFA500' 
+                    : 'rgba(255, 255, 255, 0.6)' 
+              }}
+            >
+              Toxicity: {currentToxicity}/{maxToxicity}
+              {currentToxicity >= maxToxicity * 0.8 && (
+                <span style={{ color: '#FF6B6B', marginLeft: 4 }}>
+                  ⚠ High!
                 </span>
               )}
             </Typography>

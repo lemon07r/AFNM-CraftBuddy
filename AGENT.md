@@ -230,10 +230,10 @@ npm run build
 - Contains `mod.js` (~60KB) with all optimizer logic bundled
 
 ### Integration Approach
-Since custom harmony types cannot be added, CraftBuddy overrides the 'forge' harmony type to inject the recommendation panel into forge-type crafting sessions. This means:
-- Works automatically during any forge crafting
-- May conflict with other mods that also override forge harmony
-- For other crafting types (alchemical, inscription, resonance), would need separate overrides
+CraftBuddy overrides ALL harmony types (forge, alchemical, inscription, resonance) to inject the recommendation panel into all crafting sessions. This means:
+- Works automatically during any crafting type
+- May conflict with other mods that also override harmony types
+- Toxicity tracking is enabled for alchemical crafting
 
 ### Game Data Sources (NO HARDCODED VALUES)
 
@@ -245,6 +245,8 @@ The mod reads ALL values from the game API instead of using hardcoded defaults:
 | Character Intensity stat | CraftingEntity | `entity.stats.intensity` |
 | Max Qi (Pool) | CraftingEntity | `entity.stats.maxpool` |
 | Current Qi | CraftingEntity | `entity.stats.pool` |
+| Max Toxicity | CraftingEntity | `entity.stats.maxtoxicity` |
+| Current Toxicity | ProgressState/Entity | `progressState.toxicity` or `entity.stats.toxicity` |
 | Current Stability | ProgressState | `progressState.stability` |
 | Current Max Stability | ProgressState/GameState | `progressState.maxStability` or tracked internally |
 | Current Completion | ProgressState | `progressState.completion` |
@@ -254,6 +256,9 @@ The mod reads ALL values from the game API instead of using hardcoded defaults:
 | Active Buffs | CraftingEntity | `entity.buffs` |
 | Buff Multipliers | CraftingBuff | `buff.stats.control.value` / `buff.stats.intensity.value` |
 | No Max Stability Loss | CraftingTechnique | `technique.noMaxStabilityLoss` |
+| Technique Cooldown | CraftingTechnique | `technique.cooldown` / `technique.currentCooldown` |
+| Technique Mastery | CraftingTechnique | `technique.mastery[]` |
+| Toxicity Cost | CraftingTechnique | `technique.toxicityCost` |
 | Player's Techniques | CraftingEntity | `entity.techniques` |
 | Target Completion | CraftingRecipeStats | `recipeStats.completion` |
 | Target Perfection | CraftingRecipeStats | `recipeStats.perfection` |
@@ -267,10 +272,17 @@ The mod reads ALL values from the game API instead of using hardcoded defaults:
 For each technique from `entity.techniques`, the mod extracts:
 - `poolCost` - Qi cost
 - `stabilityCost` - Stability cost
+- `toxicityCost` - Toxicity cost (for alchemy)
+- `cooldown` - Cooldown turns after use
+- `currentCooldown` - Current cooldown remaining
 - `type` - fusion/refine/stabilize/support
 - `noMaxStabilityLoss` - If true, prevents max stability decay this turn
+- `mastery[]` - Array of mastery bonuses:
+  - `kind` - control/intensity/poolcost/stabilitycost/critchance/critmultiplier/successchance
+  - `percentage` - Percentage bonus (for control/intensity/crit)
+  - `change` - Flat change (for costs/success chance)
 - `effects[]` - Array of effects with:
-  - `kind` - completion/perfection/stability/maxStability/createBuff/consumeBuff
+  - `kind` - completion/perfection/stability/maxStability/createBuff/consumeBuff/cleanseToxicity
   - `amount.value` - Base value
   - `amount.stat` - Scaling stat (control/intensity)
   - `stacks.value` - Buff duration (for createBuff)
@@ -283,7 +295,8 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 - `getConfig()` - Returns current optimizer config (from game data)
 - `getRecommendation()` - Returns current skill recommendation
 - `getTargets()` - Returns target values (from recipe)
-- `getCurrentState()` - Returns current completion/perfection/stability
+- `getCurrentState()` - Returns current completion/perfection/stability/toxicity/craftingType
+- `getCooldowns()` - Returns current skill cooldowns
 - `getNextConditions()` - Returns forecasted conditions (from game)
 - `getConditionEffects()` - Returns cached condition effect multipliers
 - `setTargets(completion, perfection, stability?)` - Override targets for testing
@@ -297,15 +310,20 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 
 ## Future Improvements
 
-- [ ] Support for mastery bonuses on techniques
-- [ ] Handle toxicity for alchemy crafting
 - [ ] Configurable lookahead depth
 - [ ] Show full optimal rotation, not just next skill
 - [ ] Settings panel for customization
-- [ ] Support alchemical/inscription/resonance harmony types
+- [ ] Visual indicator for buff-consuming skills
+- [ ] Show expected final state
+- [ ] Unit tests for optimizer logic
+- [ ] Performance optimization for deep lookahead
 
-## Completed Improvements (v1.0.0)
+## Completed Improvements (v1.1.0)
 
+- [x] **Support all harmony types** - forge, alchemical, inscription, resonance
+- [x] **Toxicity tracking** - Read toxicityCost, cleanseToxicity, display in UI with warnings
+- [x] **Mastery bonuses** - Read and apply control/intensity/cost bonuses from technique.mastery[]
+- [x] **Cooldown tracking** - Read currentCooldown, prevent recommending skills on cooldown
 - [x] Read buff multipliers from game data (`buff.stats.control/intensity.value`)
 - [x] Track max stability decay (decreases by 1 each turn unless `noMaxStabilityLoss`)
 - [x] Read `noMaxStabilityLoss` flag from techniques
@@ -328,8 +346,10 @@ The mod ensures ALL values are current on every turn:
 | Character stats (control, intensity, maxQi) | Every turn | `entity.stats` |
 | Current Qi (pool) | Every turn | `entity.stats.pool` |
 | Stability/Completion/Perfection | Every turn | `progressState.*` |
+| Toxicity | Every turn | `progressState.toxicity` or `entity.stats.toxicity` |
 | Active buffs & multipliers | Every turn | `entity.buffs` |
 | Available techniques | Every turn | `entity.techniques` |
+| Technique cooldowns | Every turn | `technique.currentCooldown` |
 | Current condition | Every turn | `progressState.condition` |
 | Forecasted conditions | Every turn | `progressState.nextConditions` |
 | Max stability | Every turn | `progressState.maxStability` or tracked internally |

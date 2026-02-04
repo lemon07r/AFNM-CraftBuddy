@@ -16,8 +16,10 @@ export {
   getAvailableSkills,
   calculateSkillGains,
   isTerminalState,
+  getEffectiveQiCost,
+  getEffectiveStabilityCost,
 } from './skills';
-export type { SkillDefinition, SkillGains, OptimizerConfig } from './skills';
+export type { SkillDefinition, SkillGains, OptimizerConfig, SkillMastery } from './skills';
 
 export {
   findBestSkill,

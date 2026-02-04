@@ -23,6 +23,12 @@ export interface CraftingStateData {
   controlBuffMultiplier: number;
   /** Multiplier for intensity buff (e.g., 1.4 for 40% boost) - read from game */
   intensityBuffMultiplier: number;
+  /** Toxicity for alchemy crafting (0 for non-alchemy) */
+  toxicity: number;
+  /** Max toxicity threshold */
+  maxToxicity: number;
+  /** Map of skill keys to their current cooldown turns remaining */
+  cooldowns: Map<string, number>;
   history: string[];
 }
 
@@ -40,6 +46,9 @@ export class CraftingState implements CraftingStateData {
   readonly intensityBuffTurns: number;
   readonly controlBuffMultiplier: number;
   readonly intensityBuffMultiplier: number;
+  readonly toxicity: number;
+  readonly maxToxicity: number;
+  readonly cooldowns: Map<string, number>;
   readonly history: string[];
 
   constructor(data: Partial<CraftingStateData> = {}) {
@@ -52,6 +61,9 @@ export class CraftingState implements CraftingStateData {
     this.intensityBuffTurns = data.intensityBuffTurns ?? 0;
     this.controlBuffMultiplier = data.controlBuffMultiplier ?? 1.4;
     this.intensityBuffMultiplier = data.intensityBuffMultiplier ?? 1.4;
+    this.toxicity = data.toxicity ?? 0;
+    this.maxToxicity = data.maxToxicity ?? 100;
+    this.cooldowns = data.cooldowns ? new Map(data.cooldowns) : new Map();
     this.history = data.history ? [...data.history] : [];
   }
 
@@ -69,6 +81,9 @@ export class CraftingState implements CraftingStateData {
       intensityBuffTurns: overrides.intensityBuffTurns ?? this.intensityBuffTurns,
       controlBuffMultiplier: overrides.controlBuffMultiplier ?? this.controlBuffMultiplier,
       intensityBuffMultiplier: overrides.intensityBuffMultiplier ?? this.intensityBuffMultiplier,
+      toxicity: overrides.toxicity ?? this.toxicity,
+      maxToxicity: overrides.maxToxicity ?? this.maxToxicity,
+      cooldowns: overrides.cooldowns ?? this.cooldowns,
       history: overrides.history ?? this.history,
     });
   }
@@ -137,11 +152,38 @@ export class CraftingState implements CraftingStateData {
   }
 
   /**
+   * Check if a skill is on cooldown
+   */
+  isOnCooldown(skillKey: string): boolean {
+    return (this.cooldowns.get(skillKey) ?? 0) > 0;
+  }
+
+  /**
+   * Get remaining cooldown for a skill
+   */
+  getCooldown(skillKey: string): number {
+    return this.cooldowns.get(skillKey) ?? 0;
+  }
+
+  /**
+   * Check if toxicity is at dangerous levels (>= 80% of max)
+   */
+  hasDangerousToxicity(): boolean {
+    return this.maxToxicity > 0 && this.toxicity >= this.maxToxicity * 0.8;
+  }
+
+  /**
    * Create a cache key for memoization.
-   * Includes maxStability since it changes during crafting.
+   * Includes maxStability, toxicity, and cooldowns since they change during crafting.
    */
   getCacheKey(): string {
-    return `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${this.intensityBuffTurns}`;
+    // Convert cooldowns to a sorted string for consistent caching
+    const cooldownStr = Array.from(this.cooldowns.entries())
+      .filter(([_, v]) => v > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join(',');
+    return `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${this.intensityBuffTurns}:${this.toxicity}:${cooldownStr}`;
   }
 
   toString(): string {
@@ -162,7 +204,10 @@ export function createStateFromGame(
   controlBuffTurns: number = 0,
   intensityBuffTurns: number = 0,
   controlBuffMultiplier: number = 1.4,
-  intensityBuffMultiplier: number = 1.4
+  intensityBuffMultiplier: number = 1.4,
+  toxicity: number = 0,
+  maxToxicity: number = 100,
+  cooldowns: Map<string, number> = new Map()
 ): CraftingState {
   return new CraftingState({
     qi: pool,
@@ -174,6 +219,9 @@ export function createStateFromGame(
     intensityBuffTurns,
     controlBuffMultiplier,
     intensityBuffMultiplier,
+    toxicity,
+    maxToxicity,
+    cooldowns,
     history: [],
   });
 }
