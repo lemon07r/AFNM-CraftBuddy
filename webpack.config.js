@@ -9,6 +9,7 @@ module.exports = {
   externals: {
     'react': 'React',
     'react-dom': 'ReactDOM',
+    'react-dom/client': 'ReactDOM',
     '@mui/material': 'MaterialUI',
     "@mui/icons-material": "MaterialUIIcons",
   },

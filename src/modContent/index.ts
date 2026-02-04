@@ -1,20 +1,17 @@
 /**
  * CraftBuddy - Main Mod Content
  * 
- * Integrates the crafting optimizer with the game using lifecycle hooks
- * and a custom harmony type for UI rendering.
+ * Integrates the crafting optimizer with the game using:
+ * 1. Lifecycle hooks to capture crafting targets when crafting starts
+ * 2. DOM injection to display the recommendation panel during crafting
+ * 3. MutationObserver to detect crafting UI and inject our panel
  * 
- * IMPORTANT: This mod reads ALL values from the game API instead of using hardcoded defaults:
- * - Character stats (control, intensity, maxpool) from CraftingEntity.stats
- * - Skill definitions from CraftingEntity.techniques
- * - Condition multipliers from recipeConditionEffects
- * - Forecasted conditions from ProgressState.nextConditions
- * - Targets from CraftingRecipeStats
+ * IMPORTANT: This mod reads ALL values from the game API instead of using hardcoded defaults.
  */
 
 import React from 'react';
+import ReactDOM from 'react-dom/client';
 import { 
-  HarmonyTypeConfig, 
   CraftingEntity, 
   ProgressState, 
   CraftingState as GameCraftingState,
@@ -37,8 +34,6 @@ import {
   CraftBuddySettings,
   getSettings,
   saveSettings,
-  togglePanelVisibility,
-  toggleCompactMode,
   loadSettings,
 } from '../settings';
 
@@ -51,7 +46,7 @@ let targetStability = 60;
 let currentCompletion = 0;
 let currentPerfection = 0;
 let currentStability = 0;
-let currentMaxStability = 60; // Tracks the current max stability (decreases each turn)
+let currentMaxStability = 60;
 let nextConditions: CraftingCondition[] = [];
 let conditionEffectsCache: RecipeConditionEffect | null = null;
 
@@ -59,7 +54,7 @@ let conditionEffectsCache: RecipeConditionEffect | null = null;
 let currentToxicity = 0;
 let maxToxicity = 0;
 
-// Cooldown tracking (skill key -> turns remaining)
+// Cooldown tracking
 let currentCooldowns: Map<string, number> = new Map();
 
 // Current crafting type
@@ -68,14 +63,18 @@ let currentCraftingType: 'forge' | 'alchemical' | 'inscription' | 'resonance' = 
 // Settings
 let currentSettings: CraftBuddySettings = loadSettings();
 
-// Force re-render callback (set by renderComponent)
-let forceUpdate: (() => void) | null = null;
+// Panel container and React root
+let panelContainer: HTMLDivElement | null = null;
+let panelRoot: ReturnType<typeof ReactDOM.createRoot> | null = null;
+
+// Crafting active flag
+let isCraftingActive = false;
+
+// Polling interval for state updates
+let pollingInterval: number | null = null;
 
 /**
  * Extract buff information from game's CraftingBuff array.
- * Reads actual buff data from the game including:
- * - Buff stacks (turns remaining)
- * - Buff multipliers from buff.stats (control/intensity values)
  */
 function extractBuffInfo(
   buffs: CraftingBuff[] | undefined
@@ -87,34 +86,25 @@ function extractBuffInfo(
 } {
   let controlBuffTurns = 0;
   let intensityBuffTurns = 0;
-  let controlBuffMultiplier = 1.4; // Default fallback
-  let intensityBuffMultiplier = 1.4; // Default fallback
+  let controlBuffMultiplier = 1.4;
+  let intensityBuffMultiplier = 1.4;
 
   if (!buffs) return { controlBuffTurns, intensityBuffTurns, controlBuffMultiplier, intensityBuffMultiplier };
 
   for (const buff of buffs) {
-    // Read actual buff properties from game
     const name = (buff.name || '').toLowerCase();
     const stacks = buff.stacks || 0;
     
-    // Check for control-boosting buffs
     if (name.includes('control') || name.includes('inner focus')) {
       controlBuffTurns = Math.max(controlBuffTurns, stacks);
-      // Read the actual multiplier from buff.stats.control
       if (buff.stats?.control?.value !== undefined) {
-        // The stat value is typically stored as a percentage bonus (e.g., 0.4 for 40%)
-        // Convert to multiplier (1 + bonus)
         controlBuffMultiplier = 1 + buff.stats.control.value;
-        console.log(`[CraftBuddy] Read control buff multiplier from game: ${controlBuffMultiplier}`);
       }
     }
-    // Check for intensity-boosting buffs  
     if (name.includes('intensity') || name.includes('inner fire')) {
       intensityBuffTurns = Math.max(intensityBuffTurns, stacks);
-      // Read the actual multiplier from buff.stats.intensity
       if (buff.stats?.intensity?.value !== undefined) {
         intensityBuffMultiplier = 1 + buff.stats.intensity.value;
-        console.log(`[CraftBuddy] Read intensity buff multiplier from game: ${intensityBuffMultiplier}`);
       }
     }
   }
@@ -124,7 +114,6 @@ function extractBuffInfo(
 
 /**
  * Get condition multiplier from game's recipeConditionEffects.
- * Reads actual multiplier values from the game data instead of hardcoding.
  */
 function getConditionMultiplier(
   condition: CraftingCondition | undefined,
@@ -132,7 +121,6 @@ function getConditionMultiplier(
 ): number {
   if (!condition) return 1.0;
   
-  // Try to get from cached condition effects (loaded from game data)
   if (conditionEffectsCache) {
     const conditionData = conditionEffectsCache.conditionEffects[condition];
     if (conditionData?.effects) {
@@ -144,10 +132,8 @@ function getConditionMultiplier(
     }
   }
   
-  // Fallback: read from modAPI.gameData.recipeConditionEffects
   const recipeConditionEffects = window.modAPI?.gameData?.recipeConditionEffects;
   if (recipeConditionEffects && recipeConditionEffects.length > 0) {
-    // Use the first condition effect type (usually the default)
     const condEffect = recipeConditionEffects[0];
     const conditionData = condEffect?.conditionEffects?.[condition];
     if (conditionData?.effects) {
@@ -159,14 +145,11 @@ function getConditionMultiplier(
     }
   }
   
-  // Ultimate fallback if game data not available
-  console.warn(`[CraftBuddy] Could not read ${effectType} multiplier for condition ${condition} from game data`);
   return 1.0;
 }
 
 /**
  * Extract mastery bonuses from a technique's mastery array.
- * Reads all mastery types: control, intensity, poolcost, stabilitycost, etc.
  */
 function extractMasteryBonuses(mastery: any[] | undefined): SkillMastery {
   const result: SkillMastery = {};
@@ -206,20 +189,12 @@ function extractMasteryBonuses(mastery: any[] | undefined): SkillMastery {
 
 /**
  * Convert game CraftingTechnique array to our skill definitions.
- * Reads ALL technique data directly from the game's technique objects.
- * This includes:
- * - Costs (qi, stability, toxicity)
- * - Effects with scaling (completion, perfection, stability, maxStability, cleanseToxicity)
- * - Buff creation with multipliers read from buff stats
- * - noMaxStabilityLoss flag for preventing decay
- * - Cooldowns
- * - Mastery bonuses
  */
 function convertGameTechniques(
   techniques: CraftingTechnique[] | undefined
 ): SkillDefinition[] {
   if (!techniques || techniques.length === 0) {
-    console.warn('[CraftBuddy] No techniques provided, cannot determine skills');
+    console.warn('[CraftBuddy] No techniques provided');
     return [];
   }
 
@@ -228,23 +203,15 @@ function convertGameTechniques(
   for (const tech of techniques) {
     if (!tech) continue;
 
-    // Read costs directly from technique
     const qiCost = tech.poolCost || 0;
     const stabilityCost = tech.stabilityCost || 0;
     const toxicityCost = tech.toxicityCost || 0;
     const techType = tech.type || 'support';
     const techName = tech.name || 'Unknown';
-    
-    // Read cooldown from technique
     const cooldown = tech.cooldown || 0;
-    
-    // Read noMaxStabilityLoss flag - if true, this skill prevents max stability decay
     const preventsMaxStabilityDecay = tech.noMaxStabilityLoss === true;
-    
-    // Extract mastery bonuses
     const mastery = extractMasteryBonuses(tech.mastery);
 
-    // Extract effect values from the technique's effects array
     let baseCompletionGain = 0;
     let basePerfectionGain = 0;
     let stabilityGain = 0;
@@ -261,66 +228,44 @@ function convertGameTechniques(
       
       switch (effect.kind) {
         case 'completion':
-          // Read the base value from the Scaling object
           baseCompletionGain = effect.amount?.value || 0;
-          // Check what stat this scales with
-          if (effect.amount?.stat) {
-            scalingStat = effect.amount.stat;
-          }
+          if (effect.amount?.stat) scalingStat = effect.amount.stat;
           break;
         case 'perfection':
           basePerfectionGain = effect.amount?.value || 0;
-          if (effect.amount?.stat) {
-            scalingStat = effect.amount.stat;
-          }
+          if (effect.amount?.stat) scalingStat = effect.amount.stat;
           break;
         case 'stability':
           stabilityGain = effect.amount?.value || 0;
           break;
         case 'maxStability':
-          // Read max stability change from the effect
-          // Positive values increase max stability, negative decrease it
           maxStabilityChange = effect.amount?.value || 0;
           break;
         case 'cleanseToxicity':
-          // Read toxicity cleanse amount
           toxicityCleanse = effect.amount?.value || 0;
           break;
         case 'createBuff':
-          // Read buff type from the actual buff object
           const buff = effect.buff;
           const buffName = (buff?.name || '').toLowerCase();
           
           if (buffName.includes('control') || buffName.includes('inner focus')) {
             buffType = BuffType.CONTROL;
-            // Read the actual buff multiplier from buff.stats.control
             if (buff?.stats?.control?.value) {
-              // The stat value is typically stored as a percentage bonus (e.g., 0.4 for 40%)
-              // Convert to multiplier (1 + bonus)
               buffMultiplier = 1 + (buff.stats.control.value || 0.4);
             }
           } else if (buffName.includes('intensity') || buffName.includes('inner fire')) {
             buffType = BuffType.INTENSITY;
-            // Read the actual buff multiplier from buff.stats.intensity
             if (buff?.stats?.intensity?.value) {
               buffMultiplier = 1 + (buff.stats.intensity.value || 0.4);
             }
           }
-          // Read stack count from Scaling object
           buffDuration = effect.stacks?.value || 2;
-          break;
-        case 'consumeBuff':
-          // This is likely a "Disciplined Touch" style skill
           break;
       }
     }
 
-    // Determine scaling based on technique type and effect stat
-    // Fusion skills typically scale with intensity, Refine with control
     const scalesWithIntensity = techType === 'fusion' || scalingStat === 'intensity';
     const scalesWithControl = techType === 'refine' || scalingStat === 'control';
-    
-    // Check for special skills that consume buffs for gains
     const hasConsumeBuff = effects.some(e => e?.kind === 'consumeBuff');
     const isDisciplinedTouch = hasConsumeBuff || techName.toLowerCase().includes('disciplined');
 
@@ -348,110 +293,32 @@ function convertGameTechniques(
     });
   }
 
-  console.log(`[CraftBuddy] Loaded ${skills.length} techniques from game:`, skills.map(s => {
-    const extras: string[] = [];
-    if (!s.preventsMaxStabilityDecay) extras.push('maxStabDecay');
-    if (s.maxStabilityChange) extras.push(`maxStabChange:${s.maxStabilityChange}`);
-    if (s.cooldown) extras.push(`cd:${s.cooldown}`);
-    if (s.toxicityCost) extras.push(`tox:${s.toxicityCost}`);
-    if (s.mastery) extras.push('mastery');
-    return `${s.name} (${extras.join(', ') || 'none'})`;
-  }));
+  console.log(`[CraftBuddy] Loaded ${skills.length} techniques from game`);
   return skills;
 }
 
 /**
- * Extract equipment bonuses from entity's equipment.
- * Reads stat bonuses from equipped items that affect crafting.
- */
-function extractEquipmentBonuses(entity: CraftingEntity): {
-  controlBonus: number;
-  intensityBonus: number;
-  poolBonus: number;
-  stabilityBonus: number;
-} {
-  let controlBonus = 0;
-  let intensityBonus = 0;
-  let poolBonus = 0;
-  let stabilityBonus = 0;
-  
-  try {
-    // @ts-ignore - equipment may have various structures
-    const equipment = entity?.equipment;
-    if (equipment) {
-      // Check each equipment slot for stat bonuses
-      const slots = Array.isArray(equipment) ? equipment : Object.values(equipment);
-      for (const item of slots) {
-        if (!item) continue;
-        
-        // Read stat bonuses from item
-        // @ts-ignore - item structure varies
-        const itemStats = item?.stats || item?.bonuses || {};
-        
-        if (itemStats.control) controlBonus += itemStats.control;
-        if (itemStats.intensity) intensityBonus += itemStats.intensity;
-        if (itemStats.pool || itemStats.maxpool) poolBonus += (itemStats.pool || itemStats.maxpool);
-        if (itemStats.stability || itemStats.maxStability) stabilityBonus += (itemStats.stability || itemStats.maxStability);
-      }
-    }
-  } catch (e) {
-    // Ignore errors reading equipment - use base stats only
-  }
-  
-  return { controlBonus, intensityBonus, poolBonus, stabilityBonus };
-}
-
-/**
- * Build optimizer config from actual game entity stats.
- * Reads control, intensity, maxpool, maxtoxicity from CraftingEntity.stats.
- * Also reads equipment bonuses and determines default buff multiplier from loaded skills.
- * 
- * Edge cases handled:
- * - Missing stats (defaults to safe values)
- * - Equipment bonuses (added to base stats)
- * - Realm-specific modifiers (read from entity if available)
+ * Build optimizer config from game entity stats.
  */
 function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
   const stats = entity.stats;
   
-  // Read actual character stats from the game
-  // These already include equipment bonuses in most cases, but we check separately too
   let baseControl = stats?.control || 10;
   let baseIntensity = stats?.intensity || 10;
   let maxQi = stats?.maxpool || 100;
   
-  // Read max toxicity for alchemy crafting
-  // @ts-ignore - maxtoxicity may exist on stats for alchemy
+  // @ts-ignore
   const entityMaxToxicity = stats?.maxtoxicity || 0;
   
-  // Try to read equipment bonuses (in case they're not already included in stats)
-  const equipmentBonuses = extractEquipmentBonuses(entity);
-  if (equipmentBonuses.controlBonus > 0 || equipmentBonuses.intensityBonus > 0) {
-    console.log(`[CraftBuddy] Equipment bonuses detected: control+${equipmentBonuses.controlBonus}, intensity+${equipmentBonuses.intensityBonus}`);
-    // Note: Usually stats already include equipment, so we don't add them again
-    // This is just for logging/debugging purposes
-  }
-  
-  // Check for realm-specific modifiers
-  // @ts-ignore - realm modifiers may exist on entity
+  // @ts-ignore
   const realmModifier = entity?.realmModifier || entity?.craftingModifier || 1.0;
   if (realmModifier !== 1.0) {
-    console.log(`[CraftBuddy] Realm modifier detected: ${realmModifier}`);
-    // Apply realm modifier to base stats if present
     baseControl = Math.floor(baseControl * realmModifier);
     baseIntensity = Math.floor(baseIntensity * realmModifier);
   }
   
-  // Convert entity's techniques to skill definitions
   const skills = convertGameTechniques(entity.techniques);
   
-  // Handle edge case: no techniques available
-  if (skills.length === 0) {
-    console.warn('[CraftBuddy] No techniques found on entity - using default skills');
-  }
-  
-  // Determine default buff multiplier from skills that create buffs
-  // Use the first non-1.0 multiplier found, or default to 1.4
   let defaultBuffMultiplier = 1.4;
   for (const skill of skills) {
     if (skill.buffMultiplier && skill.buffMultiplier !== 1.0) {
@@ -460,17 +327,14 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     }
   }
   
-  console.log(`[CraftBuddy] Character stats from game: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, defaultBuffMult=${defaultBuffMultiplier}, craftingType=${currentCraftingType}`);
-  if (entityMaxToxicity > 0 || maxToxicity > 0) {
-    console.log(`[CraftBuddy] Toxicity tracking: maxToxicity=${maxToxicity || entityMaxToxicity}, currentToxicity=${currentToxicity}`);
-  }
+  console.log(`[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}`);
   
   return {
     maxQi,
-    maxStability: targetStability, // From recipe stats
+    maxStability: targetStability,
     baseIntensity,
     baseControl,
-    minStability: 10, // This is typically fixed in the game
+    minStability: 10,
     skills,
     defaultBuffMultiplier,
     maxToxicity: maxToxicity || entityMaxToxicity,
@@ -479,25 +343,12 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
 }
 
 /**
- * Update the recommendation based on current crafting state.
- * Reads ALL values from game objects instead of using hardcoded defaults.
- * 
- * IMPORTANT: This function ALWAYS reads fresh values from the game on every call:
- * - Character stats (control, intensity, pool) from entity.stats
- * - Current max stability from game state or tracked internally
- * - Buff multipliers from active buff stats
- * - Techniques from entity.techniques
- * - Toxicity for alchemy crafting
- * - Cooldowns for techniques
- * 
- * No caching of config - rebuilt every turn to ensure fresh values.
+ * Update recommendation based on current crafting state.
  */
 function updateRecommendation(
   entity: CraftingEntity,
-  progressState: ProgressState,
-  gameState: GameCraftingState
+  progressState: ProgressState
 ): void {
-  // ALWAYS read current values fresh from game state - never use stale cached values
   const pool = entity?.stats?.pool || 0;
   const stability = progressState?.stability || 0;
   const completion = progressState?.completion || 0;
@@ -505,20 +356,16 @@ function updateRecommendation(
   const condition = progressState?.condition;
   const buffs = entity?.buffs;
   
-  // Store forecasted conditions from game (fresh each turn)
   nextConditions = progressState?.nextConditions || [];
   
-  // Store current values for UI (fresh each turn)
   currentCompletion = completion;
   currentPerfection = perfection;
   currentStability = stability;
   
-  // Read toxicity from game state for alchemy crafting
-  // @ts-ignore - toxicity may exist on progressState or entity.stats
+  // @ts-ignore
   const gameToxicity = progressState?.toxicity ?? entity?.stats?.toxicity ?? 0;
   currentToxicity = gameToxicity;
 
-  // Extract buff information from game's buff array (fresh each turn)
   const { 
     controlBuffTurns, 
     intensityBuffTurns,
@@ -526,7 +373,6 @@ function updateRecommendation(
     intensityBuffMultiplier 
   } = extractBuffInfo(buffs);
   
-  // Read cooldowns from entity's techniques (fresh each turn)
   const techniques = entity?.techniques || [];
   currentCooldowns = new Map();
   for (const tech of techniques) {
@@ -536,29 +382,16 @@ function updateRecommendation(
     }
   }
 
-  // ALWAYS rebuild config from entity to ensure fresh stats and techniques
-  // This ensures we never use stale baseControl, baseIntensity, maxQi, or skill data
   currentConfig = buildConfigFromEntity(entity);
   
-  // Try to read current max stability from game state (fresh each turn)
-  // The game tracks this as it decreases each turn
-  // @ts-ignore - maxStability may exist on progressState in some game versions
-  const gameMaxStability = progressState?.maxStability ?? gameState?.maxStability;
+  // @ts-ignore
+  const gameMaxStability = progressState?.maxStability;
   if (gameMaxStability !== undefined && gameMaxStability > 0) {
-    // Game provides current max stability - use it directly
     currentMaxStability = gameMaxStability;
-  } else {
-    // Game doesn't expose current maxStability
-    // We need to track it ourselves based on the last used technique
-    // If this is the first turn or max stability was reset, use target
-    if (currentMaxStability <= 0 || currentMaxStability > targetStability) {
-      currentMaxStability = targetStability;
-    }
-    // Note: max stability decay is applied in processEffect after technique use
+  } else if (currentMaxStability <= 0 || currentMaxStability > targetStability) {
+    currentMaxStability = targetStability;
   }
 
-  // Create crafting state with values from game
-  // Use current max stability (which may have decayed) not the initial target
   const state = new CraftingState({
     qi: pool,
     stability,
@@ -575,18 +408,11 @@ function updateRecommendation(
     history: [],
   });
 
-  // Get condition multipliers from game data for current condition
   const controlMultiplier = getConditionMultiplier(condition, 'control');
-  const intensityMultiplier = getConditionMultiplier(condition, 'intensity');
-
-  // Convert forecasted conditions to multipliers for lookahead search
-  // This allows the optimizer to simulate future turns with accurate condition effects
   const forecastedMultipliers: number[] = nextConditions.map(cond => 
     getConditionMultiplier(cond, 'control')
   );
 
-  // Find best skill using game-derived values
-  // Use configurable lookahead depth from settings
   const lookaheadDepth = currentSettings.lookaheadDepth;
   currentRecommendation = findBestSkill(
     state,
@@ -594,97 +420,69 @@ function updateRecommendation(
     targetCompletion,
     targetPerfection,
     controlMultiplier,
-    false, // Use lookahead search
+    false,
     lookaheadDepth,
-    forecastedMultipliers // Pass forecasted condition multipliers for lookahead
+    forecastedMultipliers
   );
   
-  console.log(`[CraftBuddy] Recommendation updated. Pool: ${pool}, Stability: ${stability}/${currentMaxStability}, Condition: ${condition} (ctrl x${controlMultiplier})`);
-  console.log(`[CraftBuddy] Buff multipliers: control=${controlBuffMultiplier}, intensity=${intensityBuffMultiplier}`);
-  if (currentToxicity > 0 || maxToxicity > 0) {
-    console.log(`[CraftBuddy] Toxicity: ${currentToxicity}/${maxToxicity}`);
-  }
-  if (currentCooldowns.size > 0) {
-    console.log(`[CraftBuddy] Cooldowns: ${Array.from(currentCooldowns.entries()).map(([k, v]) => `${k}:${v}`).join(', ')}`);
-  }
-  if (nextConditions.length > 0) {
-    console.log(`[CraftBuddy] Forecasted conditions: ${nextConditions.join(', ')} -> multipliers: ${forecastedMultipliers.join(', ')}`);
-  }
+  console.log(`[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Comp=${completion}, Perf=${perfection}`);
+  
+  // Re-render the panel
+  renderPanel();
 }
 
 /**
- * Custom Harmony Type that renders the CraftBuddy recommendation panel.
- * This integrates into the crafting UI.
+ * Create and inject the panel container into the DOM.
  */
-const craftBuddyHarmony: HarmonyTypeConfig = {
-  name: 'CraftBuddy Advisor',
-  description: 'Displays optimal skill recommendations during crafting.',
+function createPanelContainer(): void {
+  if (panelContainer) return;
   
-  initEffect: (harmonyData, entity: CraftingEntity) => {
-    // Initialize when crafting starts - build config from entity
-    currentRecommendation = null;
-    currentCompletion = 0;
-    currentPerfection = 0;
-    currentStability = 0;
-    currentMaxStability = targetStability; // Reset to initial max stability
-    nextConditions = [];
-    
-    // Reset toxicity and cooldowns for new session
-    currentToxicity = 0;
-    currentCooldowns = new Map();
-    
-    // Build config from entity's actual stats and techniques
-    currentConfig = buildConfigFromEntity(entity);
-    
-    console.log('[CraftBuddy] Initialized for crafting session');
-    console.log(`[CraftBuddy] Entity has ${entity.techniques?.length || 0} techniques`);
-    console.log(`[CraftBuddy] Initial max stability: ${currentMaxStability}`);
-    console.log(`[CraftBuddy] Crafting type: ${currentCraftingType}`);
-    if (maxToxicity > 0) {
-      console.log(`[CraftBuddy] Max toxicity: ${maxToxicity}`);
-    }
-  },
+  panelContainer = document.createElement('div');
+  panelContainer.id = 'craftbuddy-panel-container';
+  panelContainer.style.cssText = `
+    position: fixed;
+    top: 100px;
+    right: 20px;
+    z-index: 10000;
+    pointer-events: auto;
+  `;
   
-  processEffect: (harmonyData, technique, progressState: ProgressState, entity: CraftingEntity, state: GameCraftingState) => {
-    // Track max stability decay from the technique that was just used
-    // This is called AFTER a technique is applied, so we need to update our tracking
-    // @ts-ignore - maxStability may exist on progressState
-    const gameMaxStability = progressState?.maxStability ?? state?.maxStability;
-    if (gameMaxStability === undefined || gameMaxStability <= 0) {
-      // Game doesn't expose max stability, so we track it ourselves
-      // Check if the technique prevents max stability decay
-      const preventsDecay = technique?.noMaxStabilityLoss === true;
-      if (!preventsDecay && currentMaxStability > 10) {
-        // Standard decay: max stability decreases by 1 each turn
-        currentMaxStability = Math.max(10, currentMaxStability - 1);
-      }
-      // Also check for direct max stability changes from technique effects
-      const effects = technique?.effects || [];
-      for (const effect of effects) {
-        if (effect?.kind === 'maxStability') {
-          const change = effect.amount?.value || 0;
-          currentMaxStability = Math.max(10, currentMaxStability + change);
-        }
-      }
-      console.log(`[CraftBuddy] Tracked max stability after ${technique.name}: ${currentMaxStability} (preventsDecay: ${preventsDecay})`);
-    }
-    
-    // Update recommendation using actual game state objects (always fresh)
-    updateRecommendation(entity, progressState, state);
-    
-    console.log('[CraftBuddy] Updated recommendation after:', technique.name);
-  },
+  document.body.appendChild(panelContainer);
+  panelRoot = ReactDOM.createRoot(panelContainer);
   
-  renderComponent: (harmonyData) => {
-    // Handler for settings changes
-    const handleSettingsChange = (newSettings: CraftBuddySettings) => {
-      currentSettings = newSettings;
-      // Force re-render by updating a dummy state
-      console.log('[CraftBuddy] Settings changed:', newSettings);
-    };
+  console.log('[CraftBuddy] Panel container created');
+}
 
-    // Render the recommendation panel with current state and settings
-    return React.createElement(RecommendationPanel, {
+/**
+ * Remove the panel container from the DOM.
+ */
+function removePanelContainer(): void {
+  if (panelRoot) {
+    panelRoot.unmount();
+    panelRoot = null;
+  }
+  
+  if (panelContainer && panelContainer.parentNode) {
+    panelContainer.parentNode.removeChild(panelContainer);
+    panelContainer = null;
+  }
+  
+  console.log('[CraftBuddy] Panel container removed');
+}
+
+/**
+ * Render the recommendation panel.
+ */
+function renderPanel(): void {
+  if (!panelRoot || !isCraftingActive) return;
+  
+  const handleSettingsChange = (newSettings: CraftBuddySettings) => {
+    currentSettings = newSettings;
+    renderPanel();
+  };
+  
+  panelRoot.render(
+    React.createElement(RecommendationPanel, {
       result: currentRecommendation,
       currentCompletion,
       currentPerfection,
@@ -699,123 +497,195 @@ const craftBuddyHarmony: HarmonyTypeConfig = {
       currentToxicity,
       maxToxicity,
       craftingType: currentCraftingType,
-    });
-  },
-};
-
-// Track detected conflicts with other mods
-const detectedConflicts: string[] = [];
+    })
+  );
+}
 
 /**
- * Check if another mod has already registered a harmony type override.
- * Uses window.modAPI.gameData.harmonyConfigs to detect existing overrides.
+ * Start crafting session - called when crafting UI is detected.
  */
-function checkForConflicts(harmonyType: 'forge' | 'alchemical' | 'inscription' | 'resonance'): boolean {
+function startCraftingSession(): void {
+  if (isCraftingActive) return;
+  
+  isCraftingActive = true;
+  createPanelContainer();
+  renderPanel();
+  
+  // Start polling for state updates
+  startPolling();
+  
+  console.log('[CraftBuddy] Crafting session started');
+}
+
+/**
+ * End crafting session - called when crafting UI is no longer detected.
+ */
+function endCraftingSession(): void {
+  if (!isCraftingActive) return;
+  
+  isCraftingActive = false;
+  stopPolling();
+  removePanelContainer();
+  
+  // Reset state
+  currentRecommendation = null;
+  currentConfig = null;
+  currentCompletion = 0;
+  currentPerfection = 0;
+  currentStability = 0;
+  currentMaxStability = targetStability;
+  currentToxicity = 0;
+  currentCooldowns = new Map();
+  nextConditions = [];
+  
+  console.log('[CraftBuddy] Crafting session ended');
+}
+
+/**
+ * Poll for crafting state from the game's Redux store.
+ */
+function pollCraftingState(): void {
   try {
-    const harmonyConfigs = window.modAPI?.gameData?.harmonyConfigs;
-    if (harmonyConfigs && harmonyConfigs[harmonyType]) {
-      const existingConfig = harmonyConfigs[harmonyType];
-      // Check if it's a custom config (not the default game config)
-      // Default configs typically don't have a custom name or have specific game names
-      const configName = existingConfig?.name || '';
-      if (configName && !configName.includes('CraftBuddy') && 
-          configName !== 'forge' && configName !== 'alchemical' && 
-          configName !== 'inscription' && configName !== 'resonance') {
-        console.warn(`[CraftBuddy] Potential conflict detected: ${harmonyType} already has custom config "${configName}"`);
-        return true;
+    // Try to access the Redux store through various methods
+    // @ts-ignore - accessing internal game state
+    const store = window.__REDUX_STORE__ || window.store || window.__store__;
+    
+    if (store && typeof store.getState === 'function') {
+      const state = store.getState();
+      const craftingState = state?.crafting;
+      
+      if (craftingState && craftingState.player && craftingState.progressState) {
+        updateRecommendation(craftingState.player, craftingState.progressState);
       }
     }
   } catch (e) {
-    // Ignore errors during conflict detection
+    // Silently ignore polling errors
   }
-  return false;
-}
-
-// Register CraftBuddy for ALL harmony types (forge, alchemical, inscription, resonance)
-// This ensures the optimizer works for all crafting types in the game
-const harmonyTypes: Array<'forge' | 'alchemical' | 'inscription' | 'resonance'> = [
-  'forge',
-  'alchemical', 
-  'inscription',
-  'resonance'
-];
-
-for (const harmonyType of harmonyTypes) {
-  try {
-    // Check for conflicts before registering
-    const hasConflict = checkForConflicts(harmonyType);
-    if (hasConflict) {
-      detectedConflicts.push(harmonyType);
-      console.warn(`[CraftBuddy] ⚠️ Another mod may have overridden ${harmonyType} harmony type. CraftBuddy will still register but may conflict.`);
-    }
-    
-    window.modAPI.actions.addHarmonyType(harmonyType, craftBuddyHarmony);
-    console.log(`[CraftBuddy] Harmony type override registered for ${harmonyType} crafting`);
-  } catch (e) {
-    console.error(`[CraftBuddy] Failed to register harmony type for ${harmonyType}:`, e);
-  }
-}
-
-// Log summary of conflicts if any
-if (detectedConflicts.length > 0) {
-  console.warn(`[CraftBuddy] ⚠️ Detected potential conflicts with other mods for: ${detectedConflicts.join(', ')}`);
-  console.warn('[CraftBuddy] If you experience issues, try disabling other crafting-related mods.');
 }
 
 /**
- * Alternative approach: Use lifecycle hooks for crafting events.
+ * Start polling for state updates.
+ */
+function startPolling(): void {
+  if (pollingInterval) return;
+  
+  // Poll every 500ms
+  pollingInterval = window.setInterval(pollCraftingState, 500);
+  console.log('[CraftBuddy] Started polling for crafting state');
+}
+
+/**
+ * Stop polling for state updates.
+ */
+function stopPolling(): void {
+  if (pollingInterval) {
+    window.clearInterval(pollingInterval);
+    pollingInterval = null;
+    console.log('[CraftBuddy] Stopped polling');
+  }
+}
+
+/**
+ * Check if crafting UI is currently visible.
+ */
+function isCraftingUIVisible(): boolean {
+  // Look for crafting-specific elements in the DOM
+  const craftingIndicators = [
+    '[class*="crafting"]',
+    '[class*="Crafting"]',
+    '[data-testid*="crafting"]',
+    '.crafting-panel',
+    '.crafting-screen',
+    '#crafting',
+  ];
+  
+  for (const selector of craftingIndicators) {
+    try {
+      const element = document.querySelector(selector);
+      if (element) {
+        return true;
+      }
+    } catch (e) {
+      // Invalid selector, skip
+    }
+  }
+  
+  // Also check for text content that indicates crafting
+  const bodyText = document.body.innerText || '';
+  if (bodyText.includes('Completion:') && bodyText.includes('Perfection:') && bodyText.includes('Stability:')) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Set up MutationObserver to detect crafting UI.
+ */
+function setupCraftingDetection(): void {
+  // Check periodically for crafting UI
+  setInterval(() => {
+    const craftingVisible = isCraftingUIVisible();
+    
+    if (craftingVisible && !isCraftingActive) {
+      startCraftingSession();
+    } else if (!craftingVisible && isCraftingActive) {
+      endCraftingSession();
+    }
+  }, 1000);
+  
+  console.log('[CraftBuddy] Crafting detection set up');
+}
+
+/**
+ * Register lifecycle hooks for crafting events.
  */
 try {
-  // Hook into recipe difficulty calculation (called when crafting starts)
   window.modAPI.hooks.onDeriveRecipeDifficulty((recipe, recipeStats, gameFlags) => {
     console.log('[CraftBuddy] Crafting started for recipe:', recipe?.name);
     
-    // Store targets from recipeStats - these come directly from the game
     if (recipeStats) {
       targetCompletion = recipeStats.completion || 100;
       targetPerfection = recipeStats.perfection || 100;
       targetStability = recipeStats.stability || 60;
       
-      // Cache the condition effect type for this recipe
       const conditionType = recipeStats.conditionType;
       if (conditionType) {
         conditionEffectsCache = conditionType;
-        console.log(`[CraftBuddy] Condition type: ${conditionType.name}`);
       }
       
-      console.log(`[CraftBuddy] Targets from recipe: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}`);
+      console.log(`[CraftBuddy] Targets: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}`);
     }
     
-    // Determine crafting type from recipe
-    // @ts-ignore - harmonyType may exist on recipe
+    // @ts-ignore
     const recipeHarmonyType = recipe?.harmonyType || recipe?.type;
     if (recipeHarmonyType && ['forge', 'alchemical', 'inscription', 'resonance'].includes(recipeHarmonyType)) {
       currentCraftingType = recipeHarmonyType as typeof currentCraftingType;
     }
     
-    // Read max toxicity for alchemy crafting from recipe stats
     const recipeStatsAny = recipeStats as any;
     if (recipeStatsAny?.maxToxicity) {
       maxToxicity = recipeStatsAny.maxToxicity;
     } else if (currentCraftingType === 'alchemical') {
-      // Default max toxicity for alchemy if not specified
       maxToxicity = 100;
     } else {
       maxToxicity = 0;
     }
     
-    // Reset state for new crafting session
+    // Reset state
     currentRecommendation = null;
     currentCompletion = 0;
     currentPerfection = 0;
     currentStability = 0;
-    currentMaxStability = targetStability; // Reset to initial max stability from recipe
+    currentMaxStability = targetStability;
     currentToxicity = 0;
     currentCooldowns = new Map();
-    currentConfig = null; // Will be rebuilt from entity in initEffect
+    currentConfig = null;
     nextConditions = [];
     
-    // Return unchanged recipeStats
+    // Start crafting session
+    startCraftingSession();
+    
     return recipeStats;
   });
   
@@ -824,9 +694,11 @@ try {
   console.error('[CraftBuddy] Failed to register lifecycle hooks:', e);
 }
 
+// Set up crafting detection
+setupCraftingDetection();
+
 /**
- * Export debug functions to the window for testing.
- * These allow manual inspection of the mod's state.
+ * Export debug functions to the window.
  */
 (window as any).craftBuddyDebug = {
   getConfig: () => currentConfig,
@@ -840,13 +712,13 @@ try {
     currentToxicity,
     maxToxicity,
     craftingType: currentCraftingType,
+    isCraftingActive,
   }),
   getCooldowns: () => Object.fromEntries(currentCooldowns),
   getNextConditions: () => nextConditions,
   getConditionEffects: () => conditionEffectsCache,
   getSettings: () => currentSettings,
   
-  // Set targets manually for testing
   setTargets: (completion: number, perfection: number, stability?: number) => {
     targetCompletion = completion;
     targetPerfection = perfection;
@@ -854,104 +726,75 @@ try {
     console.log(`[CraftBuddy] Targets set to: completion=${completion}, perfection=${perfection}, stability=${targetStability}`);
   },
   
-  // Settings controls
   setLookaheadDepth: (depth: number) => {
     currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(6, depth)) });
     console.log(`[CraftBuddy] Lookahead depth set to: ${currentSettings.lookaheadDepth}`);
   },
+  
   togglePanel: () => {
     currentSettings = saveSettings({ panelVisible: !currentSettings.panelVisible });
-    console.log(`[CraftBuddy] Panel visibility: ${currentSettings.panelVisible}`);
+    renderPanel();
     return currentSettings.panelVisible;
   },
+  
   toggleCompact: () => {
     currentSettings = saveSettings({ compactMode: !currentSettings.compactMode });
-    console.log(`[CraftBuddy] Compact mode: ${currentSettings.compactMode}`);
+    renderPanel();
     return currentSettings.compactMode;
   },
   
-  // Log all game data sources
+  // Manual controls for testing
+  startSession: () => startCraftingSession(),
+  endSession: () => endCraftingSession(),
+  
   logGameData: () => {
     console.log('[CraftBuddy] === Game Data Sources ===');
     console.log('recipeConditionEffects:', window.modAPI?.gameData?.recipeConditionEffects);
     console.log('craftingTechniques:', window.modAPI?.gameData?.craftingTechniques);
-    console.log('harmonyConfigs:', window.modAPI?.gameData?.harmonyConfigs);
     console.log('Current config:', currentConfig);
     console.log('Condition effects cache:', conditionEffectsCache);
     console.log('Current settings:', currentSettings);
-    console.log('Detected conflicts:', detectedConflicts);
-  },
-  
-  // Get detected mod conflicts
-  getConflicts: () => ({
-    detected: detectedConflicts,
-    hasConflicts: detectedConflicts.length > 0,
-  }),
-  
-  // Check for conflicts manually
-  checkConflicts: () => {
-    const conflicts: string[] = [];
-    for (const harmonyType of ['forge', 'alchemical', 'inscription', 'resonance'] as const) {
-      if (checkForConflicts(harmonyType)) {
-        conflicts.push(harmonyType);
-      }
-    }
-    if (conflicts.length > 0) {
-      console.warn(`[CraftBuddy] Conflicts detected for: ${conflicts.join(', ')}`);
-    } else {
-      console.log('[CraftBuddy] No conflicts detected');
-    }
-    return conflicts;
   },
 };
 
 /**
- * Register keyboard shortcuts for quick access.
- * Ctrl+Shift+C - Toggle panel visibility
- * Ctrl+Shift+M - Toggle compact mode
+ * Register keyboard shortcuts.
  */
 try {
   document.addEventListener('keydown', (event: KeyboardEvent) => {
-    // Check for Ctrl+Shift modifier
     if (event.ctrlKey && event.shiftKey) {
       switch (event.key.toLowerCase()) {
         case 'c':
-          // Toggle panel visibility
           event.preventDefault();
           currentSettings = saveSettings({ panelVisible: !currentSettings.panelVisible });
-          console.log(`[CraftBuddy] Panel visibility toggled: ${currentSettings.panelVisible}`);
+          renderPanel();
+          console.log(`[CraftBuddy] Panel visibility: ${currentSettings.panelVisible}`);
           break;
         case 'm':
-          // Toggle compact mode
           event.preventDefault();
           currentSettings = saveSettings({ compactMode: !currentSettings.compactMode });
-          console.log(`[CraftBuddy] Compact mode toggled: ${currentSettings.compactMode}`);
+          renderPanel();
+          console.log(`[CraftBuddy] Compact mode: ${currentSettings.compactMode}`);
           break;
       }
     }
   });
-  console.log('[CraftBuddy] Keyboard shortcuts registered (Ctrl+Shift+C: toggle panel, Ctrl+Shift+M: compact mode)');
+  console.log('[CraftBuddy] Keyboard shortcuts registered');
 } catch (e) {
   console.warn('[CraftBuddy] Failed to register keyboard shortcuts:', e);
 }
 
 /**
- * Create a visual indicator on the title screen to show the mod is loaded.
- * This helps players confirm the mod was installed correctly.
- * The indicator appears briefly in the top-right corner and then fades out completely.
+ * Create title screen indicator.
  */
 function createTitleScreenIndicator(): void {
   try {
-    // Check if indicator already exists
-    if (document.getElementById('craftbuddy-indicator')) {
-      return;
-    }
+    if (document.getElementById('craftbuddy-indicator')) return;
 
     const indicator = document.createElement('div');
     indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.6.0 Loaded';
+    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.7.0 Loaded';
     
-    // Style the indicator to appear in the top-right corner
     Object.assign(indicator.style, {
       position: 'fixed',
       top: '10px',
@@ -974,28 +817,23 @@ function createTitleScreenIndicator(): void {
     document.body.appendChild(indicator);
     console.log('[CraftBuddy] Title screen indicator created');
 
-    // Fade out the indicator after 5 seconds, then remove it completely
     setTimeout(() => {
       if (indicator) {
         indicator.style.opacity = '0';
-        // Remove from DOM after fade animation completes
         setTimeout(() => {
           if (indicator && indicator.parentNode) {
             indicator.parentNode.removeChild(indicator);
-            console.log('[CraftBuddy] Title screen indicator removed');
           }
-        }, 1000); // Wait for 1s fade transition to complete
+        }, 1000);
       }
-    }, 5000); // Show for 5 seconds before fading
+    }, 5000);
   } catch (e) {
     console.warn('[CraftBuddy] Failed to create title screen indicator:', e);
   }
 }
 
-// Create the indicator when the mod loads
 createTitleScreenIndicator();
 
 console.log('[CraftBuddy] Mod loaded successfully!');
-console.log('[CraftBuddy] All values are read from game API - no hardcoded defaults');
-console.log('[CraftBuddy] Debug: window.craftBuddyDebug.logGameData() to inspect data sources');
-console.log('[CraftBuddy] Settings: window.craftBuddyDebug.getSettings() to view current settings');
+console.log('[CraftBuddy] Using DOM injection approach for crafting UI');
+console.log('[CraftBuddy] Debug: window.craftBuddyDebug.logGameData()');
