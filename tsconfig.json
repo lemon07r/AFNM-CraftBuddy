@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true,
+    "inlineSourceMap": false,
+    "preserveConstEnums": true,
+    "removeComments": false,
+    "jsx": "react-jsx",
+  },
+  "include": ["src/**/*", "src/custom.d.ts"],
+  "exclude": ["node_modules"]
+}
