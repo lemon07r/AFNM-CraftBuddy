@@ -724,7 +724,7 @@ function createTitleScreenIndicator(): void {
 
     const indicator = document.createElement('div');
     indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.8.0 Loaded';
+    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.9.0 Loaded';
     
     Object.assign(indicator.style, {
       position: 'fixed',
@@ -767,3 +767,157 @@ createTitleScreenIndicator();
 
 console.log('[CraftBuddy] Mod loaded successfully!');
 console.log('[CraftBuddy] Debug: window.craftBuddyDebug.logGameData() to inspect data sources');
+
+/**
+ * Poll for Redux store and crafting state.
+ * This is a fallback approach since harmony type wrappers don't work for existing types.
+ */
+let pollingInterval: ReturnType<typeof setInterval> | null = null;
+let craftingPanelElement: HTMLElement | null = null;
+
+function findReduxStore(): any {
+  // Try common Redux store locations
+  const w = window as any;
+  return w.__REDUX_STORE__ || w.store || w.__store || w.reduxStore || null;
+}
+
+function getCraftingStateFromStore(store: any): any {
+  if (!store || typeof store.getState !== 'function') return null;
+  try {
+    const state = store.getState();
+    return state?.crafting || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function createOrUpdateCraftingPanel(): void {
+  if (!craftingPanelElement) {
+    craftingPanelElement = document.createElement('div');
+    craftingPanelElement.id = 'craftbuddy-panel';
+    Object.assign(craftingPanelElement.style, {
+      position: 'fixed',
+      top: '80px',
+      right: '10px',
+      width: '320px',
+      padding: '12px',
+      backgroundColor: 'rgba(20, 20, 30, 0.95)',
+      color: '#fff',
+      fontFamily: 'sans-serif',
+      fontSize: '13px',
+      borderRadius: '8px',
+      border: '1px solid rgba(255, 215, 0, 0.4)',
+      zIndex: '10000',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+      display: 'none',
+    });
+    document.body.appendChild(craftingPanelElement);
+    console.log('[CraftBuddy] Crafting panel created');
+  }
+}
+
+function updatePanelContent(): void {
+  if (!craftingPanelElement || !currentRecommendation) return;
+  
+  const rec = currentRecommendation.recommendation;
+  if (!rec) {
+    craftingPanelElement.innerHTML = `
+      <div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">🔮 CraftBuddy</div>
+      <div style="color: #aaa;">${currentRecommendation.targetsMet ? '✓ Targets met!' : 'No valid actions available'}</div>
+    `;
+    return;
+  }
+  
+  const typeColors: Record<string, string> = { fusion: '#00ff00', refine: '#00ffff', stabilize: '#ffa500', support: '#eb34db' };
+  const color = typeColors[rec.skill.type] || '#fff';
+  
+  craftingPanelElement.innerHTML = `
+    <div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">🔮 CraftBuddy Recommends</div>
+    <div style="margin-bottom: 6px; color: #aaa; font-size: 11px;">
+      Completion: ${currentCompletion}/${targetCompletion} | Perfection: ${currentPerfection}/${targetPerfection}
+    </div>
+    <div style="padding: 8px; background: rgba(0,100,0,0.3); border: 1px solid rgba(0,255,0,0.4); border-radius: 4px; margin-bottom: 8px;">
+      <div style="color: ${color}; font-weight: bold; font-size: 15px;">${rec.skill.name}</div>
+      <div style="color: #90EE90; font-size: 12px; margin-top: 4px;">
+        ${rec.expectedGains.completion > 0 ? `+${rec.expectedGains.completion} Completion ` : ''}
+        ${rec.expectedGains.perfection > 0 ? `+${rec.expectedGains.perfection} Perfection ` : ''}
+        ${rec.expectedGains.stability > 0 ? `+${rec.expectedGains.stability} Stability` : ''}
+      </div>
+      <div style="color: #888; font-size: 11px; margin-top: 4px; font-style: italic;">${rec.reasoning}</div>
+    </div>
+  `;
+}
+
+function startCraftingPolling(): void {
+  if (pollingInterval) return;
+  
+  createOrUpdateCraftingPanel();
+  
+  pollingInterval = setInterval(() => {
+    const store = findReduxStore();
+    const craftingState = getCraftingStateFromStore(store);
+    
+    if (craftingState?.player && craftingState?.progressState) {
+      // We have active crafting!
+      if (craftingPanelElement) craftingPanelElement.style.display = 'block';
+      
+      const entity = craftingState.player as CraftingEntity;
+      const progress = craftingState.progressState as ProgressState;
+      
+      // Update if state changed
+      if (progress.completion !== currentCompletion || progress.perfection !== currentPerfection || progress.stability !== currentStability) {
+        updateRecommendation(entity, progress);
+        updatePanelContent();
+      }
+    } else {
+      // No active crafting
+      if (craftingPanelElement) craftingPanelElement.style.display = 'none';
+    }
+  }, 500);
+  
+  console.log('[CraftBuddy] Started crafting state polling');
+}
+
+// Start polling after a short delay to let the game initialize
+setTimeout(startCraftingPolling, 2000);
+
+// Add debug function to find Redux store
+(window as any).craftBuddyDebug.findStore = () => {
+  console.log('[CraftBuddy] Searching for Redux store...');
+  const w = window as any;
+  
+  // Check common locations
+  const locations = ['__REDUX_STORE__', 'store', '__store', 'reduxStore', '__PRELOADED_STATE__'];
+  for (const loc of locations) {
+    if (w[loc]) {
+      console.log(`[CraftBuddy] Found: window.${loc}`, w[loc]);
+    }
+  }
+  
+  // Search all window properties
+  const found: string[] = [];
+  for (const key of Object.keys(w)) {
+    const val = w[key];
+    if (val && typeof val === 'object') {
+      if (typeof val.getState === 'function' || typeof val.dispatch === 'function') {
+        found.push(key);
+        console.log(`[CraftBuddy] Potential store at window.${key}:`, val);
+      }
+      if (key.toLowerCase().includes('redux') || key.toLowerCase().includes('store')) {
+        console.log(`[CraftBuddy] Named match window.${key}:`, val);
+      }
+    }
+  }
+  
+  // Check modAPI for store access
+  if (w.modAPI) {
+    console.log('[CraftBuddy] modAPI available:', Object.keys(w.modAPI));
+    if (w.modAPI.screenAPI) {
+      console.log('[CraftBuddy] screenAPI available:', Object.keys(w.modAPI.screenAPI));
+    }
+  }
+  
+  return found;
+};
+
+console.log('[CraftBuddy] Debug: Use window.craftBuddyDebug.findStore() to search for Redux store');
