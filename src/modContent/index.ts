@@ -948,7 +948,7 @@ function createTitleScreenIndicator(): void {
 
     const indicator = document.createElement('div');
     indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.5.0 Loaded';
+    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.5.1 Loaded';
     
     // Style the indicator to appear in the bottom-left corner
     Object.assign(indicator.style, {

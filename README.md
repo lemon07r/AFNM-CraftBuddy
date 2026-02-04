@@ -17,10 +17,16 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 ## Installation
 
 1. Download the latest release (`afnm-craftbuddy-x.x.x.zip`) from [Releases](https://github.com/lemon07r/AFNM-CraftBuddy/releases)
-2. Copy the zip file to your game's mods folder:
-   - **Linux**: `~/.local/share/AscendFromNineMountains/mods/`
-   - **Windows**: `%APPDATA%/AscendFromNineMountains/mods/`
-3. Launch the game - the mod will be loaded automatically
+2. Create a `mods` folder in your game installation directory (same folder as the game executable)
+3. Copy the zip file to the `mods` folder - **do NOT unzip it**
+4. Launch the game - the mod will be loaded automatically
+
+**Example paths:**
+- **Linux (Steam)**: `~/.steam/steam/steamapps/common/Ascend From Nine Mountains/mods/`
+- **Linux (Direct)**: `/path/to/AFNM_Linux/mods/`
+- **Windows (Steam)**: `C:\Program Files (x86)\Steam\steamapps\common\Ascend From Nine Mountains\mods\`
+
+**Verify installation:** Look for the "🔮 AFNM-CraftBuddy vX.X.X Loaded" indicator in the bottom-left corner of the title screen.
 
 ## Usage
 
