@@ -9,6 +9,9 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 - 💡 **Reasoning**: Explains why a skill is recommended (buff active, low stability, etc.)
 - 🎯 **Target Tracking**: Monitors progress toward completion and perfection goals
 - 🔄 **Alternative Options**: Shows other viable skills if you prefer a different approach
+- ⚙️ **Settings Panel**: Configure lookahead depth, display options, and more
+- ⌨️ **Keyboard Shortcuts**: Quick toggle for panel visibility and compact mode
+- 📏 **Compact Mode**: Smaller panel for less screen obstruction
 
 ## Installation
 
@@ -26,6 +29,24 @@ During any crafting session (forge, alchemical, inscription, or resonance), AFNM
 - Expected gains from using that skill
 - Brief reasoning for the recommendation
 - Alternative skills you could use instead
+
+### Keyboard Shortcuts
+
+- **Ctrl+Shift+C** - Toggle panel visibility
+- **Ctrl+Shift+M** - Toggle compact mode
+
+### Settings Panel
+
+Click the gear icon (⚙️) on the recommendation panel to access settings:
+
+- **Lookahead Depth** (1-6): Higher values give better recommendations but are slower
+- **Compact Mode**: Show only essential information
+- **Show Rotation**: Display suggested skill sequence
+- **Show Final State**: Display projected outcome
+- **Show Conditions**: Display upcoming crafting conditions
+- **Max Alternatives**: Number of alternative skills to show (0-5)
+
+Settings are automatically saved and persist between sessions.
 
 ### Debug Console Commands
 
@@ -53,6 +74,12 @@ window.craftBuddyDebug.getConditionEffects()
 // Set custom targets for testing
 window.craftBuddyDebug.setTargets(completion, perfection, stability)
 
+// View/modify settings
+window.craftBuddyDebug.getSettings()
+window.craftBuddyDebug.setLookaheadDepth(4)  // 1-6
+window.craftBuddyDebug.togglePanel()         // Toggle visibility
+window.craftBuddyDebug.toggleCompact()       // Toggle compact mode
+
 // Log all game data sources to console
 window.craftBuddyDebug.logGameData()
 ```
@@ -66,7 +93,7 @@ npm install
 # Build the mod
 npm run build
 
-# Output: builds/craftbuddy-x.x.x.zip
+# Output: builds/afnm-craftbuddy-x.x.x.zip
 ```
 
 ## How It Works
@@ -84,7 +111,7 @@ The optimizer uses a **lookahead search** algorithm that:
 
 - Built with TypeScript, React, and Material-UI
 - Uses the AFNM ModAPI for game integration
-- Overrides the 'forge' harmony type to inject the recommendation panel
+- Overrides all harmony types (forge, alchemical, inscription, resonance) to inject the recommendation panel
 - Hooks into `onDeriveRecipeDifficulty` to capture crafting targets
 
 ## Game Data Integration

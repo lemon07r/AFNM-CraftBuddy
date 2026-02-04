@@ -33,6 +33,14 @@ import {
   SkillMastery,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
+import {
+  CraftBuddySettings,
+  getSettings,
+  saveSettings,
+  togglePanelVisibility,
+  toggleCompactMode,
+  loadSettings,
+} from '../settings';
 
 // Global state for the optimizer
 let currentRecommendation: SearchResult | null = null;
@@ -56,6 +64,12 @@ let currentCooldowns: Map<string, number> = new Map();
 
 // Current crafting type
 let currentCraftingType: 'forge' | 'alchemical' | 'inscription' | 'resonance' = 'forge';
+
+// Settings
+let currentSettings: CraftBuddySettings = loadSettings();
+
+// Force re-render callback (set by renderComponent)
+let forceUpdate: (() => void) | null = null;
 
 /**
  * Extract buff information from game's CraftingBuff array.
@@ -502,6 +516,8 @@ function updateRecommendation(
   );
 
   // Find best skill using game-derived values
+  // Use configurable lookahead depth from settings
+  const lookaheadDepth = currentSettings.lookaheadDepth;
   currentRecommendation = findBestSkill(
     state,
     currentConfig,
@@ -509,7 +525,7 @@ function updateRecommendation(
     targetPerfection,
     controlMultiplier,
     false, // Use lookahead search
-    3,     // Lookahead depth
+    lookaheadDepth,
     forecastedMultipliers // Pass forecasted condition multipliers for lookahead
   );
   
@@ -590,7 +606,14 @@ const craftBuddyHarmony: HarmonyTypeConfig = {
   },
   
   renderComponent: (harmonyData) => {
-    // Render the recommendation panel with current state
+    // Handler for settings changes
+    const handleSettingsChange = (newSettings: CraftBuddySettings) => {
+      currentSettings = newSettings;
+      // Force re-render by updating a dummy state
+      console.log('[CraftBuddy] Settings changed:', newSettings);
+    };
+
+    // Render the recommendation panel with current state and settings
     return React.createElement(RecommendationPanel, {
       result: currentRecommendation,
       currentCompletion,
@@ -599,6 +622,8 @@ const craftBuddyHarmony: HarmonyTypeConfig = {
       targetPerfection,
       currentStability,
       currentMaxStability,
+      settings: currentSettings,
+      onSettingsChange: handleSettingsChange,
       targetStability,
       nextConditions,
       currentToxicity,
@@ -708,6 +733,7 @@ try {
   getCooldowns: () => Object.fromEntries(currentCooldowns),
   getNextConditions: () => nextConditions,
   getConditionEffects: () => conditionEffectsCache,
+  getSettings: () => currentSettings,
   
   // Set targets manually for testing
   setTargets: (completion: number, perfection: number, stability?: number) => {
@@ -717,6 +743,22 @@ try {
     console.log(`[CraftBuddy] Targets set to: completion=${completion}, perfection=${perfection}, stability=${targetStability}`);
   },
   
+  // Settings controls
+  setLookaheadDepth: (depth: number) => {
+    currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(6, depth)) });
+    console.log(`[CraftBuddy] Lookahead depth set to: ${currentSettings.lookaheadDepth}`);
+  },
+  togglePanel: () => {
+    currentSettings = saveSettings({ panelVisible: !currentSettings.panelVisible });
+    console.log(`[CraftBuddy] Panel visibility: ${currentSettings.panelVisible}`);
+    return currentSettings.panelVisible;
+  },
+  toggleCompact: () => {
+    currentSettings = saveSettings({ compactMode: !currentSettings.compactMode });
+    console.log(`[CraftBuddy] Compact mode: ${currentSettings.compactMode}`);
+    return currentSettings.compactMode;
+  },
+  
   // Log all game data sources
   logGameData: () => {
     console.log('[CraftBuddy] === Game Data Sources ===');
@@ -724,9 +766,41 @@ try {
     console.log('craftingTechniques:', window.modAPI?.gameData?.craftingTechniques);
     console.log('Current config:', currentConfig);
     console.log('Condition effects cache:', conditionEffectsCache);
+    console.log('Current settings:', currentSettings);
   },
 };
+
+/**
+ * Register keyboard shortcuts for quick access.
+ * Ctrl+Shift+C - Toggle panel visibility
+ * Ctrl+Shift+M - Toggle compact mode
+ */
+try {
+  document.addEventListener('keydown', (event: KeyboardEvent) => {
+    // Check for Ctrl+Shift modifier
+    if (event.ctrlKey && event.shiftKey) {
+      switch (event.key.toLowerCase()) {
+        case 'c':
+          // Toggle panel visibility
+          event.preventDefault();
+          currentSettings = saveSettings({ panelVisible: !currentSettings.panelVisible });
+          console.log(`[CraftBuddy] Panel visibility toggled: ${currentSettings.panelVisible}`);
+          break;
+        case 'm':
+          // Toggle compact mode
+          event.preventDefault();
+          currentSettings = saveSettings({ compactMode: !currentSettings.compactMode });
+          console.log(`[CraftBuddy] Compact mode toggled: ${currentSettings.compactMode}`);
+          break;
+      }
+    }
+  });
+  console.log('[CraftBuddy] Keyboard shortcuts registered (Ctrl+Shift+C: toggle panel, Ctrl+Shift+M: compact mode)');
+} catch (e) {
+  console.warn('[CraftBuddy] Failed to register keyboard shortcuts:', e);
+}
 
 console.log('[CraftBuddy] Mod loaded successfully!');
 console.log('[CraftBuddy] All values are read from game API - no hardcoded defaults');
 console.log('[CraftBuddy] Debug: window.craftBuddyDebug.logGameData() to inspect data sources');
+console.log('[CraftBuddy] Settings: window.craftBuddyDebug.getSettings() to view current settings');

@@ -302,8 +302,16 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 - `getCooldowns()` - Returns current skill cooldowns
 - `getNextConditions()` - Returns forecasted conditions (from game)
 - `getConditionEffects()` - Returns cached condition effect multipliers
+- `getSettings()` - Returns current settings
 - `setTargets(completion, perfection, stability?)` - Override targets for testing
+- `setLookaheadDepth(depth)` - Set lookahead depth (1-6)
+- `togglePanel()` - Toggle panel visibility
+- `toggleCompact()` - Toggle compact mode
 - `logGameData()` - Logs all game data sources to console
+
+### Keyboard Shortcuts
+- `Ctrl+Shift+C` - Toggle panel visibility
+- `Ctrl+Shift+M` - Toggle compact mode
 
 ## Reference Materials
 
@@ -313,14 +321,18 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 
 ## Future Improvements
 
-- [ ] Configurable lookahead depth (settings panel)
-- [ ] Settings panel for customization
-- [ ] Keyboard shortcut to toggle panel
-- [ ] Compact mode for UI
 - [ ] Unit tests for optimizer logic
 - [ ] Performance optimization for deep lookahead
 - [ ] Handle edge cases (special conditions, equipment bonuses)
 - [ ] Conflict detection with other mods
+
+## Completed Improvements (v1.3.0)
+
+- [x] **Settings panel** - In-game UI to configure lookahead depth, display options, and reset to defaults
+- [x] **Configurable lookahead depth** - Adjustable from 1-6 (default: 3) via settings panel
+- [x] **Keyboard shortcuts** - Ctrl+Shift+C (toggle panel), Ctrl+Shift+M (toggle compact mode)
+- [x] **Compact mode** - Smaller panel showing only essential info for less screen obstruction
+- [x] **Persistent settings** - Settings saved to localStorage and restored on reload
 
 ## Completed Improvements (v1.2.0)
 

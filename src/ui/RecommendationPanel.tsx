@@ -8,6 +8,8 @@
 import React from 'react';
 import { Box, Typography, Paper, Chip, Divider } from '@mui/material';
 import { SearchResult, SkillRecommendation, CraftingConditionType } from '../optimizer';
+import { CraftBuddySettings } from '../settings';
+import { SettingsPanel } from './SettingsPanel';
 
 // Skill type colors matching game UI
 const SKILL_TYPE_COLORS: Record<string, string> = {
@@ -69,6 +71,10 @@ interface RecommendationPanelProps {
   maxToxicity?: number;
   /** Current crafting type */
   craftingType?: 'forge' | 'alchemical' | 'inscription' | 'resonance';
+  /** Current settings */
+  settings?: CraftBuddySettings;
+  /** Callback when settings change */
+  onSettingsChange?: (settings: CraftBuddySettings) => void;
 }
 
 /**
@@ -199,7 +205,22 @@ export function RecommendationPanel({
   currentToxicity = 0,
   maxToxicity = 0,
   craftingType = 'forge',
+  settings,
+  onSettingsChange,
 }: RecommendationPanelProps) {
+  // Use settings or defaults
+  const compactMode = settings?.compactMode ?? false;
+  const showOptimalRotation = settings?.showOptimalRotation ?? true;
+  const showExpectedFinalState = settings?.showExpectedFinalState ?? true;
+  const showForecastedConditions = settings?.showForecastedConditions ?? true;
+  const maxAlternatives = settings?.maxAlternatives ?? 2;
+  const maxRotationDisplay = settings?.maxRotationDisplay ?? 5;
+
+  // Panel not visible
+  if (settings?.panelVisible === false) {
+    return null;
+  }
+
   // No result yet
   if (!result) {
     return (
@@ -274,18 +295,22 @@ export function RecommendationPanel({
 
   // Normal recommendation
   return (
-    <Paper
-      sx={{
-        p: 2,
-        backgroundColor: 'rgba(30, 30, 30, 0.95)',
-        border: '1px solid rgba(100, 100, 100, 0.5)',
-        borderRadius: 2,
-        maxWidth: 350,
-      }}
-    >
-      <Typography variant="h6" sx={{ color: '#FFD700', mb: 1.5 }}>
-        🔮 CraftBuddy Recommends
-      </Typography>
+    <Box sx={{ position: 'relative' }}>
+      {/* Settings Panel */}
+      <SettingsPanel onSettingsChange={onSettingsChange} />
+      
+      <Paper
+        sx={{
+          p: compactMode ? 1.5 : 2,
+          backgroundColor: 'rgba(30, 30, 30, 0.95)',
+          border: '1px solid rgba(100, 100, 100, 0.5)',
+          borderRadius: 2,
+          maxWidth: compactMode ? 280 : 350,
+        }}
+      >
+        <Typography variant={compactMode ? 'subtitle1' : 'h6'} sx={{ color: '#FFD700', mb: compactMode ? 1 : 1.5 }}>
+          🔮 {compactMode ? 'CraftBuddy' : 'CraftBuddy Recommends'}
+        </Typography>
 
       {/* Progress display */}
       {(targetCompletion > 0 || targetPerfection > 0) && (
@@ -327,7 +352,7 @@ export function RecommendationPanel({
       )}
 
       {/* Forecasted conditions from game */}
-      {nextConditions.length > 0 && (
+      {showForecastedConditions && nextConditions.length > 0 && !compactMode && (
         <Box sx={{ mb: 1.5 }}>
           <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)', mb: 0.5 }}>
             Upcoming conditions:
@@ -355,13 +380,13 @@ export function RecommendationPanel({
       <SkillCard rec={result.recommendation} isPrimary />
 
       {/* Optimal rotation preview */}
-      {result.optimalRotation && result.optimalRotation.length > 1 && (
+      {showOptimalRotation && result.optimalRotation && result.optimalRotation.length > 1 && !compactMode && (
         <Box sx={{ mb: 1.5 }}>
           <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)', mb: 0.5 }}>
             Suggested rotation:
           </Typography>
           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
-            {result.optimalRotation.slice(0, 5).map((skillName, idx) => (
+            {result.optimalRotation.slice(0, maxRotationDisplay).map((skillName, idx) => (
               <React.Fragment key={idx}>
                 <Chip
                   label={skillName}
@@ -374,14 +399,14 @@ export function RecommendationPanel({
                     border: idx === 0 ? '1px solid rgba(0, 255, 0, 0.5)' : '1px solid rgba(100, 100, 100, 0.5)',
                   }}
                 />
-                {idx < Math.min(result.optimalRotation!.length - 1, 4) && (
+                {idx < Math.min(result.optimalRotation!.length - 1, maxRotationDisplay - 1) && (
                   <Typography sx={{ color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.8rem' }}>→</Typography>
                 )}
               </React.Fragment>
             ))}
-            {result.optimalRotation.length > 5 && (
+            {result.optimalRotation.length > maxRotationDisplay && (
               <Typography sx={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.7rem' }}>
-                +{result.optimalRotation.length - 5} more
+                +{result.optimalRotation.length - maxRotationDisplay} more
               </Typography>
             )}
           </Box>
@@ -389,7 +414,7 @@ export function RecommendationPanel({
       )}
 
       {/* Expected final state */}
-      {result.expectedFinalState && (
+      {showExpectedFinalState && result.expectedFinalState && !compactMode && (
         <Box sx={{ mb: 1.5, p: 1, backgroundColor: 'rgba(0, 50, 100, 0.3)', borderRadius: 1 }}>
           <Typography variant="body2" sx={{ color: 'rgba(100, 200, 255, 0.8)', mb: 0.5, fontWeight: 'bold' }}>
             📊 After {result.optimalRotation?.length || 1} turns:
@@ -420,7 +445,7 @@ export function RecommendationPanel({
       )}
 
       {/* Alternative skills */}
-      {result.alternativeSkills.length > 0 && (
+      {maxAlternatives > 0 && result.alternativeSkills.length > 0 && !compactMode && (
         <>
           <Divider sx={{ my: 1.5, borderColor: 'rgba(100, 100, 100, 0.5)' }} />
           <Typography 
@@ -429,12 +454,13 @@ export function RecommendationPanel({
           >
             Alternatives:
           </Typography>
-          {result.alternativeSkills.slice(0, 2).map((rec, idx) => (
+          {result.alternativeSkills.slice(0, maxAlternatives).map((rec, idx) => (
             <SkillCard key={idx} rec={rec} showQuality />
           ))}
         </>
       )}
-    </Paper>
+      </Paper>
+    </Box>
   );
 }
 
