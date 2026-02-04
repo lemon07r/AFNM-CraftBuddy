@@ -1,17 +1,16 @@
 /**
  * CraftBuddy - Main Mod Content
  * 
- * Integrates the crafting optimizer with the game using:
- * 1. Lifecycle hooks to capture crafting targets when crafting starts
- * 2. DOM injection to display the recommendation panel during crafting
- * 3. MutationObserver to detect crafting UI and inject our panel
+ * Integrates the crafting optimizer with the game by wrapping existing harmony types
+ * to inject our recommendation panel into the crafting UI.
  * 
- * IMPORTANT: This mod reads ALL values from the game API instead of using hardcoded defaults.
+ * Approach: We wrap the existing harmony type configs to add our processEffect
+ * and renderComponent logic while preserving the original behavior.
  */
 
 import React from 'react';
-import ReactDOM from 'react-dom/client';
 import { 
+  HarmonyTypeConfig, 
   CraftingEntity, 
   ProgressState, 
   CraftingState as GameCraftingState,
@@ -19,6 +18,7 @@ import {
   CraftingCondition,
   RecipeConditionEffect,
   CraftingBuff,
+  RecipeHarmonyType,
 } from 'afnm-types';
 import {
   CraftingState,
@@ -32,7 +32,6 @@ import {
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 import {
   CraftBuddySettings,
-  getSettings,
   saveSettings,
   loadSettings,
 } from '../settings';
@@ -63,15 +62,9 @@ let currentCraftingType: 'forge' | 'alchemical' | 'inscription' | 'resonance' = 
 // Settings
 let currentSettings: CraftBuddySettings = loadSettings();
 
-// Panel container and React root
-let panelContainer: HTMLDivElement | null = null;
-let panelRoot: ReturnType<typeof ReactDOM.createRoot> | null = null;
-
-// Crafting active flag
-let isCraftingActive = false;
-
-// Polling interval for state updates
-let pollingInterval: number | null = null;
+// Store the last entity for rendering
+let lastEntity: CraftingEntity | null = null;
+let lastProgressState: ProgressState | null = null;
 
 /**
  * Extract buff information from game's CraftingBuff array.
@@ -349,6 +342,10 @@ function updateRecommendation(
   entity: CraftingEntity,
   progressState: ProgressState
 ): void {
+  // Store for rendering
+  lastEntity = entity;
+  lastProgressState = progressState;
+  
   const pool = entity?.stats?.pool || 0;
   const stability = progressState?.stability || 0;
   const completion = progressState?.completion || 0;
@@ -425,216 +422,148 @@ function updateRecommendation(
     forecastedMultipliers
   );
   
-  console.log(`[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Comp=${completion}, Perf=${perfection}`);
-  
-  // Re-render the panel
-  renderPanel();
-}
-
-/**
- * Create and inject the panel container into the DOM.
- */
-function createPanelContainer(): void {
-  if (panelContainer) return;
-  
-  panelContainer = document.createElement('div');
-  panelContainer.id = 'craftbuddy-panel-container';
-  panelContainer.style.cssText = `
-    position: fixed;
-    top: 100px;
-    right: 20px;
-    z-index: 10000;
-    pointer-events: auto;
-  `;
-  
-  document.body.appendChild(panelContainer);
-  panelRoot = ReactDOM.createRoot(panelContainer);
-  
-  console.log('[CraftBuddy] Panel container created');
-}
-
-/**
- * Remove the panel container from the DOM.
- */
-function removePanelContainer(): void {
-  if (panelRoot) {
-    panelRoot.unmount();
-    panelRoot = null;
+  console.log(`[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Completion=${completion}/${targetCompletion}, Perfection=${perfection}/${targetPerfection}`);
+  if (currentRecommendation?.recommendation) {
+    console.log(`[CraftBuddy] Recommended: ${currentRecommendation.recommendation.skill.name}`);
   }
-  
-  if (panelContainer && panelContainer.parentNode) {
-    panelContainer.parentNode.removeChild(panelContainer);
-    panelContainer = null;
-  }
-  
-  console.log('[CraftBuddy] Panel container removed');
 }
 
 /**
- * Render the recommendation panel.
+ * Create the CraftBuddy harmony type config that wraps existing behavior.
  */
-function renderPanel(): void {
-  if (!panelRoot || !isCraftingActive) return;
-  
-  const handleSettingsChange = (newSettings: CraftBuddySettings) => {
-    currentSettings = newSettings;
-    renderPanel();
-  };
-  
-  panelRoot.render(
-    React.createElement(RecommendationPanel, {
-      result: currentRecommendation,
-      currentCompletion,
-      currentPerfection,
-      targetCompletion,
-      targetPerfection,
-      currentStability,
-      currentMaxStability,
-      settings: currentSettings,
-      onSettingsChange: handleSettingsChange,
-      targetStability,
-      nextConditions,
-      currentToxicity,
-      maxToxicity,
-      craftingType: currentCraftingType,
-    })
-  );
-}
-
-/**
- * Start crafting session - called when crafting UI is detected.
- */
-function startCraftingSession(): void {
-  if (isCraftingActive) return;
-  
-  isCraftingActive = true;
-  createPanelContainer();
-  renderPanel();
-  
-  // Start polling for state updates
-  startPolling();
-  
-  console.log('[CraftBuddy] Crafting session started');
-}
-
-/**
- * End crafting session - called when crafting UI is no longer detected.
- */
-function endCraftingSession(): void {
-  if (!isCraftingActive) return;
-  
-  isCraftingActive = false;
-  stopPolling();
-  removePanelContainer();
-  
-  // Reset state
-  currentRecommendation = null;
-  currentConfig = null;
-  currentCompletion = 0;
-  currentPerfection = 0;
-  currentStability = 0;
-  currentMaxStability = targetStability;
-  currentToxicity = 0;
-  currentCooldowns = new Map();
-  nextConditions = [];
-  
-  console.log('[CraftBuddy] Crafting session ended');
-}
-
-/**
- * Poll for crafting state from the game's Redux store.
- */
-function pollCraftingState(): void {
-  try {
-    // Try to access the Redux store through various methods
-    // @ts-ignore - accessing internal game state
-    const store = window.__REDUX_STORE__ || window.store || window.__store__;
+function createCraftBuddyHarmonyConfig(originalConfig: HarmonyTypeConfig | undefined, harmonyType: RecipeHarmonyType): HarmonyTypeConfig {
+  return {
+    name: originalConfig?.name || harmonyType,
+    description: originalConfig?.description || '',
     
-    if (store && typeof store.getState === 'function') {
-      const state = store.getState();
-      const craftingState = state?.crafting;
+    initEffect: (harmonyData, entity: CraftingEntity) => {
+      console.log(`[CraftBuddy] initEffect called for ${harmonyType}`);
       
-      if (craftingState && craftingState.player && craftingState.progressState) {
-        updateRecommendation(craftingState.player, craftingState.progressState);
+      // Call original initEffect if it exists
+      if (originalConfig?.initEffect) {
+        originalConfig.initEffect(harmonyData, entity);
       }
-    }
-  } catch (e) {
-    // Silently ignore polling errors
-  }
-}
-
-/**
- * Start polling for state updates.
- */
-function startPolling(): void {
-  if (pollingInterval) return;
-  
-  // Poll every 500ms
-  pollingInterval = window.setInterval(pollCraftingState, 500);
-  console.log('[CraftBuddy] Started polling for crafting state');
-}
-
-/**
- * Stop polling for state updates.
- */
-function stopPolling(): void {
-  if (pollingInterval) {
-    window.clearInterval(pollingInterval);
-    pollingInterval = null;
-    console.log('[CraftBuddy] Stopped polling');
-  }
-}
-
-/**
- * Check if crafting UI is currently visible.
- */
-function isCraftingUIVisible(): boolean {
-  // Look for crafting-specific elements in the DOM
-  const craftingIndicators = [
-    '[class*="crafting"]',
-    '[class*="Crafting"]',
-    '[data-testid*="crafting"]',
-    '.crafting-panel',
-    '.crafting-screen',
-    '#crafting',
-  ];
-  
-  for (const selector of craftingIndicators) {
-    try {
-      const element = document.querySelector(selector);
-      if (element) {
-        return true;
-      }
-    } catch (e) {
-      // Invalid selector, skip
-    }
-  }
-  
-  // Also check for text content that indicates crafting
-  const bodyText = document.body.innerText || '';
-  if (bodyText.includes('Completion:') && bodyText.includes('Perfection:') && bodyText.includes('Stability:')) {
-    return true;
-  }
-  
-  return false;
-}
-
-/**
- * Set up MutationObserver to detect crafting UI.
- */
-function setupCraftingDetection(): void {
-  // Check periodically for crafting UI
-  setInterval(() => {
-    const craftingVisible = isCraftingUIVisible();
+      
+      // Initialize our state
+      currentRecommendation = null;
+      currentCompletion = 0;
+      currentPerfection = 0;
+      currentStability = 0;
+      currentMaxStability = targetStability;
+      currentToxicity = 0;
+      currentCooldowns = new Map();
+      nextConditions = [];
+      
+      // Build initial config from entity
+      currentConfig = buildConfigFromEntity(entity);
+      lastEntity = entity;
+      
+      console.log(`[CraftBuddy] Initialized for ${harmonyType} crafting with ${entity.techniques?.length || 0} techniques`);
+    },
     
-    if (craftingVisible && !isCraftingActive) {
-      startCraftingSession();
-    } else if (!craftingVisible && isCraftingActive) {
-      endCraftingSession();
-    }
-  }, 1000);
-  
-  console.log('[CraftBuddy] Crafting detection set up');
+    processEffect: (harmonyData, technique: CraftingTechnique, progressState: ProgressState, entity: CraftingEntity, state: GameCraftingState) => {
+      console.log(`[CraftBuddy] processEffect called after ${technique.name}`);
+      
+      // Call original processEffect if it exists
+      if (originalConfig?.processEffect) {
+        originalConfig.processEffect(harmonyData, technique, progressState, entity, state);
+      }
+      
+      // Track max stability decay
+      // @ts-ignore
+      const gameMaxStability = progressState?.maxStability ?? state?.maxStability;
+      if (gameMaxStability === undefined || gameMaxStability <= 0) {
+        const preventsDecay = technique?.noMaxStabilityLoss === true;
+        if (!preventsDecay && currentMaxStability > 10) {
+          currentMaxStability = Math.max(10, currentMaxStability - 1);
+        }
+        const effects = technique?.effects || [];
+        for (const effect of effects) {
+          if (effect?.kind === 'maxStability') {
+            const change = effect.amount?.value || 0;
+            currentMaxStability = Math.max(10, currentMaxStability + change);
+          }
+        }
+      }
+      
+      // Update our recommendation
+      updateRecommendation(entity, progressState);
+    },
+    
+    renderComponent: (harmonyData) => {
+      // Render original component if it exists
+      const originalComponent = originalConfig?.renderComponent ? originalConfig.renderComponent(harmonyData) : null;
+      
+      // Create settings change handler
+      const handleSettingsChange = (newSettings: CraftBuddySettings) => {
+        currentSettings = newSettings;
+      };
+      
+      // Create our recommendation panel
+      const craftBuddyPanel = React.createElement(
+        'div',
+        {
+          key: 'craftbuddy-panel',
+          style: {
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            zIndex: 1000,
+            pointerEvents: 'auto',
+          }
+        },
+        React.createElement(RecommendationPanel, {
+          result: currentRecommendation,
+          currentCompletion,
+          currentPerfection,
+          targetCompletion,
+          targetPerfection,
+          currentStability,
+          currentMaxStability,
+          settings: currentSettings,
+          onSettingsChange: handleSettingsChange,
+          targetStability,
+          nextConditions,
+          currentToxicity,
+          maxToxicity,
+          craftingType: currentCraftingType,
+        })
+      );
+      
+      // Return both the original component and our panel
+      if (originalComponent) {
+        return React.createElement(
+          React.Fragment,
+          null,
+          originalComponent,
+          craftBuddyPanel
+        );
+      }
+      
+      return craftBuddyPanel;
+    },
+  };
+}
+
+/**
+ * Register CraftBuddy for all harmony types by wrapping existing configs.
+ */
+const harmonyTypes: RecipeHarmonyType[] = ['forge', 'alchemical', 'inscription', 'resonance'];
+
+for (const harmonyType of harmonyTypes) {
+  try {
+    // Get the existing harmony config if any
+    const existingConfig = window.modAPI?.gameData?.harmonyConfigs?.[harmonyType];
+    
+    // Create our wrapped config
+    const craftBuddyConfig = createCraftBuddyHarmonyConfig(existingConfig, harmonyType);
+    
+    // Register it
+    window.modAPI.actions.addHarmonyType(harmonyType, craftBuddyConfig);
+    console.log(`[CraftBuddy] Registered harmony type wrapper for ${harmonyType}`);
+  } catch (e) {
+    console.error(`[CraftBuddy] Failed to register harmony type for ${harmonyType}:`, e);
+  }
 }
 
 /**
@@ -642,7 +571,7 @@ function setupCraftingDetection(): void {
  */
 try {
   window.modAPI.hooks.onDeriveRecipeDifficulty((recipe, recipeStats, gameFlags) => {
-    console.log('[CraftBuddy] Crafting started for recipe:', recipe?.name);
+    console.log('[CraftBuddy] onDeriveRecipeDifficulty called for:', recipe?.name);
     
     if (recipeStats) {
       targetCompletion = recipeStats.completion || 100;
@@ -683,9 +612,6 @@ try {
     currentConfig = null;
     nextConditions = [];
     
-    // Start crafting session
-    startCraftingSession();
-    
     return recipeStats;
   });
   
@@ -693,9 +619,6 @@ try {
 } catch (e) {
   console.error('[CraftBuddy] Failed to register lifecycle hooks:', e);
 }
-
-// Set up crafting detection
-setupCraftingDetection();
 
 /**
  * Export debug functions to the window.
@@ -712,12 +635,13 @@ setupCraftingDetection();
     currentToxicity,
     maxToxicity,
     craftingType: currentCraftingType,
-    isCraftingActive,
   }),
   getCooldowns: () => Object.fromEntries(currentCooldowns),
   getNextConditions: () => nextConditions,
   getConditionEffects: () => conditionEffectsCache,
   getSettings: () => currentSettings,
+  getLastEntity: () => lastEntity,
+  getLastProgressState: () => lastProgressState,
   
   setTargets: (completion: number, perfection: number, stability?: number) => {
     targetCompletion = completion;
@@ -733,27 +657,34 @@ setupCraftingDetection();
   
   togglePanel: () => {
     currentSettings = saveSettings({ panelVisible: !currentSettings.panelVisible });
-    renderPanel();
     return currentSettings.panelVisible;
   },
   
   toggleCompact: () => {
     currentSettings = saveSettings({ compactMode: !currentSettings.compactMode });
-    renderPanel();
     return currentSettings.compactMode;
   },
-  
-  // Manual controls for testing
-  startSession: () => startCraftingSession(),
-  endSession: () => endCraftingSession(),
   
   logGameData: () => {
     console.log('[CraftBuddy] === Game Data Sources ===');
     console.log('recipeConditionEffects:', window.modAPI?.gameData?.recipeConditionEffects);
     console.log('craftingTechniques:', window.modAPI?.gameData?.craftingTechniques);
+    console.log('harmonyConfigs:', window.modAPI?.gameData?.harmonyConfigs);
     console.log('Current config:', currentConfig);
     console.log('Condition effects cache:', conditionEffectsCache);
     console.log('Current settings:', currentSettings);
+    console.log('Last entity:', lastEntity);
+    console.log('Last progressState:', lastProgressState);
+  },
+  
+  // Force update recommendation with stored entity/state
+  forceUpdate: () => {
+    if (lastEntity && lastProgressState) {
+      updateRecommendation(lastEntity, lastProgressState);
+      console.log('[CraftBuddy] Forced update');
+    } else {
+      console.log('[CraftBuddy] No entity/state stored yet');
+    }
   },
 };
 
@@ -767,13 +698,11 @@ try {
         case 'c':
           event.preventDefault();
           currentSettings = saveSettings({ panelVisible: !currentSettings.panelVisible });
-          renderPanel();
           console.log(`[CraftBuddy] Panel visibility: ${currentSettings.panelVisible}`);
           break;
         case 'm':
           event.preventDefault();
           currentSettings = saveSettings({ compactMode: !currentSettings.compactMode });
-          renderPanel();
           console.log(`[CraftBuddy] Compact mode: ${currentSettings.compactMode}`);
           break;
       }
@@ -789,11 +718,13 @@ try {
  */
 function createTitleScreenIndicator(): void {
   try {
-    if (document.getElementById('craftbuddy-indicator')) return;
+    if (document.getElementById('craftbuddy-indicator')) {
+      return;
+    }
 
     const indicator = document.createElement('div');
     indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.7.0 Loaded';
+    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.8.0 Loaded';
     
     Object.assign(indicator.style, {
       position: 'fixed',
@@ -835,5 +766,4 @@ function createTitleScreenIndicator(): void {
 createTitleScreenIndicator();
 
 console.log('[CraftBuddy] Mod loaded successfully!');
-console.log('[CraftBuddy] Using DOM injection approach for crafting UI');
-console.log('[CraftBuddy] Debug: window.craftBuddyDebug.logGameData()');
+console.log('[CraftBuddy] Debug: window.craftBuddyDebug.logGameData() to inspect data sources');
