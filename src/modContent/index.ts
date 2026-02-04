@@ -938,6 +938,7 @@ try {
 /**
  * Create a visual indicator on the title screen to show the mod is loaded.
  * This helps players confirm the mod was installed correctly.
+ * The indicator appears briefly in the top-right corner and then fades out completely.
  */
 function createTitleScreenIndicator(): void {
   try {
@@ -948,13 +949,13 @@ function createTitleScreenIndicator(): void {
 
     const indicator = document.createElement('div');
     indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.5.1 Loaded';
+    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.6.0 Loaded';
     
-    // Style the indicator to appear in the bottom-left corner
+    // Style the indicator to appear in the top-right corner
     Object.assign(indicator.style, {
       position: 'fixed',
-      bottom: '10px',
-      left: '10px',
+      top: '10px',
+      right: '10px',
       padding: '8px 12px',
       backgroundColor: 'rgba(0, 0, 0, 0.7)',
       color: '#FFD700',
@@ -966,19 +967,26 @@ function createTitleScreenIndicator(): void {
       zIndex: '9999',
       pointerEvents: 'none',
       textShadow: '0 0 5px rgba(255, 215, 0, 0.5)',
-      transition: 'opacity 0.3s ease',
+      opacity: '1',
+      transition: 'opacity 1s ease',
     });
 
     document.body.appendChild(indicator);
     console.log('[CraftBuddy] Title screen indicator created');
 
-    // Fade out the indicator after 10 seconds on non-crafting screens
-    // but keep it visible during crafting
+    // Fade out the indicator after 5 seconds, then remove it completely
     setTimeout(() => {
-      if (indicator && !currentConfig) {
-        indicator.style.opacity = '0.5';
+      if (indicator) {
+        indicator.style.opacity = '0';
+        // Remove from DOM after fade animation completes
+        setTimeout(() => {
+          if (indicator && indicator.parentNode) {
+            indicator.parentNode.removeChild(indicator);
+            console.log('[CraftBuddy] Title screen indicator removed');
+          }
+        }, 1000); // Wait for 1s fade transition to complete
       }
-    }, 10000);
+    }, 5000); // Show for 5 seconds before fading
   } catch (e) {
     console.warn('[CraftBuddy] Failed to create title screen indicator:', e);
   }

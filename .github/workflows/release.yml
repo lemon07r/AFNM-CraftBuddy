@@ -40,6 +40,6 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            builds/afnm-craftbuddy-*.zip
+            builds/afnm-craftbuddy.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

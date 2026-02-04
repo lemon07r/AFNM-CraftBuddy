@@ -6,7 +6,8 @@ const fs = require('fs');
 async function zipDist() {
   const distPath = path.resolve(__dirname, `../dist/${package.name}`);
   const buildsDir = path.resolve(__dirname, '../builds');
-  const zipPath = path.resolve(buildsDir, `${package.name}-${package.version}.zip`);
+  // Use just the mod name without version for easier updates
+  const zipPath = path.resolve(buildsDir, `${package.name}.zip`);
   const packageJsonPath = path.resolve(__dirname, '../package.json');
   const distPackageJsonPath = path.resolve(distPath, 'package.json');
 

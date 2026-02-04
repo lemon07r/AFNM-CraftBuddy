@@ -4,7 +4,7 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 
 ## Features
 
-- ✅ **Mod Loaded Indicator**: Visual confirmation on the title screen that the mod is installed correctly
+- ✅ **Mod Loaded Indicator**: Brief visual confirmation in the top-right corner when the game starts (fades after 5 seconds)
 - 🔮 **Real-time Recommendations**: Shows the best skill to use based on current crafting state
 - 📊 **Expected Gains**: Displays completion, perfection, and stability gains for each skill
 - 💡 **Reasoning**: Explains why a skill is recommended (buff active, low stability, etc.)
@@ -16,7 +16,7 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 
 ## Installation
 
-1. Download the latest release (`afnm-craftbuddy-x.x.x.zip`) from [Releases](https://github.com/lemon07r/AFNM-CraftBuddy/releases)
+1. Download the latest release (`afnm-craftbuddy.zip`) from [Releases](https://github.com/lemon07r/AFNM-CraftBuddy/releases)
 2. Create a `mods` folder in your game installation directory (same folder as the game executable)
 3. Copy the zip file to the `mods` folder - **do NOT unzip it**
 4. Launch the game - the mod will be loaded automatically
@@ -26,7 +26,7 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 - **Linux (Direct)**: `/path/to/AFNM_Linux/mods/`
 - **Windows (Steam)**: `C:\Program Files (x86)\Steam\steamapps\common\Ascend From Nine Mountains\mods\`
 
-**Verify installation:** Look for the "🔮 AFNM-CraftBuddy vX.X.X Loaded" indicator in the bottom-left corner of the title screen.
+**Verify installation:** Look for the "🔮 AFNM-CraftBuddy Loaded" indicator in the top-right corner when the game starts. It will appear briefly for 5 seconds then fade away.
 
 ## Usage
 

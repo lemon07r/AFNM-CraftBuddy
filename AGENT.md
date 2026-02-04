@@ -328,9 +328,14 @@ All planned improvements have been implemented! Potential future enhancements:
 - Further performance tuning for very deep searches (depth > 6)
 - Support for mod-added custom techniques
 
+## Completed Improvements (v1.6.0)
+
+- [x] **Improved title screen indicator** - Now appears in top-right corner and fades away after 5 seconds
+- [x] **Version-less zip filename** - Release zip is now `afnm-craftbuddy.zip` for easier updates (no need to rename when replacing)
+
 ## Completed Improvements (v1.5.0)
 
-- [x] **Title screen indicator** - Visual confirmation that mod is loaded (bottom-left corner)
+- [x] **Title screen indicator** - Visual confirmation that mod is loaded
 - [x] **Default lookahead depth increased** - Changed from 3 to 4 for better recommendations
 
 ## Completed Improvements (v1.4.0)
