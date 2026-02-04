@@ -520,4 +520,86 @@ describe('search performance', () => {
     expect(time1).toBeLessThan(1000);
     expect(time2).toBeLessThan(1000);
   });
+
+  it('should handle large late-game numbers efficiently', () => {
+    // Simulate late-game scenario with very large completion/perfection targets
+    const state = new CraftingState({
+      qi: 500,
+      stability: 50,
+      maxStability: 60,
+      completion: 1500000,  // 1.5 million - already have significant progress
+      perfection: 1200000,  // 1.2 million
+    });
+    
+    const startTime = Date.now();
+    const result = lookaheadSearch(
+      state, config, 
+      2000000,  // 2 million target
+      1800000,  // 1.8 million target
+      6,        // depth 6 - would be very slow without optimizations
+      1.0,
+      [],
+      undefined,
+      [],
+      { timeBudgetMs: 200, beamWidth: 6 }  // Use time budget to prevent freezes
+    );
+    const endTime = Date.now();
+    
+    // Should complete within time budget (with some margin)
+    expect(endTime - startTime).toBeLessThan(500);
+    
+    // Should still provide a recommendation
+    expect(result.recommendation).not.toBeNull();
+    
+    // Should have search metrics
+    expect(result.searchMetrics).toBeDefined();
+    expect(result.searchMetrics!.nodesExplored).toBeGreaterThan(0);
+  });
+
+  it('should respect time budget and not freeze UI', () => {
+    const state = new CraftingState({
+      qi: 200,
+      stability: 50,
+      maxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    
+    // Very deep search with strict time budget
+    const startTime = Date.now();
+    const result = lookaheadSearch(
+      state, config, 
+      100000, 100000, 
+      12,  // Very deep - would take forever without budget
+      1.0,
+      [],
+      undefined,
+      [],
+      { timeBudgetMs: 50, maxNodes: 10000 }  // Strict budget
+    );
+    const endTime = Date.now();
+    
+    // Should terminate within reasonable time (budget + overhead)
+    expect(endTime - startTime).toBeLessThan(200);
+    
+    // Should still provide best result found so far
+    expect(result.recommendation).not.toBeNull();
+  });
+
+  it('should report search metrics', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      maxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    
+    const result = lookaheadSearch(state, config, 100, 100, 3);
+    
+    expect(result.searchMetrics).toBeDefined();
+    expect(result.searchMetrics!.nodesExplored).toBeGreaterThan(0);
+    expect(result.searchMetrics!.timeTakenMs).toBeGreaterThanOrEqual(0);
+    expect(result.searchMetrics!.depthReached).toBe(3);
+  });
 });

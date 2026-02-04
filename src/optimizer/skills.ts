@@ -6,6 +6,7 @@
  */
 
 import { CraftingState, BuffType } from './state';
+import { safeFloor, safeAdd, safeMultiply, checkPrecision } from '../utils/largeNumbers';
 
 export interface SkillDefinition {
   name: string;
@@ -252,8 +253,9 @@ export function calculateDisciplinedTouchGains(
   
   // Use skill's multipliers (baseCompletionGain and basePerfectionGain)
   // These are typically 0.5 each for Disciplined Touch
-  const completionGain = Math.floor(skill.baseCompletionGain * effectiveIntensity);
-  const perfectionGain = Math.floor(skill.basePerfectionGain * effectiveControl);
+  // Use safe arithmetic to handle large late-game values
+  const completionGain = safeFloor(safeMultiply(skill.baseCompletionGain, effectiveIntensity));
+  const perfectionGain = safeFloor(safeMultiply(skill.basePerfectionGain, effectiveControl));
   
   return {
     completion: completionGain,
@@ -295,14 +297,15 @@ export function calculateSkillGains(
   // Apply control scaling for refine skills (with mastery bonus)
   // The baseXxxGain is actually a multiplier from the game data
   // Actual gain = multiplier * control * condition * mastery
+  // Use safe arithmetic to handle large late-game values
   if (skill.scalesWithControl) {
-    const baseControl = config.baseControl * controlMasteryBonus;
-    const control = state.getControl(baseControl) * controlCondition;
+    const baseControl = safeMultiply(config.baseControl, controlMasteryBonus);
+    const control = safeMultiply(state.getControl(baseControl), controlCondition);
     // basePerfectionGain is the multiplier (e.g., 2.0 for Harmonious Refine)
-    perfectionGain = Math.floor(skill.basePerfectionGain * control);
+    perfectionGain = safeFloor(safeMultiply(skill.basePerfectionGain, control));
     // Some refine skills also give completion (like Disciplined Touch)
     if (skill.baseCompletionGain > 0) {
-      completionGain = Math.floor(skill.baseCompletionGain * control);
+      completionGain = safeFloor(safeMultiply(skill.baseCompletionGain, control));
     } else {
       completionGain = 0;
     }
@@ -311,11 +314,12 @@ export function calculateSkillGains(
   // Apply intensity scaling for fusion skills (with mastery bonus)
   // The baseXxxGain is actually a multiplier from the game data
   // Actual gain = multiplier * intensity * mastery
+  // Use safe arithmetic to handle large late-game values
   if (skill.scalesWithIntensity && skill.type === 'fusion') {
-    const baseIntensity = config.baseIntensity * intensityMasteryBonus;
+    const baseIntensity = safeMultiply(config.baseIntensity, intensityMasteryBonus);
     const intensity = state.getIntensity(baseIntensity);
     // baseCompletionGain is the multiplier (e.g., 2.0 for Harmonious Fusion)
-    completionGain = Math.floor(skill.baseCompletionGain * intensity);
+    completionGain = safeFloor(safeMultiply(skill.baseCompletionGain, intensity));
   }
 
   return {
@@ -520,12 +524,13 @@ export function applySkill(
   }
 
   // Create new state with all updates
+  // Use safe arithmetic for completion/perfection to handle large late-game values
   return state.copy({
     qi: newQi,
     stability: newStability,
     maxStability: newMaxStability,
-    completion: state.completion + gains.completion,
-    perfection: state.perfection + gains.perfection,
+    completion: safeAdd(state.completion, gains.completion),
+    perfection: safeAdd(state.perfection, gains.perfection),
     controlBuffTurns: newControlBuffTurns,
     intensityBuffTurns: newIntensityBuffTurns,
     controlBuffMultiplier: newControlBuffMultiplier,

@@ -26,4 +26,4 @@ export {
   greedySearch,
   lookaheadSearch,
 } from './search';
-export type { SkillRecommendation, SearchResult, CraftingConditionType } from './search';
+export type { SkillRecommendation, SearchResult, CraftingConditionType, SearchConfig } from './search';

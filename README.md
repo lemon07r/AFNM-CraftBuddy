@@ -13,6 +13,7 @@ A mod for **Ascend From Nine Mountains** that automatically calculates and displ
 - ⚙️ **Settings Panel**: Configure lookahead depth, display options, and more
 - ⌨️ **Keyboard Shortcuts**: Quick toggle for panel visibility and compact mode
 - 📏 **Compact Mode**: Smaller panel for less screen obstruction
+- 🔢 **Large Number Support**: Handles late-game values with compact formatting (e.g., "1.5M" instead of "1500000")
 
 ## Installation
 
@@ -57,7 +58,7 @@ During any crafting session (forge, alchemical, inscription, or resonance), AFNM
 
 Click the gear icon (⚙️) on the recommendation panel to access settings:
 
-- **Lookahead Depth** (1-24): Higher values give better recommendations but are slower (optimal: 8-12)
+- **Lookahead Depth** (1-24): Default is 4. ⚠️ **WARNING**: Values above 6 are dangerous and may freeze or crash the game!
 - **Compact Mode**: Show only essential information
 - **Show Rotation**: Display suggested skill sequence
 - **Show Final State**: Display projected outcome
@@ -94,7 +95,7 @@ window.craftBuddyDebug.setTargets(completion, perfection, stability)
 
 // View/modify settings
 window.craftBuddyDebug.getSettings()
-window.craftBuddyDebug.setLookaheadDepth(8)  // 1-24, optimal: 8-12
+window.craftBuddyDebug.setLookaheadDepth(4)  // 1-24, default: 4 (higher values may freeze the game!)
 window.craftBuddyDebug.togglePanel()         // Toggle visibility
 window.craftBuddyDebug.toggleCompact()       // Toggle compact mode
 
@@ -156,6 +157,15 @@ CraftBuddy reads **all values directly from the game** - no hardcoded assumption
 
 - May conflict with other mods that override harmony types (conflict detection will warn you)
 - Equipment bonuses and realm modifiers are detected and logged but may vary by game version
+
+## Large Number Handling
+
+CraftBuddy is designed to handle the large numbers that appear in late-game crafting:
+
+- **Safe Arithmetic**: Uses overflow-protected math operations to prevent precision loss
+- **Compact Display**: Large values are formatted with suffixes (K, M, B, T, Q) for readability
+- **Precision Warnings**: Logs warnings if values approach JavaScript's safe integer limit (~9 quadrillion)
+- **Robust Parsing**: Safely parses game data including edge cases like NaN or Infinity
 
 ## License
 

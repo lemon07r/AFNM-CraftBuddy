@@ -35,6 +35,7 @@ import {
   loadSettings,
 } from '../settings';
 import { debugLog } from '../utils/debug';
+import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 
 // Global state for the optimizer
 let currentRecommendation: SearchResult | null = null;
@@ -312,7 +313,9 @@ function convertGameTechniques(
     let buffType = BuffType.NONE;
     let buffDuration = 0;
     let buffMultiplier = 1.0;
-    let scalingStat: string | undefined;
+    // Track scaling stat for each effect type separately
+    let completionScalingStat: string | undefined;
+    let perfectionScalingStat: string | undefined;
 
     const effects = tech.effects || [];
     for (const effect of effects) {
@@ -321,11 +324,11 @@ function convertGameTechniques(
       switch (effect.kind) {
         case 'completion':
           baseCompletionGain = effect.amount?.value || 0;
-          if (effect.amount?.stat) scalingStat = effect.amount.stat;
+          completionScalingStat = effect.amount?.stat;
           break;
         case 'perfection':
           basePerfectionGain = effect.amount?.value || 0;
-          if (effect.amount?.stat) scalingStat = effect.amount.stat;
+          perfectionScalingStat = effect.amount?.stat;
           break;
         case 'stability':
           stabilityGain = effect.amount?.value || 0;
@@ -356,8 +359,10 @@ function convertGameTechniques(
       }
     }
 
-    const scalesWithIntensity = techType === 'fusion' || scalingStat === 'intensity';
-    const scalesWithControl = techType === 'refine' || scalingStat === 'control';
+    // Only set scaling flags based on actual effect scaling stats, not just technique type
+    // This fixes the bug where skills without perfection effects were showing predicted perfection gains
+    const scalesWithIntensity = completionScalingStat === 'intensity';
+    const scalesWithControl = perfectionScalingStat === 'control';
     const hasConsumeBuff = effects.some(e => e?.kind === 'consumeBuff');
     const isDisciplinedTouch = hasConsumeBuff || techName.toLowerCase().includes('disciplined');
     
@@ -463,12 +468,18 @@ function updateRecommendation(
   lastEntity = entity;
   lastProgressState = progressState;
   
-  const pool = entity?.stats?.pool || 0;
-  const stability = progressState?.stability || 0;
-  const completion = progressState?.completion || 0;
-  const perfection = progressState?.perfection || 0;
+  const pool = parseGameNumber(entity?.stats?.pool, 0);
+  const stability = parseGameNumber(progressState?.stability, 0);
+  const completion = parseGameNumber(progressState?.completion, 0);
+  const perfection = parseGameNumber(progressState?.perfection, 0);
   const condition = progressState?.condition;
   const buffs = entity?.buffs;
+  
+  // Check for very large numbers that might cause precision issues
+  checkPrecision(completion, 'completion');
+  checkPrecision(perfection, 'perfection');
+  checkPrecision(targetCompletion, 'targetCompletion');
+  checkPrecision(targetPerfection, 'targetPerfection');
   
   nextConditions = progressState?.nextConditions || [];
   currentCondition = condition;

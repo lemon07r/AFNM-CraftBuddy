@@ -6,7 +6,7 @@
  */
 
 export interface CraftBuddySettings {
-  /** Lookahead search depth (1-24, default: 8) */
+  /** Lookahead search depth (1-24, default: 4) */
   lookaheadDepth: number;
   /** Whether to show the panel in compact mode */
   compactMode: boolean;
@@ -22,12 +22,20 @@ export interface CraftBuddySettings {
   showExpectedFinalState: boolean;
   /** Show optimal rotation */
   showOptimalRotation: boolean;
+  
+  // Performance settings for late-game optimization
+  /** Maximum time budget for search in milliseconds (10-500, default: 100) */
+  searchTimeBudgetMs: number;
+  /** Maximum nodes to explore before stopping (1000-100000, default: 50000) */
+  searchMaxNodes: number;
+  /** Beam width - max branches to explore at each level (3-15, default: 8) */
+  searchBeamWidth: number;
 }
 
 const STORAGE_KEY = 'craftbuddy_settings';
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
-  lookaheadDepth: 8,
+  lookaheadDepth: 4,
   compactMode: false,
   panelVisible: true,
   maxAlternatives: 2,
@@ -35,6 +43,10 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
+  // Performance defaults - balanced for responsiveness
+  searchTimeBudgetMs: 100,
+  searchMaxNodes: 50000,
+  searchBeamWidth: 8,
 };
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
@@ -116,6 +128,44 @@ export function setLookaheadDepth(depth: number): number {
   currentSettings.lookaheadDepth = Math.max(1, Math.min(24, depth));
   saveSettings(currentSettings);
   return currentSettings.lookaheadDepth;
+}
+
+/**
+ * Set search time budget (clamped to 10-500ms)
+ */
+export function setSearchTimeBudget(ms: number): number {
+  currentSettings.searchTimeBudgetMs = Math.max(10, Math.min(500, ms));
+  saveSettings(currentSettings);
+  return currentSettings.searchTimeBudgetMs;
+}
+
+/**
+ * Set search max nodes (clamped to 1000-100000)
+ */
+export function setSearchMaxNodes(nodes: number): number {
+  currentSettings.searchMaxNodes = Math.max(1000, Math.min(100000, nodes));
+  saveSettings(currentSettings);
+  return currentSettings.searchMaxNodes;
+}
+
+/**
+ * Set search beam width (clamped to 3-15)
+ */
+export function setSearchBeamWidth(width: number): number {
+  currentSettings.searchBeamWidth = Math.max(3, Math.min(15, width));
+  saveSettings(currentSettings);
+  return currentSettings.searchBeamWidth;
+}
+
+/**
+ * Get search configuration for the optimizer
+ */
+export function getSearchConfig(): { timeBudgetMs: number; maxNodes: number; beamWidth: number } {
+  return {
+    timeBudgetMs: currentSettings.searchTimeBudgetMs,
+    maxNodes: currentSettings.searchMaxNodes,
+    beamWidth: currentSettings.searchBeamWidth,
+  };
 }
 
 // Initialize settings on module load

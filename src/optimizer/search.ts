@@ -6,9 +6,11 @@
  * 
  * Performance optimizations:
  * - Move ordering: Search promising skills first (buff skills when no buff, high-gain skills)
- * - Memoization: Cache search results by state key
+ * - Memoization: Cache search results by state key with progress bucketing for large numbers
+ * - Alpha-beta pruning: Cut off branches that can't improve the result
+ * - Beam search: Limit branches explored at each depth level
  * - Early termination: Stop when targets are met
- * - Iterative deepening: For deep searches, use time budget
+ * - Time budget: Prevent UI freezes with configurable time limits
  */
 
 import { CraftingState, BuffType } from './state';
@@ -63,6 +65,82 @@ export interface SearchResult {
     qi: number;
     turnsRemaining: number;
   };
+  /** Search performance metrics */
+  searchMetrics?: {
+    nodesExplored: number;
+    cacheHits: number;
+    timeTakenMs: number;
+    depthReached: number;
+    pruned: number;
+  };
+}
+
+/**
+ * Search configuration for performance tuning
+ */
+export interface SearchConfig {
+  /** Maximum time budget in milliseconds (default: 100ms) */
+  timeBudgetMs: number;
+  /** Maximum nodes to explore before stopping (default: 50000) */
+  maxNodes: number;
+  /** Beam width - max branches to explore at each level (default: 8) */
+  beamWidth: number;
+  /** Whether to use alpha-beta pruning (default: true) */
+  useAlphaBeta: boolean;
+  /** Progress bucket size for cache key normalization (default: 100) */
+  progressBucketSize: number;
+}
+
+/** Default search configuration */
+const DEFAULT_SEARCH_CONFIG: SearchConfig = {
+  timeBudgetMs: 100,
+  maxNodes: 50000,
+  beamWidth: 8,
+  useAlphaBeta: true,
+  progressBucketSize: 100,
+};
+
+/**
+ * Bucket a progress value for cache key normalization.
+ * Large numbers are grouped into buckets to improve cache hit rates.
+ * 
+ * For values < 1000: exact value (fine-grained for early game)
+ * For values >= 1000: bucketed by progressBucketSize
+ * 
+ * This dramatically improves cache efficiency in late game where
+ * completion/perfection values can be in the millions.
+ */
+function bucketProgress(value: number, bucketSize: number = 100): number {
+  if (value < 1000) {
+    return value;
+  }
+  return Math.floor(value / bucketSize) * bucketSize;
+}
+
+/**
+ * Generate a normalized cache key that buckets large progress values.
+ * This improves cache hit rates significantly in late game scenarios.
+ */
+function getNormalizedCacheKey(
+  state: CraftingState,
+  targetCompletion: number,
+  targetPerfection: number,
+  remainingDepth: number,
+  condition: number,
+  conditionType: string | undefined,
+  bucketSize: number
+): string {
+  // For progress values, we care about:
+  // 1. Whether we've met the target (exact match matters)
+  // 2. How far we are from the target (bucketed for large values)
+  const compMet = state.completion >= targetCompletion;
+  const perfMet = state.perfection >= targetPerfection;
+  
+  // If targets are met, we don't need fine-grained progress tracking
+  const compKey = compMet ? 'MET' : bucketProgress(state.completion, bucketSize);
+  const perfKey = perfMet ? 'MET' : bucketProgress(state.perfection, bucketSize);
+  
+  return `${state.getCacheKey()}:${compKey}:${perfKey}:${remainingDepth}:${condition}:${conditionType || 'n'}`;
 }
 
 /**
@@ -370,8 +448,14 @@ export function greedySearch(
 }
 
 /**
- * Lookahead search with memoization.
+ * Lookahead search with memoization and performance optimizations.
  * Searches N moves ahead to find the best first move.
+ * 
+ * Performance features:
+ * - Alpha-beta pruning to cut off unpromising branches
+ * - Beam search to limit branches at each level
+ * - Time budget to prevent UI freezes
+ * - Progress bucketing for better cache hits with large numbers
  * 
  * @param state - Current crafting state
  * @param config - Optimizer config with skills and character stats
@@ -382,6 +466,7 @@ export function greedySearch(
  * @param forecastedConditions - Array of upcoming condition multipliers for each depth
  * @param currentConditionType - Current condition type for skill filtering
  * @param forecastedConditionTypes - Array of upcoming condition types for skill filtering
+ * @param searchConfig - Optional search configuration for performance tuning
  */
 export function lookaheadSearch(
   state: CraftingState,
@@ -392,8 +477,22 @@ export function lookaheadSearch(
   controlCondition: number = 1.0,
   forecastedConditions: number[] = [],
   currentConditionType?: CraftingConditionType,
-  forecastedConditionTypes: CraftingConditionType[] = []
+  forecastedConditionTypes: CraftingConditionType[] = [],
+  searchConfig: Partial<SearchConfig> = {}
 ): SearchResult {
+  // Merge with default search config
+  const cfg: SearchConfig = { ...DEFAULT_SEARCH_CONFIG, ...searchConfig };
+  
+  // Search metrics for performance monitoring
+  const metrics = {
+    nodesExplored: 0,
+    cacheHits: 0,
+    timeTakenMs: 0,
+    depthReached: depth,
+    pruned: 0,
+  };
+  const startTime = Date.now();
+  
   // Check if targets already met
   if (targetCompletion > 0 && targetPerfection > 0) {
     if (state.targetsMet(targetCompletion, targetPerfection)) {
@@ -402,6 +501,7 @@ export function lookaheadSearch(
         alternativeSkills: [],
         isTerminal: false,
         targetsMet: true,
+        searchMetrics: metrics,
       };
     }
   }
@@ -413,17 +513,61 @@ export function lookaheadSearch(
       alternativeSkills: [],
       isTerminal: true,
       targetsMet: false,
+      searchMetrics: metrics,
     };
   }
 
   // Memoization cache: cacheKey -> best score achievable from that state
   const cache = new Map<string, number>();
+  
+  // Flag to signal early termination due to time/node budget
+  let shouldTerminate = false;
 
   /**
-   * Recursive search function
-   * Uses forecasted conditions at each depth level for more accurate simulation
+   * Check if we should terminate search early due to budget constraints
    */
-  function search(currentState: CraftingState, remainingDepth: number, depthIndex: number): number {
+  function checkBudget(): boolean {
+    if (shouldTerminate) return true;
+    
+    // Check time budget
+    if (Date.now() - startTime > cfg.timeBudgetMs) {
+      shouldTerminate = true;
+      return true;
+    }
+    
+    // Check node budget
+    if (metrics.nodesExplored >= cfg.maxNodes) {
+      shouldTerminate = true;
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Recursive search function with alpha-beta pruning
+   * Uses forecasted conditions at each depth level for more accurate simulation
+   * 
+   * @param currentState - Current state to evaluate
+   * @param remainingDepth - Remaining search depth
+   * @param depthIndex - Current depth index for condition lookups
+   * @param alpha - Best score achievable by maximizer (for pruning)
+   * @param beta - Best score achievable by minimizer (for pruning, unused in single-player)
+   */
+  function search(
+    currentState: CraftingState, 
+    remainingDepth: number, 
+    depthIndex: number,
+    alpha: number = -Infinity,
+    beta: number = Infinity
+  ): number {
+    metrics.nodesExplored++;
+    
+    // Check budget constraints
+    if (checkBudget()) {
+      return scoreState(currentState, targetCompletion, targetPerfection);
+    }
+    
     // Get condition type for this depth from forecasted conditions
     // depthIndex 0 = current turn, 1+ = future turns
     const conditionTypeAtDepth = depthIndex < forecastedConditionTypes.length 
@@ -447,9 +591,18 @@ export function lookaheadSearch(
       ? forecastedConditions[depthIndex] 
       : controlCondition;
 
-    // Check cache - include condition in cache key for accuracy
-    const cacheKey = `${currentState.getCacheKey()}:${currentState.completion}:${currentState.perfection}:${remainingDepth}:${conditionAtDepth}:${conditionTypeAtDepth}`;
+    // Check cache with normalized key (buckets large progress values)
+    const cacheKey = getNormalizedCacheKey(
+      currentState,
+      targetCompletion,
+      targetPerfection,
+      remainingDepth,
+      conditionAtDepth,
+      conditionTypeAtDepth,
+      cfg.progressBucketSize
+    );
     if (cache.has(cacheKey)) {
+      metrics.cacheHits++;
       return cache.get(cacheKey)!;
     }
 
@@ -458,15 +611,26 @@ export function lookaheadSearch(
     const orderedSkills = orderSkillsForSearch(
       availableSkills, currentState, config, targetCompletion, targetPerfection
     );
+    
+    // Apply beam search: limit the number of branches explored
+    const beamSkills = orderedSkills.slice(0, cfg.beamWidth);
+    
     let bestScore = scoreState(currentState, targetCompletion, targetPerfection);
 
-    for (const skill of orderedSkills) {
+    for (const skill of beamSkills) {
       const newState = applySkill(currentState, skill, config, conditionAtDepth);
       if (newState === null) continue;
 
-      const score = search(newState, remainingDepth - 1, depthIndex + 1);
+      const score = search(newState, remainingDepth - 1, depthIndex + 1, bestScore, beta);
       if (score > bestScore) {
         bestScore = score;
+      }
+      
+      // Alpha-beta pruning: if we found a score better than what the parent
+      // could guarantee, we can prune this branch
+      if (cfg.useAlphaBeta && bestScore >= beta) {
+        metrics.pruned++;
+        break;
       }
     }
 
@@ -477,20 +641,27 @@ export function lookaheadSearch(
   /**
    * Find the optimal path (rotation) from a given state
    * Returns the sequence of skill names and the final state
+   * 
+   * @param startState - State to start from
+   * @param maxDepth - Maximum depth to search
+   * @param startCondition - Default condition multiplier
+   * @param startDepthIndex - The depth index to start from (for condition lookups)
    */
   function findOptimalPath(
     startState: CraftingState,
     maxDepth: number,
-    startCondition: number
+    startCondition: number,
+    startDepthIndex: number = 0
   ): { path: string[]; finalState: CraftingState } {
     const path: string[] = [];
     let currentState = startState;
     let currentDepth = 0;
 
-    // Get condition type for this depth
-    const getConditionTypeAtDepth = (depth: number) => {
-      if (depth < forecastedConditionTypes.length) return forecastedConditionTypes[depth];
-      return depth === 0 ? currentConditionType : 'neutral';
+    // Get condition type for this depth, offset by startDepthIndex
+    const getConditionTypeAtDepth = (localDepth: number) => {
+      const globalDepth = startDepthIndex + localDepth;
+      if (globalDepth < forecastedConditionTypes.length) return forecastedConditionTypes[globalDepth];
+      return globalDepth === 0 ? currentConditionType : 'neutral';
     };
 
     while (currentDepth < maxDepth && !isTerminalState(currentState, config, getConditionTypeAtDepth(currentDepth))) {
@@ -501,8 +672,9 @@ export function lookaheadSearch(
         }
       }
 
-      const conditionAtDepth = currentDepth < forecastedConditions.length
-        ? forecastedConditions[currentDepth]
+      const globalDepth = startDepthIndex + currentDepth;
+      const conditionAtDepth = globalDepth < forecastedConditions.length
+        ? forecastedConditions[globalDepth]
         : startCondition;
       const conditionTypeAtDepth = getConditionTypeAtDepth(currentDepth);
 
@@ -519,7 +691,7 @@ export function lookaheadSearch(
         const nextState = applySkill(currentState, skill, config, conditionAtDepth);
         if (nextState === null) continue;
 
-        const score = search(nextState, maxDepth - currentDepth - 1, currentDepth + 1);
+        const score = search(nextState, maxDepth - currentDepth - 1, globalDepth + 1);
         if (score > bestScore) {
           bestScore = score;
           bestSkill = skill;
@@ -640,11 +812,13 @@ export function lookaheadSearch(
   scoredSkills.sort((a, b) => b.score - a.score);
 
   if (scoredSkills.length === 0) {
+    metrics.timeTakenMs = Date.now() - startTime;
     return {
       recommendation: null,
       alternativeSkills: [],
       isTerminal: true,
       targetsMet: false,
+      searchMetrics: metrics,
     };
   }
 
@@ -669,8 +843,8 @@ export function lookaheadSearch(
   let expectedFinalState: SearchResult['expectedFinalState'] = undefined;
   
   if (stateAfterFirstMove) {
-    // Find the rest of the optimal path
-    const { path, finalState } = findOptimalPath(stateAfterFirstMove, depth - 1, controlCondition);
+    // Find the rest of the optimal path, starting from depth index 1 (after first move)
+    const { path, finalState } = findOptimalPath(stateAfterFirstMove, depth - 1, controlCondition, 1);
     optimalRotation = [bestFirstMove.name, ...path];
     
     // Calculate turns remaining (estimate based on progress needed)
@@ -688,6 +862,9 @@ export function lookaheadSearch(
     };
   }
 
+  // Record final metrics
+  metrics.timeTakenMs = Date.now() - startTime;
+  
   return {
     recommendation: scoredSkills[0],
     alternativeSkills: scoredSkills.slice(1),
@@ -695,6 +872,7 @@ export function lookaheadSearch(
     targetsMet: false,
     optimalRotation,
     expectedFinalState,
+    searchMetrics: metrics,
   };
 }
 
@@ -716,6 +894,7 @@ export type CraftingConditionType = 'neutral' | 'positive' | 'negative' | 'veryP
  * @param forecastedConditionMultipliers - Array of upcoming condition multipliers (converted from game's nextConditions)
  * @param currentConditionType - Current condition type for skill filtering (e.g., 'veryPositive')
  * @param forecastedConditionTypes - Array of upcoming condition types for skill filtering
+ * @param searchConfig - Optional search configuration for performance tuning
  */
 export function findBestSkill(
   state: CraftingState,
@@ -727,7 +906,8 @@ export function findBestSkill(
   lookaheadDepth: number = 3,
   forecastedConditionMultipliers: number[] = [],
   currentConditionType?: CraftingConditionType,
-  forecastedConditionTypes: CraftingConditionType[] = []
+  forecastedConditionTypes: CraftingConditionType[] = [],
+  searchConfig: Partial<SearchConfig> = {}
 ): SearchResult {
   // Log that we're using game-provided data
   if (forecastedConditionMultipliers.length > 0) {
@@ -741,5 +921,9 @@ export function findBestSkill(
   }
   
   // Pass forecasted condition multipliers and types to lookahead search for accurate simulation
-  return lookaheadSearch(state, config, targetCompletion, targetPerfection, lookaheadDepth, controlCondition, forecastedConditionMultipliers, currentConditionType, forecastedConditionTypes);
+  return lookaheadSearch(
+    state, config, targetCompletion, targetPerfection, lookaheadDepth, 
+    controlCondition, forecastedConditionMultipliers, currentConditionType, 
+    forecastedConditionTypes, searchConfig
+  );
 }

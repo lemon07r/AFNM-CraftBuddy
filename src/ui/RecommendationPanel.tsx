@@ -10,6 +10,17 @@ import { Box, Typography, Paper, Chip, Divider, Avatar } from '@mui/material';
 import { SearchResult, SkillRecommendation, CraftingConditionType } from '../optimizer';
 import { CraftBuddySettings } from '../settings';
 import { SettingsPanel } from './SettingsPanel';
+import { formatLargeNumber, formatProgress, LARGE_NUMBER_THRESHOLD } from '../utils/largeNumbers';
+
+/**
+ * Format a gain value for display, using compact notation for large numbers.
+ */
+function formatGain(value: number): string {
+  if (value >= LARGE_NUMBER_THRESHOLD) {
+    return formatLargeNumber(value, 1);
+  }
+  return value.toLocaleString();
+}
 
 // Skill type colors matching game UI
 const SKILL_TYPE_COLORS: Record<string, string> = {
@@ -152,17 +163,17 @@ function CompactSkillDisplay({
           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 0.25 }}>
             {gains.completion > 0 && (
               <Typography variant="caption" sx={{ color: '#90EE90' }}>
-                +{gains.completion} Completion
+                +{formatGain(gains.completion)} Completion
               </Typography>
             )}
             {gains.perfection > 0 && (
               <Typography variant="caption" sx={{ color: '#87CEEB' }}>
-                +{gains.perfection} Perfection
+                +{formatGain(gains.perfection)} Perfection
               </Typography>
             )}
             {gains.stability > 0 && (
               <Typography variant="caption" sx={{ color: '#FFA500' }}>
-                +{gains.stability} Stability
+                +{formatGain(gains.stability)} Stability
               </Typography>
             )}
           </Box>
@@ -289,17 +300,17 @@ function SingleSkillBox({
           <Box sx={{ display: 'flex', gap: 0.75, mt: 0.25, flexWrap: 'wrap' }}>
             {gains.completion > 0 && (
               <Typography variant="caption" sx={{ color: '#90EE90' }}>
-                +{gains.completion} Completion
+                +{formatGain(gains.completion)} Completion
               </Typography>
             )}
             {gains.perfection > 0 && (
               <Typography variant="caption" sx={{ color: '#87CEEB' }}>
-                +{gains.perfection} Perfection
+                +{formatGain(gains.perfection)} Perfection
               </Typography>
             )}
             {gains.stability > 0 && (
               <Typography variant="caption" sx={{ color: '#FFA500' }}>
-                +{gains.stability} Stability
+                +{formatGain(gains.stability)} Stability
               </Typography>
             )}
           </Box>
@@ -590,14 +601,14 @@ export function RecommendationPanel({
       {(targetCompletion > 0 || targetPerfection > 0) && (
         <Box sx={{ mb: 1.5 }}>
           <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-            Completion: {currentCompletion}/{targetCompletion} | Perfection: {currentPerfection}/{targetPerfection}
+            Completion: {formatProgress(currentCompletion, targetCompletion)} | Perfection: {formatProgress(currentPerfection, targetPerfection)}
           </Typography>
           {targetStability > 0 && (
             <Typography variant="body2" sx={{ color: currentStability < 20 ? '#FFA500' : 'rgba(255, 255, 255, 0.6)' }}>
-              Stability: {currentStability}/{currentMaxStability > 0 ? currentMaxStability : targetStability}
+              Stability: {formatProgress(currentStability, currentMaxStability > 0 ? currentMaxStability : targetStability)}
               {currentMaxStability > 0 && currentMaxStability < targetStability && (
                 <span style={{ color: 'rgba(255, 165, 0, 0.7)', marginLeft: 4 }}>
-                  (max decayed from {targetStability})
+                  (max decayed from {formatGain(targetStability)})
                 </span>
               )}
             </Typography>
@@ -614,7 +625,7 @@ export function RecommendationPanel({
                     : 'rgba(255, 255, 255, 0.6)' 
               }}
             >
-              Toxicity: {currentToxicity}/{maxToxicity}
+              Toxicity: {formatProgress(currentToxicity, maxToxicity)}
               {currentToxicity >= maxToxicity * 0.8 && (
                 <span style={{ color: '#FF6B6B', marginLeft: 4 }}>
                   ⚠ High!
@@ -715,13 +726,13 @@ export function RecommendationPanel({
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <Typography variant="body2" sx={{ color: '#90EE90' }}>
-              Comp: {result.expectedFinalState.completion}/{targetCompletion}
+              Comp: {formatProgress(result.expectedFinalState.completion, targetCompletion)}
             </Typography>
             <Typography variant="body2" sx={{ color: '#87CEEB' }}>
-              Perf: {result.expectedFinalState.perfection}/{targetPerfection}
+              Perf: {formatProgress(result.expectedFinalState.perfection, targetPerfection)}
             </Typography>
             <Typography variant="body2" sx={{ color: '#FFA500' }}>
-              Stab: {result.expectedFinalState.stability}
+              Stab: {formatGain(result.expectedFinalState.stability)}
             </Typography>
           </Box>
           {result.expectedFinalState.completion >= targetCompletion && 

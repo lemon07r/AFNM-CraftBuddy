@@ -108,7 +108,10 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
               }}
             />
             <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)' }}>
-              Higher = better recommendations but slower (1-24, optimal: 8-12)
+              Default: 4. Higher values may freeze or crash the game!
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#FF6B6B', display: 'block', mt: 0.5, fontWeight: 'bold' }}>
+              ⚠️ WARNING: Values above 6 are DANGEROUS and may cause the game to freeze, lag severely, or become unresponsive. Use at your own risk!
             </Typography>
           </Box>
 
