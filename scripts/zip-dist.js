@@ -7,12 +7,18 @@ async function zipDist() {
   const distPath = path.resolve(__dirname, `../dist/${package.name}`);
   const buildsDir = path.resolve(__dirname, '../builds');
   const zipPath = path.resolve(buildsDir, `${package.name}-${package.version}.zip`);
+  const packageJsonPath = path.resolve(__dirname, '../package.json');
+  const distPackageJsonPath = path.resolve(distPath, 'package.json');
 
   try {
     // Create builds directory if it doesn't exist
     if (!fs.existsSync(buildsDir)) {
       fs.mkdirSync(buildsDir, { recursive: true });
     }
+
+    // Copy package.json to dist folder (required by game to identify mod)
+    fs.copyFileSync(packageJsonPath, distPackageJsonPath);
+    console.log('Copied package.json to dist folder');
 
     await zip(distPath, zipPath);
     console.log(`Successfully zipped ${package.name} to ${zipPath}`);
