@@ -124,6 +124,22 @@ describe('greedySearch', () => {
     expect(skill.type === 'refine' || skill.basePerfectionGain > 0).toBe(true);
   });
 
+  it('should handle a perfection-only target without division by zero', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      maxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = greedySearch(state, config, 0, 100);
+
+    expect(result.recommendation).not.toBeNull();
+    const skill = result.recommendation!.skill;
+    expect(skill.type === 'refine' || skill.basePerfectionGain > 0).toBe(true);
+  });
+
   it('should recommend stabilize when stability is low', () => {
     const state = new CraftingState({
       qi: 100,

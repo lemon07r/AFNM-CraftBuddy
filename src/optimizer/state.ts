@@ -51,6 +51,8 @@ export class CraftingState implements CraftingStateData {
   readonly cooldowns: Map<string, number>;
   readonly history: string[];
 
+  private _cacheKey?: string;
+
   constructor(data: Partial<CraftingStateData> = {}) {
     this.qi = data.qi ?? 0;
     this.stability = data.stability ?? 0;
@@ -180,6 +182,10 @@ export class CraftingState implements CraftingStateData {
    * - Cooldowns: which skills are available
    */
   getCacheKey(): string {
+    if (this._cacheKey) {
+      return this._cacheKey;
+    }
+
     // Convert cooldowns to a sorted string for consistent caching
     const cooldownStr = Array.from(this.cooldowns.entries())
       .filter(([_, v]) => v > 0)
@@ -190,7 +196,8 @@ export class CraftingState implements CraftingStateData {
     // Round multipliers to 2 decimal places to avoid floating point comparison issues
     const ctrlMult = this.controlBuffTurns > 0 ? this.controlBuffMultiplier.toFixed(2) : '0';
     const intMult = this.intensityBuffTurns > 0 ? this.intensityBuffMultiplier.toFixed(2) : '0';
-    return `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${cooldownStr}`;
+    this._cacheKey = `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${cooldownStr}`;
+    return this._cacheKey;
   }
 
   toString(): string {

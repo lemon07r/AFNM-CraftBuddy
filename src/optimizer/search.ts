@@ -91,17 +91,20 @@ function scoreState(
   }
 
   // Calculate progress toward each target as a percentage (0-1)
-  const compProgressPct = Math.min(state.completion / targetCompletion, 1);
-  const perfProgressPct = Math.min(state.perfection / targetPerfection, 1);
+  // Guard against zero targets (e.g., recipes that only require completion OR perfection)
+  const compProgressPct = targetCompletion > 0 ? Math.min(state.completion / targetCompletion, 1) : 1;
+  const perfProgressPct = targetPerfection > 0 ? Math.min(state.perfection / targetPerfection, 1) : 1;
   
   // Score based on progress toward targets (primary scoring)
   // Use actual progress values for the base score
-  const compProgress = Math.min(state.completion, targetCompletion);
-  const perfProgress = Math.min(state.perfection, targetPerfection);
+  const compProgress = targetCompletion > 0 ? Math.min(state.completion, targetCompletion) : 0;
+  const perfProgress = targetPerfection > 0 ? Math.min(state.perfection, targetPerfection) : 0;
   let score = compProgress + perfProgress;
 
   // Large bonus for meeting both targets - this is the goal
-  const targetsMet = state.completion >= targetCompletion && state.perfection >= targetPerfection;
+  const targetsMet =
+    (targetCompletion <= 0 || state.completion >= targetCompletion) &&
+    (targetPerfection <= 0 || state.perfection >= targetPerfection);
   if (targetsMet) {
     score += 200; // Significant bonus for achieving the goal
     
@@ -134,8 +137,8 @@ function scoreState(
 
   // Penalize going over targets (wasted resources)
   // Use a smaller penalty to not overly discourage skills that overshoot slightly
-  const compOver = Math.max(0, state.completion - targetCompletion);
-  const perfOver = Math.max(0, state.perfection - targetPerfection);
+  const compOver = targetCompletion > 0 ? Math.max(0, state.completion - targetCompletion) : 0;
+  const perfOver = targetPerfection > 0 ? Math.max(0, state.perfection - targetPerfection) : 0;
   score -= (compOver + perfOver) * 0.3;
 
   // Penalty for low stability (risky state)
@@ -184,9 +187,9 @@ function generateReasoning(
 
   // Check if skill grants buff
   if (skill.buffDuration > 0) {
-    if (skill.buffType === 1) { // CONTROL
+    if (skill.buffType === BuffType.CONTROL) {
       reasons.push('Grants control buff for next turns');
-    } else if (skill.buffType === 2) { // INTENSITY
+    } else if (skill.buffType === BuffType.INTENSITY) {
       reasons.push('Grants intensity buff for next turns');
     }
   }
