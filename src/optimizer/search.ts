@@ -20,6 +20,7 @@ import {
   calculateSkillGains,
   isTerminalState,
 } from './skills';
+import { debugLog } from '../utils/debug';
 
 export interface SkillRecommendation {
   skill: SkillDefinition;
@@ -716,7 +717,9 @@ export function findBestSkill(
 ): SearchResult {
   // Log that we're using game-provided data
   if (forecastedConditionMultipliers.length > 0) {
-    console.log(`[CraftBuddy] Using ${forecastedConditionMultipliers.length} forecasted condition multipliers: ${forecastedConditionMultipliers.join(', ')}`);
+    debugLog(
+      `[CraftBuddy] Using ${forecastedConditionMultipliers.length} forecasted condition multipliers: ${forecastedConditionMultipliers.join(', ')}`
+    );
   }
   
   if (useGreedy) {

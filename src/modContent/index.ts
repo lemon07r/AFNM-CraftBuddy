@@ -34,6 +34,7 @@ import {
   saveSettings,
   loadSettings,
 } from '../settings';
+import { debugLog } from '../utils/debug';
 
 // Global state for the optimizer
 let currentRecommendation: SearchResult | null = null;
@@ -98,7 +99,9 @@ function cacheTargets(recipeName?: string): void {
   };
   try {
     localStorage.setItem(TARGETS_CACHE_KEY, JSON.stringify(cache));
-    console.log(`[CraftBuddy] Cached targets: ${targetCompletion}/${targetPerfection}/${targetStability} for recipe: ${recipeName || 'unknown'}`);
+    debugLog(
+      `[CraftBuddy] Cached targets: ${targetCompletion}/${targetPerfection}/${targetStability} for recipe: ${recipeName || 'unknown'}`
+    );
   } catch (e) {
     console.warn('[CraftBuddy] Failed to cache targets:', e);
   }
@@ -118,7 +121,7 @@ function loadCachedTargets(): boolean {
     // Cache is valid for 24 hours (in case of stale data)
     const maxAge = 24 * 60 * 60 * 1000;
     if (Date.now() - data.timestamp > maxAge) {
-      console.log('[CraftBuddy] Cached targets expired, ignoring');
+      debugLog('[CraftBuddy] Cached targets expired, ignoring');
       localStorage.removeItem(TARGETS_CACHE_KEY);
       return false;
     }
@@ -128,7 +131,9 @@ function loadCachedTargets(): boolean {
       targetCompletion = data.completion;
       targetPerfection = data.perfection;
       targetStability = data.stability;
-      console.log(`[CraftBuddy] Loaded cached targets: ${targetCompletion}/${targetPerfection}/${targetStability} (recipe: ${data.recipeName || 'unknown'})`);
+      debugLog(
+        `[CraftBuddy] Loaded cached targets: ${targetCompletion}/${targetPerfection}/${targetStability} (recipe: ${data.recipeName || 'unknown'})`
+      );
       return true;
     }
   } catch (e) {
@@ -143,7 +148,7 @@ function loadCachedTargets(): boolean {
 function clearCachedTargets(): void {
   try {
     localStorage.removeItem(TARGETS_CACHE_KEY);
-    console.log('[CraftBuddy] Cleared cached targets');
+    debugLog('[CraftBuddy] Cleared cached targets');
   } catch (e) {
     // Ignore
   }
@@ -275,7 +280,7 @@ function convertGameTechniques(
   }
 
   // Log full technique data for debugging
-  console.log('[CraftBuddy] Raw techniques from game:', JSON.stringify(techniques.map(t => ({
+  debugLog('[CraftBuddy] Raw techniques from game:', JSON.stringify(techniques.map(t => ({
     name: t?.name,
     type: t?.type,
     effects: t?.effects?.map(e => ({
