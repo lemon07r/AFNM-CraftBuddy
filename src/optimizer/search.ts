@@ -34,6 +34,16 @@ export interface SkillRecommendation {
   qualityRating?: number;
   /** Whether this skill consumes buffs for gains (e.g., Disciplined Touch) */
   consumesBuff?: boolean;
+  /** Suggested follow-up skill after this one */
+  followUpSkill?: {
+    name: string;
+    type: string;
+    expectedGains: {
+      completion: number;
+      perfection: number;
+      stability: number;
+    };
+  };
 }
 
 export interface SearchResult {
@@ -249,7 +259,8 @@ export function greedySearch(
   config: OptimizerConfig,
   targetCompletion: number = 0,
   targetPerfection: number = 0,
-  controlCondition: number = 1.0
+  controlCondition: number = 1.0,
+  currentConditionType?: CraftingConditionType
 ): SearchResult {
   // Check if targets already met
   if (targetCompletion > 0 && targetPerfection > 0) {
@@ -264,7 +275,7 @@ export function greedySearch(
   }
 
   // Check if terminal state
-  if (isTerminalState(state, config)) {
+  if (isTerminalState(state, config, currentConditionType)) {
     return {
       recommendation: null,
       alternativeSkills: [],
@@ -273,7 +284,7 @@ export function greedySearch(
     };
   }
 
-  const availableSkills = getAvailableSkills(state, config);
+  const availableSkills = getAvailableSkills(state, config, currentConditionType);
   const scoredSkills: SkillRecommendation[] = [];
 
   for (const skill of availableSkills) {
@@ -323,6 +334,8 @@ export function greedySearch(
  * @param depth - How many moves to look ahead
  * @param controlCondition - Current condition multiplier
  * @param forecastedConditions - Array of upcoming condition multipliers for each depth
+ * @param currentConditionType - Current condition type for skill filtering
+ * @param forecastedConditionTypes - Array of upcoming condition types for skill filtering
  */
 export function lookaheadSearch(
   state: CraftingState,
@@ -331,7 +344,9 @@ export function lookaheadSearch(
   targetPerfection: number = 0,
   depth: number = 3,
   controlCondition: number = 1.0,
-  forecastedConditions: number[] = []
+  forecastedConditions: number[] = [],
+  currentConditionType?: CraftingConditionType,
+  forecastedConditionTypes: CraftingConditionType[] = []
 ): SearchResult {
   // Check if targets already met
   if (targetCompletion > 0 && targetPerfection > 0) {
@@ -345,8 +360,8 @@ export function lookaheadSearch(
     }
   }
 
-  // Check if terminal state
-  if (isTerminalState(state, config)) {
+  // Check if terminal state (use current condition type for filtering)
+  if (isTerminalState(state, config, currentConditionType)) {
     return {
       recommendation: null,
       alternativeSkills: [],
@@ -363,8 +378,14 @@ export function lookaheadSearch(
    * Uses forecasted conditions at each depth level for more accurate simulation
    */
   function search(currentState: CraftingState, remainingDepth: number, depthIndex: number): number {
+    // Get condition type for this depth from forecasted conditions
+    // depthIndex 0 = current turn, 1+ = future turns
+    const conditionTypeAtDepth = depthIndex < forecastedConditionTypes.length 
+      ? forecastedConditionTypes[depthIndex] 
+      : (depthIndex === 0 ? currentConditionType : 'neutral');
+
     // Base case: depth exhausted or terminal
-    if (remainingDepth === 0 || isTerminalState(currentState, config)) {
+    if (remainingDepth === 0 || isTerminalState(currentState, config, conditionTypeAtDepth)) {
       return scoreState(currentState, targetCompletion, targetPerfection);
     }
 
@@ -376,18 +397,17 @@ export function lookaheadSearch(
     }
 
     // Get condition multiplier for this depth from forecasted conditions
-    // depthIndex 0 = current turn (use controlCondition), 1+ = future turns
     const conditionAtDepth = depthIndex < forecastedConditions.length 
       ? forecastedConditions[depthIndex] 
       : controlCondition;
 
     // Check cache - include condition in cache key for accuracy
-    const cacheKey = `${currentState.getCacheKey()}:${currentState.completion}:${currentState.perfection}:${remainingDepth}:${conditionAtDepth}`;
+    const cacheKey = `${currentState.getCacheKey()}:${currentState.completion}:${currentState.perfection}:${remainingDepth}:${conditionAtDepth}:${conditionTypeAtDepth}`;
     if (cache.has(cacheKey)) {
       return cache.get(cacheKey)!;
     }
 
-    const availableSkills = getAvailableSkills(currentState, config);
+    const availableSkills = getAvailableSkills(currentState, config, conditionTypeAtDepth);
     // Apply move ordering to search promising skills first
     const orderedSkills = orderSkillsForSearch(
       availableSkills, currentState, config, targetCompletion, targetPerfection
@@ -421,7 +441,13 @@ export function lookaheadSearch(
     let currentState = startState;
     let currentDepth = 0;
 
-    while (currentDepth < maxDepth && !isTerminalState(currentState, config)) {
+    // Get condition type for this depth
+    const getConditionTypeAtDepth = (depth: number) => {
+      if (depth < forecastedConditionTypes.length) return forecastedConditionTypes[depth];
+      return depth === 0 ? currentConditionType : 'neutral';
+    };
+
+    while (currentDepth < maxDepth && !isTerminalState(currentState, config, getConditionTypeAtDepth(currentDepth))) {
       // Check if targets met
       if (targetCompletion > 0 && targetPerfection > 0) {
         if (currentState.targetsMet(targetCompletion, targetPerfection)) {
@@ -432,8 +458,9 @@ export function lookaheadSearch(
       const conditionAtDepth = currentDepth < forecastedConditions.length
         ? forecastedConditions[currentDepth]
         : startCondition;
+      const conditionTypeAtDepth = getConditionTypeAtDepth(currentDepth);
 
-      const skills = getAvailableSkills(currentState, config);
+      const skills = getAvailableSkills(currentState, config, conditionTypeAtDepth);
       // Apply move ordering for faster path finding
       const orderedSkills = orderSkillsForSearch(
         skills, currentState, config, targetCompletion, targetPerfection
@@ -468,11 +495,65 @@ export function lookaheadSearch(
 
   // Evaluate each first move using current condition
   // Apply move ordering to evaluate promising skills first
-  const availableSkills = getAvailableSkills(state, config);
+  const availableSkills = getAvailableSkills(state, config, currentConditionType);
   const orderedSkills = orderSkillsForSearch(
     availableSkills, state, config, targetCompletion, targetPerfection
   );
   const scoredSkills: SkillRecommendation[] = [];
+
+  /**
+   * Find the best follow-up skill after applying a skill
+   */
+  function findFollowUpSkill(
+    stateAfterSkill: CraftingState,
+    depthIndex: number
+  ): SkillRecommendation['followUpSkill'] | undefined {
+    // Get condition type for the follow-up turn
+    const followUpConditionType = depthIndex < forecastedConditionTypes.length
+      ? forecastedConditionTypes[depthIndex]
+      : 'neutral';
+    const followUpCondition = depthIndex < forecastedConditions.length
+      ? forecastedConditions[depthIndex]
+      : controlCondition;
+
+    // Check if targets already met or terminal
+    if (stateAfterSkill.targetsMet(targetCompletion, targetPerfection)) {
+      return undefined;
+    }
+    if (isTerminalState(stateAfterSkill, config, followUpConditionType)) {
+      return undefined;
+    }
+
+    const followUpSkills = getAvailableSkills(stateAfterSkill, config, followUpConditionType);
+    if (followUpSkills.length === 0) return undefined;
+
+    let bestFollowUp: SkillDefinition | null = null;
+    let bestFollowUpScore = -Infinity;
+    let bestFollowUpGains = { completion: 0, perfection: 0, stability: 0 };
+
+    for (const followUp of followUpSkills) {
+      const nextState = applySkill(stateAfterSkill, followUp, config, followUpCondition);
+      if (nextState === null) continue;
+
+      const followUpGains = calculateSkillGains(stateAfterSkill, followUp, config, followUpCondition);
+      const followUpScore = search(nextState, depth - 2, depthIndex + 1);
+
+      if (followUpScore > bestFollowUpScore) {
+        bestFollowUpScore = followUpScore;
+        bestFollowUp = followUp;
+        bestFollowUpGains = followUpGains;
+      }
+    }
+
+    if (bestFollowUp) {
+      return {
+        name: bestFollowUp.name,
+        type: bestFollowUp.type,
+        expectedGains: bestFollowUpGains,
+      };
+    }
+    return undefined;
+  }
 
   for (const skill of orderedSkills) {
     const newState = applySkill(state, skill, config, controlCondition);
@@ -486,12 +567,16 @@ export function lookaheadSearch(
     // Check if this skill consumes buffs
     const consumesBuff = skill.isDisciplinedTouch === true;
 
+    // Find the best follow-up skill
+    const followUpSkill = findFollowUpSkill(newState, 1);
+
     scoredSkills.push({
       skill,
       expectedGains: gains,
       score,
       reasoning,
       consumesBuff,
+      followUpSkill,
     });
   }
 
@@ -573,6 +658,8 @@ export type CraftingConditionType = 'neutral' | 'positive' | 'negative' | 'veryP
  * @param useGreedy - Use greedy search instead of lookahead
  * @param lookaheadDepth - How many moves to look ahead
  * @param forecastedConditionMultipliers - Array of upcoming condition multipliers (converted from game's nextConditions)
+ * @param currentConditionType - Current condition type for skill filtering (e.g., 'veryPositive')
+ * @param forecastedConditionTypes - Array of upcoming condition types for skill filtering
  */
 export function findBestSkill(
   state: CraftingState,
@@ -582,7 +669,9 @@ export function findBestSkill(
   controlCondition: number = 1.0,
   useGreedy: boolean = false,
   lookaheadDepth: number = 3,
-  forecastedConditionMultipliers: number[] = []
+  forecastedConditionMultipliers: number[] = [],
+  currentConditionType?: CraftingConditionType,
+  forecastedConditionTypes: CraftingConditionType[] = []
 ): SearchResult {
   // Log that we're using game-provided data
   if (forecastedConditionMultipliers.length > 0) {
@@ -590,9 +679,9 @@ export function findBestSkill(
   }
   
   if (useGreedy) {
-    return greedySearch(state, config, targetCompletion, targetPerfection, controlCondition);
+    return greedySearch(state, config, targetCompletion, targetPerfection, controlCondition, currentConditionType);
   }
   
-  // Pass forecasted condition multipliers to lookahead search for accurate simulation
-  return lookaheadSearch(state, config, targetCompletion, targetPerfection, lookaheadDepth, controlCondition, forecastedConditionMultipliers);
+  // Pass forecasted condition multipliers and types to lookahead search for accurate simulation
+  return lookaheadSearch(state, config, targetCompletion, targetPerfection, lookaheadDepth, controlCondition, forecastedConditionMultipliers, currentConditionType, forecastedConditionTypes);
 }

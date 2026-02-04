@@ -209,7 +209,7 @@ npm run build
 # Output: dist/craftbuddy.zip
 
 # Install: Copy zip to game's mods/ folder
-# Linux: ~/.local/share/AscendFromNineMountains/mods/
+# Linux: /home/lamim/Games/AFNM_Linux/mods/
 # Windows: %APPDATA%/AscendFromNineMountains/mods/
 ```
 
@@ -321,6 +321,88 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 - Modding Guide: https://lyeeedar.github.io/AfnmExampleMod/
 - Example Mod Repo: https://github.com/Lyeeedar/AfnmExampleMod
 - Python Optimizer: /home/lamim/Development/Ascend From Nine Mountains Crafting Optimizer/
+- **Non-Minified Game Code**: `nonMinifiedCode/` folder contains decompiled game source for reference
+
+## Game Code Architecture (from nonMinifiedCode/)
+
+### Key Files for Crafting System
+
+| File | Purpose |
+|------|---------|
+| `store/slices/crafting/craftingSlice.ts` | Redux slice with `initCrafting`, `executeTechnique`, etc. |
+| `store/slices/crafting/craftingActions.ts` | `doExecuteTechnique`, `doConsumePill` implementations |
+| `store/slices/crafting/craftingEffects.ts` | Effect processing (completion, perfection, buffs) |
+| `store/slices/crafting/turnHandling.ts` | Turn processing, condition changes, buff expiry |
+| `store/slices/crafting/utils.ts` | `getBonusAndChance`, `getMaxCompletion`, `getMaxPerfection`, `evaluateCondition` |
+| `util/deriveRecipeDifficulty.ts` | Calculates `recipeStats` (completion/perfection/stability targets) |
+| `screens/crafting/CraftingScreen.tsx` | Main crafting UI, renders progress bars |
+| `screens/crafting/TitledBar.tsx` | Progress bar component |
+| `mod/modHooks.ts` | Mod hook registry (`onDeriveRecipeDifficulty`, etc.) |
+
+### Redux CraftingState Structure
+
+```typescript
+interface CraftingState {
+  player?: CraftingEntity;           // The crafting entity with stats, buffs, techniques
+  progressState?: ProgressState;     // Current progress (completion, perfection, stability)
+  recipe?: RecipeItem;               // The recipe being crafted
+  recipeStats?: CraftingRecipeStats; // TARGET values (completion, perfection, stability)
+  craftResult?: CraftingResult;      // Result after craft completes
+  consumedPills?: number;            // Pills consumed this round
+  craftingLog?: any[];               // Log of actions
+}
+```
+
+### CraftingRecipeStats (Target Values)
+
+```typescript
+interface CraftingRecipeStats {
+  stability: number;      // Target/initial max stability (e.g., 60)
+  completion: number;     // Target completion (e.g., 130)
+  perfection: number;     // Target perfection (e.g., 130)
+  conditionType: RecipeConditionEffect;
+  harmonyType: RecipeHarmonyType;
+}
+```
+
+**IMPORTANT**: `recipeStats` is calculated by `deriveRecipeDifficulty()` when crafting starts (`initCrafting` action) and IS persisted in Redux saves. It should always be available during active crafting.
+
+### How Target Values Are Calculated
+
+In `deriveRecipeDifficulty.ts`:
+```typescript
+recipeStats = {
+  stability: steps * 10,                              // e.g., 6 * 10 = 60
+  completion: Math.floor(totalCompletion * 0.5) * 10, // Based on intensity/steps
+  perfection: Math.floor(totalPerfection * 0.5) * 10, // Based on control/steps
+  conditionType,
+  harmonyType,
+};
+```
+
+The mod hook `onDeriveRecipeDifficulty` is called AFTER calculation, allowing mods to modify targets.
+
+### UI Display Format (CraftingScreen.tsx)
+
+The game displays progress bars with these formats:
+- **Completion/Perfection**: Shows PERCENTAGE by default: `"45% / 100%"` or raw numbers if Alt held: `"45 / 130 (260)"`
+- **Stability**: Shows current/currentMax: `"${stability} / ${recipeStats.stability - stabilityPenalty}"`
+
+**Key insight**: DOM parsing for "Completion: X/Y" won't work because the game shows percentages, not raw values!
+
+### Stability Penalty System
+
+Max stability decreases each turn via `stabilityPenalty`:
+- `progressState.stabilityPenalty` tracks total penalty accumulated
+- Current max stability = `recipeStats.stability - progressState.stabilityPenalty`
+- Skills with `noMaxStabilityLoss: true` don't increase the penalty
+
+### Save/Load Behavior
+
+The game uses `DebouncedSaveManager` which saves the ENTIRE Redux state every 10 seconds. This means:
+- `recipeStats` IS persisted in mid-craft saves
+- When loading a mid-craft save, `recipeStats` should be available immediately
+- The `initCrafting` action is NOT re-run on load (state is restored directly)
 
 ## Future Improvements
 

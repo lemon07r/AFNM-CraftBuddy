@@ -38,6 +38,12 @@ export interface SkillDefinition {
   cooldown?: number;
   /** Mastery bonuses applied to this skill */
   mastery?: SkillMastery;
+  /** Required crafting condition to use this skill (e.g., 'veryPositive' for Harmonious skills) */
+  conditionRequirement?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative';
+  /** Whether this skill restores Qi (for tracking Qi recovery skills) */
+  restoresQi?: boolean;
+  /** Amount of Qi restored */
+  qiRestore?: number;
 }
 
 /**
@@ -86,6 +92,10 @@ export interface OptimizerConfig {
 /**
  * Default skill definitions based on the Python optimizer config.
  * These can be overridden with actual game data at runtime.
+ * 
+ * Note: baseCompletionGain and basePerfectionGain are MULTIPLIERS, not raw values.
+ * The actual gain is calculated as: multiplier * stat (intensity or control).
+ * For example: Simple Fusion with multiplier 1.0 and intensity 12 gives 1.0 * 12 = 12 completion.
  */
 export const DEFAULT_SKILLS: SkillDefinition[] = [
   {
@@ -93,7 +103,7 @@ export const DEFAULT_SKILLS: SkillDefinition[] = [
     key: 'simple_fusion',
     qiCost: 0,
     stabilityCost: 10,
-    baseCompletionGain: 12,
+    baseCompletionGain: 1.0, // Multiplier: 1.0 * intensity
     basePerfectionGain: 0,
     stabilityGain: 0,
     maxStabilityChange: 0,
@@ -109,7 +119,7 @@ export const DEFAULT_SKILLS: SkillDefinition[] = [
     key: 'energised_fusion',
     qiCost: 10,
     stabilityCost: 10,
-    baseCompletionGain: 21,
+    baseCompletionGain: 1.8, // Multiplier: 1.8 * intensity (matches game data)
     basePerfectionGain: 0,
     stabilityGain: 0,
     maxStabilityChange: 0,
@@ -125,7 +135,7 @@ export const DEFAULT_SKILLS: SkillDefinition[] = [
     key: 'cycling_fusion',
     qiCost: 10,
     stabilityCost: 10,
-    baseCompletionGain: 9,
+    baseCompletionGain: 0.75, // Multiplier: 0.75 * intensity (matches game data)
     basePerfectionGain: 0,
     stabilityGain: 0,
     maxStabilityChange: 0,
@@ -141,14 +151,15 @@ export const DEFAULT_SKILLS: SkillDefinition[] = [
     key: 'disciplined_touch',
     qiCost: 10,
     stabilityCost: 10,
-    baseCompletionGain: 0,
-    basePerfectionGain: 0,
+    baseCompletionGain: 0.5, // Multiplier for completion (matches game data)
+    basePerfectionGain: 0.5, // Multiplier for perfection (matches game data)
     stabilityGain: 0,
     maxStabilityChange: 0,
     buffType: BuffType.NONE,
     buffDuration: 0,
     buffMultiplier: 1.0,
-    type: 'support',
+    type: 'fusion',
+    scalesWithIntensity: true,
     isDisciplinedTouch: true,
     preventsMaxStabilityDecay: false,
   },
@@ -158,7 +169,7 @@ export const DEFAULT_SKILLS: SkillDefinition[] = [
     qiCost: 10,
     stabilityCost: 10,
     baseCompletionGain: 0,
-    basePerfectionGain: 12,
+    basePerfectionGain: 0.75, // Multiplier: 0.75 * control (matches game data)
     stabilityGain: 0,
     maxStabilityChange: 0,
     buffType: BuffType.INTENSITY,
@@ -174,7 +185,7 @@ export const DEFAULT_SKILLS: SkillDefinition[] = [
     qiCost: 18,
     stabilityCost: 10,
     baseCompletionGain: 0,
-    basePerfectionGain: 16,
+    basePerfectionGain: 1.0, // Multiplier: 1.0 * control
     stabilityGain: 0,
     maxStabilityChange: 0,
     buffType: BuffType.NONE,
@@ -191,7 +202,7 @@ export const DEFAULT_SKILLS: SkillDefinition[] = [
     stabilityCost: 0,
     baseCompletionGain: 0,
     basePerfectionGain: 0,
-    stabilityGain: 20,
+    stabilityGain: 20, // Flat value, not a multiplier
     maxStabilityChange: 0,
     buffType: BuffType.NONE,
     buffDuration: 0,
@@ -236,6 +247,10 @@ export function calculateDisciplinedTouchGains(
  * Calculate the gains from applying a skill to the current state.
  * Important: Uses CURRENT state's buffs, not buffs granted by this skill.
  * Now includes mastery bonuses for control/intensity scaling.
+ * 
+ * The game's technique data provides a multiplier value (e.g., 2.0 for Harmonious Fusion).
+ * The actual gain is calculated as: multiplier * stat (intensity or control).
+ * For example: Harmonious Fusion with value=2 and intensity=20 gives 2*20=40 completion.
  */
 export function calculateSkillGains(
   state: CraftingState,
@@ -259,20 +274,29 @@ export function calculateSkillGains(
   const intensityMasteryBonus = 1 + (mastery.intensityBonus || 0);
 
   // Apply control scaling for refine skills (with mastery bonus)
+  // The baseXxxGain is actually a multiplier from the game data
+  // Actual gain = multiplier * control * condition * mastery
   if (skill.scalesWithControl) {
     const baseControl = config.baseControl * controlMasteryBonus;
-    const control = Math.floor(state.getControl(baseControl) * controlCondition);
-    // Scale based on base control of 16
-    perfectionGain = Math.floor((skill.basePerfectionGain * control) / 16);
-    completionGain = 0;
+    const control = state.getControl(baseControl) * controlCondition;
+    // basePerfectionGain is the multiplier (e.g., 2.0 for Harmonious Refine)
+    perfectionGain = Math.floor(skill.basePerfectionGain * control);
+    // Some refine skills also give completion (like Disciplined Touch)
+    if (skill.baseCompletionGain > 0) {
+      completionGain = Math.floor(skill.baseCompletionGain * control);
+    } else {
+      completionGain = 0;
+    }
   }
 
   // Apply intensity scaling for fusion skills (with mastery bonus)
+  // The baseXxxGain is actually a multiplier from the game data
+  // Actual gain = multiplier * intensity * mastery
   if (skill.scalesWithIntensity && skill.type === 'fusion') {
     const baseIntensity = config.baseIntensity * intensityMasteryBonus;
     const intensity = state.getIntensity(baseIntensity);
-    // Scale based on base intensity of 12
-    completionGain = Math.floor((skill.baseCompletionGain * intensity) / 12);
+    // baseCompletionGain is the multiplier (e.g., 2.0 for Harmonious Fusion)
+    completionGain = Math.floor(skill.baseCompletionGain * intensity);
   }
 
   return {
@@ -281,6 +305,26 @@ export function calculateSkillGains(
     stability: stabilityGain,
     toxicityCleanse,
   };
+}
+
+/**
+ * Check if a condition requirement is met by the current condition.
+ * Some skills require specific conditions (e.g., Harmonious skills need positive/veryPositive).
+ */
+export function checkConditionRequirement(
+  requirement: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative',
+  current: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
+): boolean {
+  // Exact match always works
+  if (requirement === current) return true;
+  
+  // positive requirement can be met by veryPositive
+  if (requirement === 'positive' && current === 'veryPositive') return true;
+  
+  // negative requirement can be met by veryNegative
+  if (requirement === 'negative' && current === 'veryNegative') return true;
+  
+  return false;
 }
 
 /**
@@ -301,17 +345,31 @@ export function getEffectiveStabilityCost(skill: SkillDefinition): number {
 
 /**
  * Check if a skill can be applied given the current state.
- * Now handles cooldowns, toxicity, and mastery cost reductions.
+ * Now handles cooldowns, toxicity, mastery cost reductions, and condition requirements.
  */
 export function canApplySkill(
   state: CraftingState,
   skill: SkillDefinition,
   minStability: number,
-  maxToxicity: number = 0
+  maxToxicity: number = 0,
+  currentCondition?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
 ): boolean {
   // Check cooldown
   if (state.isOnCooldown(skill.key)) {
     return false;
+  }
+
+  // Check condition requirement (e.g., Harmonious skills require specific conditions)
+  if (skill.conditionRequirement && currentCondition) {
+    // Check if current condition meets the requirement
+    // veryPositive requirement: only veryPositive works
+    // positive requirement: positive or veryPositive works
+    // negative requirement: negative or veryNegative works
+    // veryNegative requirement: only veryNegative works
+    const conditionMet = checkConditionRequirement(skill.conditionRequirement, currentCondition);
+    if (!conditionMet) {
+      return false;
+    }
   }
 
   // Get effective costs after mastery reductions
@@ -460,14 +518,15 @@ export function applySkill(
 
 /**
  * Get all skills that can be applied in the current state.
- * Now considers cooldowns and toxicity limits.
+ * Now considers cooldowns, toxicity limits, and condition requirements.
  */
 export function getAvailableSkills(
   state: CraftingState,
-  config: OptimizerConfig
+  config: OptimizerConfig,
+  currentCondition?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
 ): SkillDefinition[] {
   const maxToxicity = config.maxToxicity || 0;
-  return config.skills.filter(skill => canApplySkill(state, skill, config.minStability, maxToxicity));
+  return config.skills.filter(skill => canApplySkill(state, skill, config.minStability, maxToxicity, currentCondition));
 }
 
 /**
@@ -475,7 +534,8 @@ export function getAvailableSkills(
  */
 export function isTerminalState(
   state: CraftingState,
-  config: OptimizerConfig
+  config: OptimizerConfig,
+  currentCondition?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
 ): boolean {
-  return getAvailableSkills(state, config).length === 0;
+  return getAvailableSkills(state, config, currentCondition).length === 0;
 }

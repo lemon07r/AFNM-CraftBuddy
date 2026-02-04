@@ -60,3 +60,5 @@ coverage/
 # Junie AI session files
 .junie/
 .output.txt
+
+nonMinifiedCode/

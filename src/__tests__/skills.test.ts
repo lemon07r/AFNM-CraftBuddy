@@ -179,7 +179,7 @@ describe('calculateSkillGains', () => {
   it('should calculate fusion skill gains with intensity scaling', () => {
     const state = new CraftingState({ intensityBuffTurns: 0 });
     const skill = createTestSkill({
-      baseCompletionGain: 12,
+      baseCompletionGain: 1.0, // Multiplier value from game data
       basePerfectionGain: 0,
       type: 'fusion',
       scalesWithIntensity: true,
@@ -187,7 +187,7 @@ describe('calculateSkillGains', () => {
     
     const gains = calculateSkillGains(state, skill, config);
     
-    // Base intensity 12, skill base 12, so 12 * 12 / 12 = 12
+    // Base intensity 12, multiplier 1.0, so 1.0 * 12 = 12
     expect(gains.completion).toBe(12);
     expect(gains.perfection).toBe(0);
   });
@@ -196,7 +196,7 @@ describe('calculateSkillGains', () => {
     const state = new CraftingState({ controlBuffTurns: 0 });
     const skill = createTestSkill({
       baseCompletionGain: 0,
-      basePerfectionGain: 16,
+      basePerfectionGain: 1.0, // Multiplier value from game data
       type: 'refine',
       scalesWithControl: true,
       scalesWithIntensity: false,
@@ -204,7 +204,7 @@ describe('calculateSkillGains', () => {
     
     const gains = calculateSkillGains(state, skill, config);
     
-    // Base control 16, skill base 16, so 16 * 16 / 16 = 16
+    // Base control 16, multiplier 1.0, so 1.0 * 16 = 16
     expect(gains.completion).toBe(0);
     expect(gains.perfection).toBe(16);
   });
@@ -216,7 +216,7 @@ describe('calculateSkillGains', () => {
     });
     const skill = createTestSkill({
       baseCompletionGain: 0,
-      basePerfectionGain: 16,
+      basePerfectionGain: 1.0, // Multiplier value from game data
       type: 'refine',
       scalesWithControl: true,
       scalesWithIntensity: false,
@@ -224,8 +224,8 @@ describe('calculateSkillGains', () => {
     
     const gains = calculateSkillGains(state, skill, config);
     
-    // Control with buff: 16 * 1.4 = 22.4 -> 22
-    // Perfection: 16 * 22 / 16 = 22
+    // Control with buff: 16 * 1.4 = 22.4
+    // Perfection: 1.0 * 22.4 = 22 (floored)
     expect(gains.perfection).toBe(22);
   });
 
@@ -235,7 +235,7 @@ describe('calculateSkillGains', () => {
       intensityBuffMultiplier: 1.4,
     });
     const skill = createTestSkill({
-      baseCompletionGain: 12,
+      baseCompletionGain: 1.0, // Multiplier value from game data
       basePerfectionGain: 0,
       type: 'fusion',
       scalesWithIntensity: true,
@@ -243,8 +243,8 @@ describe('calculateSkillGains', () => {
     
     const gains = calculateSkillGains(state, skill, config);
     
-    // Intensity with buff: 12 * 1.4 = 16.8 -> 16
-    // Completion: 12 * 16 / 12 = 16
+    // Intensity with buff: 12 * 1.4 = 16.8
+    // Completion: 1.0 * 16.8 = 16 (floored)
     expect(gains.completion).toBe(16);
   });
 
@@ -252,7 +252,7 @@ describe('calculateSkillGains', () => {
     const state = new CraftingState({ controlBuffTurns: 0 });
     const skill = createTestSkill({
       baseCompletionGain: 0,
-      basePerfectionGain: 16,
+      basePerfectionGain: 1.0, // Multiplier value from game data
       type: 'refine',
       scalesWithControl: true,
       scalesWithIntensity: false,
@@ -262,7 +262,7 @@ describe('calculateSkillGains', () => {
     const gains = calculateSkillGains(state, skill, config);
     
     // Base control 16 * 1.25 = 20
-    // Perfection: 16 * 20 / 16 = 20
+    // Perfection: 1.0 * 20 = 20
     expect(gains.perfection).toBe(20);
   });
 
@@ -311,14 +311,17 @@ describe('applySkill', () => {
       perfection: 10,
     });
     const skill = createTestSkill({
-      baseCompletionGain: 12,
+      baseCompletionGain: 1.0, // Multiplier value from game data
       basePerfectionGain: 0,
+      type: 'fusion',
+      scalesWithIntensity: true,
     });
     
     const newState = applySkill(state, skill, config);
     
     expect(newState).not.toBeNull();
-    expect(newState!.completion).toBe(32); // 20 + 12
+    // 1.0 * 12 (base intensity) = 12, so 20 + 12 = 32
+    expect(newState!.completion).toBe(32);
     expect(newState!.perfection).toBe(10); // unchanged
   });
 

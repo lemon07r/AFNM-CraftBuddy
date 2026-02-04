@@ -78,7 +78,227 @@ interface RecommendationPanelProps {
 }
 
 /**
- * Formats a skill recommendation for display
+ * Compact skill display for half-width layout
+ */
+function CompactSkillDisplay({
+  name,
+  type,
+  gains,
+  isFollowUp = false,
+}: {
+  name: string;
+  type: string;
+  gains: { completion: number; perfection: number; stability: number };
+  isFollowUp?: boolean;
+}) {
+  const typeColor = SKILL_TYPE_COLORS[type] || '#ffffff';
+  
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        minWidth: 0,
+        p: 0.75,
+        borderRadius: 1,
+        backgroundColor: isFollowUp ? 'rgba(40, 40, 40, 0.5)' : 'rgba(0, 80, 0, 0.3)',
+        border: isFollowUp ? '1px solid rgba(80, 80, 80, 0.5)' : '1px solid rgba(0, 200, 0, 0.4)',
+      }}
+    >
+      <Typography
+        variant="body2"
+        sx={{
+          color: typeColor,
+          fontWeight: 'bold',
+          fontSize: '0.85rem',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {name}
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 0.25 }}>
+        {gains.completion > 0 && (
+          <Typography variant="caption" sx={{ color: '#90EE90' }}>
+            +{gains.completion} C
+          </Typography>
+        )}
+        {gains.perfection > 0 && (
+          <Typography variant="caption" sx={{ color: '#87CEEB' }}>
+            +{gains.perfection} P
+          </Typography>
+        )}
+        {gains.stability > 0 && (
+          <Typography variant="caption" sx={{ color: '#FFA500' }}>
+            +{gains.stability} S
+          </Typography>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Single skill box component - displays one skill with its gains and costs
+ */
+function SingleSkillBox({
+  name,
+  type,
+  gains,
+  qiCost = 0,
+  stabilityCost = 0,
+  buffGranted,
+  buffDuration = 0,
+  isPrimary = false,
+  isFollowUp = false,
+  consumesBuff = false,
+  reasoning,
+}: {
+  name: string;
+  type: string;
+  gains: { completion: number; perfection: number; stability: number };
+  qiCost?: number;
+  stabilityCost?: number;
+  buffGranted?: string;
+  buffDuration?: number;
+  isPrimary?: boolean;
+  isFollowUp?: boolean;
+  consumesBuff?: boolean;
+  reasoning?: string;
+}) {
+  const typeColor = SKILL_TYPE_COLORS[type] || '#ffffff';
+  
+  // Border and background colors based on type
+  let borderColor: string;
+  let bgColor: string;
+  
+  if (isPrimary && !isFollowUp) {
+    // Primary recommendation
+    borderColor = 'rgba(0, 200, 0, 0.6)';
+    bgColor = 'rgba(0, 80, 0, 0.3)';
+  } else if (isFollowUp) {
+    // Follow-up skill (slightly muted)
+    borderColor = 'rgba(100, 150, 100, 0.5)';
+    bgColor = 'rgba(40, 60, 40, 0.3)';
+  } else {
+    // Alternative skill
+    borderColor = 'rgba(100, 100, 100, 0.5)';
+    bgColor = 'rgba(50, 50, 50, 0.4)';
+  }
+  
+  return (
+    <Box
+      sx={{
+        p: 1,
+        borderRadius: 1,
+        backgroundColor: bgColor,
+        border: `1px solid ${borderColor}`,
+      }}
+    >
+      <Typography
+        variant="body2"
+        sx={{
+          color: typeColor,
+          fontWeight: 'bold',
+          fontSize: isPrimary && !isFollowUp ? '0.95rem' : '0.85rem',
+        }}
+      >
+        {name}
+      </Typography>
+      
+      {/* Costs row */}
+      <Box sx={{ display: 'flex', gap: 0.75, mt: 0.25, flexWrap: 'wrap' }}>
+        {qiCost > 0 && (
+          <Typography variant="caption" sx={{ color: '#ADD8E6' }}>
+            {qiCost} Qi
+          </Typography>
+        )}
+        {stabilityCost > 0 && (
+          <Typography variant="caption" sx={{ color: '#FFB6C1' }}>
+            -{stabilityCost} Stab
+          </Typography>
+        )}
+      </Box>
+      
+      {/* Gains row */}
+      <Box sx={{ display: 'flex', gap: 0.75, mt: 0.25, flexWrap: 'wrap' }}>
+        {gains.completion > 0 && (
+          <Typography variant="caption" sx={{ color: '#90EE90' }}>
+            +{gains.completion} Completion
+          </Typography>
+        )}
+        {gains.perfection > 0 && (
+          <Typography variant="caption" sx={{ color: '#87CEEB' }}>
+            +{gains.perfection} Perfection
+          </Typography>
+        )}
+        {gains.stability > 0 && (
+          <Typography variant="caption" sx={{ color: '#FFA500' }}>
+            +{gains.stability} Stability
+          </Typography>
+        )}
+      </Box>
+      
+      {/* Buff granted indicator */}
+      {buffGranted && buffDuration > 0 && (
+        <Chip
+          label={`🔮 ${buffGranted} x${buffDuration}`}
+          size="small"
+          sx={{
+            backgroundColor: buffGranted.toLowerCase().includes('control') ? '#87CEEB' : '#90EE90',
+            color: '#000',
+            fontSize: '0.65rem',
+            height: 18,
+            mt: 0.5,
+            mr: 0.5,
+          }}
+        />
+      )}
+      
+      {/* Buff consumer indicator */}
+      {consumesBuff && (
+        <Chip
+          label="⚡ Uses Buff"
+          size="small"
+          sx={{
+            backgroundColor: '#FFD700',
+            color: '#000',
+            fontSize: '0.65rem',
+            height: 18,
+            mt: 0.5,
+          }}
+        />
+      )}
+      
+      {/* Reasoning - only for primary skill */}
+      {reasoning && isPrimary && !isFollowUp && (
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            color: 'rgba(255, 255, 255, 0.7)', 
+            fontStyle: 'italic',
+            fontSize: '0.8rem',
+            mt: 0.5,
+          }}
+        >
+          {reasoning}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+// Helper to get buff name from BuffType enum
+function getBuffName(buffType: number): string | undefined {
+  // BuffType enum: NONE = 0, CONTROL = 1, INTENSITY = 2
+  if (buffType === 1) return 'Control';
+  if (buffType === 2) return 'Intensity';
+  return undefined;
+}
+
+/**
+ * Formats a skill recommendation for display with follow-up skill
+ * Primary and follow-up skills are displayed side-by-side (first skill → second skill)
  */
 function SkillCard({ 
   rec, 
@@ -89,97 +309,82 @@ function SkillCard({
   isPrimary?: boolean;
   showQuality?: boolean;
 }) {
-  const typeColor = SKILL_TYPE_COLORS[rec.skill.type] || '#ffffff';
   const qualityRating = rec.qualityRating ?? 100;
   const qualityColor = getQualityColor(qualityRating);
+  const hasFollowUp = rec.followUpSkill !== undefined;
+  
+  // Extract skill costs and buff info
+  const skill = rec.skill;
+  const qiCost = skill.qiCost || 0;
+  const stabilityCost = skill.stabilityCost || 0;
+  const buffGranted = getBuffName(skill.buffType);
+  const buffDuration = skill.buffDuration || 0;
   
   return (
-    <Box
-      sx={{
-        p: isPrimary ? 1.5 : 1,
-        mb: 1,
-        borderRadius: 1,
-        backgroundColor: isPrimary ? 'rgba(0, 100, 0, 0.3)' : 'rgba(50, 50, 50, 0.5)',
-        border: isPrimary ? '2px solid rgba(0, 255, 0, 0.5)' : '1px solid rgba(100, 100, 100, 0.5)',
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
-        <Typography
-          variant={isPrimary ? 'h6' : 'body1'}
-          sx={{ 
-            color: typeColor, 
-            fontWeight: isPrimary ? 'bold' : 'normal',
-            textShadow: isPrimary ? `0 0 10px ${typeColor}` : 'none',
-          }}
-        >
-          {rec.skill.name}
-        </Typography>
+    <Box sx={{ mb: 1 }}>
+      {/* Quality rating for alternatives */}
+      {showQuality && !isPrimary && (
         <Chip
-          label={rec.skill.type}
+          label={`${qualityRating}% ${getQualityLabel(qualityRating)}`}
           size="small"
           sx={{
-            backgroundColor: typeColor,
-            color: '#000',
-            fontSize: '0.7rem',
-            height: 20,
+            backgroundColor: 'transparent',
+            color: qualityColor,
+            border: `1px solid ${qualityColor}`,
+            fontSize: '0.65rem',
+            height: 18,
+            mb: 0.5,
           }}
         />
-        {/* Buff consumer indicator */}
-        {rec.consumesBuff && (
-          <Chip
-            label="⚡ Uses Buff"
-            size="small"
-            sx={{
-              backgroundColor: '#FFD700',
-              color: '#000',
-              fontSize: '0.65rem',
-              height: 18,
-            }}
+      )}
+
+      {/* Skills displayed side-by-side: first skill → second skill */}
+      <Box sx={{ display: 'flex', alignItems: 'stretch', gap: 0.5 }}>
+        {/* Primary skill box */}
+        <Box sx={{ flex: 1 }}>
+          <SingleSkillBox
+            name={rec.skill.name}
+            type={rec.skill.type}
+            gains={rec.expectedGains}
+            qiCost={qiCost}
+            stabilityCost={stabilityCost}
+            buffGranted={buffGranted}
+            buffDuration={buffDuration}
+            isPrimary={isPrimary}
+            isFollowUp={false}
+            consumesBuff={rec.consumesBuff}
+            reasoning={!hasFollowUp ? rec.reasoning : undefined}
           />
-        )}
-        {/* Quality rating for alternatives */}
-        {showQuality && !isPrimary && (
-          <Chip
-            label={`${qualityRating}% ${getQualityLabel(qualityRating)}`}
-            size="small"
-            sx={{
-              backgroundColor: 'transparent',
-              color: qualityColor,
-              border: `1px solid ${qualityColor}`,
-              fontSize: '0.65rem',
-              height: 18,
-            }}
-          />
+        </Box>
+        
+        {/* Arrow and follow-up skill box (side-by-side) */}
+        {hasFollowUp && rec.followUpSkill && (
+          <>
+            <Box sx={{ display: 'flex', alignItems: 'center', px: 0.25 }}>
+              <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '1rem' }}>→</Typography>
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <SingleSkillBox
+                name={rec.followUpSkill.name}
+                type={rec.followUpSkill.type}
+                gains={rec.followUpSkill.expectedGains}
+                isPrimary={isPrimary}
+                isFollowUp={true}
+              />
+            </Box>
+          </>
         )}
       </Box>
       
-      {/* Expected gains */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 0.5, flexWrap: 'wrap' }}>
-        {rec.expectedGains.completion > 0 && (
-          <Typography variant="body2" sx={{ color: '#90EE90' }}>
-            +{rec.expectedGains.completion} Completion
-          </Typography>
-        )}
-        {rec.expectedGains.perfection > 0 && (
-          <Typography variant="body2" sx={{ color: '#87CEEB' }}>
-            +{rec.expectedGains.perfection} Perfection
-          </Typography>
-        )}
-        {rec.expectedGains.stability > 0 && (
-          <Typography variant="body2" sx={{ color: '#FFA500' }}>
-            +{rec.expectedGains.stability} Stability
-          </Typography>
-        )}
-      </Box>
-      
-      {/* Reasoning */}
-      {isPrimary && (
+      {/* Reasoning below the skill boxes if there's a follow-up */}
+      {hasFollowUp && rec.reasoning && isPrimary && (
         <Typography 
           variant="body2" 
           sx={{ 
             color: 'rgba(255, 255, 255, 0.7)', 
             fontStyle: 'italic',
-            fontSize: '0.85rem',
+            fontSize: '0.8rem',
+            mt: 0.5,
           }}
         >
           {rec.reasoning}
@@ -295,19 +500,18 @@ export function RecommendationPanel({
 
   // Normal recommendation
   return (
-    <Box sx={{ position: 'relative' }}>
-      {/* Settings Panel */}
-      <SettingsPanel onSettingsChange={onSettingsChange} />
-      
       <Paper
         sx={{
+          position: 'relative',
           p: compactMode ? 1.5 : 2,
           backgroundColor: 'rgba(30, 30, 30, 0.95)',
           border: '1px solid rgba(100, 100, 100, 0.5)',
           borderRadius: 2,
-          maxWidth: compactMode ? 280 : 350,
+          minWidth: compactMode ? 280 : 350,
         }}
       >
+        {/* Settings Panel */}
+        <SettingsPanel onSettingsChange={onSettingsChange} />
         <Typography variant={compactMode ? 'subtitle1' : 'h6'} sx={{ color: '#FFD700', mb: compactMode ? 1 : 1.5 }}>
           🔮 {compactMode ? 'CraftBuddy' : 'CraftBuddy Recommends'}
         </Typography>
@@ -459,8 +663,16 @@ export function RecommendationPanel({
           ))}
         </>
       )}
+
+      {/* Hotkey hints - always visible at bottom */}
+      {!compactMode && (
+        <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid rgba(100, 100, 100, 0.3)' }}>
+          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.35)', display: 'block' }}>
+            Ctrl+Shift+C: Hide | Ctrl+Shift+M: Compact
+          </Typography>
+        </Box>
+      )}
       </Paper>
-    </Box>
   );
 }
 

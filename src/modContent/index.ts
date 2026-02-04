@@ -74,6 +74,81 @@ let isOverlayVisible = false;
 let pollingInterval: number | null = null;
 const POLL_INTERVAL_MS = 500;
 
+// LocalStorage key for caching targets (used for mid-craft save loads)
+const TARGETS_CACHE_KEY = 'craftbuddy_targets_cache';
+
+interface CachedTargets {
+  completion: number;
+  perfection: number;
+  stability: number;
+  recipeName?: string;
+  timestamp: number;
+}
+
+/**
+ * Save target values to localStorage for mid-craft save recovery.
+ */
+function cacheTargets(recipeName?: string): void {
+  const cache: CachedTargets = {
+    completion: targetCompletion,
+    perfection: targetPerfection,
+    stability: targetStability,
+    recipeName,
+    timestamp: Date.now(),
+  };
+  try {
+    localStorage.setItem(TARGETS_CACHE_KEY, JSON.stringify(cache));
+    console.log(`[CraftBuddy] Cached targets: ${targetCompletion}/${targetPerfection}/${targetStability} for recipe: ${recipeName || 'unknown'}`);
+  } catch (e) {
+    console.warn('[CraftBuddy] Failed to cache targets:', e);
+  }
+}
+
+/**
+ * Load cached target values from localStorage.
+ * Returns true if valid cached targets were found and applied.
+ */
+function loadCachedTargets(): boolean {
+  try {
+    const cached = localStorage.getItem(TARGETS_CACHE_KEY);
+    if (!cached) return false;
+    
+    const data: CachedTargets = JSON.parse(cached);
+    
+    // Cache is valid for 24 hours (in case of stale data)
+    const maxAge = 24 * 60 * 60 * 1000;
+    if (Date.now() - data.timestamp > maxAge) {
+      console.log('[CraftBuddy] Cached targets expired, ignoring');
+      localStorage.removeItem(TARGETS_CACHE_KEY);
+      return false;
+    }
+    
+    // Validate the cached values are reasonable
+    if (data.completion > 0 && data.perfection >= 0 && data.stability > 0) {
+      targetCompletion = data.completion;
+      targetPerfection = data.perfection;
+      targetStability = data.stability;
+      console.log(`[CraftBuddy] Loaded cached targets: ${targetCompletion}/${targetPerfection}/${targetStability} (recipe: ${data.recipeName || 'unknown'})`);
+      return true;
+    }
+  } catch (e) {
+    console.warn('[CraftBuddy] Failed to load cached targets:', e);
+  }
+  return false;
+}
+
+/**
+ * Clear cached targets (called when crafting ends).
+ */
+function clearCachedTargets(): void {
+  try {
+    localStorage.removeItem(TARGETS_CACHE_KEY);
+    console.log('[CraftBuddy] Cleared cached targets');
+  } catch (e) {
+    // Ignore
+  }
+}
+
 /**
  * Extract buff information from game's CraftingBuff array.
  */
@@ -199,6 +274,16 @@ function convertGameTechniques(
     return [];
   }
 
+  // Log full technique data for debugging
+  console.log('[CraftBuddy] Raw techniques from game:', JSON.stringify(techniques.map(t => ({
+    name: t?.name,
+    type: t?.type,
+    effects: t?.effects?.map(e => ({
+      kind: e?.kind,
+      amount: (e as any)?.amount,
+    })),
+  })), null, 2));
+
   const skills: SkillDefinition[] = [];
 
   for (const tech of techniques) {
@@ -269,6 +354,17 @@ function convertGameTechniques(
     const scalesWithControl = techType === 'refine' || scalingStat === 'control';
     const hasConsumeBuff = effects.some(e => e?.kind === 'consumeBuff');
     const isDisciplinedTouch = hasConsumeBuff || techName.toLowerCase().includes('disciplined');
+    
+    // Extract condition requirement (e.g., Harmonious skills require 'positive' or 'veryPositive')
+    const conditionRequirement = tech.conditionRequirement as 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative' | undefined;
+    
+    // Extract Qi restore from 'pool' effect (for skills like Siphon Qi)
+    let qiRestore = 0;
+    for (const effect of effects) {
+      if (effect?.kind === 'pool' && effect.amount?.value) {
+        qiRestore = effect.amount.value;
+      }
+    }
 
     skills.push({
       name: techName,
@@ -291,6 +387,9 @@ function convertGameTechniques(
       toxicityCleanse: toxicityCleanse > 0 ? toxicityCleanse : undefined,
       cooldown: cooldown > 0 ? cooldown : undefined,
       mastery: Object.keys(mastery).length > 0 ? mastery : undefined,
+      conditionRequirement,
+      restoresQi: qiRestore > 0,
+      qiRestore: qiRestore > 0 ? qiRestore : undefined,
     });
   }
 
@@ -389,12 +488,14 @@ function updateRecommendation(
 
   currentConfig = buildConfigFromEntity(entity);
   
-  // @ts-ignore
-  const gameMaxStability = progressState?.maxStability;
-  if (gameMaxStability !== undefined && gameMaxStability > 0) {
-    currentMaxStability = gameMaxStability;
-  } else if (currentMaxStability <= 0 || currentMaxStability > targetStability) {
-    currentMaxStability = targetStability;
+  // Calculate current max stability from targetStability - stabilityPenalty
+  // The game tracks stability decay via stabilityPenalty in progressState, not a separate maxStability field
+  // @ts-ignore - stabilityPenalty exists in game's ProgressState but not in our types
+  const stabilityPenalty = progressState?.stabilityPenalty || 0;
+  if (targetStability > 0) {
+    currentMaxStability = targetStability - stabilityPenalty;
+  } else if (currentMaxStability <= 0) {
+    currentMaxStability = 60; // Fallback default
   }
 
   const state = new CraftingState({
@@ -417,6 +518,11 @@ function updateRecommendation(
   const forecastedMultipliers: number[] = nextConditions.map(cond => 
     getConditionMultiplier(cond, 'control')
   );
+  
+  // Get current condition type for skill filtering (e.g., Harmonious skills need specific conditions)
+  const currentConditionType = condition as 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative' | undefined;
+  // Get forecasted condition types for lookahead skill filtering
+  const forecastedConditionTypes = nextConditions as ('neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative')[];
 
   const lookaheadDepth = currentSettings.lookaheadDepth;
   currentRecommendation = findBestSkill(
@@ -427,7 +533,9 @@ function updateRecommendation(
     controlMultiplier,
     false,
     lookaheadDepth,
-    forecastedMultipliers
+    forecastedMultipliers,
+    currentConditionType,
+    forecastedConditionTypes
   );
   
   console.log(`[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Completion=${completion}/${targetCompletion}, Perfection=${perfection}/${targetPerfection}`);
@@ -468,7 +576,13 @@ function renderOverlay(): void {
     createOverlayContainer();
   }
   
-  if (!reactRoot || !currentSettings.panelVisible) {
+  // Check if we should show the panel:
+  // - If panelVisible setting is true, always show
+  // - If crafting is active (we have entity and progress data), show regardless of setting
+  const isCraftingActive = lastEntity !== null && lastProgressState !== null;
+  const shouldShow = currentSettings.panelVisible || isCraftingActive;
+  
+  if (!reactRoot || !shouldShow) {
     if (reactRoot && overlayContainer) {
       overlayContainer.style.display = 'none';
     }
@@ -601,7 +715,7 @@ let cachedStore: any = null;
 /**
  * Try to extract crafting state from Redux store or DOM.
  */
-function detectCraftingState(): { isActive: boolean; entity?: CraftingEntity; progress?: ProgressState } {
+function detectCraftingState(): { isActive: boolean; entity?: CraftingEntity; progress?: ProgressState; recipeStats?: any } {
   // Method 1: Try to access Redux store - this is the best source
   if (!cachedStore) {
     cachedStore = findReduxStore();
@@ -617,7 +731,8 @@ function detectCraftingState(): { isActive: boolean; entity?: CraftingEntity; pr
         return { 
           isActive: true, 
           entity: craftingState.player as CraftingEntity,
-          progress: craftingState.progressState as ProgressState
+          progress: craftingState.progressState as ProgressState,
+          recipeStats: craftingState.recipeStats
         };
       }
       
@@ -627,7 +742,8 @@ function detectCraftingState(): { isActive: boolean; entity?: CraftingEntity; pr
         return {
           isActive: true,
           entity: gameCrafting.player as CraftingEntity,
-          progress: gameCrafting.progressState as ProgressState
+          progress: gameCrafting.progressState as ProgressState,
+          recipeStats: gameCrafting.recipeStats
         };
       }
     } catch (e) {
@@ -668,12 +784,17 @@ function detectCraftingState(): { isActive: boolean; entity?: CraftingEntity; pr
 
 /**
  * Parse crafting values from the DOM.
+ * Returns both current values and target values extracted from "X/Y" patterns.
  */
 function parseCraftingValuesFromDOM(): { 
   completion: number; 
   perfection: number; 
   stability: number;
   pool: number;
+  targetCompletion?: number;
+  targetPerfection?: number;
+  targetStability?: number;
+  maxPool?: number;
 } | null {
   try {
     // Look for progress bars or text showing crafting values
@@ -691,6 +812,11 @@ function parseCraftingValuesFromDOM(): {
         perfection: perfectionMatch ? parseInt(perfectionMatch[1]) : 0,
         stability: stabilityMatch ? parseInt(stabilityMatch[1]) : 0,
         pool: poolMatch ? parseInt(poolMatch[1]) : 0,
+        // Also extract target values (the second number in X/Y patterns)
+        targetCompletion: completionMatch ? parseInt(completionMatch[2]) : undefined,
+        targetPerfection: perfectionMatch ? parseInt(perfectionMatch[2]) : undefined,
+        targetStability: stabilityMatch ? parseInt(stabilityMatch[2]) : undefined,
+        maxPool: poolMatch ? parseInt(poolMatch[2]) : undefined,
       };
     }
   } catch (e) {
@@ -704,7 +830,7 @@ function parseCraftingValuesFromDOM(): {
  * Poll for crafting state changes.
  */
 function pollCraftingState(): void {
-  const { isActive, entity, progress } = detectCraftingState();
+  const { isActive, entity, progress, recipeStats } = detectCraftingState();
   
   if (isActive && !isOverlayVisible) {
     console.log('[CraftBuddy] Crafting detected, showing overlay');
@@ -712,10 +838,28 @@ function pollCraftingState(): void {
   } else if (!isActive && isOverlayVisible) {
     console.log('[CraftBuddy] Crafting ended, hiding overlay');
     hideOverlay();
+    clearCachedTargets();
   }
   
   // If we have entity and progress from Redux, use them directly
   if (isActive && entity && progress) {
+    // CRITICAL: Update target values from recipeStats BEFORE updating recommendation
+    // recipeStats contains the authoritative target values (completion, perfection, stability)
+    if (recipeStats) {
+      if (recipeStats.completion !== undefined && recipeStats.completion > 0) {
+        targetCompletion = recipeStats.completion;
+      }
+      if (recipeStats.perfection !== undefined && recipeStats.perfection > 0) {
+        targetPerfection = recipeStats.perfection;
+      }
+      if (recipeStats.stability !== undefined && recipeStats.stability > 0) {
+        targetStability = recipeStats.stability;
+      }
+      // Calculate current max stability from recipeStats.stability - progressState.stabilityPenalty
+      const stabilityPenalty = (progress as any).stabilityPenalty || 0;
+      currentMaxStability = recipeStats.stability - stabilityPenalty;
+    }
+    
     // Check if state changed
     const newCompletion = progress.completion || 0;
     const newPerfection = progress.perfection || 0;
@@ -725,7 +869,7 @@ function pollCraftingState(): void {
         newPerfection !== currentPerfection ||
         newStability !== currentStability ||
         !lastEntity) {
-      console.log(`[CraftBuddy] Redux state: Completion=${newCompletion}, Perfection=${newPerfection}, Stability=${newStability}`);
+      console.log(`[CraftBuddy] Redux state: Completion=${newCompletion}/${targetCompletion}, Perfection=${newPerfection}/${targetPerfection}, Stability=${newStability}/${currentMaxStability}`);
       updateRecommendation(entity, progress);
     }
     return;
@@ -735,10 +879,38 @@ function pollCraftingState(): void {
   if (isActive) {
     const domValues = parseCraftingValuesFromDOM();
     if (domValues) {
-      // Only update if values changed
+      // ALWAYS update target values from DOM - these are the live values from the game UI
+      // The second number in "Stability: X/Y" is the CURRENT max stability (which decreases as skills are used)
+      let targetsChanged = false;
+      
+      if (domValues.targetCompletion && domValues.targetCompletion > 0 && domValues.targetCompletion !== targetCompletion) {
+        targetCompletion = domValues.targetCompletion;
+        console.log(`[CraftBuddy] Updated targetCompletion from DOM: ${targetCompletion}`);
+        targetsChanged = true;
+      }
+      if (domValues.targetPerfection && domValues.targetPerfection > 0 && domValues.targetPerfection !== targetPerfection) {
+        targetPerfection = domValues.targetPerfection;
+        console.log(`[CraftBuddy] Updated targetPerfection from DOM: ${targetPerfection}`);
+        targetsChanged = true;
+      }
+      // For stability, the DOM shows "current/currentMax" - the second number is the CURRENT max stability
+      // which decreases each turn (unless skill has noMaxStabilityLoss)
+      if (domValues.targetStability && domValues.targetStability > 0 && domValues.targetStability !== currentMaxStability) {
+        currentMaxStability = domValues.targetStability;
+        console.log(`[CraftBuddy] Updated currentMaxStability from DOM: ${currentMaxStability}`);
+        targetsChanged = true;
+      }
+      
+      // Cache targets if they changed (for mid-craft save recovery)
+      if (targetsChanged) {
+        cacheTargets('from-dom-polling');
+      }
+      
+      // Update current values and re-render if values changed
       if (domValues.completion !== currentCompletion || 
           domValues.perfection !== currentPerfection ||
-          domValues.stability !== currentStability) {
+          domValues.stability !== currentStability ||
+          targetsChanged) {
         console.log('[CraftBuddy] DOM values changed:', domValues);
         currentCompletion = domValues.completion;
         currentPerfection = domValues.perfection;
@@ -775,11 +947,14 @@ function stopPolling(): void {
 try {
   window.modAPI.hooks.onDeriveRecipeDifficulty((recipe, recipeStats, gameFlags) => {
     console.log('[CraftBuddy] onDeriveRecipeDifficulty called for:', recipe?.name);
+    console.log('[CraftBuddy] Full recipeStats:', JSON.stringify(recipeStats, null, 2));
     
     if (recipeStats) {
-      targetCompletion = recipeStats.completion || 100;
-      targetPerfection = recipeStats.perfection || 100;
-      targetStability = recipeStats.stability || 60;
+      // Try multiple possible property names for targets
+      const statsAny = recipeStats as any;
+      targetCompletion = statsAny.completionTarget ?? statsAny.targetCompletion ?? statsAny.completion ?? 100;
+      targetPerfection = statsAny.perfectionTarget ?? statsAny.targetPerfection ?? statsAny.perfection ?? 100;
+      targetStability = statsAny.stabilityTarget ?? statsAny.targetStability ?? statsAny.stability ?? 60;
       
       const conditionType = recipeStats.conditionType;
       if (conditionType) {
@@ -787,6 +962,9 @@ try {
       }
       
       console.log(`[CraftBuddy] Targets: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}`);
+      
+      // Cache targets for mid-craft save recovery
+      cacheTargets(recipe?.name);
     }
     
     // @ts-ignore
@@ -816,7 +994,7 @@ try {
     nextConditions = [];
     
     // Force panel visible and show overlay when crafting starts
-    currentSettings.panelVisible = true;
+    currentSettings = saveSettings({ panelVisible: true });
     isOverlayVisible = false; // Reset so showOverlay will work
     console.log('[CraftBuddy] Crafting starting, forcing panel visible');
     showOverlay();
@@ -1106,6 +1284,117 @@ try {
     
     console.log('[CraftBuddy] Mock test complete - panel should be visible');
   },
+  
+  // COMPREHENSIVE DEBUG: Dump entire Redux crafting state structure
+  dumpCraftingState: () => {
+    console.log('=== CRAFTBUDDY FULL STATE DUMP ===');
+    console.log('Current mod targets:', { targetCompletion, targetPerfection, targetStability, currentMaxStability });
+    console.log('Current mod values:', { currentCompletion, currentPerfection, currentStability });
+    
+    if (!cachedStore) {
+      console.log('ERROR: No Redux store cached!');
+      return;
+    }
+    
+    const state = cachedStore.getState();
+    if (!state) {
+      console.log('ERROR: Store state is null/undefined!');
+      return;
+    }
+    
+    console.log('Redux state top-level keys:', Object.keys(state));
+    
+    const crafting = state.crafting;
+    if (!crafting) {
+      console.log('ERROR: No crafting state in Redux!');
+      return;
+    }
+    
+    console.log('--- CRAFTING STATE KEYS ---');
+    console.log(Object.keys(crafting));
+    
+    // Dump each key with its type and value/structure
+    for (const key of Object.keys(crafting)) {
+      const val = crafting[key];
+      const type = typeof val;
+      
+      if (val === null) {
+        console.log(`crafting.${key}: null`);
+      } else if (val === undefined) {
+        console.log(`crafting.${key}: undefined`);
+      } else if (type === 'object') {
+        if (Array.isArray(val)) {
+          console.log(`crafting.${key}: Array[${val.length}]`, val.length > 0 ? val.slice(0, 3) : '(empty)');
+        } else {
+          console.log(`crafting.${key}: Object with keys:`, Object.keys(val));
+          // For important objects, dump their contents
+          if (['recipeStats', 'progressState', 'recipe', 'difficulty'].includes(key)) {
+            console.log(`  FULL crafting.${key}:`, JSON.stringify(val, null, 2));
+          }
+        }
+      } else {
+        console.log(`crafting.${key}: ${type} = ${String(val).substring(0, 100)}`);
+      }
+    }
+    
+    // Specifically look for target values in various places
+    console.log('--- SEARCHING FOR TARGET VALUES ---');
+    
+    // Check recipeStats
+    if (crafting.recipeStats) {
+      console.log('recipeStats.completion:', crafting.recipeStats.completion);
+      console.log('recipeStats.perfection:', crafting.recipeStats.perfection);
+      console.log('recipeStats.stability:', crafting.recipeStats.stability);
+    } else {
+      console.log('recipeStats: NOT FOUND');
+    }
+    
+    // Check progressState for stabilityPenalty
+    if (crafting.progressState) {
+      console.log('progressState.completion:', crafting.progressState.completion);
+      console.log('progressState.perfection:', crafting.progressState.perfection);
+      console.log('progressState.stability:', crafting.progressState.stability);
+      console.log('progressState.stabilityPenalty:', crafting.progressState.stabilityPenalty);
+      console.log('progressState.maxStability:', crafting.progressState.maxStability);
+      // Dump all progressState keys
+      console.log('ALL progressState keys:', Object.keys(crafting.progressState));
+    }
+    
+    // Check recipe object
+    if (crafting.recipe) {
+      console.log('recipe keys:', Object.keys(crafting.recipe));
+      if (crafting.recipe.stats) console.log('recipe.stats:', crafting.recipe.stats);
+      if (crafting.recipe.difficulty) console.log('recipe.difficulty:', crafting.recipe.difficulty);
+      if (crafting.recipe.completion) console.log('recipe.completion:', crafting.recipe.completion);
+      if (crafting.recipe.perfection) console.log('recipe.perfection:', crafting.recipe.perfection);
+      if (crafting.recipe.stability) console.log('recipe.stability:', crafting.recipe.stability);
+    }
+    
+    // Check for any other keys that might contain targets
+    const targetKeywords = ['target', 'max', 'goal', 'required', 'total', 'stats', 'difficulty'];
+    for (const key of Object.keys(crafting)) {
+      const lowerKey = key.toLowerCase();
+      if (targetKeywords.some(kw => lowerKey.includes(kw))) {
+        console.log(`Potential target key - crafting.${key}:`, crafting[key]);
+      }
+    }
+    
+    console.log('=== END STATE DUMP ===');
+    return crafting;
+  },
+  
+  // Quick check of what the mod is currently using
+  getCurrentTargets: () => {
+    return {
+      targetCompletion,
+      targetPerfection,
+      targetStability,
+      currentMaxStability,
+      currentCompletion,
+      currentPerfection,
+      currentStability,
+    };
+  },
 };
 
 /**
@@ -1150,7 +1439,7 @@ function createTitleScreenIndicator(): void {
 
     const indicator = document.createElement('div');
     indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.11.0 Loaded';
+    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.21.0 Loaded';
     
     Object.assign(indicator.style, {
       position: 'fixed',
@@ -1194,37 +1483,192 @@ createTitleScreenIndicator();
 createOverlayContainer();
 startPolling();
 
+/**
+ * Process crafting state from Redux - used both for subscription updates and initial check.
+ */
+function processCraftingState(craftingState: any): void {
+  if (!craftingState?.player || !craftingState?.progressState) {
+    return;
+  }
+  
+  const progress = craftingState.progressState;
+  const entity = craftingState.player;
+  
+  // Read targets from recipeStats in Redux state (this is the authoritative source)
+  const recipeStats = craftingState.recipeStats;
+  
+  // Debug: Log the full crafting state structure to find where targets are stored
+  if (!recipeStats) {
+    console.log('[CraftBuddy] recipeStats is undefined, checking craftingState keys:', Object.keys(craftingState));
+    // Try to find targets in other locations
+    const recipe = craftingState.recipe;
+    if (recipe) {
+      console.log('[CraftBuddy] Found recipe object:', JSON.stringify(recipe, null, 2).substring(0, 1000));
+      // Check if recipe has stats or difficulty info
+      if (recipe.stats) {
+        console.log('[CraftBuddy] recipe.stats:', JSON.stringify(recipe.stats, null, 2));
+      }
+      if (recipe.difficulty) {
+        console.log('[CraftBuddy] recipe.difficulty:', JSON.stringify(recipe.difficulty, null, 2));
+      }
+      if (recipe.basicItem) {
+        console.log('[CraftBuddy] recipe.basicItem:', JSON.stringify(recipe.basicItem, null, 2).substring(0, 500));
+      }
+    }
+    // Log ALL keys and their types to help find targets
+    console.log('[CraftBuddy] Full craftingState structure:');
+    for (const key of Object.keys(craftingState)) {
+      const val = craftingState[key];
+      const type = typeof val;
+      if (type === 'object' && val !== null) {
+        console.log(`  ${key}: ${type} with keys: ${Object.keys(val).slice(0, 10).join(', ')}`);
+      } else {
+        console.log(`  ${key}: ${type} = ${String(val).substring(0, 50)}`);
+      }
+    }
+  } else {
+    console.log('[CraftBuddy] recipeStats found:', JSON.stringify(recipeStats, null, 2));
+  }
+  
+  // Try multiple sources for targets
+  let foundTargets = false;
+  
+  // Source 1: recipeStats (preferred) - this is the authoritative source from Redux
+  // recipeStats is calculated by deriveRecipeDifficulty() when crafting starts and IS persisted in saves
+  if (recipeStats) {
+    if (recipeStats.completion !== undefined && recipeStats.completion > 0) {
+      targetCompletion = recipeStats.completion;
+      foundTargets = true;
+    }
+    if (recipeStats.perfection !== undefined && recipeStats.perfection > 0) {
+      targetPerfection = recipeStats.perfection;
+      foundTargets = true;
+    }
+    if (recipeStats.stability !== undefined && recipeStats.stability > 0) {
+      targetStability = recipeStats.stability;
+      foundTargets = true;
+    }
+    
+    // Calculate current max stability from recipeStats.stability - progressState.stabilityPenalty
+    // The game tracks stability decay via stabilityPenalty, not a separate maxStability field
+    const stabilityPenalty = progress.stabilityPenalty || 0;
+    currentMaxStability = recipeStats.stability - stabilityPenalty;
+    console.log(`[CraftBuddy] Current max stability: ${currentMaxStability} (target: ${recipeStats.stability}, penalty: ${stabilityPenalty})`);
+  }
+  
+  // Source 2: recipe object (fallback)
+  if (!foundTargets && craftingState.recipe) {
+    const recipe = craftingState.recipe;
+    // Try recipe.stats
+    if (recipe.stats) {
+      if (recipe.stats.completion > 0) targetCompletion = recipe.stats.completion;
+      if (recipe.stats.perfection > 0) targetPerfection = recipe.stats.perfection;
+      if (recipe.stats.stability > 0) targetStability = recipe.stats.stability;
+      foundTargets = true;
+    }
+    // Try recipe.difficulty (note: this is usually just a string like 'hard', not an object)
+    if (recipe.difficulty && typeof recipe.difficulty === 'object') {
+      if (recipe.difficulty.completion > 0) targetCompletion = recipe.difficulty.completion;
+      if (recipe.difficulty.perfection > 0) targetPerfection = recipe.difficulty.perfection;
+      if (recipe.difficulty.stability > 0) targetStability = recipe.difficulty.stability;
+      foundTargets = true;
+    }
+    // Try direct properties on recipe
+    if (recipe.completion > 0) { targetCompletion = recipe.completion; foundTargets = true; }
+    if (recipe.perfection > 0) { targetPerfection = recipe.perfection; foundTargets = true; }
+    if (recipe.stability > 0) { targetStability = recipe.stability; foundTargets = true; }
+  }
+  
+  // Source 3: localStorage cache (for mid-craft save loads)
+  if (!foundTargets) {
+    foundTargets = loadCachedTargets();
+    if (foundTargets) {
+      console.log(`[CraftBuddy] Targets from cache: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}`);
+    }
+  }
+  
+  // Source 4: ALWAYS parse targets from DOM - this is the source of truth for what the game displays
+  // The DOM shows the actual current values, which is especially important for mid-craft save loads
+  // where recipeStats is undefined and other sources may not have the correct values
+  const domValues = parseCraftingValuesFromDOM();
+  if (domValues) {
+    let domUpdated = false;
+    
+    // Update targets from DOM if they differ from current values
+    // DOM values are authoritative since they show what the game is actually displaying
+    if (domValues.targetCompletion && domValues.targetCompletion > 0 && domValues.targetCompletion !== targetCompletion) {
+      console.log(`[CraftBuddy] DOM targetCompletion: ${domValues.targetCompletion} (was ${targetCompletion})`);
+      targetCompletion = domValues.targetCompletion;
+      domUpdated = true;
+    }
+    if (domValues.targetPerfection && domValues.targetPerfection > 0 && domValues.targetPerfection !== targetPerfection) {
+      console.log(`[CraftBuddy] DOM targetPerfection: ${domValues.targetPerfection} (was ${targetPerfection})`);
+      targetPerfection = domValues.targetPerfection;
+      domUpdated = true;
+    }
+    // For stability, the DOM shows current/currentMax - update currentMaxStability
+    if (domValues.targetStability && domValues.targetStability > 0 && domValues.targetStability !== currentMaxStability) {
+      console.log(`[CraftBuddy] DOM currentMaxStability: ${domValues.targetStability} (was ${currentMaxStability})`);
+      currentMaxStability = domValues.targetStability;
+      // Also update targetStability if it's still at default or lower than DOM value
+      if (targetStability === 60 || targetStability < domValues.targetStability) {
+        targetStability = domValues.targetStability;
+      }
+      domUpdated = true;
+    }
+    
+    if (domUpdated) {
+      foundTargets = true;
+      console.log(`[CraftBuddy] Targets updated from DOM: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}, maxStability=${currentMaxStability}`);
+      // Cache these for future use
+      cacheTargets('from-dom-processCraftingState');
+    }
+  }
+  
+  if (foundTargets) {
+    console.log(`[CraftBuddy] Final targets: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}`);
+  }
+  
+  // Check if state changed OR if we haven't initialized yet (lastEntity is null)
+  const stateChanged = progress.completion !== currentCompletion || 
+      progress.perfection !== currentPerfection ||
+      progress.stability !== currentStability;
+  const needsInitialization = !lastEntity;
+  
+  if (stateChanged || needsInitialization) {
+    console.log(`[CraftBuddy] Redux update: Completion=${progress.completion}, Perfection=${progress.perfection}, Stability=${progress.stability}${needsInitialization ? ' (initial load)' : ''}`);
+    
+    // Ensure panel is visible
+    if (!isOverlayVisible) {
+      currentSettings = saveSettings({ panelVisible: true });
+      showOverlay();
+    }
+    
+    updateRecommendation(entity, progress);
+  }
+}
+
 // Subscribe to Redux store for state changes
 setTimeout(() => {
   const store = findReduxStore();
   if (store && typeof store.subscribe === 'function') {
     cachedStore = store;
     console.log('[CraftBuddy] Subscribing to Redux store for state changes');
+    
+    // IMPORTANT: Check for active crafting immediately on subscription
+    // This handles the case where user loads a save mid-craft
+    const initialState = store.getState();
+    const initialCraftingState = initialState?.crafting;
+    if (initialCraftingState?.player && initialCraftingState?.progressState) {
+      console.log('[CraftBuddy] Detected active crafting session on load (mid-craft save)');
+      processCraftingState(initialCraftingState);
+    }
+    
+    // Subscribe to future changes
     store.subscribe(() => {
       const state = store.getState();
       const craftingState = state?.crafting;
-      
-      // Check if crafting is active
-      if (craftingState?.player && craftingState?.progressState) {
-        const progress = craftingState.progressState;
-        const entity = craftingState.player;
-        
-        // Check if state changed
-        if (progress.completion !== currentCompletion || 
-            progress.perfection !== currentPerfection ||
-            progress.stability !== currentStability ||
-            !lastEntity) {
-          console.log(`[CraftBuddy] Redux update: Completion=${progress.completion}, Perfection=${progress.perfection}, Stability=${progress.stability}`);
-          
-          // Ensure panel is visible
-          if (!isOverlayVisible) {
-            currentSettings.panelVisible = true;
-            showOverlay();
-          }
-          
-          updateRecommendation(entity, progress);
-        }
-      }
+      processCraftingState(craftingState);
     });
   }
 }, 1000); // Wait 1 second for game to initialize
