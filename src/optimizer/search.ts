@@ -548,7 +548,9 @@ export function lookaheadSearch(
   const scoredSkills: SkillRecommendation[] = [];
 
   /**
-   * Find the best follow-up skill after applying a skill
+   * Find the best follow-up skill after applying a skill.
+   * Uses the same search logic as findOptimalPath to ensure consistency
+   * between the follow-up recommendation and the suggested rotation.
    */
   function findFollowUpSkill(
     stateAfterSkill: CraftingState,
@@ -573,16 +575,23 @@ export function lookaheadSearch(
     const followUpSkills = getAvailableSkills(stateAfterSkill, config, followUpConditionType);
     if (followUpSkills.length === 0) return undefined;
 
+    // Apply move ordering for consistency with findOptimalPath
+    const orderedFollowUpSkills = orderSkillsForSearch(
+      followUpSkills, stateAfterSkill, config, targetCompletion, targetPerfection
+    );
+
     let bestFollowUp: SkillDefinition | null = null;
     let bestFollowUpScore = -Infinity;
     let bestFollowUpGains = { completion: 0, perfection: 0, stability: 0 };
 
-    for (const followUp of followUpSkills) {
+    for (const followUp of orderedFollowUpSkills) {
       const nextState = applySkill(stateAfterSkill, followUp, config, followUpCondition);
       if (nextState === null) continue;
 
       const followUpGains = calculateSkillGains(stateAfterSkill, followUp, config, followUpCondition);
-      const followUpScore = search(nextState, depth - 2, depthIndex + 1);
+      // Use depth - 1 - depthIndex to match findOptimalPath's remaining depth calculation
+      const remainingDepth = depth - 1 - depthIndex;
+      const followUpScore = search(nextState, remainingDepth, depthIndex + 1);
 
       if (followUpScore > bestFollowUpScore) {
         bestFollowUpScore = followUpScore;

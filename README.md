@@ -57,7 +57,7 @@ During any crafting session (forge, alchemical, inscription, or resonance), AFNM
 
 Click the gear icon (⚙️) on the recommendation panel to access settings:
 
-- **Lookahead Depth** (1-12): Higher values give better recommendations but are slower
+- **Lookahead Depth** (1-24): Higher values give better recommendations but are slower (optimal: 8-12)
 - **Compact Mode**: Show only essential information
 - **Show Rotation**: Display suggested skill sequence
 - **Show Final State**: Display projected outcome
@@ -94,7 +94,7 @@ window.craftBuddyDebug.setTargets(completion, perfection, stability)
 
 // View/modify settings
 window.craftBuddyDebug.getSettings()
-window.craftBuddyDebug.setLookaheadDepth(4)  // 1-12
+window.craftBuddyDebug.setLookaheadDepth(8)  // 1-24, optimal: 8-12
 window.craftBuddyDebug.togglePanel()         // Toggle visibility
 window.craftBuddyDebug.toggleCompact()       // Toggle compact mode
 
@@ -109,13 +109,16 @@ window.craftBuddyDebug.checkConflicts()  // Manually check for conflicts
 ## Building from Source
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies (requires Bun: https://bun.sh)
+bun install
 
 # Build the mod
-npm run build
+bun run build
 
-# Output: builds/afnm-craftbuddy-x.x.x.zip
+# Run tests
+bun run test
+
+# Output: builds/afnm-craftbuddy.zip
 ```
 
 ## How It Works

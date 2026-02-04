@@ -25,8 +25,8 @@ For comprehensive guides on modding AFNM, visit our **[complete documentation si
 ## Quick Start
 
 1. **Clone/fork** this repository
-2. **Install dependencies**: `npm install`
+2. **Install dependencies**: `bun install` (requires [Bun](https://bun.sh))
 3. **Edit** `package.json` with your mod details
 4. **Start coding** in `src/modContent/index.ts`
-5. **Build your mod**: `npm run build`
+5. **Build your mod**: `bun run build`
 6. **Test** by placing the zip in the game's `mods/` folder

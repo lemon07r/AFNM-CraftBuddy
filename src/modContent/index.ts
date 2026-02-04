@@ -46,6 +46,7 @@ let currentCompletion = 0;
 let currentPerfection = 0;
 let currentStability = 0;
 let currentMaxStability = 60;
+let currentCondition: CraftingCondition | undefined = undefined;
 let nextConditions: CraftingCondition[] = [];
 let conditionEffectsCache: RecipeConditionEffect | null = null;
 
@@ -470,6 +471,7 @@ function updateRecommendation(
   const buffs = entity?.buffs;
   
   nextConditions = progressState?.nextConditions || [];
+  currentCondition = condition;
   
   currentCompletion = completion;
   currentPerfection = perfection;
@@ -616,6 +618,7 @@ function renderOverlay(): void {
     settings: currentSettings,
     onSettingsChange: handleSettingsChange,
     targetStability,
+    currentCondition: currentCondition as any,
     nextConditions,
     currentToxicity,
     maxToxicity,

@@ -328,22 +328,16 @@ export function calculateSkillGains(
 
 /**
  * Check if a condition requirement is met by the current condition.
- * Some skills require specific conditions (e.g., Harmonious skills need positive/veryPositive).
+ * Skills require EXACT condition match - e.g., Harmonious skills only work during Harmonious (positive),
+ * NOT during Brilliant (veryPositive). This matches the game's behavior.
  */
 export function checkConditionRequirement(
   requirement: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative',
   current: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
 ): boolean {
-  // Exact match always works
-  if (requirement === current) return true;
-  
-  // positive requirement can be met by veryPositive
-  if (requirement === 'positive' && current === 'veryPositive') return true;
-  
-  // negative requirement can be met by veryNegative
-  if (requirement === 'negative' && current === 'veryNegative') return true;
-  
-  return false;
+  // Exact match required - skills with condition requirements only work during that exact condition
+  // e.g., Harmonious (positive) skills do NOT work during Brilliant (veryPositive)
+  return requirement === current;
 }
 
 /**

@@ -64,6 +64,9 @@ interface RecommendationPanelProps {
   currentMaxStability?: number;
   /** Initial/target max stability from recipe */
   targetStability?: number;
+  /** Current crafting condition */
+  currentCondition?: CraftingConditionType;
+  /** Upcoming crafting conditions (for future turns) */
   nextConditions?: CraftingConditionType[];
   /** Current toxicity for alchemy crafting */
   currentToxicity?: number;
@@ -149,17 +152,17 @@ function CompactSkillDisplay({
           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 0.25 }}>
             {gains.completion > 0 && (
               <Typography variant="caption" sx={{ color: '#90EE90' }}>
-                +{gains.completion} C
+                +{gains.completion} Completion
               </Typography>
             )}
             {gains.perfection > 0 && (
               <Typography variant="caption" sx={{ color: '#87CEEB' }}>
-                +{gains.perfection} P
+                +{gains.perfection} Perfection
               </Typography>
             )}
             {gains.stability > 0 && (
               <Typography variant="caption" sx={{ color: '#FFA500' }}>
-                +{gains.stability} S
+                +{gains.stability} Stability
               </Typography>
             )}
           </Box>
@@ -220,8 +223,9 @@ function SingleSkillBox({
     bgColor = 'rgba(50, 50, 50, 0.4)';
   }
   
-  // Icon sizes: primary (current turn) fills 3 rows (~72px), follow-up (next turn) fills 2 rows (~48px)
-  const iconSize = isPrimary && !isFollowUp ? 72 : (isFollowUp ? 48 : 40);
+  // Icon sizes: current turn fills 3 rows (~72px for primary, ~56px for alternatives), follow-up (next turn) fills 2 rows (~48px)
+  // For alternatives: current turn should be larger than follow-up
+  const iconSize = isFollowUp ? 48 : (isPrimary ? 72 : 56);
   
   return (
     <Box
@@ -285,17 +289,17 @@ function SingleSkillBox({
           <Box sx={{ display: 'flex', gap: 0.75, mt: 0.25, flexWrap: 'wrap' }}>
             {gains.completion > 0 && (
               <Typography variant="caption" sx={{ color: '#90EE90' }}>
-                +{gains.completion} C
+                +{gains.completion} Completion
               </Typography>
             )}
             {gains.perfection > 0 && (
               <Typography variant="caption" sx={{ color: '#87CEEB' }}>
-                +{gains.perfection} P
+                +{gains.perfection} Perfection
               </Typography>
             )}
             {gains.stability > 0 && (
               <Typography variant="caption" sx={{ color: '#FFA500' }}>
-                +{gains.stability} S
+                +{gains.stability} Stability
               </Typography>
             )}
           </Box>
@@ -471,6 +475,7 @@ export function RecommendationPanel({
   currentStability = 0,
   currentMaxStability = 0,
   targetStability = 0,
+  currentCondition,
   nextConditions = [],
   currentToxicity = 0,
   maxToxicity = 0,
@@ -620,14 +625,34 @@ export function RecommendationPanel({
         </Box>
       )}
 
-      {/* Forecasted conditions from game */}
-      {showForecastedConditions && nextConditions.length > 0 && !compactMode && (
+      {/* Current and forecasted conditions from game */}
+      {showForecastedConditions && (currentCondition || nextConditions.length > 0) && !compactMode && (
         <Box sx={{ mb: 1.5 }}>
           <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)', mb: 0.5 }}>
-            Upcoming conditions:
+            Conditions:
           </Typography>
-          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-            {nextConditions.slice(0, 5).map((condition, idx) => (
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Current condition - highlighted */}
+            {currentCondition && (
+              <Chip
+                label={`Now: ${CONDITION_NAMES[currentCondition] || currentCondition}`}
+                size="small"
+                sx={{
+                  backgroundColor: `${CONDITION_COLORS[currentCondition] || '#ffffff'}30`,
+                  color: CONDITION_COLORS[currentCondition] || '#ffffff',
+                  fontSize: '0.7rem',
+                  height: 22,
+                  fontWeight: 'bold',
+                  border: `2px solid ${CONDITION_COLORS[currentCondition] || '#ffffff'}80`,
+                }}
+              />
+            )}
+            {/* Arrow separator if we have both current and upcoming */}
+            {currentCondition && nextConditions.length > 0 && (
+              <Typography sx={{ color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.8rem' }}>→</Typography>
+            )}
+            {/* Upcoming conditions */}
+            {nextConditions.slice(0, 4).map((condition, idx) => (
               <Chip
                 key={idx}
                 label={`${idx + 1}: ${CONDITION_NAMES[condition] || condition}`}
