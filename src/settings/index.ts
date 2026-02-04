@@ -6,7 +6,7 @@
  */
 
 export interface CraftBuddySettings {
-  /** Lookahead search depth (1-10, default: 4) */
+  /** Lookahead search depth (1-12, default: 4) */
   lookaheadDepth: number;
   /** Whether to show the panel in compact mode */
   compactMode: boolean;
@@ -110,10 +110,10 @@ export function toggleCompactMode(): boolean {
 }
 
 /**
- * Set lookahead depth (clamped to 1-10)
+ * Set lookahead depth (clamped to 1-12)
  */
 export function setLookaheadDepth(depth: number): number {
-  currentSettings.lookaheadDepth = Math.max(1, Math.min(10, depth));
+  currentSettings.lookaheadDepth = Math.max(1, Math.min(12, depth));
   saveSettings(currentSettings);
   return currentSettings.lookaheadDepth;
 }

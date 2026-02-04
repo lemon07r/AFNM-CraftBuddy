@@ -98,7 +98,7 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
               value={settings.lookaheadDepth}
               onChange={(_, value) => handleSettingChange('lookaheadDepth', value as number)}
               min={1}
-              max={10}
+              max={12}
               step={1}
               marks
               size="small"
@@ -108,7 +108,7 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
               }}
             />
             <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)' }}>
-              Higher = better recommendations but slower (1-10)
+              Higher = better recommendations but slower (1-12)
             </Typography>
           </Box>
 

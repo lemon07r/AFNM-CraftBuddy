@@ -315,7 +315,7 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 - `getLastEntity()` - Returns last CraftingEntity received
 - `getLastProgressState()` - Returns last ProgressState received
 - `setTargets(completion, perfection, stability?)` - Override targets for testing
-- `setLookaheadDepth(depth)` - Set lookahead depth (1-10)
+- `setLookaheadDepth(depth)` - Set lookahead depth (1-12)
 - `togglePanel()` - Toggle panel visibility
 - `toggleCompact()` - Toggle compact mode
 - `logGameData()` - Logs all game data sources to console
@@ -447,7 +447,7 @@ All planned improvements have been implemented! Potential future enhancements:
 ## Completed Improvements (v1.3.0)
 
 - [x] **Settings panel** - In-game UI to configure lookahead depth, display options, and reset to defaults
-- [x] **Configurable lookahead depth** - Adjustable from 1-10 (default: 4) via settings panel
+- [x] **Configurable lookahead depth** - Adjustable from 1-12 (default: 4) via settings panel
 - [x] **Keyboard shortcuts** - Ctrl+Shift+C (toggle panel), Ctrl+Shift+M (toggle compact mode)
 - [x] **Compact mode** - Smaller panel showing only essential info for less screen obstruction
 - [x] **Persistent settings** - Settings saved to localStorage and restored on reload

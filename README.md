@@ -57,7 +57,7 @@ During any crafting session (forge, alchemical, inscription, or resonance), AFNM
 
 Click the gear icon (⚙️) on the recommendation panel to access settings:
 
-- **Lookahead Depth** (1-6): Higher values give better recommendations but are slower
+- **Lookahead Depth** (1-12): Higher values give better recommendations but are slower
 - **Compact Mode**: Show only essential information
 - **Show Rotation**: Display suggested skill sequence
 - **Show Final State**: Display projected outcome
@@ -94,7 +94,7 @@ window.craftBuddyDebug.setTargets(completion, perfection, stability)
 
 // View/modify settings
 window.craftBuddyDebug.getSettings()
-window.craftBuddyDebug.setLookaheadDepth(4)  // 1-6
+window.craftBuddyDebug.setLookaheadDepth(4)  // 1-12
 window.craftBuddyDebug.togglePanel()         // Toggle visibility
 window.craftBuddyDebug.toggleCompact()       // Toggle compact mode
 
