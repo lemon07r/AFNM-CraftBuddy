@@ -98,7 +98,7 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
               value={settings.lookaheadDepth}
               onChange={(_, value) => handleSettingChange('lookaheadDepth', value as number)}
               min={1}
-              max={24}
+              max={32}
               step={1}
               marks
               size="small"
@@ -108,7 +108,7 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
               }}
             />
             <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)' }}>
-              Default: 4. Higher values may freeze or crash the game!
+              Default: 8. Higher values may freeze or crash the game!
             </Typography>
             <Typography variant="caption" sx={{ color: '#FF6B6B', display: 'block', mt: 0.5, fontWeight: 'bold' }}>
               ⚠️ WARNING: Values above 6 are DANGEROUS and may cause the game to freeze, lag severely, or become unresponsive. Use at your own risk!

@@ -37,6 +37,13 @@ import {
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 
+declare const MOD_METADATA: {
+  name: string;
+  version: string;
+  author: { name: string } | string;
+  description: string;
+};
+
 // Global state for the optimizer
 let currentRecommendation: SearchResult | null = null;
 let currentConfig: OptimizerConfig | null = null;
@@ -1139,7 +1146,7 @@ try {
   },
   
   setLookaheadDepth: (depth: number) => {
-    currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(18, depth)) });
+    currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(32, depth)) });
     console.log(`[CraftBuddy] Lookahead depth set to: ${currentSettings.lookaheadDepth}`);
   },
   
@@ -1539,7 +1546,7 @@ function createTitleScreenIndicator(): void {
 
     const indicator = document.createElement('div');
     indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = '🔮 AFNM-CraftBuddy v1.21.0 Loaded';
+    indicator.innerHTML = `🔮 AFNM-CraftBuddy v${MOD_METADATA.version} Loaded`;
     
     Object.assign(indicator.style, {
       position: 'fixed',
