@@ -108,6 +108,34 @@ describe('canApplySkill', () => {
     expect(canApplySkill(state, skill, 10)).toBe(false);
   });
 
+  it('should treat excellent/brilliant as veryPositive for condition-gated skills', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+    });
+
+    const skill = createTestSkill({
+      conditionRequirement: 'veryPositive',
+    });
+
+    expect(canApplySkill(state, skill, 10, 0, 'excellent')).toBe(true);
+    expect(canApplySkill(state, skill, 10, 0, 'brilliant')).toBe(true);
+  });
+
+  it('should not allow positive-only condition skills during veryPositive conditions', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+    });
+
+    const skill = createTestSkill({
+      conditionRequirement: 'positive',
+    });
+
+    expect(canApplySkill(state, skill, 10, 0, 'harmonious')).toBe(true);
+    expect(canApplySkill(state, skill, 10, 0, 'brilliant')).toBe(false);
+  });
+
   it('should reject skill when toxicity would exceed max', () => {
     const state = new CraftingState({
       qi: 100,
@@ -459,6 +487,44 @@ describe('applySkill', () => {
     
     expect(newState).not.toBeNull();
     expect(newState!.toxicity).toBe(35); // 20 + 15
+  });
+
+  it('should restore qi when skill provides qiRestore', () => {
+    const state = new CraftingState({
+      qi: 50,
+      stability: 50,
+      maxStability: 60,
+    });
+
+    const skill = createTestSkill({
+      qiCost: 0,
+      restoresQi: true,
+      qiRestore: 25,
+    });
+
+    const newState = applySkill(state, skill, config);
+
+    expect(newState).not.toBeNull();
+    expect(newState!.qi).toBe(75);
+  });
+
+  it('should restore max stability to config max when skill requests full restore', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      maxStability: 30,
+    });
+
+    const skill = createTestSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      restoresMaxStabilityToFull: true,
+    });
+
+    const newState = applySkill(state, skill, config);
+
+    expect(newState).not.toBeNull();
+    expect(newState!.maxStability).toBe(config.maxStability);
   });
 
   it('should apply toxicity cleanse', () => {

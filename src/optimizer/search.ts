@@ -437,8 +437,13 @@ export function greedySearch(
   controlCondition: number = 1.0,
   currentConditionType?: CraftingConditionType
 ): SearchResult {
+  // Extract sublime crafting settings from config
+  const isSublime = config.isSublimeCraft || false;
+  const targetMult = config.targetMultiplier || 2.0;
+
   // Check if targets already met
-  if (targetCompletion > 0 && targetPerfection > 0) {
+  // For sublime crafting, do NOT terminate at base targets; allow optimizer to push beyond.
+  if (!isSublime && targetCompletion > 0 && targetPerfection > 0) {
     if (state.targetsMet(targetCompletion, targetPerfection)) {
       return {
         recommendation: null,
@@ -463,10 +468,6 @@ export function greedySearch(
   const availableSkills = getAvailableSkills(state, config, currentConditionType);
   const scoredSkills: SkillRecommendation[] = [];
   
-  // Extract sublime crafting settings from config
-  const isSublime = config.isSublimeCraft || false;
-  const targetMult = config.targetMultiplier || 2.0;
-
   for (const skill of availableSkills) {
     const newState = applySkill(state, skill, config, controlCondition);
     if (newState === null) continue;
@@ -550,8 +551,12 @@ export function lookaheadSearch(
   };
   const startTime = Date.now();
   
+  // Extract sublime crafting settings from config
+  const isSublime = config.isSublimeCraft || false;
+
   // Check if targets already met
-  if (targetCompletion > 0 && targetPerfection > 0) {
+  // For sublime crafting, do NOT terminate at base targets; allow optimizer to push beyond.
+  if (!isSublime && targetCompletion > 0 && targetPerfection > 0) {
     if (state.targetsMet(targetCompletion, targetPerfection)) {
       return {
         recommendation: null,
@@ -942,7 +947,7 @@ export function lookaheadSearch(
 /**
  * Type for crafting conditions (matches game's CraftingCondition type)
  */
-export type CraftingConditionType = 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative';
+export type CraftingConditionType = string;
 
 /**
  * Main optimizer function - uses lookahead by default.

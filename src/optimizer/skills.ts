@@ -42,11 +42,46 @@ export interface SkillDefinition {
   /** Mastery bonuses applied to this skill */
   mastery?: SkillMastery;
   /** Required crafting condition to use this skill (e.g., 'veryPositive' for Harmonious skills) */
-  conditionRequirement?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative';
+  conditionRequirement?: string;
+  /** Requires a specific stack-based buff to be present (does not consume it) */
+  buffRequirement?: { buffName: string; amount: number };
+  /** Consumes a specific stack-based buff when used (can also scale gains per stack) */
+  buffCost?: { buffName: string; amount?: number; consumeAll?: boolean };
   /** Whether this skill restores Qi (for tracking Qi recovery skills) */
   restoresQi?: boolean;
   /** Amount of Qi restored */
   qiRestore?: number;
+
+  /** Whether this skill restores max stability to the craft's maximum */
+  restoresMaxStabilityToFull?: boolean;
+}
+
+type CoreCondition = 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative';
+
+function normalizeCondition(condition: string | undefined): CoreCondition | undefined {
+  if (!condition) return undefined;
+  const c = String(condition);
+  // Accept both the canonical enum keys and common label/synonym variants.
+  // Some game/mod setups expose conditions like 'brilliant'/'excellent' instead of 'veryPositive'.
+  switch (c) {
+    case 'neutral':
+      return 'neutral';
+    case 'positive':
+    case 'harmonious':
+      return 'positive';
+    case 'negative':
+    case 'resistant':
+      return 'negative';
+    case 'veryPositive':
+    case 'brilliant':
+    case 'excellent':
+      return 'veryPositive';
+    case 'veryNegative':
+    case 'corrupted':
+      return 'veryNegative';
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -302,6 +337,24 @@ export function calculateSkillGains(
   let stabilityGain = skill.stabilityGain;
   let toxicityCleanse = skill.toxicityCleanse || 0;
 
+  // Stack-based buff scaling: some techniques have effects that scale per buff stack
+  // (e.g., pressure stacks for Explosive Release / Pressurized Forging).
+  // In game data these often show up as a flat per-stack amount; if we don't multiply,
+  // CraftBuddy will display only the per-stack value.
+  //
+  // Heuristic: if the skill consumes a buff and does NOT scale with control/intensity,
+  // treat its base gains as "per stack" and multiply by the stacks consumed.
+  if (skill.buffCost && !skill.scalesWithControl && !skill.scalesWithIntensity) {
+    const have = state.getBuffStacks(skill.buffCost.buffName);
+    const stacksUsed = skill.buffCost.consumeAll ? have : Math.min(have, skill.buffCost.amount ?? 0);
+    if (stacksUsed > 1) {
+      completionGain = safeMultiply(completionGain, stacksUsed);
+      perfectionGain = safeMultiply(perfectionGain, stacksUsed);
+      stabilityGain = safeMultiply(stabilityGain, stacksUsed);
+      toxicityCleanse = safeMultiply(toxicityCleanse, stacksUsed);
+    }
+  }
+
   // Get mastery bonuses
   const mastery = skill.mastery || {};
   const controlMasteryBonus = 1 + (mastery.controlBonus || 0);
@@ -349,12 +402,16 @@ export function calculateSkillGains(
  * NOT during Brilliant (veryPositive). This matches the game's behavior.
  */
 export function checkConditionRequirement(
-  requirement: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative',
-  current: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
+  requirement: string,
+  current: string
 ): boolean {
+  const req = normalizeCondition(requirement);
+  const cur = normalizeCondition(current);
+  if (!req || !cur) return false;
+
   // Exact match required - skills with condition requirements only work during that exact condition
-  // e.g., Harmonious (positive) skills do NOT work during Brilliant (veryPositive)
-  return requirement === current;
+  // e.g., Harmonious (positive) skills do NOT work during Brilliant/Excellent (veryPositive)
+  return req === cur;
 }
 
 /**
@@ -382,7 +439,7 @@ export function canApplySkill(
   skill: SkillDefinition,
   minStability: number,
   maxToxicity: number = 0,
-  currentCondition?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
+  currentCondition?: string
 ): boolean {
   // Check cooldown
   if (state.isOnCooldown(skill.key)) {
@@ -398,6 +455,23 @@ export function canApplySkill(
     // veryNegative requirement: only veryNegative works
     const conditionMet = checkConditionRequirement(skill.conditionRequirement, currentCondition);
     if (!conditionMet) {
+      return false;
+    }
+  }
+
+  // Check buff requirements (stack-based buffs)
+  if (skill.buffRequirement) {
+    const have = state.getBuffStacks(skill.buffRequirement.buffName);
+    if (have < skill.buffRequirement.amount) {
+      return false;
+    }
+  }
+
+  // Check buff costs (consumed on use)
+  if (skill.buffCost) {
+    const have = state.getBuffStacks(skill.buffCost.buffName);
+    const required = skill.buffCost.consumeAll ? 1 : (skill.buffCost.amount ?? 0);
+    if (required > 0 && have < required) {
       return false;
     }
   }
@@ -461,15 +535,25 @@ export function applySkill(
 
   // Calculate new resource values
   let newQi = state.qi - effectiveQiCost;
+  if (skill.restoresQi && skill.qiRestore && skill.qiRestore > 0) {
+    newQi = Math.min(config.maxQi, newQi + skill.qiRestore);
+  }
   
   // Handle max stability changes:
-  // 1. Apply any direct max stability change from the skill effect
-  // 2. Apply the standard decay of 1 per turn (unless skill prevents it)
-  let newMaxStability = state.maxStability + (skill.maxStabilityChange || 0);
-  
+  // 1. Apply the standard decay of 1 per turn (unless skill prevents it)
+  // 2. Apply any direct max stability change from the skill effect
+  // 3. Apply any full restore effect (set max stability back to craft's maximum)
+  let newMaxStability = state.maxStability;
+
   // Standard max stability decay: decreases by 1 each turn unless skill prevents it
   if (!skill.preventsMaxStabilityDecay) {
     newMaxStability = Math.max(0, newMaxStability - 1);
+  }
+
+  newMaxStability = newMaxStability + (skill.maxStabilityChange || 0);
+
+  if (skill.restoresMaxStabilityToFull) {
+    newMaxStability = config.maxStability;
   }
   
   // Calculate new stability (current stability, not max)
@@ -536,6 +620,19 @@ export function applySkill(
     newCooldowns.set(skill.key, skill.cooldown);
   }
 
+  // Update stack-based buffs (consume costs)
+  const newBuffStacks = new Map(state.buffStacks);
+  if (skill.buffCost) {
+    const have = state.getBuffStacks(skill.buffCost.buffName);
+    const consume = skill.buffCost.consumeAll ? have : Math.min(have, skill.buffCost.amount ?? 0);
+    const remaining = Math.max(0, have - consume);
+    if (remaining > 0) {
+      newBuffStacks.set(skill.buffCost.buffName, remaining);
+    } else {
+      newBuffStacks.delete(skill.buffCost.buffName);
+    }
+  }
+
   // Create new state with all updates
   // Use safe arithmetic for completion/perfection to handle large late-game values
   return state.copy({
@@ -550,6 +647,7 @@ export function applySkill(
     intensityBuffMultiplier: newIntensityBuffMultiplier,
     toxicity: newToxicity,
     cooldowns: newCooldowns,
+    buffStacks: newBuffStacks,
     history: [...state.history, skill.name],
   });
 }
@@ -561,7 +659,7 @@ export function applySkill(
 export function getAvailableSkills(
   state: CraftingState,
   config: OptimizerConfig,
-  currentCondition?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
+  currentCondition?: string
 ): SkillDefinition[] {
   const maxToxicity = config.maxToxicity || 0;
   return config.skills.filter(skill => canApplySkill(state, skill, config.minStability, maxToxicity, currentCondition));
@@ -573,7 +671,7 @@ export function getAvailableSkills(
 export function isTerminalState(
   state: CraftingState,
   config: OptimizerConfig,
-  currentCondition?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
+  currentCondition?: string
 ): boolean {
   return getAvailableSkills(state, config, currentCondition).length === 0;
 }
@@ -594,7 +692,7 @@ export interface SkillBlockedReason {
 export function getBlockedSkillReasons(
   state: CraftingState,
   config: OptimizerConfig,
-  currentCondition?: 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative'
+  currentCondition?: string
 ): SkillBlockedReason[] {
   const reasons: SkillBlockedReason[] = [];
   const maxToxicity = config.maxToxicity || 0;

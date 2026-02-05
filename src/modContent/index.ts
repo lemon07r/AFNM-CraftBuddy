@@ -209,6 +209,27 @@ function extractBuffInfo(
 }
 
 /**
+ * Extract stack-based buff stacks (e.g., pressure, focus, insight) from game's CraftingBuff array.
+ * Keys are normalized to match skill parsing (`toLowerCase` + spaces -> `_`).
+ */
+function extractBuffStacks(buffs: CraftingBuff[] | undefined): Map<string, number> {
+  const result = new Map<string, number>();
+  if (!buffs) return result;
+
+  for (const buff of buffs) {
+    const rawName = (buff?.name || '').toLowerCase().trim();
+    if (!rawName) continue;
+    const key = rawName.replace(/\s+/g, '_');
+    const stacks = buff?.stacks ?? 0;
+    if (stacks > 0) {
+      result.set(key, stacks);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Get condition multiplier from game's recipeConditionEffects.
  */
 function getConditionMultiplier(
@@ -322,6 +343,7 @@ function convertGameTechniques(
     let basePerfectionGain = 0;
     let stabilityGain = 0;
     let maxStabilityChange = 0;
+    let restoresMaxStabilityToFull = false;
     let toxicityCleanse = 0;
     let buffType = BuffType.NONE;
     let buffDuration = 0;
@@ -330,9 +352,37 @@ function convertGameTechniques(
     let completionScalingStat: string | undefined;
     let perfectionScalingStat: string | undefined;
 
+    // Track stack-buff requirements/consumption (e.g., Pressure)
+    let buffRequirement: { buffName: string; amount: number } | undefined;
+    let buffCost: { buffName: string; amount?: number; consumeAll?: boolean } | undefined;
+
     const effects = tech.effects || [];
     for (const effect of effects) {
       if (!effect) continue;
+
+      // Handle buff gating/consumption effects (game types are loosely typed; use best-effort parsing)
+      const kind = String((effect as any).kind || '');
+      if (/restore.*maxstability/i.test(kind) || /maxstability.*restore/i.test(kind)) {
+        restoresMaxStabilityToFull = true;
+      }
+      if (/requirebuff/i.test(kind)) {
+        const buff = (effect as any).buff;
+        const rawName = (buff?.name || '').toLowerCase().trim();
+        const buffName = rawName.replace(/\s+/g, '_');
+        const amount = (effect as any).stacks?.value ?? (effect as any).amount?.value ?? 1;
+        if (buffName) {
+          buffRequirement = { buffName, amount };
+        }
+      }
+      if (/consumebuff/i.test(kind)) {
+        const buff = (effect as any).buff;
+        const rawName = (buff?.name || '').toLowerCase().trim();
+        const buffName = rawName.replace(/\s+/g, '_');
+        const amount = (effect as any).stacks?.value ?? (effect as any).amount?.value;
+        if (buffName) {
+          buffCost = amount !== undefined ? { buffName, amount } : { buffName, consumeAll: true };
+        }
+      }
       
       switch (effect.kind) {
         case 'completion':
@@ -372,6 +422,12 @@ function convertGameTechniques(
       }
     }
 
+    // Some skills (e.g., Restoring Brilliance) fully restore max stability.
+    // The effect shape for this can vary; use a name-based fallback if we didn't detect a dedicated effect kind.
+    if (!restoresMaxStabilityToFull && techName.toLowerCase().includes('restoring brilliance')) {
+      restoresMaxStabilityToFull = true;
+    }
+
     // Only set scaling flags based on actual effect scaling stats, not just technique type
     // This fixes the bug where skills without perfection effects were showing predicted perfection gains
     const scalesWithIntensity = completionScalingStat === 'intensity';
@@ -380,7 +436,7 @@ function convertGameTechniques(
     const isDisciplinedTouch = hasConsumeBuff || techName.toLowerCase().includes('disciplined');
     
     // Extract condition requirement (e.g., Harmonious skills require 'positive' or 'veryPositive')
-    const conditionRequirement = tech.conditionRequirement as 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative' | undefined;
+    const conditionRequirement = tech.conditionRequirement as string | undefined;
     
     // Extract Qi restore from 'pool' effect (for skills like Siphon Qi)
     let qiRestore = 0;
@@ -416,8 +472,11 @@ function convertGameTechniques(
       cooldown: cooldown > 0 ? cooldown : undefined,
       mastery: Object.keys(mastery).length > 0 ? mastery : undefined,
       conditionRequirement,
+      buffRequirement,
+      buffCost,
       restoresQi: qiRestore > 0,
       qiRestore: qiRestore > 0 ? qiRestore : undefined,
+      restoresMaxStabilityToFull: restoresMaxStabilityToFull || undefined,
     });
   }
 
@@ -513,6 +572,8 @@ function updateRecommendation(
     controlBuffMultiplier,
     intensityBuffMultiplier 
   } = extractBuffInfo(buffs);
+
+  const buffStacks = extractBuffStacks(buffs);
   
   const techniques = entity?.techniques || [];
   currentCooldowns = new Map();
@@ -548,6 +609,7 @@ function updateRecommendation(
     toxicity: currentToxicity,
     maxToxicity: currentConfig?.maxToxicity || maxToxicity,
     cooldowns: currentCooldowns,
+    buffStacks,
     history: [],
   });
 
@@ -556,10 +618,10 @@ function updateRecommendation(
     getConditionMultiplier(cond, 'control')
   );
   
-  // Get current condition type for skill filtering (e.g., Harmonious skills need specific conditions)
-  const currentConditionType = condition as 'neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative' | undefined;
-  // Get forecasted condition types for lookahead skill filtering
-  const forecastedConditionTypes = nextConditions as ('neutral' | 'positive' | 'negative' | 'veryPositive' | 'veryNegative')[];
+  // Get current/forecasted condition types for skill filtering.
+  // Treat them as strings because some game/mod setups may expose variants like 'excellent'.
+  const currentConditionType = condition as unknown as string | undefined;
+  const forecastedConditionTypes = nextConditions as unknown as (string)[];
 
   const lookaheadDepth = currentSettings.lookaheadDepth;
   currentRecommendation = findBestSkill(

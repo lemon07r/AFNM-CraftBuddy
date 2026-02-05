@@ -29,6 +29,11 @@ export interface CraftingStateData {
   maxToxicity: number;
   /** Map of skill keys to their current cooldown turns remaining */
   cooldowns: Map<string, number>;
+  /**
+   * Additional crafting buffs (stack-based) keyed by normalized buff name.
+   * Used for techniques that require/consume specific buffs (e.g., pressure stacks).
+   */
+  buffStacks: Map<string, number>;
   history: string[];
 }
 
@@ -49,6 +54,7 @@ export class CraftingState implements CraftingStateData {
   readonly toxicity: number;
   readonly maxToxicity: number;
   readonly cooldowns: Map<string, number>;
+  readonly buffStacks: Map<string, number>;
   readonly history: string[];
 
   private _cacheKey?: string;
@@ -66,6 +72,7 @@ export class CraftingState implements CraftingStateData {
     this.toxicity = data.toxicity ?? 0;
     this.maxToxicity = data.maxToxicity ?? 100;
     this.cooldowns = data.cooldowns ? new Map(data.cooldowns) : new Map();
+    this.buffStacks = data.buffStacks ? new Map(data.buffStacks) : new Map();
     this.history = data.history ? [...data.history] : [];
   }
 
@@ -86,8 +93,14 @@ export class CraftingState implements CraftingStateData {
       toxicity: overrides.toxicity ?? this.toxicity,
       maxToxicity: overrides.maxToxicity ?? this.maxToxicity,
       cooldowns: overrides.cooldowns ?? this.cooldowns,
+      buffStacks: overrides.buffStacks ?? this.buffStacks,
       history: overrides.history ?? this.history,
     });
+  }
+
+  /** Get current stacks for a normalized buff name */
+  getBuffStacks(buffName: string): number {
+    return this.buffStacks.get(buffName) ?? 0;
   }
 
   /**
@@ -196,7 +209,17 @@ export class CraftingState implements CraftingStateData {
     // Round multipliers to 2 decimal places to avoid floating point comparison issues
     const ctrlMult = this.controlBuffTurns > 0 ? this.controlBuffMultiplier.toFixed(2) : '0';
     const intMult = this.intensityBuffTurns > 0 ? this.intensityBuffMultiplier.toFixed(2) : '0';
-    this._cacheKey = `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${cooldownStr}`;
+
+    // Include additional buff stacks (sorted) because they can:
+    // - gate skill availability (requirements)
+    // - scale skill gains (per-stack effects)
+    const buffStacksStr = Array.from(this.buffStacks.entries())
+      .filter(([_, v]) => v > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join(',');
+
+    this._cacheKey = `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${cooldownStr}:${buffStacksStr}`;
     return this._cacheKey;
   }
 
