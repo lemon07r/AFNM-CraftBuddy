@@ -98,7 +98,7 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
               value={settings.lookaheadDepth}
               onChange={(_, value) => handleSettingChange('lookaheadDepth', value as number)}
               min={1}
-              max={32}
+              max={96}
               step={1}
               marks
               size="small"
@@ -108,10 +108,10 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
               }}
             />
             <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)' }}>
-              Default: 8. Higher values may freeze or crash the game!
+              Default: {DEFAULT_SETTINGS.lookaheadDepth}. Higher values can cause lag on slower machines.
             </Typography>
-            <Typography variant="caption" sx={{ color: '#FF6B6B', display: 'block', mt: 0.5, fontWeight: 'bold' }}>
-              ⚠️ WARNING: Values above 6 are DANGEROUS and may cause the game to freeze, lag severely, or become unresponsive. Use at your own risk!
+            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', display: 'block', mt: 0.5 }}>
+              Tip: For very long crafts (e.g., 60-90 rounds), try 64 or 96 with a higher time budget and max nodes.
             </Typography>
           </Box>
 

@@ -13,6 +13,8 @@ export interface SkillDefinition {
   key: string;
   qiCost: number;
   stabilityCost: number;
+  /** Base success chance for this technique (0-1). If omitted, treated as 1. */
+  successChance?: number;
   baseCompletionGain: number;
   basePerfectionGain: number;
   stabilityGain: number;
@@ -103,6 +105,25 @@ export interface SkillMastery {
   critChanceBonus?: number;
   /** Bonus to crit multiplier */
   critMultiplierBonus?: number;
+}
+
+function normalizeChance(value: number | undefined): number {
+  if (!value || !Number.isFinite(value)) return 0;
+  // Game data usually uses 0-1 for chances, but some sources might expose 0-100.
+  return value > 1 ? value / 100 : value;
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function normalizeCritMultiplier(value: number | undefined): number {
+  if (!value || !Number.isFinite(value)) return 1;
+  // Game stats often store crit multiplier as a percentage bonus (e.g., 50 => +50%).
+  // If it looks like a multiplier already (e.g., 1.5), keep it.
+  if (value < 3) return Math.max(1, value);
+  return Math.max(1, 1 + value / 100);
 }
 
 export interface SkillGains {
@@ -388,11 +409,27 @@ export function calculateSkillGains(
     completionGain = safeFloor(safeMultiply(skill.baseCompletionGain, intensity));
   }
 
+  // Expected-value modeling for late-game:
+  // - Techniques can fail (successChance)
+  // - On success, some effects can crit (critChance/critMultiplier)
+  // We treat completion/perfection/stability/cleanse as affected by success+crit.
+  const mastery = skill.mastery || {};
+  const baseSuccessChance = skill.successChance ?? 1;
+  const effectiveSuccessChance = clamp01(
+    normalizeChance(baseSuccessChance) + normalizeChance(mastery.successChanceBonus) + clamp01(state.successChanceBonus)
+  );
+
+  const effectiveCritChance = clamp01(clamp01(state.critChance) + normalizeChance(mastery.critChanceBonus));
+  const effectiveCritMultiplier = normalizeCritMultiplier(state.critMultiplier) * (1 + (mastery.critMultiplierBonus || 0));
+
+  const expectedCritFactor = 1 + effectiveCritChance * (effectiveCritMultiplier - 1);
+  const expectedFactor = effectiveSuccessChance * expectedCritFactor;
+
   return {
-    completion: completionGain,
-    perfection: perfectionGain,
-    stability: stabilityGain,
-    toxicityCleanse,
+    completion: safeFloor(safeMultiply(completionGain, expectedFactor)),
+    perfection: safeFloor(safeMultiply(perfectionGain, expectedFactor)),
+    stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
+    toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),
   };
 }
 

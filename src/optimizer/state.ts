@@ -17,6 +17,12 @@ export interface CraftingStateData {
   maxStability: number;
   completion: number;
   perfection: number;
+  /** Base crit chance for crafting actions (0-1). */
+  critChance: number;
+  /** Base crit multiplier for crafting actions (>= 1). */
+  critMultiplier: number;
+  /** Bonus added to technique success chance (0-1). */
+  successChanceBonus: number;
   controlBuffTurns: number;
   intensityBuffTurns: number;
   /** Multiplier for control buff (e.g., 1.4 for 40% boost) - read from game */
@@ -47,6 +53,9 @@ export class CraftingState implements CraftingStateData {
   readonly maxStability: number;
   readonly completion: number;
   readonly perfection: number;
+  readonly critChance: number;
+  readonly critMultiplier: number;
+  readonly successChanceBonus: number;
   readonly controlBuffTurns: number;
   readonly intensityBuffTurns: number;
   readonly controlBuffMultiplier: number;
@@ -65,6 +74,9 @@ export class CraftingState implements CraftingStateData {
     this.maxStability = data.maxStability ?? 60;
     this.completion = data.completion ?? 0;
     this.perfection = data.perfection ?? 0;
+    this.critChance = data.critChance ?? 0;
+    this.critMultiplier = data.critMultiplier ?? 1;
+    this.successChanceBonus = data.successChanceBonus ?? 0;
     this.controlBuffTurns = data.controlBuffTurns ?? 0;
     this.intensityBuffTurns = data.intensityBuffTurns ?? 0;
     this.controlBuffMultiplier = data.controlBuffMultiplier ?? 1.4;
@@ -86,6 +98,9 @@ export class CraftingState implements CraftingStateData {
       maxStability: overrides.maxStability ?? this.maxStability,
       completion: overrides.completion ?? this.completion,
       perfection: overrides.perfection ?? this.perfection,
+      critChance: overrides.critChance ?? this.critChance,
+      critMultiplier: overrides.critMultiplier ?? this.critMultiplier,
+      successChanceBonus: overrides.successChanceBonus ?? this.successChanceBonus,
       controlBuffTurns: overrides.controlBuffTurns ?? this.controlBuffTurns,
       intensityBuffTurns: overrides.intensityBuffTurns ?? this.intensityBuffTurns,
       controlBuffMultiplier: overrides.controlBuffMultiplier ?? this.controlBuffMultiplier,
@@ -219,7 +234,12 @@ export class CraftingState implements CraftingStateData {
       .map(([k, v]) => `${k}:${v}`)
       .join(',');
 
-    this._cacheKey = `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${cooldownStr}:${buffStacksStr}`;
+    // Include crit/success values because they change expected gains for most techniques.
+    const critChanceKey = this.critChance.toFixed(4);
+    const critMultKey = this.critMultiplier.toFixed(4);
+    const successBonusKey = this.successChanceBonus.toFixed(4);
+
+    this._cacheKey = `${this.qi}:${this.stability}:${this.maxStability}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${critChanceKey}:${critMultKey}:${successBonusKey}:${cooldownStr}:${buffStacksStr}`;
     return this._cacheKey;
   }
 

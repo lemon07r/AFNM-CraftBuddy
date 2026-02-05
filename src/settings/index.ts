@@ -6,7 +6,7 @@
  */
 
 export interface CraftBuddySettings {
-  /** Lookahead search depth (1-32, default: 8) */
+  /** Lookahead search depth (1-96, default: 32) */
   lookaheadDepth: number;
   /** Whether to show the panel in compact mode */
   compactMode: boolean;
@@ -35,7 +35,9 @@ export interface CraftBuddySettings {
 const STORAGE_KEY = 'craftbuddy_settings';
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
-  lookaheadDepth: 8,
+  // Default to 32 as a safe-ish baseline for most machines.
+  // Users can increase this for very long crafts, but it can still be expensive.
+  lookaheadDepth: 32,
   compactMode: false,
   panelVisible: true,
   maxAlternatives: 2,
@@ -122,10 +124,10 @@ export function toggleCompactMode(): boolean {
 }
 
 /**
- * Set lookahead depth (clamped to 1-32)
+ * Set lookahead depth (clamped to 1-96)
  */
 export function setLookaheadDepth(depth: number): number {
-  currentSettings.lookaheadDepth = Math.max(1, Math.min(32, depth));
+  currentSettings.lookaheadDepth = Math.max(1, Math.min(96, depth));
   saveSettings(currentSettings);
   return currentSettings.lookaheadDepth;
 }

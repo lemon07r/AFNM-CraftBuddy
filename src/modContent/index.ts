@@ -266,42 +266,90 @@ function getConditionMultiplier(
 }
 
 /**
- * Extract mastery bonuses from a technique's mastery array.
+ * Extract mastery data from a technique's mastery array.
+ *
+ * In addition to simple numeric bonuses, some masteries use `kind: 'effect'`
+ * and add additional technique effects (e.g., granting extra buff stacks).
  */
-function extractMasteryBonuses(mastery: any[] | undefined): SkillMastery {
-  const result: SkillMastery = {};
-  
-  if (!mastery || mastery.length === 0) return result;
-  
+function extractMasteryData(mastery: any[] | undefined): {
+  bonuses: SkillMastery;
+  extraEffects: any[];
+} {
+  const bonuses: SkillMastery = {};
+  const extraEffects: any[] = [];
+
+  if (!mastery || mastery.length === 0) return { bonuses, extraEffects };
+
   for (const m of mastery) {
     if (!m) continue;
-    
+
     switch (m.kind) {
       case 'control':
-        result.controlBonus = (result.controlBonus || 0) + (m.percentage || 0);
+        bonuses.controlBonus = (bonuses.controlBonus || 0) + (m.percentage || 0);
         break;
       case 'intensity':
-        result.intensityBonus = (result.intensityBonus || 0) + (m.percentage || 0);
+        bonuses.intensityBonus = (bonuses.intensityBonus || 0) + (m.percentage || 0);
         break;
       case 'poolcost':
-        result.poolCostReduction = (result.poolCostReduction || 0) + (m.change || 0);
+        bonuses.poolCostReduction = (bonuses.poolCostReduction || 0) + (m.change || 0);
         break;
       case 'stabilitycost':
-        result.stabilityCostReduction = (result.stabilityCostReduction || 0) + (m.change || 0);
+        bonuses.stabilityCostReduction = (bonuses.stabilityCostReduction || 0) + (m.change || 0);
         break;
       case 'successchance':
-        result.successChanceBonus = (result.successChanceBonus || 0) + (m.change || 0);
+        bonuses.successChanceBonus = (bonuses.successChanceBonus || 0) + (m.change || 0);
         break;
       case 'critchance':
-        result.critChanceBonus = (result.critChanceBonus || 0) + (m.percentage || 0);
+        bonuses.critChanceBonus = (bonuses.critChanceBonus || 0) + (m.percentage || 0);
         break;
       case 'critmultiplier':
-        result.critMultiplierBonus = (result.critMultiplierBonus || 0) + (m.percentage || 0);
+        bonuses.critMultiplierBonus = (bonuses.critMultiplierBonus || 0) + (m.percentage || 0);
+        break;
+      case 'effect':
+        if (Array.isArray(m.effects)) {
+          extraEffects.push(...m.effects);
+        }
         break;
     }
   }
-  
-  return result;
+
+  return { bonuses, extraEffects };
+}
+
+function normalizeChance(value: number | undefined): number {
+  if (!value || !Number.isFinite(value)) return 0;
+  return value > 1 ? value / 100 : value;
+}
+
+function normalizeCritMultiplier(value: number | undefined): number {
+  if (!value || !Number.isFinite(value)) return 1;
+  if (value < 3) return Math.max(1, value);
+  return Math.max(1, 1 + value / 100);
+}
+
+function extractCraftingStatFromBuffs(
+  buffs: CraftingBuff[] | undefined,
+  statKey: string
+): number {
+  if (!buffs) return 0;
+
+  let total = 0;
+  for (const buff of buffs) {
+    const scaling = (buff as any)?.stats?.[statKey];
+    if (!scaling) continue;
+
+    const baseValue = Number(scaling.value ?? 0);
+    if (!Number.isFinite(baseValue) || baseValue === 0) continue;
+
+    // Most crafting buff stats scale by stacks when `scaling: 'stacks'`.
+    // Otherwise treat as a flat modifier.
+    const scaleKind = String(scaling.scaling ?? '').toLowerCase();
+    const stacks = Number((buff as any)?.stacks ?? 1);
+    const multiplier = scaleKind === 'stacks' ? stacks : 1;
+    total += baseValue * multiplier;
+  }
+
+  return total;
 }
 
 /**
@@ -337,7 +385,8 @@ function convertGameTechniques(
     const techName = tech.name || 'Unknown';
     const cooldown = tech.cooldown || 0;
     const preventsMaxStabilityDecay = tech.noMaxStabilityLoss === true;
-    const mastery = extractMasteryBonuses(tech.mastery);
+    const masteryData = extractMasteryData(tech.mastery);
+    const mastery = masteryData.bonuses;
 
     let baseCompletionGain = 0;
     let basePerfectionGain = 0;
@@ -356,7 +405,7 @@ function convertGameTechniques(
     let buffRequirement: { buffName: string; amount: number } | undefined;
     let buffCost: { buffName: string; amount?: number; consumeAll?: boolean } | undefined;
 
-    const effects = tech.effects || [];
+    const effects = [...(tech.effects || []), ...(masteryData.extraEffects || [])];
     for (const effect of effects) {
       if (!effect) continue;
 
@@ -454,6 +503,7 @@ function convertGameTechniques(
       key: techName.toLowerCase().replace(/\s+/g, '_'),
       qiCost,
       stabilityCost,
+      successChance: typeof (tech as any).successChance === 'number' ? normalizeChance((tech as any).successChance) : undefined,
       baseCompletionGain,
       basePerfectionGain,
       stabilityGain,
@@ -573,6 +623,21 @@ function updateRecommendation(
     intensityBuffMultiplier 
   } = extractBuffInfo(buffs);
 
+  // Late-game stats (crits + success chance)
+  // Read base stats from entity and add any active buff contributions.
+  const baseCritChance = normalizeChance((entity as any)?.stats?.critchance ?? 0);
+  const buffCritChance = normalizeChance(extractCraftingStatFromBuffs(buffs, 'critchance'));
+  const critChance = Math.max(0, Math.min(1, baseCritChance + buffCritChance));
+
+  const baseCritMultiplier = normalizeCritMultiplier((entity as any)?.stats?.critmultiplier ?? 1);
+  const buffCritMultBonusRaw = extractCraftingStatFromBuffs(buffs, 'critmultiplier');
+  const buffCritMultBonus = buffCritMultBonusRaw > 1 ? buffCritMultBonusRaw / 100 : buffCritMultBonusRaw;
+  const critMultiplier = Math.max(1, baseCritMultiplier * (1 + (Number.isFinite(buffCritMultBonus) ? buffCritMultBonus : 0)));
+
+  const baseSuccessBonus = normalizeChance((entity as any)?.stats?.successChanceBonus ?? 0);
+  const buffSuccessBonus = normalizeChance(extractCraftingStatFromBuffs(buffs, 'successChanceBonus'));
+  const successChanceBonus = Math.max(0, Math.min(1, baseSuccessBonus + buffSuccessBonus));
+
   const buffStacks = extractBuffStacks(buffs);
   
   const techniques = entity?.techniques || [];
@@ -602,6 +667,9 @@ function updateRecommendation(
     maxStability: currentMaxStability,
     completion,
     perfection,
+    critChance,
+    critMultiplier,
+    successChanceBonus,
     controlBuffTurns,
     intensityBuffTurns,
     controlBuffMultiplier,
@@ -1208,7 +1276,7 @@ try {
   },
   
   setLookaheadDepth: (depth: number) => {
-    currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(32, depth)) });
+    currentSettings = saveSettings({ lookaheadDepth: Math.max(1, Math.min(96, depth)) });
     console.log(`[CraftBuddy] Lookahead depth set to: ${currentSettings.lookaheadDepth}`);
   },
   
