@@ -471,6 +471,19 @@ function convertGameTechniques(
       }
     }
 
+    // Heuristic for schema drift:
+    // Some newer game builds appear to send already-scaled, flat gains while still populating `amount.stat`.
+    // CraftBuddy's optimizer treats `baseXxxGain` as a multiplier when `scalesWithControl/intensity` is true,
+    // which would wildly overpredict if the value is already a final flat amount (e.g. 1898).
+    // Multipliers in the game are typically small (e.g. 0.5, 1.0, 1.8, 2.0). Treat large values as flat.
+    const LARGE_GAIN_THRESHOLD = 20;
+    if (completionScalingStat === 'intensity' && baseCompletionGain > LARGE_GAIN_THRESHOLD) {
+      completionScalingStat = undefined;
+    }
+    if (perfectionScalingStat === 'control' && basePerfectionGain > LARGE_GAIN_THRESHOLD) {
+      perfectionScalingStat = undefined;
+    }
+
     // Some skills (e.g., Restoring Brilliance) fully restore max stability.
     // The effect shape for this can vary; use a name-based fallback if we didn't detect a dedicated effect kind.
     if (!restoresMaxStabilityToFull && techName.toLowerCase().includes('restoring brilliance')) {
@@ -540,9 +553,10 @@ function convertGameTechniques(
 function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
   const stats = entity.stats;
   
-  let baseControl = stats?.control || 10;
-  let baseIntensity = stats?.intensity || 10;
-  let maxQi = stats?.maxpool || 100;
+  // Stats can come in as numbers or numeric strings; normalize to numbers.
+  let baseControl = parseGameNumber((stats as any)?.control, 10);
+  let baseIntensity = parseGameNumber((stats as any)?.intensity, 10);
+  let maxQi = parseGameNumber((stats as any)?.maxpool, 100);
   
   // @ts-ignore
   const entityMaxToxicity = stats?.maxtoxicity || 0;
@@ -571,7 +585,8 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     maxStability: targetStability,
     baseIntensity,
     baseControl,
-    minStability: 10,
+    // The game allows using skills until stability hits 0.
+    minStability: 0,
     skills,
     defaultBuffMultiplier,
     maxToxicity: maxToxicity || entityMaxToxicity,

@@ -67,6 +67,7 @@ function normalizeCondition(condition: string | undefined): CoreCondition | unde
   // Some game/mod setups expose conditions like 'brilliant'/'excellent' instead of 'veryPositive'.
   switch (c) {
     case 'neutral':
+    case 'balanced':
       return 'neutral';
     case 'positive':
     case 'harmonious':
@@ -292,7 +293,9 @@ export const DEFAULT_CONFIG: OptimizerConfig = {
   maxStability: 60,
   baseIntensity: 12,
   baseControl: 16,
-  minStability: 10,
+  // The game allows using skills until stability reaches 0.
+  // Keep this at 0 to avoid incorrectly showing "No Valid Actions" at low stability.
+  minStability: 0,
   skills: DEFAULT_SKILLS,
   defaultBuffMultiplier: 1.4,
 };
@@ -522,7 +525,9 @@ export function canApplySkill(
   }
 
   // Check stability requirement - must stay >= minStability after action
-  if (effectiveStabilityCost > 0 && state.stability - effectiveStabilityCost < minStability) {
+  // The crafting UI allows acting down to 0 stability (but not below 0).
+  const requiredPostStability = Math.max(0, minStability);
+  if (effectiveStabilityCost > 0 && state.stability - effectiveStabilityCost < requiredPostStability) {
     return false;
   }
 

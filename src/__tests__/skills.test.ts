@@ -24,7 +24,7 @@ function createTestConfig(overrides: Partial<OptimizerConfig> = {}): OptimizerCo
     maxStability: 60,
     baseIntensity: 12,
     baseControl: 16,
-    minStability: 10,
+    minStability: 0,
     skills: DEFAULT_SKILLS,
     defaultBuffMultiplier: 1.4,
     ...overrides,
@@ -60,7 +60,7 @@ describe('canApplySkill', () => {
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 10 });
     
-    expect(canApplySkill(state, skill, 10)).toBe(true);
+    expect(canApplySkill(state, skill, 0)).toBe(true);
   });
 
   it('should reject skill when qi is insufficient', () => {
@@ -70,10 +70,10 @@ describe('canApplySkill', () => {
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 10 });
     
-    expect(canApplySkill(state, skill, 10)).toBe(false);
+    expect(canApplySkill(state, skill, 0)).toBe(false);
   });
 
-  it('should reject skill when stability would drop below minimum', () => {
+  it('should reject skill when stability would drop below the provided minimum', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 15,
@@ -84,7 +84,7 @@ describe('canApplySkill', () => {
     expect(canApplySkill(state, skill, 10)).toBe(false);
   });
 
-  it('should allow skill when stability exactly meets minimum after cost', () => {
+  it('should allow skill when stability exactly meets the provided minimum after cost', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 20,
@@ -93,6 +93,21 @@ describe('canApplySkill', () => {
     
     // 20 - 10 = 10, which equals minStability
     expect(canApplySkill(state, skill, 10)).toBe(true);
+  });
+
+  it('should allow using skills until stability reaches 0 (not below 0)', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 10,
+    });
+    const skill = createTestSkill({ qiCost: 0, stabilityCost: 10 });
+
+    // 10 - 10 = 0 is allowed.
+    expect(canApplySkill(state, skill, 0)).toBe(true);
+
+    // But going negative is not.
+    const tooExpensive = createTestSkill({ qiCost: 0, stabilityCost: 11 });
+    expect(canApplySkill(state, tooExpensive, 0)).toBe(false);
   });
 
   it('should reject skill on cooldown', () => {
@@ -105,7 +120,7 @@ describe('canApplySkill', () => {
     });
     const skill = createTestSkill({ key: 'test_skill' });
     
-    expect(canApplySkill(state, skill, 10)).toBe(false);
+    expect(canApplySkill(state, skill, 0)).toBe(false);
   });
 
   it('should treat excellent/brilliant as veryPositive for condition-gated skills', () => {
@@ -120,6 +135,15 @@ describe('canApplySkill', () => {
 
     expect(canApplySkill(state, skill, 10, 0, 'excellent')).toBe(true);
     expect(canApplySkill(state, skill, 10, 0, 'brilliant')).toBe(true);
+  });
+
+  it('should treat balanced as neutral for condition-gated skills', () => {
+    const state = new CraftingState({ qi: 100, stability: 50 });
+    const skill = createTestSkill({
+      conditionRequirement: 'neutral',
+    });
+
+    expect(canApplySkill(state, skill, 0, 0, 'balanced')).toBe(true);
   });
 
   it('should not allow positive-only condition skills during veryPositive conditions', () => {
@@ -658,7 +682,7 @@ describe('isTerminalState', () => {
   it('should return true when no skills can be applied', () => {
     const state = new CraftingState({
       qi: 0,
-      stability: 10, // At minimum
+      stability: 0,
     });
     const config = createTestConfig();
     
