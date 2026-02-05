@@ -210,12 +210,12 @@ penalty for low stability (<20): -0.1 per point below 20
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Build mod
-npm run build
+bun run build
 
-# Output: dist/craftbuddy.zip
+# Output: builds/afnm-craftbuddy.zip
 
 # Install: Copy zip to game's mods/ folder
 # Linux: /home/lamim/Games/AFNM_Linux/mods/
@@ -230,7 +230,7 @@ npm run build
 4. **Translatable**: Can be plain string OR `{ _translatable: true, key: string }` format - plain strings work fine
 5. **Scaling**: Effect amounts use `{ value: number, stat?: string }` format
 6. **addHarmonyType**: First argument must be a `RecipeHarmonyType` ('forge' | 'alchemical' | 'inscription' | 'resonance') - cannot add custom harmony types, only override existing ones
-7. **ProgressState**: Has `stability`, `completion`, `perfection`, `condition` but NOT `pool` or `maxStability`
+7. **ProgressState**: Has `stability`, `completion`, `perfection`, `condition`, `nextConditions`, and typically `stabilityPenalty`; it does NOT provide current `pool` (Qi), which is read from `entity.stats.pool`
 8. **CraftingEntity**: Has `stats.pool`, `stats.maxpool`, `buffs` array
 9. **CraftingState**: Has `progressState`, `player` (CraftingEntity), `recipe`, `recipeStats`
 10. **onDeriveRecipeDifficulty**: Signature is `(recipe, recipeStats, gameFlags) => recipeStats` - must return CraftingRecipeStats, not difficulty
@@ -315,7 +315,7 @@ The mod exposes debug functions via `window.craftBuddyDebug`:
 - `getLastEntity()` - Returns last CraftingEntity received
 - `getLastProgressState()` - Returns last ProgressState received
 - `setTargets(completion, perfection, stability?)` - Override targets for testing
-- `setLookaheadDepth(depth)` - Set lookahead depth (1-12)
+- `setLookaheadDepth(depth)` - Set lookahead depth (1-96)
 - `togglePanel()` - Toggle panel visibility
 - `toggleCompact()` - Toggle compact mode
 - `logGameData()` - Logs all game data sources to console

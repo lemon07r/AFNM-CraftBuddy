@@ -413,7 +413,6 @@ export function calculateSkillGains(
   // - Techniques can fail (successChance)
   // - On success, some effects can crit (critChance/critMultiplier)
   // We treat completion/perfection/stability/cleanse as affected by success+crit.
-  const mastery = skill.mastery || {};
   const baseSuccessChance = skill.successChance ?? 1;
   const effectiveSuccessChance = clamp01(
     normalizeChance(baseSuccessChance) + normalizeChance(mastery.successChanceBonus) + clamp01(state.successChanceBonus)
