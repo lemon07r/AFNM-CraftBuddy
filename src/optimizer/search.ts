@@ -1,9 +1,9 @@
 /**
  * CraftBuddy - Search Algorithms
- * 
+ *
  * Implements greedy and lookahead search algorithms to find the optimal
  * next skill to use during crafting.
- * 
+ *
  * Performance optimizations:
  * - Move ordering: Search promising skills first (buff skills when no buff, high-gain skills)
  * - Memoization: Cache search results by state key with progress bucketing for large numbers
@@ -11,6 +11,7 @@
  * - Beam search: Limit branches explored at each depth level
  * - Early termination: Stop when targets are met
  * - Time budget: Prevent UI freezes with configurable time limits
+ * - Iterative deepening: For 90+ round scenarios, start shallow and deepen
  */
 
 import { CraftingState, BuffType } from './state';
@@ -22,8 +23,15 @@ import {
   calculateSkillGains,
   isTerminalState,
   getBlockedSkillReasons,
+  getConditionEffectsForConfig,
   SkillBlockedReason as SkillsBlockedReason,
 } from './skills';
+import {
+  CraftingCondition,
+  ConditionEffect,
+  getConditionEffects,
+  RecipeConditionEffectType,
+} from './gameTypes';
 import { debugLog } from '../utils/debug';
 
 export interface SkillRecommendation {
@@ -90,26 +98,69 @@ export interface SearchResult {
  * Search configuration for performance tuning
  */
 export interface SearchConfig {
-  /** Maximum time budget in milliseconds (default: 100ms) */
+  /** Maximum time budget in milliseconds (default: 200ms) */
   timeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (default: 50000) */
+  /** Maximum nodes to explore before stopping (default: 100000) */
   maxNodes: number;
-  /** Beam width - max branches to explore at each level (default: 8) */
+  /** Beam width - max branches to explore at each level (default: 6) */
   beamWidth: number;
   /** Whether to use alpha-beta pruning (default: true) */
   useAlphaBeta: boolean;
   /** Progress bucket size for cache key normalization (default: 100) */
   progressBucketSize: number;
+  /**
+   * Use iterative deepening for long crafts (default: true).
+   * Starts with shallow search and increases depth incrementally.
+   */
+  useIterativeDeepening: boolean;
+  /**
+   * Minimum depth for iterative deepening (default: 3).
+   */
+  iterativeDeepeningMinDepth: number;
+  /**
+   * Adaptive beam width based on remaining stability/rounds (default: true).
+   * Narrows beam for deeper searches to stay within budget.
+   */
+  useAdaptiveBeamWidth: boolean;
 }
 
-/** Default search configuration */
+/** Default search configuration optimized for high-realm (90+ round) scenarios */
 const DEFAULT_SEARCH_CONFIG: SearchConfig = {
-  timeBudgetMs: 100,
-  maxNodes: 50000,
-  beamWidth: 8,
+  timeBudgetMs: 200,
+  maxNodes: 100000,
+  beamWidth: 6,
   useAlphaBeta: true,
   progressBucketSize: 100,
+  useIterativeDeepening: true,
+  iterativeDeepeningMinDepth: 3,
+  useAdaptiveBeamWidth: true,
 };
+
+/**
+ * Calculate adaptive beam width based on remaining depth.
+ * For deep searches (high realm), we narrow the beam to stay performant.
+ */
+function getAdaptiveBeamWidth(
+  baseBeamWidth: number,
+  remainingDepth: number,
+  totalDepth: number
+): number {
+  if (totalDepth <= 6) {
+    // Short crafts: use full beam
+    return baseBeamWidth;
+  }
+
+  // For deep searches, reduce beam width progressively
+  // Early moves: wider exploration; deeper moves: narrower
+  const depthRatio = remainingDepth / totalDepth;
+  if (depthRatio > 0.7) {
+    return baseBeamWidth;
+  } else if (depthRatio > 0.4) {
+    return Math.max(3, Math.floor(baseBeamWidth * 0.75));
+  } else {
+    return Math.max(2, Math.floor(baseBeamWidth * 0.5));
+  }
+}
 
 /**
  * Bucket a progress value for cache key normalization.
@@ -428,6 +479,8 @@ function orderSkillsForSearch(
 /**
  * Greedy search - evaluates each skill's immediate impact.
  * Fast but may not find optimal solution.
+ *
+ * Now uses game-accurate condition effects.
  */
 export function greedySearch(
   state: CraftingState,
@@ -465,14 +518,17 @@ export function greedySearch(
     };
   }
 
+  // Get condition effects for current condition
+  const conditionEffects = getConditionEffectsForConfig(config, currentConditionType);
+
   const availableSkills = getAvailableSkills(state, config, currentConditionType);
   const scoredSkills: SkillRecommendation[] = [];
-  
+
   for (const skill of availableSkills) {
-    const newState = applySkill(state, skill, config, controlCondition);
+    const newState = applySkill(state, skill, config, conditionEffects, targetCompletion);
     if (newState === null) continue;
 
-    const gains = calculateSkillGains(state, skill, config, controlCondition);
+    const gains = calculateSkillGains(state, skill, config, conditionEffects);
     const score = scoreState(newState, targetCompletion, targetPerfection, isSublime, targetMult);
     const reasoning = generateReasoning(skill, state, gains, targetCompletion, targetPerfection);
 
@@ -678,21 +734,27 @@ export function lookaheadSearch(
     const orderedSkills = orderSkillsForSearch(
       availableSkills, currentState, config, targetCompletion, targetPerfection
     );
-    
-    // Apply beam search: limit the number of branches explored
-    const beamSkills = orderedSkills.slice(0, cfg.beamWidth);
-    
+
+    // Apply adaptive beam search: use narrower beam for deep searches
+    const effectiveBeamWidth = cfg.useAdaptiveBeamWidth
+      ? getAdaptiveBeamWidth(cfg.beamWidth, remainingDepth, depth)
+      : cfg.beamWidth;
+    const beamSkills = orderedSkills.slice(0, effectiveBeamWidth);
+
     let bestScore = scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult);
 
+    // Get condition effects for this depth
+    const conditionEffectsAtDepth = getConditionEffectsForConfig(config, conditionTypeAtDepth);
+
     for (const skill of beamSkills) {
-      const newState = applySkill(currentState, skill, config, conditionAtDepth);
+      const newState = applySkill(currentState, skill, config, conditionEffectsAtDepth, targetCompletion);
       if (newState === null) continue;
 
       const score = search(newState, remainingDepth - 1, depthIndex + 1, bestScore, beta);
       if (score > bestScore) {
         bestScore = score;
       }
-      
+
       // Alpha-beta pruning: if we found a score better than what the parent
       // could guarantee, we can prune this branch
       if (cfg.useAlphaBeta && bestScore >= beta) {
@@ -754,8 +816,11 @@ export function lookaheadSearch(
       let bestScore = -Infinity;
       let bestNextState: CraftingState | null = null;
 
+      // Get condition effects for this depth
+      const conditionEffectsAtDepth = getConditionEffectsForConfig(config, conditionTypeAtDepth);
+
       for (const skill of orderedSkills) {
-        const nextState = applySkill(currentState, skill, config, conditionAtDepth);
+        const nextState = applySkill(currentState, skill, config, conditionEffectsAtDepth, targetCompletion);
         if (nextState === null) continue;
 
         const score = search(nextState, maxDepth - currentDepth - 1, globalDepth + 1);
@@ -823,11 +888,14 @@ export function lookaheadSearch(
     let bestFollowUpScore = -Infinity;
     let bestFollowUpGains = { completion: 0, perfection: 0, stability: 0 };
 
+    // Get condition effects for follow-up turn
+    const followUpConditionEffects = getConditionEffectsForConfig(config, followUpConditionType);
+
     for (const followUp of orderedFollowUpSkills) {
-      const nextState = applySkill(stateAfterSkill, followUp, config, followUpCondition);
+      const nextState = applySkill(stateAfterSkill, followUp, config, followUpConditionEffects, targetCompletion);
       if (nextState === null) continue;
 
-      const followUpGains = calculateSkillGains(stateAfterSkill, followUp, config, followUpCondition);
+      const followUpGains = calculateSkillGains(stateAfterSkill, followUp, config, followUpConditionEffects);
       // Use depth - 1 - depthIndex to match findOptimalPath's remaining depth calculation
       const remainingDepth = depth - 1 - depthIndex;
       const followUpScore = search(nextState, remainingDepth, depthIndex + 1);
@@ -850,15 +918,18 @@ export function lookaheadSearch(
     return undefined;
   }
 
+  // Get condition effects for current turn
+  const currentConditionEffects = getConditionEffectsForConfig(config, currentConditionType);
+
   for (const skill of orderedSkills) {
-    const newState = applySkill(state, skill, config, controlCondition);
+    const newState = applySkill(state, skill, config, currentConditionEffects, targetCompletion);
     if (newState === null) continue;
 
-    const gains = calculateSkillGains(state, skill, config, controlCondition);
+    const gains = calculateSkillGains(state, skill, config, currentConditionEffects);
     // Start recursive search from depth index 1 (next turn uses first forecasted condition)
     const score = search(newState, depth - 1, 1);
     const reasoning = generateReasoning(skill, state, gains, targetCompletion, targetPerfection);
-    
+
     // Check if this skill consumes buffs
     const consumesBuff = skill.isDisciplinedTouch === true;
 
@@ -894,7 +965,7 @@ export function lookaheadSearch(
   const bestScore = scoredSkills[0].score;
   const worstScore = scoredSkills.length > 1 ? scoredSkills[scoredSkills.length - 1].score : bestScore;
   const scoreRange = bestScore - worstScore;
-  
+
   for (const rec of scoredSkills) {
     if (scoreRange > 0) {
       rec.qualityRating = Math.round(((rec.score - worstScore) / scoreRange) * 100);
@@ -905,7 +976,7 @@ export function lookaheadSearch(
 
   // Find the optimal rotation starting from the best first move
   const bestFirstMove = scoredSkills[0].skill;
-  const stateAfterFirstMove = applySkill(state, bestFirstMove, config, controlCondition);
+  const stateAfterFirstMove = applySkill(state, bestFirstMove, config, currentConditionEffects, targetCompletion);
   
   let optimalRotation: string[] = [bestFirstMove.name];
   let expectedFinalState: SearchResult['expectedFinalState'] = undefined;

@@ -532,12 +532,16 @@ describe('applySkill', () => {
     expect(newState!.qi).toBe(75);
   });
 
-  it('should restore max stability to config max when skill requests full restore', () => {
+  it('should restore max stability to initial max when skill requests full restore', () => {
+    // State with penalty (initialMaxStability: 60, penalty: 30 → maxStability: 30)
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 30,
+      maxStability: 60, // initialMaxStability
+      stabilityPenalty: 30, // current penalty
     });
+
+    expect(state.maxStability).toBe(30); // 60 - 30 = 30
 
     const skill = createTestSkill({
       qiCost: 0,
@@ -548,7 +552,9 @@ describe('applySkill', () => {
     const newState = applySkill(state, skill, config);
 
     expect(newState).not.toBeNull();
-    expect(newState!.maxStability).toBe(config.maxStability);
+    // Penalty is reset to 0, so max stability = initialMaxStability
+    expect(newState!.stabilityPenalty).toBe(0);
+    expect(newState!.maxStability).toBe(60); // restored to initial
   });
 
   it('should apply toxicity cleanse', () => {
