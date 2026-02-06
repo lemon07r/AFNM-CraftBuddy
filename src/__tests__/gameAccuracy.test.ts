@@ -12,7 +12,7 @@
  * 5. Stack-based buff scaling
  */
 
-import { CraftingState, createStateFromGame } from '../optimizer/state';
+import { CraftingState } from '../optimizer/state';
 import {
   SkillDefinition,
   OptimizerConfig,
@@ -25,7 +25,7 @@ import {
   getBonusAndChance,
   getConditionEffects,
   evaluateScaling,
-  EXPONENTIAL_SCALING_FACTOR,
+  evalExpression,
 } from '../optimizer/gameTypes';
 import { BuffType } from '../optimizer/state';
 
@@ -446,5 +446,87 @@ describe('Comparison: Old vs Fixed Behavior', () => {
       expect(gainsWithBonus.perfection).toBeGreaterThan(gainsWithoutBonus.perfection);
       expect(gainsWithBonus.perfection).toBeCloseTo(gainsWithoutBonus.perfection * 1.2, -1);
     });
+  });
+});
+
+describe('Safe Expression Parser', () => {
+  it('should evaluate basic arithmetic', () => {
+    const vars = { control: 100, intensity: 50 } as any;
+    expect(evalExpression('2 + 3', vars)).toBeCloseTo(5);
+    expect(evalExpression('10 * 5', vars)).toBeCloseTo(50);
+    expect(evalExpression('100 / 4', vars)).toBeCloseTo(25);
+    expect(evalExpression('10 - 3', vars)).toBeCloseTo(7);
+  });
+
+  it('should handle parentheses', () => {
+    const vars = {} as any;
+    expect(evalExpression('(2 + 3) * 4', vars)).toBeCloseTo(20);
+    expect(evalExpression('2 * (3 + 4)', vars)).toBeCloseTo(14);
+  });
+
+  it('should substitute variables correctly', () => {
+    const vars = { control: 100, intensity: 50, maxpool: 200, pool: 150 } as any;
+    expect(evalExpression('control * 2', vars)).toBeCloseTo(200);
+    expect(evalExpression('intensity + control', vars)).toBeCloseTo(150);
+  });
+
+  it('should not confuse variable names that are substrings of each other', () => {
+    const vars = { pool: 150, maxpool: 200 } as any;
+    // maxpool should be replaced before pool to avoid "max150" corruption
+    expect(evalExpression('maxpool - pool', vars)).toBeCloseTo(50);
+  });
+
+  it('should return 1 for empty/null expressions', () => {
+    expect(evalExpression('', {} as any)).toBe(1);
+  });
+
+  it('should handle division by zero safely', () => {
+    const result = evalExpression('10 / 0', {} as any);
+    expect(isFinite(result)).toBe(true);
+    expect(result).toBe(0);
+  });
+});
+
+describe('Stability Cost Calculation Order', () => {
+  it('should apply stabilityCostPercentage before condition effects (matching game)', () => {
+    // Game order: percentage first (ceil), then condition (floor)
+    const state = new CraftingState({
+      qi: 200,
+      stability: 50,
+      initialMaxStability: 60,
+      stabilityCostPercentage: 80, // 80% of normal cost
+    });
+
+    const skill: SkillDefinition = {
+      name: 'Test',
+      key: 'test',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      stabilityGain: 0,
+      maxStabilityChange: 0,
+      buffType: BuffType.NONE,
+      buffDuration: 0,
+      buffMultiplier: 1,
+      type: 'fusion',
+      scalesWithIntensity: true,
+    };
+
+    const config: OptimizerConfig = {
+      ...DEFAULT_CONFIG,
+      conditionEffectType: 'stable',
+    };
+
+    // With 'stable' positive condition: stability multiplier = 0.7 (-30%)
+    const conditionEffects = getConditionEffects('stable', 'positive');
+    const newState = applySkill(state, skill, config, conditionEffects);
+
+    expect(newState).not.toBeNull();
+    // Game order: ceil(10 * 80/100) = ceil(8) = 8, then floor(8 * 0.7) = floor(5.6) = 5
+    // So stability should be 50 - 5 = 45
+    // If done wrong order: floor(10 * 0.7) = 7, then ceil(7 * 80/100) = ceil(5.6) = 6
+    // So stability would be 50 - 6 = 44
+    expect(newState!.stability).toBe(45);
   });
 });

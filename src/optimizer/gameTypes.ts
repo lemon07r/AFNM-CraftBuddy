@@ -303,28 +303,82 @@ export function calculateExpectedCritMultiplier(
 }
 
 /**
- * Simple expression evaluator for game equations.
- * Handles basic math with variable substitution.
+ * Safe recursive descent parser for simple arithmetic expressions.
+ * Supports: +, -, *, /, parentheses, and numeric literals.
+ * No eval() -- prevents code injection.
+ */
+function safeParseMath(expr: string): number {
+  let pos = 0;
+  const s = expr.replace(/\s+/g, '');
+
+  function parseExpr(): number {
+    let result = parseTerm();
+    while (pos < s.length && (s[pos] === '+' || s[pos] === '-')) {
+      const op = s[pos++];
+      const right = parseTerm();
+      result = op === '+' ? result + right : result - right;
+    }
+    return result;
+  }
+
+  function parseTerm(): number {
+    let result = parseFactor();
+    while (pos < s.length && (s[pos] === '*' || s[pos] === '/')) {
+      const op = s[pos++];
+      const right = parseFactor();
+      result = op === '*' ? result * right : (right !== 0 ? result / right : 0);
+    }
+    return result;
+  }
+
+  function parseFactor(): number {
+    if (s[pos] === '(') {
+      pos++;
+      const result = parseExpr();
+      if (s[pos] === ')') pos++;
+      return result;
+    }
+    if (s[pos] === '-') {
+      pos++;
+      return -parseFactor();
+    }
+    const start = pos;
+    while (pos < s.length && (s[pos] >= '0' && s[pos] <= '9' || s[pos] === '.')) {
+      pos++;
+    }
+    const num = parseFloat(s.slice(start, pos));
+    return isNaN(num) ? 0 : num;
+  }
+
+  const result = parseExpr();
+  return isFinite(result) ? result : 0;
+}
+
+/**
+ * Expression evaluator for game equations with variable substitution.
+ * Uses a safe recursive descent parser instead of eval().
  */
 export function evalExpression(eqn: string, variables: ScalingVariables): number {
   if (!eqn) return 1;
 
-  // Replace variable names with values
+  // Sort variable names by length descending to prevent partial matches
+  // (e.g., 'maxpool' must be replaced before 'pool')
+  const sortedKeys = Object.keys(variables).sort((a, b) => b.length - a.length);
+
   let expr = eqn;
-  for (const [key, value] of Object.entries(variables)) {
+  for (const key of sortedKeys) {
     const regex = new RegExp(`\\b${key}\\b`, 'g');
-    expr = expr.replace(regex, String(value));
+    expr = expr.replace(regex, String(variables[key]));
   }
 
-  // Safe evaluation of simple math expressions
+  // Check that all variables were substituted (only numbers and operators remain)
+  if (!/^[\d\s+\-*/().]+$/.test(expr)) {
+    console.warn(`[CraftBuddy] Unresolved variables in expression: ${eqn} -> ${expr}`);
+    return 1;
+  }
+
   try {
-    // Only allow numbers, operators, parentheses, and decimal points
-    if (!/^[\d\s+\-*/().]+$/.test(expr)) {
-      console.warn(`[CraftBuddy] Invalid expression: ${eqn}`);
-      return 1;
-    }
-    // eslint-disable-next-line no-eval
-    return eval(expr) as number;
+    return safeParseMath(expr);
   } catch {
     console.warn(`[CraftBuddy] Failed to evaluate expression: ${eqn}`);
     return 1;

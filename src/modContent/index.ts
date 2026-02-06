@@ -321,12 +321,6 @@ function normalizeChance(value: number | undefined): number {
   return value > 1 ? value / 100 : value;
 }
 
-function normalizeCritMultiplier(value: number | undefined): number {
-  if (!value || !Number.isFinite(value)) return 1;
-  if (value < 3) return Math.max(1, value);
-  return Math.max(1, 1 + value / 100);
-}
-
 function extractCraftingStatFromBuffs(
   buffs: CraftingBuff[] | undefined,
   statKey: string
@@ -578,14 +572,29 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     }
   }
   
-  console.log(`[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}`);
+  // Determine condition effect type from cached recipe data
+  let conditionEffectType: string | undefined;
+  if (conditionEffectsCache) {
+    // Try to determine the type from the effect structure
+    const positiveEffects = conditionEffectsCache.conditionEffects?.positive?.effects || [];
+    if (positiveEffects.length > 0) {
+      const firstEffect = positiveEffects[0];
+      if (firstEffect.kind === 'control' && positiveEffects.length === 1) conditionEffectType = 'perfectable';
+      else if (firstEffect.kind === 'intensity' && positiveEffects.length === 1) conditionEffectType = 'fuseable';
+      else if (firstEffect.kind === 'control' && positiveEffects.length === 2) conditionEffectType = 'flowing';
+      else if (firstEffect.kind === 'pool') conditionEffectType = 'energised';
+      else if (firstEffect.kind === 'stability') conditionEffectType = 'stable';
+      else if (firstEffect.kind === 'chance') conditionEffectType = 'fortuitous';
+    }
+  }
+
+  console.log(`[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}, conditionType=${conditionEffectType}`);
   
   return {
     maxQi,
     maxStability: targetStability,
     baseIntensity,
     baseControl,
-    // The game allows using skills until stability hits 0.
     minStability: 0,
     skills,
     defaultBuffMultiplier,
@@ -593,6 +602,9 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     craftingType: currentCraftingType,
     isSublimeCraft,
     targetMultiplier: sublimeTargetMultiplier,
+    conditionEffectType: conditionEffectType as any,
+    targetCompletion,
+    targetPerfection,
   };
 }
 
@@ -639,22 +651,47 @@ function updateRecommendation(
   } = extractBuffInfo(buffs);
 
   // Late-game stats (crits + success chance)
-  // Read base stats from entity and add any active buff contributions.
-  const baseCritChance = normalizeChance((entity as any)?.stats?.critchance ?? 0);
-  const buffCritChance = normalizeChance(extractCraftingStatFromBuffs(buffs, 'critchance'));
-  const critChance = Math.max(0, Math.min(1, baseCritChance + buffCritChance));
+  // Game stores critchance/critmultiplier as percentages (e.g., 50 = 50%, 150 = 1.5x).
+  // The optimizer's calculateExpectedCritMultiplier expects these raw percentage values.
+  // Do NOT normalize to [0,1] -- that would destroy the overcrit formula.
+  const baseCritChance = Number((entity as any)?.stats?.critchance ?? 0) || 0;
+  const buffCritChance = extractCraftingStatFromBuffs(buffs, 'critchance');
+  const critChance = Math.max(0, baseCritChance + buffCritChance);
 
-  const baseCritMultiplier = normalizeCritMultiplier((entity as any)?.stats?.critmultiplier ?? 1);
-  const buffCritMultBonusRaw = extractCraftingStatFromBuffs(buffs, 'critmultiplier');
-  const buffCritMultBonus = buffCritMultBonusRaw > 1 ? buffCritMultBonusRaw / 100 : buffCritMultBonusRaw;
-  const critMultiplier = Math.max(1, baseCritMultiplier * (1 + (Number.isFinite(buffCritMultBonus) ? buffCritMultBonus : 0)));
+  const baseCritMultiplier = Number((entity as any)?.stats?.critmultiplier ?? 0) || 0;
+  const buffCritMultBonus = extractCraftingStatFromBuffs(buffs, 'critmultiplier');
+  const critMultiplier = Math.max(0, baseCritMultiplier + buffCritMultBonus);
 
-  const baseSuccessBonus = normalizeChance((entity as any)?.stats?.successChanceBonus ?? 0);
-  const buffSuccessBonus = normalizeChance(extractCraftingStatFromBuffs(buffs, 'successChanceBonus'));
+  // Success chance bonus: game stores as 0-1 fraction, keep as-is
+  const baseSuccessBonus = Number((entity as any)?.stats?.successChanceBonus ?? 0) || 0;
+  const buffSuccessBonus = extractCraftingStatFromBuffs(buffs, 'successChanceBonus');
   const successChanceBonus = Math.max(0, Math.min(1, baseSuccessBonus + buffSuccessBonus));
 
   const buffStacks = extractBuffStacks(buffs);
-  
+
+  // Read pool/stability cost percentage modifiers from entity stats + buffs
+  // Game default is 100 (= 100%, i.e. no modification)
+  const basePoolCostPct = Number((entity as any)?.stats?.poolCostPercentage ?? 100) || 100;
+  const buffPoolCostPct = extractCraftingStatFromBuffs(buffs, 'poolCostPercentage');
+  const poolCostPercentage = buffPoolCostPct !== 0
+    ? Math.floor((basePoolCostPct / 100) * (buffPoolCostPct / 100) * 100)
+    : basePoolCostPct;
+
+  const baseStabCostPct = Number((entity as any)?.stats?.stabilityCostPercentage ?? 100) || 100;
+  const buffStabCostPct = extractCraftingStatFromBuffs(buffs, 'stabilityCostPercentage');
+  const stabilityCostPercentage = buffStabCostPct !== 0
+    ? Math.floor((baseStabCostPct / 100) * (buffStabCostPct / 100) * 100)
+    : baseStabCostPct;
+
+  // Extract completion bonus stacks from the Completion Bonus buff
+  let completionBonusStacks = 0;
+  if (buffs) {
+    const compBonusBuff = buffs.find(b => b.name === 'Completion Bonus');
+    if (compBonusBuff && compBonusBuff.stacks > 0) {
+      completionBonusStacks = compBonusBuff.stacks;
+    }
+  }
+
   const techniques = entity?.techniques || [];
   currentCooldowns = new Map();
   for (const tech of techniques) {
@@ -679,12 +716,15 @@ function updateRecommendation(
   const state = new CraftingState({
     qi: pool,
     stability,
-    maxStability: currentMaxStability,
+    initialMaxStability: targetStability > 0 ? targetStability : 60,
+    stabilityPenalty,
     completion,
     perfection,
     critChance,
     critMultiplier,
     successChanceBonus,
+    poolCostPercentage,
+    stabilityCostPercentage,
     controlBuffTurns,
     intensityBuffTurns,
     controlBuffMultiplier,
@@ -693,6 +733,8 @@ function updateRecommendation(
     maxToxicity: currentConfig?.maxToxicity || maxToxicity,
     cooldowns: currentCooldowns,
     buffStacks,
+    completionBonus: completionBonusStacks,
+    step: progressState?.step || 0,
     history: [],
   });
 

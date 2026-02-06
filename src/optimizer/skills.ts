@@ -5,23 +5,16 @@
  * Handles technique effects, buff interactions, and expected value calculations.
  */
 
-import { CraftingState, BuffType, TrackedBuff, buildScalingVariables } from './state';
+import { CraftingState, BuffType } from './state';
 import { safeFloor, safeAdd, safeMultiply } from '../utils/largeNumbers';
 import {
-  TechniqueDefinition,
   TechniqueEffect,
-  TechniqueMastery,
   BuffDefinition,
-  BuffEffect,
   CraftingCondition,
   TechniqueType,
   RecipeConditionEffectType,
   ConditionEffect,
-  Scaling,
-  ScalingVariables,
   HarmonyType,
-  HarmonyData,
-  evaluateScaling,
   calculateExpectedCritMultiplier,
   getConditionEffects,
   getBonusAndChance,
@@ -145,25 +138,6 @@ export interface SkillMastery {
   critChanceBonus?: number;
   /** Bonus to crit multiplier */
   critMultiplierBonus?: number;
-}
-
-function normalizeChance(value: number | undefined): number {
-  if (!value || !Number.isFinite(value)) return 0;
-  // Game data usually uses 0-1 for chances, but some sources might expose 0-100.
-  return value > 1 ? value / 100 : value;
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, value));
-}
-
-function normalizeCritMultiplier(value: number | undefined): number {
-  if (!value || !Number.isFinite(value)) return 1;
-  // Game stats often store crit multiplier as a percentage bonus (e.g., 50 => +50%).
-  // If it looks like a multiplier already (e.g., 1.5), keep it.
-  if (value < 3) return Math.max(1, value);
-  return Math.max(1, 1 + value / 100);
 }
 
 export interface SkillGains {
@@ -680,26 +654,28 @@ export function applySkill(
   // Calculate gains BEFORE applying buffs from this skill
   const gains = calculateSkillGains(state, skill, config, conditionEffects);
 
-  // Get effective costs after mastery reductions and condition effects
+  // Get effective costs after mastery reductions
   let effectiveQiCost = getEffectiveQiCost(skill);
   let effectiveStabilityCost = getEffectiveStabilityCost(skill);
 
-  // Apply condition effects to costs
+  // Pool cost: game applies condition THEN percentage (doExecuteTechnique)
   for (const effect of conditionEffects) {
     if (effect.kind === 'pool' && effect.multiplier !== undefined) {
       effectiveQiCost = Math.floor(effectiveQiCost * effect.multiplier);
     }
-    if (effect.kind === 'stability' && effect.multiplier !== undefined) {
-      effectiveStabilityCost = Math.ceil(effectiveStabilityCost * effect.multiplier);
-    }
   }
-
-  // Apply cost percentage modifiers from buffs
   if (state.poolCostPercentage !== 100) {
     effectiveQiCost = Math.floor((effectiveQiCost * state.poolCostPercentage) / 100);
   }
+
+  // Stability cost: game applies percentage THEN condition (changeStability)
   if (state.stabilityCostPercentage !== 100) {
     effectiveStabilityCost = Math.ceil((effectiveStabilityCost * state.stabilityCostPercentage) / 100);
+  }
+  for (const effect of conditionEffects) {
+    if (effect.kind === 'stability' && effect.multiplier !== undefined) {
+      effectiveStabilityCost = Math.floor(effectiveStabilityCost * effect.multiplier);
+    }
   }
 
   // Calculate new resource values
