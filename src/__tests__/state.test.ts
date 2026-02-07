@@ -24,7 +24,7 @@ describe('CraftingState', () => {
       const state = new CraftingState({
         qi: 100,
         stability: 50,
-        maxStability: 60,
+        initialMaxStability: 60,
         completion: 30,
         perfection: 20,
         controlBuffTurns: 2,
@@ -261,7 +261,7 @@ describe('CraftingState', () => {
       const state = new CraftingState({
         qi: 100,
         stability: 50,
-        maxStability: 60,
+        initialMaxStability: 60,
         controlBuffTurns: 2,
         intensityBuffTurns: 0,
         toxicity: 10,
@@ -283,8 +283,8 @@ describe('CraftingState', () => {
     it('should include stabilityPenalty in cache key', () => {
       // Cache key uses stabilityPenalty (not maxStability directly)
       // maxStability is derived from initialMaxStability - stabilityPenalty
-      const state1 = new CraftingState({ qi: 100, stability: 50, maxStability: 60, stabilityPenalty: 0 });
-      const state2 = new CraftingState({ qi: 100, stability: 50, maxStability: 60, stabilityPenalty: 5 });
+      const state1 = new CraftingState({ qi: 100, stability: 50, initialMaxStability: 60, stabilityPenalty: 0 });
+      const state2 = new CraftingState({ qi: 100, stability: 50, initialMaxStability: 60, stabilityPenalty: 5 });
 
       expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
     });

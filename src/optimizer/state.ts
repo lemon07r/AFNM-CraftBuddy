@@ -11,6 +11,22 @@ import {
   ScalingVariables,
 } from './gameTypes';
 
+function cloneHarmonyData(hd: HarmonyData): HarmonyData {
+  const clone: HarmonyData = { recommendedTechniqueTypes: [...hd.recommendedTechniqueTypes] };
+  if (hd.forgeWorks) clone.forgeWorks = { ...hd.forgeWorks };
+  if (hd.alchemicalArts) clone.alchemicalArts = {
+    charges: [...hd.alchemicalArts.charges],
+    lastCombo: [...hd.alchemicalArts.lastCombo],
+  };
+  if (hd.inscribedPatterns) clone.inscribedPatterns = {
+    currentBlock: [...hd.inscribedPatterns.currentBlock],
+    completedBlocks: hd.inscribedPatterns.completedBlocks,
+    stacks: hd.inscribedPatterns.stacks,
+  };
+  if (hd.resonance) clone.resonance = { ...hd.resonance };
+  return clone;
+}
+
 export enum BuffType {
   NONE = 0,
   CONTROL = 1, // +40% to control stat
@@ -32,8 +48,6 @@ export interface CraftingStateData {
   stability: number;
   /** Initial max stability from recipe */
   initialMaxStability: number;
-  /** @deprecated Use initialMaxStability instead. Alias for backwards compatibility. */
-  maxStability?: number;
   /** Accumulated stability penalty (max stability = initial - penalty) */
   stabilityPenalty: number;
   completion: number;
@@ -65,11 +79,6 @@ export interface CraftingStateData {
    * Keyed by normalized buff name.
    */
   buffs: Map<string, TrackedBuff>;
-  /**
-   * @deprecated Use buffs instead. Legacy alias for backwards compatibility.
-   * Map of buff names to stack counts.
-   */
-  buffStacks?: Map<string, number>;
   /** Harmony value (-100 to 100) for sublime crafts */
   harmony: number;
   /** Harmony type data for sublime craft mechanics */
@@ -81,8 +90,7 @@ export interface CraftingStateData {
   history: string[];
 }
 
-// Legacy alias for backwards compatibility
-export type BuffStacks = Map<string, number>;
+
 
 /**
  * Immutable crafting state for optimization calculations.
@@ -121,8 +129,7 @@ export class CraftingState implements CraftingStateData {
   constructor(data: Partial<CraftingStateData> = {}) {
     this.qi = data.qi ?? 0;
     this.stability = data.stability ?? 0;
-    // Support both initialMaxStability and legacy maxStability
-    this.initialMaxStability = data.initialMaxStability ?? data.maxStability ?? 60;
+    this.initialMaxStability = data.initialMaxStability ?? 60;
     this.stabilityPenalty = data.stabilityPenalty ?? 0;
     this.completion = data.completion ?? 0;
     this.perfection = data.perfection ?? 0;
@@ -138,20 +145,13 @@ export class CraftingState implements CraftingStateData {
     this.toxicity = data.toxicity ?? 0;
     this.maxToxicity = data.maxToxicity ?? 100;
     this.cooldowns = data.cooldowns ? new Map(data.cooldowns) : new Map();
-    // Support both buffs and legacy buffStacks
     if (data.buffs) {
       this.buffs = new Map(data.buffs);
-    } else if (data.buffStacks) {
-      // Convert legacy buffStacks to buffs
-      this.buffs = new Map();
-      data.buffStacks.forEach((stacks, name) => {
-        this.buffs.set(name, { name, stacks });
-      });
     } else {
       this.buffs = new Map();
     }
     this.harmony = data.harmony ?? 0;
-    this.harmonyData = data.harmonyData ? { ...data.harmonyData } : undefined;
+    this.harmonyData = data.harmonyData ? cloneHarmonyData(data.harmonyData) : undefined;
     this.step = data.step ?? 0;
     this.completionBonus = data.completionBonus ?? 0;
     this.history = data.history ? [...data.history] : [];
@@ -166,23 +166,10 @@ export class CraftingState implements CraftingStateData {
   }
 
   /**
-   * Legacy getter for buffStacks - returns stacks from buffs map.
-   */
-  get buffStacks(): Map<string, number> {
-    const result = new Map<string, number>();
-    this.buffs.forEach((buff, name) => {
-      result.set(name, buff.stacks);
-    });
-    return result;
-  }
-
-  /**
    * Create a copy with optional overrides
    */
   copy(overrides: Partial<CraftingStateData> = {}): CraftingState {
-    // Support both initialMaxStability and legacy maxStability in overrides
-    const newInitialMaxStability =
-      overrides.initialMaxStability ?? overrides.maxStability ?? this.initialMaxStability;
+    const newInitialMaxStability = overrides.initialMaxStability ?? this.initialMaxStability;
     return new CraftingState({
       qi: overrides.qi ?? this.qi,
       stability: overrides.stability ?? this.stability,
@@ -399,95 +386,32 @@ export interface CreateStateOptions {
 
 /**
  * Create a CraftingState from game's ProgressState and buff data.
- * Now supports full game-accurate state initialization.
  */
-export function createStateFromGame(options: CreateStateOptions): CraftingState;
-/**
- * @deprecated Use options object instead
- */
-export function createStateFromGame(
-  pool: number,
-  stability: number,
-  maxStability: number,
-  completion: number,
-  perfection: number,
-  controlBuffTurns?: number,
-  intensityBuffTurns?: number,
-  controlBuffMultiplier?: number,
-  intensityBuffMultiplier?: number,
-  toxicity?: number,
-  maxToxicity?: number,
-  cooldowns?: Map<string, number>
-): CraftingState;
-export function createStateFromGame(
-  poolOrOptions: number | CreateStateOptions,
-  stability?: number,
-  maxStability?: number,
-  completion?: number,
-  perfection?: number,
-  controlBuffTurns: number = 0,
-  intensityBuffTurns: number = 0,
-  controlBuffMultiplier: number = 1.4,
-  intensityBuffMultiplier: number = 1.4,
-  toxicity: number = 0,
-  maxToxicity: number = 100,
-  cooldowns: Map<string, number> = new Map()
-): CraftingState {
-  // Handle options object form
-  if (typeof poolOrOptions === 'object') {
-    const opts = poolOrOptions;
-    return new CraftingState({
-      qi: opts.pool,
-      stability: opts.stability,
-      initialMaxStability: opts.initialMaxStability,
-      stabilityPenalty: opts.stabilityPenalty ?? 0,
-      completion: opts.completion,
-      perfection: opts.perfection,
-      controlBuffTurns: opts.controlBuffTurns ?? 0,
-      intensityBuffTurns: opts.intensityBuffTurns ?? 0,
-      controlBuffMultiplier: opts.controlBuffMultiplier ?? 1.4,
-      intensityBuffMultiplier: opts.intensityBuffMultiplier ?? 1.4,
-      toxicity: opts.toxicity ?? 0,
-      maxToxicity: opts.maxToxicity ?? 100,
-      cooldowns: opts.cooldowns ?? new Map(),
-      buffs: opts.buffs ?? new Map(),
-      critChance: opts.critChance ?? 0,
-      critMultiplier: opts.critMultiplier ?? 150,
-      successChanceBonus: opts.successChanceBonus ?? 0,
-      poolCostPercentage: opts.poolCostPercentage ?? 100,
-      stabilityCostPercentage: opts.stabilityCostPercentage ?? 100,
-      harmony: opts.harmony ?? 0,
-      harmonyData: opts.harmonyData,
-      step: opts.step ?? 0,
-      completionBonus: opts.completionBonus ?? 0,
-      history: [],
-    });
-  }
-
-  // Legacy signature support
+export function createStateFromGame(opts: CreateStateOptions): CraftingState {
   return new CraftingState({
-    qi: poolOrOptions,
-    stability: stability!,
-    initialMaxStability: maxStability!,
-    stabilityPenalty: 0,
-    completion: completion!,
-    perfection: perfection!,
-    controlBuffTurns,
-    intensityBuffTurns,
-    controlBuffMultiplier,
-    intensityBuffMultiplier,
-    toxicity,
-    maxToxicity,
-    cooldowns,
-    buffs: new Map(),
-    critChance: 0,
-    critMultiplier: 150,
-    successChanceBonus: 0,
-    poolCostPercentage: 100,
-    stabilityCostPercentage: 100,
-    harmony: 0,
-    step: 0,
-    completionBonus: 0,
+    qi: opts.pool,
+    stability: opts.stability,
+    initialMaxStability: opts.initialMaxStability,
+    stabilityPenalty: opts.stabilityPenalty ?? 0,
+    completion: opts.completion,
+    perfection: opts.perfection,
+    controlBuffTurns: opts.controlBuffTurns ?? 0,
+    intensityBuffTurns: opts.intensityBuffTurns ?? 0,
+    controlBuffMultiplier: opts.controlBuffMultiplier ?? 1.4,
+    intensityBuffMultiplier: opts.intensityBuffMultiplier ?? 1.4,
+    toxicity: opts.toxicity ?? 0,
+    maxToxicity: opts.maxToxicity ?? 100,
+    cooldowns: opts.cooldowns ?? new Map(),
+    buffs: opts.buffs ?? new Map(),
+    critChance: opts.critChance ?? 0,
+    critMultiplier: opts.critMultiplier ?? 150,
+    successChanceBonus: opts.successChanceBonus ?? 0,
+    poolCostPercentage: opts.poolCostPercentage ?? 100,
+    stabilityCostPercentage: opts.stabilityCostPercentage ?? 100,
+    harmony: opts.harmony ?? 0,
+    harmonyData: opts.harmonyData,
+    step: opts.step ?? 0,
+    completionBonus: opts.completionBonus ?? 0,
     history: [],
   });
 }

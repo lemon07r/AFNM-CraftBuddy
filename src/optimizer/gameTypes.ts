@@ -206,20 +206,49 @@ export interface RecipeConditionEffects {
 }
 
 /**
+ * Forge Works sub-system data.
+ */
+export interface ForgeWorksData {
+  heat: number;
+}
+
+/**
+ * Alchemical Arts sub-system data.
+ */
+export interface AlchemicalArtsData {
+  charges: TechniqueType[];
+  lastCombo: TechniqueType[];
+}
+
+/**
+ * Inscribed Patterns sub-system data.
+ */
+export interface InscribedPatternsData {
+  currentBlock: TechniqueType[];
+  completedBlocks: number;
+  stacks: number;
+}
+
+/**
+ * Spiritual Resonance sub-system data.
+ */
+export interface ResonanceData {
+  resonance: TechniqueType | undefined;
+  strength: number;
+  pendingResonance?: TechniqueType;
+  pendingCount: number;
+}
+
+/**
  * Harmony type data for sublime crafts.
+ * Matches game's HarmonyData structure with sub-system specific data.
  */
 export interface HarmonyData {
-  /** Forge Works: current heat level 0-10 */
-  heat?: number;
-  /** Alchemical Arts: last 3 action types */
-  lastActions?: TechniqueType[];
-  /** Inscribed Patterns: current pattern index and stacks */
-  patternIndex?: number;
-  patternStacks?: number;
-  /** Spiritual Resonance: current resonance type and strength */
-  resonanceType?: TechniqueType;
-  resonanceStrength?: number;
-  consecutiveDifferent?: number;
+  forgeWorks?: ForgeWorksData;
+  alchemicalArts?: AlchemicalArtsData;
+  inscribedPatterns?: InscribedPatternsData;
+  resonance?: ResonanceData;
+  recommendedTechniqueTypes: TechniqueType[];
 }
 
 /**

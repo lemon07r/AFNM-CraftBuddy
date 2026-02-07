@@ -343,7 +343,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 10 });
     
@@ -358,7 +358,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 20,
       perfection: 10,
     });
@@ -381,7 +381,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
     });
     const skill = createTestSkill({ preventsMaxStabilityDecay: false });
     
@@ -395,7 +395,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
     });
     const skill = createTestSkill({ preventsMaxStabilityDecay: true });
     
@@ -409,7 +409,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
     });
     const skill = createTestSkill({
       maxStabilityChange: -5,
@@ -426,7 +426,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 55,
-      maxStability: 60,
+      initialMaxStability: 60,
     });
     const skill = createTestSkill({
       stabilityGain: 20,
@@ -445,7 +445,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       controlBuffTurns: 0,
     });
     const skill = createTestSkill({
@@ -465,7 +465,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       intensityBuffTurns: 0,
     });
     const skill = createTestSkill({
@@ -485,7 +485,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       controlBuffTurns: 2,
       intensityBuffTurns: 1,
     });
@@ -502,7 +502,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       toxicity: 20,
     });
     const skill = createTestSkill({ toxicityCost: 15 });
@@ -517,7 +517,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 50,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
     });
 
     const skill = createTestSkill({
@@ -533,11 +533,11 @@ describe('applySkill', () => {
   });
 
   it('should restore max stability to initial max when skill requests full restore', () => {
-    // State with penalty (initialMaxStability: 60, penalty: 30 → maxStability: 30)
+    // State with penalty (initialMaxStability: 60, penalty: 30 → initialMaxStability: 30)
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60, // initialMaxStability
+      initialMaxStability: 60, // initialMaxStability
       stabilityPenalty: 30, // current penalty
     });
 
@@ -561,7 +561,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       toxicity: 50,
     });
     const skill = createTestSkill({ toxicityCleanse: 20 });
@@ -576,7 +576,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
     });
     const skill = createTestSkill({
       key: 'cooldown_skill',
@@ -595,7 +595,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       cooldowns,
     });
     const skill = createTestSkill({ key: 'test_skill' });
@@ -622,7 +622,7 @@ describe('applySkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       history: ['previous_skill'],
     });
     const skill = createTestSkill({ name: 'New Skill' });
@@ -817,7 +817,7 @@ describe('Disciplined Touch accuracy', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       controlBuffTurns: 2,
       intensityBuffTurns: 3,
     });
@@ -854,8 +854,8 @@ describe('Disciplined Touch accuracy', () => {
       scalesWithIntensity: true,
     });
     
-    // Good condition (1.5x multiplier)
-    const gains = calculateSkillGains(state, skill, config, 1.5);
+    // Good condition (+50% control)
+    const gains = calculateSkillGains(state, skill, config, [{ kind: 'control', multiplier: 0.5 }]);
     
     // Completion: 0.5 * 12 = 6 (intensity not affected by condition)
     // Control with condition: 16 * 1.5 = 24

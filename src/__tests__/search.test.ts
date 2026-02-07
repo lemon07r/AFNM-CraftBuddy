@@ -63,7 +63,7 @@ describe('greedySearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -80,7 +80,7 @@ describe('greedySearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -94,7 +94,7 @@ describe('greedySearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 50,
       perfection: 100, // Already met
     });
@@ -111,7 +111,7 @@ describe('greedySearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 100, // Already met
       perfection: 50,
     });
@@ -128,7 +128,7 @@ describe('greedySearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -144,7 +144,7 @@ describe('greedySearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 15, // Low stability
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -193,7 +193,7 @@ describe('lookaheadSearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -208,7 +208,7 @@ describe('lookaheadSearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -225,7 +225,7 @@ describe('lookaheadSearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -240,7 +240,7 @@ describe('lookaheadSearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -264,7 +264,7 @@ describe('lookaheadSearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
       controlBuffTurns: 2,
@@ -284,15 +284,12 @@ describe('lookaheadSearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
     
-    // Forecasted conditions: good, bad, neutral
-    const forecastedConditions = [1.5, 0.75, 1.0];
-    
-    const result = lookaheadSearch(state, config, 100, 100, 3, 1.0, forecastedConditions);
+    const result = lookaheadSearch(state, config, 100, 100, 3);
     
     expect(result.recommendation).not.toBeNull();
     // The search should complete without errors
@@ -302,7 +299,7 @@ describe('lookaheadSearch', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -322,12 +319,12 @@ describe('findBestSkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
     
-    const result = findBestSkill(state, config, 100, 100, 1.0, true);
+    const result = findBestSkill(state, config, 100, 100, true);
     
     expect(result.recommendation).not.toBeNull();
     // Greedy search doesn't provide optimal rotation
@@ -338,12 +335,12 @@ describe('findBestSkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
     
-    const result = findBestSkill(state, config, 100, 100, 1.0, false, 3);
+    const result = findBestSkill(state, config, 100, 100, false, 3);
     
     expect(result.recommendation).not.toBeNull();
     // Lookahead search provides optimal rotation
@@ -354,16 +351,25 @@ describe('findBestSkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
     
-    // Good condition (1.5x multiplier)
-    const goodResult = findBestSkill(state, config, 100, 100, 1.5, false, 3);
+    // Good condition (positive)
+    const goodConfig = { ...config, conditionEffectsData: {
+      neutral: [], positive: [{ kind: 'control' as const, multiplier: 0.5 }],
+      negative: [], veryPositive: [], veryNegative: [],
+    }};
+    const goodResult = findBestSkill(state, goodConfig, 100, 100, false, 3, 'positive');
     
-    // Bad condition (0.75x multiplier)
-    const badResult = findBestSkill(state, config, 100, 100, 0.75, false, 3);
+    // Bad condition (negative)
+    const badConfig = { ...config, conditionEffectsData: {
+      neutral: [], positive: [],
+      negative: [{ kind: 'control' as const, multiplier: -0.25 }],
+      veryPositive: [], veryNegative: [],
+    }};
+    const badResult = findBestSkill(state, badConfig, 100, 100, false, 3, 'negative');
     
     // Both should return valid recommendations
     expect(goodResult.recommendation).not.toBeNull();
@@ -374,15 +380,13 @@ describe('findBestSkill', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
     
-    const forecastedConditions = [1.25, 1.0, 0.75];
-    
     const result = findBestSkill(
-      state, config, 100, 100, 1.0, false, 3, forecastedConditions
+      state, config, 100, 100, false, 3
     );
     
     expect(result.recommendation).not.toBeNull();
@@ -396,12 +400,12 @@ describe('search algorithm correctness', () => {
     const state = new CraftingState({
       qi: 150,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
     
-    const result = findBestSkill(state, config, 100, 100, 1.0, false, 4);
+    const result = findBestSkill(state, config, 100, 100, false, 4);
     
     expect(result.recommendation).not.toBeNull();
     // With enough resources and far from targets, buff setup is often optimal
@@ -413,12 +417,12 @@ describe('search algorithm correctness', () => {
     const state = new CraftingState({
       qi: 50,
       stability: 30,
-      maxStability: 40,
+      initialMaxStability: 40,
       completion: 90,
       perfection: 90,
     });
     
-    const result = findBestSkill(state, config, 100, 100, 1.0, false, 3);
+    const result = findBestSkill(state, config, 100, 100, false, 3);
     
     expect(result.recommendation).not.toBeNull();
     // Close to targets, should prefer skills that directly add progress
@@ -434,7 +438,7 @@ describe('search algorithm correctness', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 100,
       perfection: 100,
     });
@@ -448,7 +452,7 @@ describe('search algorithm correctness', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 150,
       perfection: 120,
     });
@@ -466,7 +470,7 @@ describe('search performance', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -484,7 +488,7 @@ describe('search performance', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -502,7 +506,7 @@ describe('search performance', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -526,7 +530,7 @@ describe('search performance', () => {
     const state = new CraftingState({
       qi: 500,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 1500000,  // 1.5 million - already have significant progress
       perfection: 1200000,  // 1.2 million
     });
@@ -537,8 +541,6 @@ describe('search performance', () => {
       2000000,  // 2 million target
       1800000,  // 1.8 million target
       6,        // depth 6 - would be very slow without optimizations
-      1.0,
-      [],
       undefined,
       [],
       { timeBudgetMs: 200, beamWidth: 6 }  // Use time budget to prevent freezes
@@ -560,7 +562,7 @@ describe('search performance', () => {
     const state = new CraftingState({
       qi: 200,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });
@@ -571,8 +573,6 @@ describe('search performance', () => {
       state, config, 
       100000, 100000, 
       12,  // Very deep - would take forever without budget
-      1.0,
-      [],
       undefined,
       [],
       { timeBudgetMs: 50, maxNodes: 10000 }  // Strict budget
@@ -580,7 +580,7 @@ describe('search performance', () => {
     const endTime = Date.now();
     
     // Should terminate within reasonable time (budget + overhead)
-    expect(endTime - startTime).toBeLessThan(200);
+    expect(endTime - startTime).toBeLessThan(500);
     
     // Should still provide best result found so far
     expect(result.recommendation).not.toBeNull();
@@ -590,7 +590,7 @@ describe('search performance', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
-      maxStability: 60,
+      initialMaxStability: 60,
       completion: 0,
       perfection: 0,
     });

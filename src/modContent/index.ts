@@ -209,26 +209,7 @@ function extractBuffInfo(
   return { controlBuffTurns, intensityBuffTurns, controlBuffMultiplier, intensityBuffMultiplier };
 }
 
-/**
- * Extract stack-based buff stacks (e.g., pressure, focus, insight) from game's CraftingBuff array.
- * Keys are normalized to match skill parsing (`toLowerCase` + spaces -> `_`).
- */
-function extractBuffStacks(buffs: CraftingBuff[] | undefined): Map<string, number> {
-  const result = new Map<string, number>();
-  if (!buffs) return result;
 
-  for (const buff of buffs) {
-    const rawName = (buff?.name || '').toLowerCase().trim();
-    if (!rawName) continue;
-    const key = rawName.replace(/\s+/g, '_');
-    const stacks = buff?.stacks ?? 0;
-    if (stacks > 0) {
-      result.set(key, stacks);
-    }
-  }
-
-  return result;
-}
 
 /**
  * Extract mastery data from a technique's mastery array.
@@ -624,7 +605,18 @@ function updateRecommendation(
   const buffSuccessBonus = extractCraftingStatFromBuffs(buffs, 'successChanceBonus');
   const successChanceBonus = Math.max(0, Math.min(1, baseSuccessBonus + buffSuccessBonus));
 
-  const buffStacks = extractBuffStacks(buffs);
+  const extractedBuffs = new Map<string, { name: string; stacks: number }>();
+  if (buffs) {
+    for (const buff of buffs) {
+      const rawName = (buff?.name || '').toLowerCase().trim();
+      if (!rawName) continue;
+      const key = rawName.replace(/\s+/g, '_');
+      const stacks = buff?.stacks ?? 0;
+      if (stacks > 0) {
+        extractedBuffs.set(key, { name: key, stacks });
+      }
+    }
+  }
 
   // Read pool/stability cost percentage modifiers from entity stats + buffs
   // Game default is 100 (= 100%, i.e. no modification)
@@ -670,6 +662,12 @@ function updateRecommendation(
     currentMaxStability = 60; // Fallback default
   }
 
+  // Extract harmony data from game's progressState for sublime crafts
+  // @ts-ignore - harmonyTypeData exists on game's ProgressState
+  const gameHarmonyData = progressState?.harmonyTypeData;
+  // @ts-ignore - harmony exists on game's ProgressState
+  const gameHarmony = progressState?.harmony ?? 0;
+
   const state = new CraftingState({
     qi: pool,
     stability,
@@ -689,15 +687,14 @@ function updateRecommendation(
     toxicity: currentToxicity,
     maxToxicity: currentConfig?.maxToxicity || maxToxicity,
     cooldowns: currentCooldowns,
-    buffStacks,
+    buffs: extractedBuffs,
+    harmony: gameHarmony,
+    harmonyData: gameHarmonyData ?? (isSublimeCraft ? { recommendedTechniqueTypes: [] } : undefined),
     completionBonus: completionBonusStacks,
     step: progressState?.step || 0,
     history: [],
   });
 
-  // Condition effects are now passed via config.conditionEffectsData (real game data).
-  // The legacy controlCondition number parameter is kept at 1.0 for backwards compatibility
-  // but is ignored when conditionEffectsData is present on config.
   const currentConditionType = condition as unknown as string | undefined;
   const forecastedConditionTypes = nextConditions as unknown as (string)[];
 
@@ -707,10 +704,8 @@ function updateRecommendation(
     currentConfig,
     targetCompletion,
     targetPerfection,
-    1.0,
     false,
     lookaheadDepth,
-    [],
     currentConditionType,
     forecastedConditionTypes
   );

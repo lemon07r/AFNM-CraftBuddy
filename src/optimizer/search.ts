@@ -334,6 +334,14 @@ function scoreState(
     score -= 5;
   }
 
+  // Harmony bonus/penalty for sublime crafts
+  // Higher harmony → more positive conditions → better stats over time
+  if (isSublimeCraft) {
+    // Harmony ranges from -100 to 100. Normalize to a scoring bonus.
+    // Positive harmony is good (more positive conditions), negative is bad.
+    score += state.harmony * 0.15;
+  }
+
   return score;
 }
 
@@ -487,7 +495,6 @@ export function greedySearch(
   config: OptimizerConfig,
   targetCompletion: number = 0,
   targetPerfection: number = 0,
-  controlCondition: number = 1.0,
   currentConditionType?: CraftingConditionType
 ): SearchResult {
   // Extract sublime crafting settings from config
@@ -576,8 +583,6 @@ export function greedySearch(
  * @param targetCompletion - Target completion value
  * @param targetPerfection - Target perfection value
  * @param depth - How many moves to look ahead
- * @param controlCondition - Current condition multiplier
- * @param forecastedConditions - Array of upcoming condition multipliers for each depth
  * @param currentConditionType - Current condition type for skill filtering
  * @param forecastedConditionTypes - Array of upcoming condition types for skill filtering
  * @param searchConfig - Optional search configuration for performance tuning
@@ -588,8 +593,6 @@ export function lookaheadSearch(
   targetCompletion: number = 0,
   targetPerfection: number = 0,
   depth: number = 3,
-  controlCondition: number = 1.0,
-  forecastedConditions: number[] = [],
   currentConditionType?: CraftingConditionType,
   forecastedConditionTypes: CraftingConditionType[] = [],
   searchConfig: Partial<SearchConfig> = {}
@@ -709,18 +712,13 @@ export function lookaheadSearch(
       }
     }
 
-    // Get condition multiplier for this depth from forecasted conditions
-    const conditionAtDepth = depthIndex < forecastedConditions.length 
-      ? forecastedConditions[depthIndex] 
-      : controlCondition;
-
     // Check cache with normalized key (buckets large progress values)
     const cacheKey = getNormalizedCacheKey(
       currentState,
       targetCompletion,
       targetPerfection,
       remainingDepth,
-      conditionAtDepth,
+      0,
       conditionTypeAtDepth,
       cfg.progressBucketSize
     );
@@ -773,13 +771,11 @@ export function lookaheadSearch(
    * 
    * @param startState - State to start from
    * @param maxDepth - Maximum depth to search
-   * @param startCondition - Default condition multiplier
    * @param startDepthIndex - The depth index to start from (for condition lookups)
    */
   function findOptimalPath(
     startState: CraftingState,
     maxDepth: number,
-    startCondition: number,
     startDepthIndex: number = 0
   ): { path: string[]; finalState: CraftingState } {
     const path: string[] = [];
@@ -802,9 +798,6 @@ export function lookaheadSearch(
       }
 
       const globalDepth = startDepthIndex + currentDepth;
-      const conditionAtDepth = globalDepth < forecastedConditions.length
-        ? forecastedConditions[globalDepth]
-        : startCondition;
       const conditionTypeAtDepth = getConditionTypeAtDepth(currentDepth);
 
       const skills = getAvailableSkills(currentState, config, conditionTypeAtDepth);
@@ -864,9 +857,6 @@ export function lookaheadSearch(
     const followUpConditionType = depthIndex < forecastedConditionTypes.length
       ? forecastedConditionTypes[depthIndex]
       : 'neutral';
-    const followUpCondition = depthIndex < forecastedConditions.length
-      ? forecastedConditions[depthIndex]
-      : controlCondition;
 
     // Check if targets already met or terminal
     if (stateAfterSkill.targetsMet(targetCompletion, targetPerfection)) {
@@ -983,7 +973,7 @@ export function lookaheadSearch(
   
   if (stateAfterFirstMove) {
     // Find the rest of the optimal path, starting from depth index 1 (after first move)
-    const { path, finalState } = findOptimalPath(stateAfterFirstMove, depth - 1, controlCondition, 1);
+    const { path, finalState } = findOptimalPath(stateAfterFirstMove, depth - 1, 1);
     optimalRotation = [bestFirstMove.name, ...path];
     
     // Calculate turns remaining (estimate based on progress needed)
@@ -1027,10 +1017,8 @@ export type CraftingConditionType = string;
  * @param config - Optimizer config with character stats and skills (from game)
  * @param targetCompletion - Target completion value (from recipe)
  * @param targetPerfection - Target perfection value (from recipe)
- * @param controlCondition - Current condition multiplier for control (from game)
  * @param useGreedy - Use greedy search instead of lookahead
  * @param lookaheadDepth - How many moves to look ahead
- * @param forecastedConditionMultipliers - Array of upcoming condition multipliers (converted from game's nextConditions)
  * @param currentConditionType - Current condition type for skill filtering (e.g., 'veryPositive')
  * @param forecastedConditionTypes - Array of upcoming condition types for skill filtering
  * @param searchConfig - Optional search configuration for performance tuning
@@ -1040,29 +1028,18 @@ export function findBestSkill(
   config: OptimizerConfig,
   targetCompletion: number = 0,
   targetPerfection: number = 0,
-  controlCondition: number = 1.0,
   useGreedy: boolean = false,
   lookaheadDepth: number = 3,
-  forecastedConditionMultipliers: number[] = [],
   currentConditionType?: CraftingConditionType,
   forecastedConditionTypes: CraftingConditionType[] = [],
   searchConfig: Partial<SearchConfig> = {}
 ): SearchResult {
-  // Log that we're using game-provided data
-  if (forecastedConditionMultipliers.length > 0) {
-    debugLog(
-      `[CraftBuddy] Using ${forecastedConditionMultipliers.length} forecasted condition multipliers: ${forecastedConditionMultipliers.join(', ')}`
-    );
-  }
-  
   if (useGreedy) {
-    return greedySearch(state, config, targetCompletion, targetPerfection, controlCondition, currentConditionType);
+    return greedySearch(state, config, targetCompletion, targetPerfection, currentConditionType);
   }
   
-  // Pass forecasted condition multipliers and types to lookahead search for accurate simulation
   return lookaheadSearch(
     state, config, targetCompletion, targetPerfection, lookaheadDepth, 
-    controlCondition, forecastedConditionMultipliers, currentConditionType, 
-    forecastedConditionTypes, searchConfig
+    currentConditionType, forecastedConditionTypes, searchConfig
   );
 }

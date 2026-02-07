@@ -32,6 +32,14 @@ export {
 } from './search';
 export type { SkillRecommendation, SearchResult, CraftingConditionType, SearchConfig } from './search';
 
+// Harmony system exports
+export {
+  processHarmonyEffect,
+  initHarmonyData,
+  getHarmonyStatModifiers,
+  INSCRIBED_PATTERN_BLOCK,
+} from './harmony';
+
 // Game-accurate type exports
 export {
   evaluateScaling,
@@ -47,6 +55,10 @@ export type {
   RecipeConditionEffectType,
   HarmonyType,
   HarmonyData,
+  ForgeWorksData,
+  AlchemicalArtsData,
+  InscribedPatternsData,
+  ResonanceData,
   Scaling,
   ScalingVariables,
   ConditionEffect,

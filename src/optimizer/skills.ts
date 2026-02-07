@@ -15,10 +15,12 @@ import {
   RecipeConditionEffectType,
   ConditionEffect,
   HarmonyType,
+  HarmonyData,
   calculateExpectedCritMultiplier,
   getConditionEffects,
   getBonusAndChance,
 } from './gameTypes';
+import { processHarmonyEffect, getHarmonyStatModifiers } from './harmony';
 
 /**
  * Simplified skill definition for optimizer.
@@ -394,26 +396,14 @@ export function calculateDisciplinedTouchGains(
  * @param state - Current crafting state
  * @param skill - Skill being applied
  * @param config - Optimizer config with base stats
- * @param conditionEffectsOrMultiplier - Current condition effects or legacy control multiplier
+ * @param conditionEffects - Current condition effects
  */
 export function calculateSkillGains(
   state: CraftingState,
   skill: SkillDefinition,
   config: OptimizerConfig,
-  conditionEffectsOrMultiplier: ConditionEffect[] | number = []
+  conditionEffects: ConditionEffect[] = []
 ): SkillGains {
-  // Handle legacy number parameter (controlCondition multiplier)
-  let conditionEffects: ConditionEffect[];
-  if (typeof conditionEffectsOrMultiplier === 'number') {
-    const mult = conditionEffectsOrMultiplier;
-    if (mult !== 1.0) {
-      conditionEffects = [{ kind: 'control', multiplier: mult - 1 }];
-    } else {
-      conditionEffects = [];
-    }
-  } else {
-    conditionEffects = conditionEffectsOrMultiplier;
-  }
   // Handle Disciplined Touch specially - it uses both intensity and control with buffs
   if (skill.isDisciplinedTouch) {
     return calculateDisciplinedTouchGains(state, skill, config, conditionEffects);
@@ -440,14 +430,17 @@ export function calculateSkillGains(
     }
   }
 
+  // Apply harmony stat modifiers (sublime crafts)
+  const harmonyMods = getHarmonyStatModifiers(state.harmonyData, config.craftingType);
+
   // Apply completion bonus to control (+10% per stack) as per game mechanics
   const baseControlWithBonus = config.baseControl * (1 + state.completionBonus * 0.1);
   const controlWithMastery = baseControlWithBonus * controlMasteryBonus;
   const intensityWithMastery = config.baseIntensity * intensityMasteryBonus;
 
-  // Get effective stats with buffs applied
-  const effectiveControl = state.getControl(controlWithMastery) * controlCondMult;
-  const effectiveIntensity = state.getIntensity(intensityWithMastery) * intensityCondMult;
+  // Get effective stats with buffs applied, then harmony modifiers, then condition
+  const effectiveControl = state.getControl(controlWithMastery) * harmonyMods.controlMultiplier * controlCondMult;
+  const effectiveIntensity = state.getIntensity(intensityWithMastery) * harmonyMods.intensityMultiplier * intensityCondMult;
 
   let completionGain = skill.baseCompletionGain;
   let perfectionGain = skill.basePerfectionGain;
@@ -482,7 +475,7 @@ export function calculateSkillGains(
 
   // Calculate expected crit multiplier using game-accurate formula
   // Excess crit chance (>100%) converts to bonus multiplier at 1:3 ratio
-  const effectiveCritChance = state.critChance + (mastery.critChanceBonus || 0);
+  const effectiveCritChance = state.critChance + (mastery.critChanceBonus || 0) + harmonyMods.critChanceBonus;
   const effectiveCritMultiplier = state.critMultiplier + (mastery.critMultiplierBonus || 0);
   const critFactor = calculateExpectedCritMultiplier(effectiveCritChance, effectiveCritMultiplier);
 
@@ -490,7 +483,7 @@ export function calculateSkillGains(
   const baseSuccessChance = skill.successChance ?? 1;
   const totalSuccessChance = Math.min(
     1,
-    Math.max(0, baseSuccessChance + (mastery.successChanceBonus || 0) + state.successChanceBonus + successChanceBonus)
+    Math.max(0, baseSuccessChance + (mastery.successChanceBonus || 0) + state.successChanceBonus + successChanceBonus + harmonyMods.successChanceBonus)
   );
 
   // Expected value = successChance * (gains with crit)
@@ -627,29 +620,16 @@ export function canApplySkill(
  * @param state - Current crafting state
  * @param skill - Skill to apply
  * @param config - Optimizer config
- * @param conditionEffectsOrMultiplier - Current condition effects or legacy control multiplier
+ * @param conditionEffects - Current condition effects
  * @param targetCompletion - Target completion for completion bonus calculation
  */
 export function applySkill(
   state: CraftingState,
   skill: SkillDefinition,
   config: OptimizerConfig,
-  conditionEffectsOrMultiplier: ConditionEffect[] | number = [],
+  conditionEffects: ConditionEffect[] = [],
   targetCompletion: number = 0
 ): CraftingState | null {
-  // Handle legacy number parameter (controlCondition multiplier)
-  let conditionEffects: ConditionEffect[];
-  if (typeof conditionEffectsOrMultiplier === 'number') {
-    // Convert legacy control multiplier to condition effect
-    const mult = conditionEffectsOrMultiplier;
-    if (mult !== 1.0) {
-      conditionEffects = [{ kind: 'control', multiplier: mult - 1 }];
-    } else {
-      conditionEffects = [];
-    }
-  } else {
-    conditionEffects = conditionEffectsOrMultiplier;
-  }
   const maxToxicity = config.maxToxicity || 0;
 
   // Validate skill can be applied
@@ -809,6 +789,30 @@ export function applySkill(
     newCompletionBonus = Math.max(0, bonusInfo.guaranteed - 1);
   }
 
+  // Process harmony effects for sublime crafts (runs in processTurn after technique)
+  let newHarmony = state.harmony;
+  let newHarmonyData = state.harmonyData;
+  if (config.isSublimeCraft && config.craftingType && state.harmonyData) {
+    const harmonyResult = processHarmonyEffect(state.harmonyData, config.craftingType, skill.type);
+    newHarmonyData = harmonyResult.harmonyData;
+    newHarmony = Math.max(-100, Math.min(100, state.harmony + harmonyResult.harmonyDelta));
+
+    // Apply direct state changes from harmony (e.g., Inscription penalty, Resonance stability loss)
+    if (harmonyResult.stabilityDelta !== 0) {
+      newStability = Math.max(0, newStability + harmonyResult.stabilityDelta);
+    }
+    if (harmonyResult.poolDelta !== 0) {
+      newQi = Math.max(0, newQi + harmonyResult.poolDelta);
+    }
+    if (harmonyResult.stabilityPenaltyDelta !== 0) {
+      newStabilityPenalty += harmonyResult.stabilityPenaltyDelta;
+      newStabilityPenalty = Math.min(newStabilityPenalty, state.initialMaxStability);
+      // Reclamp stability after penalty increase
+      const newMax = state.initialMaxStability - newStabilityPenalty;
+      if (newStability > newMax) newStability = newMax;
+    }
+  }
+
   // Create new state with all updates
   return state.copy({
     qi: newQi,
@@ -823,6 +827,8 @@ export function applySkill(
     toxicity: newToxicity,
     cooldowns: newCooldowns,
     buffs: newBuffs,
+    harmony: newHarmony,
+    harmonyData: newHarmonyData,
     step: state.step + 1,
     completionBonus: newCompletionBonus,
     history: [...state.history, skill.name],
