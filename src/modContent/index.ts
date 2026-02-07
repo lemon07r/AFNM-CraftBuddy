@@ -1699,42 +1699,47 @@ function updateRecommendation(
   // Use setTimeout to allow UI to update before blocking on search
   // This ensures the loading indicator is visible during calculation
   setTimeout(() => {
-    currentRecommendation = findBestSkill(
-      state,
-      config,
-      targetCompletion,
-      targetPerfection,
-      false,
-      lookaheadDepth,
-      currentConditionType,
-      forecastedConditionTypes,
-      searchConfig,
-    );
-
-    // Clear calculating flag and snapshot settings after search completes
-    isCalculating = false;
-    snapshotSearchSettings();
-    checkIntegrationHealth();
-
-    debugLog(
-      `[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Completion=${completion}/${targetCompletion}, Perfection=${perfection}/${targetPerfection}`,
-    );
-    if (currentRecommendation?.recommendation) {
-      debugLog(
-        `[CraftBuddy] Recommended: ${currentRecommendation.recommendation.skill.name}`,
+    try {
+      currentRecommendation = findBestSkill(
+        state,
+        config,
+        targetCompletion,
+        targetPerfection,
+        false,
+        lookaheadDepth,
+        currentConditionType,
+        forecastedConditionTypes,
+        searchConfig,
       );
+
       debugLog(
-        `[CraftBuddy] Alternatives count: ${currentRecommendation.alternativeSkills?.length ?? 0}`,
+        `[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Completion=${completion}/${targetCompletion}, Perfection=${perfection}/${targetPerfection}`,
       );
-      if (currentRecommendation.alternativeSkills?.length > 0) {
+      if (currentRecommendation?.recommendation) {
         debugLog(
-          `[CraftBuddy] Alternatives: ${currentRecommendation.alternativeSkills.map((a) => a.skill.name).join(', ')}`,
+          `[CraftBuddy] Recommended: ${currentRecommendation.recommendation.skill.name}`,
         );
+        debugLog(
+          `[CraftBuddy] Alternatives count: ${currentRecommendation.alternativeSkills?.length ?? 0}`,
+        );
+        if (currentRecommendation.alternativeSkills?.length > 0) {
+          debugLog(
+            `[CraftBuddy] Alternatives: ${currentRecommendation.alternativeSkills.map((a) => a.skill.name).join(', ')}`,
+          );
+        }
       }
-    }
+    } catch (e) {
+      console.error('[CraftBuddy] Failed to calculate recommendation:', e);
+      currentRecommendation = null;
+    } finally {
+      // Always clear calculating flag even if search throws.
+      isCalculating = false;
+      snapshotSearchSettings();
+      checkIntegrationHealth();
 
-    // Update the overlay with results
-    renderOverlay();
+      // Update the overlay with results
+      renderOverlay();
+    }
   }, 0);
 }
 
@@ -1767,20 +1772,20 @@ function renderOverlay(): void {
     createOverlayContainer();
   }
 
-  // Check if we should show the panel:
-  // - If panelVisible setting is true, always show
-  // - If crafting is active (we have entity and progress data), show regardless of setting
+  // Show overlay only while crafting is active and panel visibility is enabled.
   const isCraftingActive = lastEntity !== null && lastProgressState !== null;
-  const shouldShow = currentSettings.panelVisible || isCraftingActive;
+  const shouldShow = currentSettings.panelVisible && isCraftingActive;
 
   if (!reactRoot || !shouldShow) {
     if (reactRoot && overlayContainer) {
       overlayContainer.style.display = 'none';
     }
+    isOverlayVisible = false;
     return;
   }
 
   overlayContainer!.style.display = 'block';
+  isOverlayVisible = true;
 
   const handleSettingsChange = (newSettings: CraftBuddySettings) => {
     currentSettings = newSettings;
@@ -1985,6 +1990,30 @@ function findReduxStore(): any {
 // Cache the Redux store once found
 let cachedStore: any = null;
 
+function getGameRootElement(): ParentNode {
+  return (
+    document.getElementById('root') ||
+    document.getElementById('app') ||
+    document.body
+  );
+}
+
+function isElementInCraftBuddyOverlay(element: Element | null): boolean {
+  return !!element?.closest('#craftbuddy-overlay');
+}
+
+function isElementVisible(element: Element): boolean {
+  const htmlElement = element as HTMLElement;
+  if (!htmlElement.isConnected) return false;
+
+  const style = window.getComputedStyle(htmlElement);
+  if (style.display === 'none' || style.visibility === 'hidden') {
+    return false;
+  }
+
+  return htmlElement.getClientRects().length > 0;
+}
+
 /**
  * Try to extract crafting state from Redux store or DOM.
  */
@@ -2045,29 +2074,51 @@ function detectCraftingState(): {
     }
   }
 
+  const gameRoot = getGameRootElement();
+
   // Method 2: Check for crafting UI elements in the DOM
   const craftingPanel =
-    document.querySelector('[class*="crafting"]') ||
-    document.querySelector('[class*="Crafting"]') ||
-    document.querySelector('[data-testid*="crafting"]');
+    Array.from(
+      gameRoot.querySelectorAll(
+        '[class*="crafting"], [class*="Crafting"], [data-testid*="crafting"]',
+      ),
+    ).find(
+      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
+    ) || null;
 
   // Method 3: Look for specific crafting-related text/elements
   const stabilityElement =
-    document.querySelector('[class*="stability"]') ||
-    Array.from(document.querySelectorAll('*')).find(
-      (el) => el.textContent?.includes('Stability:') && el.children.length < 5,
+    Array.from(gameRoot.querySelectorAll('[class*="stability"]')).find(
+      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
+    ) ||
+    Array.from(gameRoot.querySelectorAll('*')).find(
+      (el) =>
+        !isElementInCraftBuddyOverlay(el) &&
+        isElementVisible(el) &&
+        el.textContent?.includes('Stability:') &&
+        el.children.length < 5,
     );
 
   const completionElement =
-    document.querySelector('[class*="completion"]') ||
-    Array.from(document.querySelectorAll('*')).find(
-      (el) => el.textContent?.includes('Completion:') && el.children.length < 5,
+    Array.from(gameRoot.querySelectorAll('[class*="completion"]')).find(
+      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
+    ) ||
+    Array.from(gameRoot.querySelectorAll('*')).find(
+      (el) =>
+        !isElementInCraftBuddyOverlay(el) &&
+        isElementVisible(el) &&
+        el.textContent?.includes('Completion:') &&
+        el.children.length < 5,
     );
 
   // Method 4: Check for technique buttons (crafting skills)
-  const techniqueButtons = document.querySelectorAll('button');
+  const techniqueButtons = gameRoot.querySelectorAll('button');
   let hasCraftingButtons = false;
   techniqueButtons.forEach((btn) => {
+    if (isElementInCraftBuddyOverlay(btn) || !isElementVisible(btn)) {
+      return;
+    }
+
     const text = btn.textContent?.toLowerCase() || '';
     if (
       text.includes('fusion') ||
@@ -2078,12 +2129,9 @@ function detectCraftingState(): {
     }
   });
 
-  const isActive = !!(
-    craftingPanel ||
-    stabilityElement ||
-    completionElement ||
-    hasCraftingButtons
-  );
+  // Require a strong signal to avoid self-detection from our own overlay.
+  const hasProgressSignals = !!(stabilityElement || completionElement);
+  const isActive = hasProgressSignals || (!!craftingPanel && hasCraftingButtons);
 
   return { isActive };
 }
@@ -2104,7 +2152,8 @@ function parseCraftingValuesFromDOM(): {
 } | null {
   try {
     // Look for progress bars or text showing crafting values
-    const allText = document.body.innerText;
+    const gameRoot = getGameRootElement();
+    const allText = (gameRoot as HTMLElement).innerText || '';
 
     // Try to find patterns like "Completion: 45/100" or "45 / 100"
     const completionMatch = allText.match(
@@ -2161,7 +2210,7 @@ function pollCraftingState(): void {
 
   if (isActive) {
     wasCraftingActive = true;
-    if (!isOverlayVisible) {
+    if (currentSettings.panelVisible && !isOverlayVisible) {
       debugLog('[CraftBuddy] Crafting detected, showing overlay');
       overlayForcedByActiveCraft = true;
       showOverlay();
@@ -2462,8 +2511,10 @@ try {
       overlayForcedByActiveCraft = !wasVisibleBeforeCraft;
       wasCraftingActive = true;
       isOverlayVisible = false; // Reset so showOverlay will work
-      debugLog('[CraftBuddy] Crafting starting, showing panel');
-      showOverlay();
+      debugLog('[CraftBuddy] Crafting starting, syncing panel visibility');
+      if (currentSettings.panelVisible) {
+        showOverlay();
+      }
 
       return recipeStats;
     },
@@ -3380,8 +3431,8 @@ function processCraftingState(craftingState: any): void {
       `[CraftBuddy] Redux update: Completion=${progress.completion}, Perfection=${progress.perfection}, Stability=${progress.stability}${needsInitialization ? ' (initial load)' : ''}`,
     );
 
-    // Ensure panel is visible
-    if (!isOverlayVisible) {
+    // Ensure panel is visible when the user has it enabled.
+    if (currentSettings.panelVisible && !isOverlayVisible) {
       overlayForcedByActiveCraft = true;
       showOverlay();
     }
