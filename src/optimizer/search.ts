@@ -227,13 +227,15 @@ function getNormalizedCacheKey(
  * @param targetPerfection - Base target perfection value
  * @param isSublimeCraft - Whether this is sublime/harmony crafting (allows exceeding targets)
  * @param targetMultiplier - Multiplier for sublime targets (default 2.0 for sublime, higher for equipment)
+ * @param trainingMode - Whether this is a training craft (more aggressive risk tolerance)
  */
 function scoreState(
   state: CraftingState,
   targetCompletion: number,
   targetPerfection: number,
   isSublimeCraft: boolean = false,
-  targetMultiplier: number = 2.0
+  targetMultiplier: number = 2.0,
+  trainingMode: boolean = false
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
     // No targets - maximize minimum of both (balanced progress)
@@ -323,10 +325,12 @@ function scoreState(
   }
 
   // Penalty for low stability (risky state)
-  // Graduated penalty that increases as stability gets dangerously low
-  if (state.stability < 25) {
-    const stabilityRisk = (25 - state.stability) / 25; // 0 to 1
-    score -= stabilityRisk * stabilityRisk * 10; // Quadratic penalty for very low stability
+  // In training mode, reduce penalty since failure has no real consequences
+  const stabilityThreshold = trainingMode ? 10 : 25;
+  const stabilityPenaltyWeight = trainingMode ? 3 : 10;
+  if (state.stability < stabilityThreshold) {
+    const stabilityRisk = (stabilityThreshold - state.stability) / stabilityThreshold; // 0 to 1
+    score -= stabilityRisk * stabilityRisk * stabilityPenaltyWeight;
   }
 
   // Small penalty for high toxicity in alchemy crafting
@@ -497,9 +501,10 @@ export function greedySearch(
   targetPerfection: number = 0,
   currentConditionType?: CraftingConditionType
 ): SearchResult {
-  // Extract sublime crafting settings from config
+  // Extract settings from config
   const isSublime = config.isSublimeCraft || false;
   const targetMult = config.targetMultiplier || 2.0;
+  const isTraining = config.trainingMode || false;
 
   // Check if targets already met
   // For sublime crafting, do NOT terminate at base targets; allow optimizer to push beyond.
@@ -536,7 +541,7 @@ export function greedySearch(
     if (newState === null) continue;
 
     const gains = calculateSkillGains(state, skill, config, conditionEffects);
-    const score = scoreState(newState, targetCompletion, targetPerfection, isSublime, targetMult);
+    const score = scoreState(newState, targetCompletion, targetPerfection, isSublime, targetMult, isTraining);
     const reasoning = generateReasoning(skill, state, gains, targetCompletion, targetPerfection);
 
     scoredSkills.push({
@@ -610,8 +615,9 @@ export function lookaheadSearch(
   };
   const startTime = Date.now();
   
-  // Extract sublime crafting settings from config
+  // Extract settings from config
   const isSublime = config.isSublimeCraft || false;
+  const isTraining = config.trainingMode || false;
 
   // Check if targets already met
   // For sublime crafting, do NOT terminate at base targets; allow optimizer to push beyond.
@@ -690,7 +696,7 @@ export function lookaheadSearch(
     
     // Check budget constraints
     if (checkBudget()) {
-      return scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult);
+      return scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult, isTraining);
     }
     
     // Get condition type for this depth from forecasted conditions
@@ -701,14 +707,14 @@ export function lookaheadSearch(
 
     // Base case: depth exhausted or terminal
     if (remainingDepth === 0 || isTerminalState(currentState, config, conditionTypeAtDepth)) {
-      return scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult);
+      return scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult, isTraining);
     }
 
     // Check if targets met - early termination with bonus
     // For sublime crafting, don't terminate early - we want to exceed targets
     if (!isSublime && targetCompletion > 0 && targetPerfection > 0) {
       if (currentState.targetsMet(targetCompletion, targetPerfection)) {
-        return scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult);
+        return scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult, isTraining);
       }
     }
 
@@ -739,7 +745,7 @@ export function lookaheadSearch(
       : cfg.beamWidth;
     const beamSkills = orderedSkills.slice(0, effectiveBeamWidth);
 
-    let bestScore = scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult);
+    let bestScore = scoreState(currentState, targetCompletion, targetPerfection, isSublime, targetMult, isTraining);
 
     // Get condition effects for this depth
     const conditionEffectsAtDepth = getConditionEffectsForConfig(config, conditionTypeAtDepth);

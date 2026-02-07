@@ -904,3 +904,128 @@ describe('canApplySkill edge cases', () => {
     expect(canApplySkill(state, skill, 10)).toBe(false);
   });
 });
+
+describe('buff per-turn effects', () => {
+  const config = createTestConfig();
+
+  it('should execute per-turn buff effects after technique', () => {
+    const empowerBuff = {
+      name: 'empower',
+      canStack: true,
+      maxStacks: 10,
+      effects: [
+        { kind: 'completion' as const, amount: { value: 5 } },
+      ],
+      onFusion: [
+        { kind: 'completion' as const, amount: { value: 3 } },
+      ],
+    };
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      buffs: new Map([['empower', { name: 'empower', stacks: 2, definition: empowerBuff }]]),
+    });
+    const skill = createTestSkill({
+      type: 'fusion',
+      baseCompletionGain: 1.0,
+      basePerfectionGain: 0,
+      qiCost: 5,
+      stabilityCost: 3,
+    });
+
+    const result = applySkill(state, skill, config);
+    expect(result).not.toBeNull();
+    // Skill gain: 1.0 * 12(intensity) = 12
+    // Buff per-turn: 5 (effects) + 3 (onFusion) = 8
+    // Total completion: 12 + 8 = 20
+    expect(result!.completion).toBe(20);
+  });
+
+  it('should scale buff effects with stacks', () => {
+    const pressureBuff = {
+      name: 'pressure',
+      canStack: true,
+      maxStacks: 5,
+      effects: [
+        { kind: 'completion' as const, amount: { value: 2, stat: 'stacks' } },
+      ],
+    };
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      buffs: new Map([['pressure', { name: 'pressure', stacks: 3, definition: pressureBuff }]]),
+    });
+    const skill = createTestSkill({
+      type: 'fusion',
+      baseCompletionGain: 1.0,
+      basePerfectionGain: 0,
+      qiCost: 5,
+      stabilityCost: 3,
+    });
+
+    const result = applySkill(state, skill, config);
+    expect(result).not.toBeNull();
+    // Skill gain: floor(1.0 * 12) = 12
+    // Buff: value=2 * stacks=3 = 6
+    // Total: 18
+    expect(result!.completion).toBe(18);
+  });
+
+  it('should not apply action-type effects for wrong action type', () => {
+    const buff = {
+      name: 'test',
+      canStack: true,
+      effects: [],
+      onFusion: [{ kind: 'completion' as const, amount: { value: 10 } }],
+    };
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      buffs: new Map([['test', { name: 'test', stacks: 1, definition: buff }]]),
+    });
+    const skill = createTestSkill({
+      type: 'refine',
+      baseCompletionGain: 1.0,
+      basePerfectionGain: 0,
+      qiCost: 5,
+      stabilityCost: 3,
+      scalesWithControl: true,
+    });
+
+    const result = applySkill(state, skill, config);
+    expect(result).not.toBeNull();
+    // Skill: floor(1.0 * 16(control)) = 16, no onFusion effect (skill is refine)
+    expect(result!.completion).toBe(16);
+  });
+
+  it('should apply stability and pool buff effects', () => {
+    const buff = {
+      name: 'regen',
+      canStack: true,
+      effects: [
+        { kind: 'stability' as const, amount: { value: 5 } },
+        { kind: 'pool' as const, amount: { value: -10 } },
+      ],
+    };
+    const state = new CraftingState({
+      qi: 100,
+      stability: 30,
+      initialMaxStability: 60,
+      buffs: new Map([['regen', { name: 'regen', stacks: 1, definition: buff }]]),
+    });
+    const skill = createTestSkill({
+      qiCost: 5,
+      stabilityCost: 3,
+    });
+
+    const result = applySkill(state, skill, config);
+    expect(result).not.toBeNull();
+    // Stability: 30 - 3(cost) + 5(buff) = 32
+    expect(result!.stability).toBe(32);
+    // Qi: 100 - 5(cost) - 10(buff drain) = 85
+    expect(result!.qi).toBe(85);
+  });
+});

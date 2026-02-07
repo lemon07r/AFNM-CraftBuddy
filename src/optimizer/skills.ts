@@ -10,15 +10,18 @@ import { safeFloor, safeAdd, safeMultiply } from '../utils/largeNumbers';
 import {
   TechniqueEffect,
   BuffDefinition,
+  BuffEffect,
   CraftingCondition,
   TechniqueType,
   RecipeConditionEffectType,
   ConditionEffect,
   HarmonyType,
   HarmonyData,
+  ScalingVariables,
   calculateExpectedCritMultiplier,
   getConditionEffects,
   getBonusAndChance,
+  evaluateScaling,
 } from './gameTypes';
 import { processHarmonyEffect, getHarmonyStatModifiers } from './harmony';
 
@@ -190,6 +193,11 @@ export interface OptimizerConfig {
    * Target perfection value.
    */
   targetPerfection?: number;
+  /**
+   * Whether this is a training craft (no real consequences on failure).
+   * When true, optimizer uses more aggressive strategies with lower stability margins.
+   */
+  trainingMode?: boolean;
 }
 
 /**
@@ -777,9 +785,71 @@ export function applySkill(
     }
   }
 
-  // Calculate new completion/perfection
-  const newCompletion = safeAdd(state.completion, gains.completion);
-  const newPerfection = safeAdd(state.perfection, gains.perfection);
+  // Process per-turn buff effects (game's doExecuteBuff runs after technique)
+  let buffCompletion = 0;
+  let buffPerfection = 0;
+  let buffStabilityDelta = 0;
+  let buffPoolDelta = 0;
+  let buffToxicityDelta = 0;
+  let buffMaxStabilityDelta = 0;
+  newBuffs.forEach((buff) => {
+    if (!buff.definition) return;
+    const scalingVars: ScalingVariables = {
+      control: config.baseControl,
+      intensity: config.baseIntensity,
+      critchance: state.critChance,
+      critmultiplier: state.critMultiplier,
+      pool: newQi,
+      maxpool: config.maxQi,
+      toxicity: newToxicity,
+      maxtoxicity: config.maxToxicity || 0,
+      resistance: 0,
+      itemEffectiveness: 0,
+      pillsPerRound: 0,
+      poolCostPercentage: state.poolCostPercentage,
+      stabilityCostPercentage: state.stabilityCostPercentage,
+      successChanceBonus: state.successChanceBonus,
+      stacks: buff.stacks,
+    };
+    // Execute per-turn effects
+    if (buff.definition.effects) {
+      for (const effect of buff.definition.effects) {
+        const amt = evaluateScaling(effect.amount, scalingVars, 0);
+        switch (effect.kind) {
+          case 'completion': buffCompletion += amt; break;
+          case 'perfection': buffPerfection += amt; break;
+          case 'stability': buffStabilityDelta += amt; break;
+          case 'pool': buffPoolDelta += amt; break;
+          case 'maxStability': buffMaxStabilityDelta += amt; break;
+          case 'changeToxicity': buffToxicityDelta += amt; break;
+        }
+      }
+    }
+    // Execute action-type-specific effects
+    const actionEffects: BuffEffect[] | undefined =
+      skill.type === 'fusion' ? buff.definition.onFusion :
+      skill.type === 'refine' ? buff.definition.onRefine :
+      skill.type === 'stabilize' ? buff.definition.onStabilize :
+      skill.type === 'support' ? buff.definition.onSupport :
+      undefined;
+    if (actionEffects) {
+      for (const effect of actionEffects) {
+        const amt = evaluateScaling(effect.amount, scalingVars, 0);
+        switch (effect.kind) {
+          case 'completion': buffCompletion += amt; break;
+          case 'perfection': buffPerfection += amt; break;
+          case 'stability': buffStabilityDelta += amt; break;
+          case 'pool': buffPoolDelta += amt; break;
+          case 'maxStability': buffMaxStabilityDelta += amt; break;
+          case 'changeToxicity': buffToxicityDelta += amt; break;
+        }
+      }
+    }
+  });
+
+  // Calculate new completion/perfection (including buff per-turn contributions)
+  const newCompletion = safeAdd(state.completion, gains.completion + buffCompletion);
+  const newPerfection = safeAdd(state.perfection, gains.perfection + buffPerfection);
 
   // Update completion bonus (game mechanic: +10% control per guaranteed bonus tier)
   let newCompletionBonus = state.completionBonus;
@@ -787,6 +857,16 @@ export function applySkill(
     const bonusInfo = getBonusAndChance(newCompletion, targetCompletion);
     // Completion bonus stacks are guaranteed - 1 (first threshold doesn't count)
     newCompletionBonus = Math.max(0, bonusInfo.guaranteed - 1);
+  }
+
+  // Apply buff per-turn state changes
+  newStability = Math.max(0, newStability + buffStabilityDelta);
+  newQi = Math.max(0, newQi + buffPoolDelta);
+  newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
+  if (buffMaxStabilityDelta !== 0) {
+    newStabilityPenalty = Math.max(0, newStabilityPenalty - buffMaxStabilityDelta);
+    const newMax = state.initialMaxStability - newStabilityPenalty;
+    if (newStability > newMax) newStability = newMax;
   }
 
   // Process harmony effects for sublime crafts (runs in processTurn after technique)

@@ -543,6 +543,8 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     conditionEffectsData: conditionEffectsData as any,
     targetCompletion,
     targetPerfection,
+    // @ts-ignore - trainingMode exists on game's CraftingState
+    trainingMode: !!(entity as any)?.trainingMode,
   };
 }
 
