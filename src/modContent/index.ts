@@ -110,6 +110,10 @@ let sublimeTargetMultiplier = 2.0;
 // Settings
 let currentSettings: CraftBuddySettings = loadSettings();
 
+// Calculation state tracking for loading indicator
+let isCalculating = false;
+let settingsStale = false;
+
 // Store the last entity for rendering
 let lastEntity: CraftingEntity | null = null;
 let lastProgressState: ProgressState | null = null;
@@ -1228,37 +1232,57 @@ function updateRecommendation(
 
   const lookaheadDepth = currentSettings.lookaheadDepth;
   const searchConfig = getSearchConfig();
-  currentRecommendation = findBestSkill(
-    state,
-    currentConfig,
-    targetCompletion,
-    targetPerfection,
-    false,
-    lookaheadDepth,
-    currentConditionType,
-    forecastedConditionTypes,
-    searchConfig,
-  );
 
-  console.log(
-    `[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Completion=${completion}/${targetCompletion}, Perfection=${perfection}/${targetPerfection}`,
-  );
-  if (currentRecommendation?.recommendation) {
-    console.log(
-      `[CraftBuddy] Recommended: ${currentRecommendation.recommendation.skill.name}`,
-    );
-    console.log(
-      `[CraftBuddy] Alternatives count: ${currentRecommendation.alternativeSkills?.length ?? 0}`,
-    );
-    if (currentRecommendation.alternativeSkills?.length > 0) {
-      console.log(
-        `[CraftBuddy] Alternatives: ${currentRecommendation.alternativeSkills.map((a) => a.skill.name).join(', ')}`,
-      );
-    }
+  // Capture config locally for the async callback
+  const config = currentConfig;
+  if (!config) {
+    console.warn('[CraftBuddy] No config available for search');
+    return;
   }
 
-  // Update the overlay
+  // Set calculating state and render immediately to show loading indicator
+  isCalculating = true;
   renderOverlay();
+
+  // Use setTimeout to allow UI to update before blocking on search
+  // This ensures the loading indicator is visible during calculation
+  setTimeout(() => {
+    currentRecommendation = findBestSkill(
+      state,
+      config,
+      targetCompletion,
+      targetPerfection,
+      false,
+      lookaheadDepth,
+      currentConditionType,
+      forecastedConditionTypes,
+      searchConfig,
+    );
+
+    // Clear calculating and stale flags after search completes
+    isCalculating = false;
+    settingsStale = false;
+
+    console.log(
+      `[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Completion=${completion}/${targetCompletion}, Perfection=${perfection}/${targetPerfection}`,
+    );
+    if (currentRecommendation?.recommendation) {
+      console.log(
+        `[CraftBuddy] Recommended: ${currentRecommendation.recommendation.skill.name}`,
+      );
+      console.log(
+        `[CraftBuddy] Alternatives count: ${currentRecommendation.alternativeSkills?.length ?? 0}`,
+      );
+      if (currentRecommendation.alternativeSkills?.length > 0) {
+        console.log(
+          `[CraftBuddy] Alternatives: ${currentRecommendation.alternativeSkills.map((a) => a.skill.name).join(', ')}`,
+        );
+      }
+    }
+
+    // Update the overlay with results
+    renderOverlay();
+  }, 0);
 }
 
 /**
@@ -1310,6 +1334,22 @@ function renderOverlay(): void {
     renderOverlay();
   };
 
+  const handleSearchSettingsChange = (_newSettings: CraftBuddySettings) => {
+    // Mark settings as stale when search-affecting settings change
+    settingsStale = true;
+    renderOverlay();
+  };
+
+  const handleRecalculate = () => {
+    // Trigger recalculation with current entity/progress state
+    if (lastEntity && lastProgressState) {
+      const inventoryItems = cachedStore?.getState?.()?.inventory?.items as
+        | InventoryItemLike[]
+        | undefined;
+      updateRecommendation(lastEntity, lastProgressState, inventoryItems);
+    }
+  };
+
   const panel = React.createElement(RecommendationPanel, {
     result: currentRecommendation,
     currentCompletion,
@@ -1322,12 +1362,16 @@ function renderOverlay(): void {
     currentMaxStability,
     settings: currentSettings,
     onSettingsChange: handleSettingsChange,
+    onSearchSettingsChange: handleSearchSettingsChange,
     targetStability,
     currentCondition: currentCondition as any,
     nextConditions,
     currentToxicity,
     maxToxicity,
     craftingType: currentCraftingType,
+    isCalculating,
+    settingsStale,
+    onRecalculate: handleRecalculate,
   });
 
   // Wrap panel with ThemeProvider for styled components

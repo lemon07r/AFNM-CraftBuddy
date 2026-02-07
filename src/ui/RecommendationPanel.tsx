@@ -56,6 +56,9 @@ import {
   FlexRow,
   SequenceArrow,
   HotkeyHints,
+  LoadingSkeletonCard,
+  LoadingHeader,
+  RecalculateButton,
 } from './components';
 import { pulseGlow, fadeInUp, transitions } from './animations';
 
@@ -111,6 +114,14 @@ interface RecommendationPanelProps {
   craftingType?: 'forge' | 'alchemical' | 'inscription' | 'resonance';
   settings?: CraftBuddySettings;
   onSettingsChange?: (settings: CraftBuddySettings) => void;
+  /** Called when a search-affecting setting changes */
+  onSearchSettingsChange?: (settings: CraftBuddySettings) => void;
+  /** Whether the optimizer is currently calculating */
+  isCalculating?: boolean;
+  /** Whether search settings have changed since last calculation */
+  settingsStale?: boolean;
+  /** Callback to trigger recalculation with new settings */
+  onRecalculate?: () => void;
 }
 
 // ============================================================================
@@ -715,6 +726,10 @@ export function RecommendationPanel({
   craftingType = 'forge',
   settings,
   onSettingsChange,
+  onSearchSettingsChange,
+  isCalculating = false,
+  settingsStale = false,
+  onRecalculate,
 }: RecommendationPanelProps) {
   // Use settings or defaults
   const compactMode = settings?.compactMode ?? false;
@@ -730,15 +745,11 @@ export function RecommendationPanel({
   }
 
   // No result yet - Loading state
-  if (!result) {
+  if (!result || isCalculating) {
     return (
       <PanelContainer compact={compactMode}>
-        <SectionHeader color={colors.gold} compact={compactMode}>
-          CraftBuddy
-        </SectionHeader>
-        <Typography variant="body2" sx={{ color: colors.textMuted }}>
-          Analyzing crafting state...
-        </Typography>
+        <LoadingHeader compact={compactMode} />
+        <LoadingSkeletonCard />
       </PanelContainer>
     );
   }
@@ -799,7 +810,15 @@ export function RecommendationPanel({
   return (
     <PanelContainer compact={compactMode}>
       {/* Settings Panel */}
-      <SettingsPanel onSettingsChange={onSettingsChange} />
+      <SettingsPanel
+        onSettingsChange={onSettingsChange}
+        onSearchSettingsChange={onSearchSettingsChange}
+      />
+
+      {/* Recalculate button when search settings changed */}
+      {onRecalculate && (
+        <RecalculateButton visible={settingsStale} onClick={onRecalculate} />
+      )}
 
       <SectionHeader color={colors.gold} compact={compactMode}>
         {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}

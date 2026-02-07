@@ -83,6 +83,29 @@ export const shimmer = keyframes`
   }
 `;
 
+// Loading shimmer for skeleton cards - GPU-accelerated horizontal sweep
+export const loadingShimmer = keyframes`
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+`;
+
+// Animated dots for loading text (opacity-only for performance)
+export const dotPulse = keyframes`
+  0%, 20% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+  80%, 100% {
+    opacity: 0.3;
+  }
+`;
+
 // Transition presets - use cubic-bezier for smooth, natural motion
 export const transitions = {
   // Standard smooth transition
@@ -123,6 +146,11 @@ export const animationSx = {
   // Primary skill card glow (subtle, not distracting)
   primaryGlow: {
     animation: `${pulseGlow} 2.5s ease-in-out infinite`,
+  } as SxProps<Theme>,
+
+  // Loading shimmer for skeleton cards
+  loadingShimmerSx: {
+    animation: `${loadingShimmer} 1.5s ease-in-out infinite`,
   } as SxProps<Theme>,
 
   // Hover scale effect

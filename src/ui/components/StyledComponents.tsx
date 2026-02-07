@@ -17,7 +17,16 @@ import {
   getQualityLabel,
   getConditionColor,
 } from '../theme';
-import { pulseGlow, slideInRight, fadeInUp, transitions } from '../animations';
+import {
+  pulseGlow,
+  pulseGold,
+  slideInRight,
+  fadeInUp,
+  fadeIn,
+  loadingShimmer,
+  dotPulse,
+  transitions,
+} from '../animations';
 
 // ============================================================================
 // Panel Components
@@ -667,6 +676,263 @@ export const HotkeyHints = memo(function HotkeyHints({
             {h.key}: {h.action}
           </React.Fragment>
         ))}
+      </Typography>
+    </Box>
+  );
+});
+
+// ============================================================================
+// Loading Components
+// ============================================================================
+
+/**
+ * Loading skeleton card - shimmer placeholder for skill cards.
+ * Uses GPU-accelerated transform animation for performance.
+ */
+export const LoadingSkeletonCard = memo(function LoadingSkeletonCard() {
+  return (
+    <Box
+      sx={{
+        p: 1,
+        borderRadius: 1.5,
+        background: 'rgba(35, 38, 48, 0.6)',
+        border: '1px solid rgba(80, 85, 100, 0.35)',
+        borderLeft: `3px solid ${colors.goldDark}40`,
+        position: 'relative',
+        overflow: 'hidden',
+        minHeight: 72,
+      }}
+    >
+      {/* Content placeholders */}
+      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+        {/* Icon placeholder */}
+        <Box
+          sx={{
+            width: 56,
+            height: 56,
+            borderRadius: 1,
+            backgroundColor: 'rgba(60, 65, 80, 0.5)',
+            flexShrink: 0,
+          }}
+        />
+        {/* Text placeholders */}
+        <Box sx={{ flex: 1, pt: 0.5 }}>
+          <Box
+            sx={{
+              width: '60%',
+              height: 14,
+              borderRadius: 0.5,
+              backgroundColor: 'rgba(60, 65, 80, 0.5)',
+              mb: 1,
+            }}
+          />
+          <Box
+            sx={{
+              width: '40%',
+              height: 10,
+              borderRadius: 0.5,
+              backgroundColor: 'rgba(60, 65, 80, 0.4)',
+              mb: 0.75,
+            }}
+          />
+          <Box
+            sx={{
+              width: '75%',
+              height: 10,
+              borderRadius: 0.5,
+              backgroundColor: 'rgba(60, 65, 80, 0.4)',
+            }}
+          />
+        </Box>
+      </Box>
+
+      {/* Shimmer overlay - GPU-accelerated */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: `linear-gradient(90deg, transparent 0%, ${colors.goldDark}15 50%, transparent 100%)`,
+          animation: `${loadingShimmer} 1.5s ease-in-out infinite`,
+          pointerEvents: 'none',
+        }}
+      />
+    </Box>
+  );
+});
+
+/**
+ * Animated loading dots component.
+ * Opacity-only animation for minimal CPU usage.
+ */
+export const LoadingDots = memo(function LoadingDots() {
+  return (
+    <Box component="span" sx={{ display: 'inline-flex', gap: '2px', ml: 0.5 }}>
+      {[0, 1, 2].map((i) => (
+        <Box
+          key={i}
+          component="span"
+          sx={{
+            width: 4,
+            height: 4,
+            borderRadius: '50%',
+            backgroundColor: colors.gold,
+            opacity: 0.3,
+            animation: `${dotPulse} 1.2s ease-in-out infinite`,
+            animationDelay: `${i * 0.2}s`,
+          }}
+        />
+      ))}
+    </Box>
+  );
+});
+
+/**
+ * Loading header with gold pulse animation.
+ */
+export const LoadingHeader = memo(function LoadingHeader({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
+  return (
+    <Box sx={{ mb: compact ? 1 : 1.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography
+          variant={compact ? 'subtitle1' : 'h6'}
+          sx={{
+            color: colors.gold,
+            fontWeight: 600,
+            letterSpacing: '0.5px',
+            animation: `${pulseGold} 2s ease-in-out infinite`,
+          }}
+        >
+          CraftBuddy
+        </Typography>
+        <Typography
+          variant="body2"
+          sx={{
+            color: colors.textMuted,
+            fontStyle: 'italic',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          Calculating
+          <LoadingDots />
+        </Typography>
+      </Box>
+      {/* Gradient underline with pulse */}
+      <Box
+        sx={{
+          height: 1,
+          mt: 0.5,
+          background: `linear-gradient(90deg, ${colors.gold}60 0%, transparent 80%)`,
+          borderRadius: 1,
+          animation: `${pulseGold} 2s ease-in-out infinite`,
+        }}
+      />
+    </Box>
+  );
+});
+
+// ============================================================================
+// Recalculate Button
+// ============================================================================
+
+interface RecalculateButtonProps {
+  onClick: () => void;
+  visible: boolean;
+}
+
+/**
+ * Recalculate button that appears when search settings change.
+ * Uses opacity/transform for smooth fade-in animation.
+ */
+export const RecalculateButton = memo(function RecalculateButton({
+  onClick,
+  visible,
+}: RecalculateButtonProps) {
+  if (!visible) return null;
+
+  return (
+    <Box
+      sx={{
+        mt: 1,
+        mb: 0.5,
+        animation: `${fadeIn} 0.25s ease-out`,
+      }}
+    >
+      <Box
+        component="button"
+        onClick={onClick}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 0.75,
+          width: '100%',
+          py: 0.75,
+          px: 1.5,
+          backgroundColor: 'rgba(255, 215, 0, 0.1)',
+          border: `1px solid ${colors.gold}50`,
+          borderRadius: 1,
+          color: colors.gold,
+          fontSize: '0.8rem',
+          fontWeight: 500,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+          transition: transitions.smooth,
+          '&:hover': {
+            backgroundColor: 'rgba(255, 215, 0, 0.2)',
+            borderColor: colors.gold,
+            boxShadow: `0 0 8px ${colors.goldGlow}`,
+          },
+          '&:active': {
+            transform: 'scale(0.98)',
+          },
+        }}
+      >
+        {/* Simple refresh icon using CSS */}
+        <Box
+          component="span"
+          sx={{
+            display: 'inline-block',
+            width: 12,
+            height: 12,
+            border: `2px solid ${colors.gold}`,
+            borderTopColor: 'transparent',
+            borderRadius: '50%',
+            position: 'relative',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              top: -3,
+              right: -1,
+              width: 0,
+              height: 0,
+              borderLeft: `3px solid transparent`,
+              borderRight: `3px solid transparent`,
+              borderBottom: `4px solid ${colors.gold}`,
+              transform: 'rotate(45deg)',
+            },
+          }}
+        />
+        Recalculate
+      </Box>
+      <Typography
+        variant="caption"
+        sx={{
+          display: 'block',
+          color: colors.textMuted,
+          textAlign: 'center',
+          mt: 0.5,
+          fontSize: '0.65rem',
+        }}
+      >
+        Search settings changed
       </Typography>
     </Box>
   );

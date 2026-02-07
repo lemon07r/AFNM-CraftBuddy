@@ -32,6 +32,8 @@ import { transitions } from './animations';
 
 interface SettingsPanelProps {
   onSettingsChange?: (settings: CraftBuddySettings) => void;
+  /** Called when a search-affecting setting changes (lookahead, time budget, nodes, beam width) */
+  onSearchSettingsChange?: (settings: CraftBuddySettings) => void;
 }
 
 /**
@@ -156,6 +158,7 @@ const ToggleSetting = memo(function ToggleSetting({
  */
 export const SettingsPanel = memo(function SettingsPanel({
   onSettingsChange,
+  onSearchSettingsChange,
 }: SettingsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [settings, setSettings] = useState<CraftBuddySettings>(getSettings());
@@ -173,11 +176,12 @@ export const SettingsPanel = memo(function SettingsPanel({
     <K extends keyof CraftBuddySettings>(
       key: K,
       value: CraftBuddySettings[K],
-    ) => {
+    ): CraftBuddySettings => {
       const newSettings = saveSettings({ [key]: value });
       setSettings(newSettings);
       setDraftSettings(newSettings);
       onSettingsChange?.(newSettings);
+      return newSettings;
     },
     [onSettingsChange],
   );
@@ -189,12 +193,27 @@ export const SettingsPanel = memo(function SettingsPanel({
     [],
   );
 
+  // Search-affecting settings that should trigger recalculation
+  const SEARCH_SETTINGS: SliderSettingKey[] = [
+    'lookaheadDepth',
+    'searchTimeBudgetMs',
+    'searchMaxNodes',
+    'searchBeamWidth',
+  ];
+
   const handleSliderCommit = useCallback(
     <K extends SliderSettingKey>(key: K, value: number) => {
       if (settings[key] === value) return;
-      handleSettingChange(key, value as CraftBuddySettings[K]);
+      const newSettings = handleSettingChange(
+        key,
+        value as CraftBuddySettings[K],
+      );
+      // Notify parent if this is a search-affecting setting
+      if (SEARCH_SETTINGS.includes(key) && onSearchSettingsChange) {
+        onSearchSettingsChange(newSettings);
+      }
     },
-    [settings, handleSettingChange],
+    [settings, handleSettingChange, onSearchSettingsChange],
   );
 
   const handleReset = useCallback(() => {

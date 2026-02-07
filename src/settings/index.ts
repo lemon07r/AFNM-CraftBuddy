@@ -1,12 +1,12 @@
 /**
  * CraftBuddy - Settings Module
- * 
+ *
  * Manages user-configurable settings for the optimizer.
  * Settings are persisted to localStorage.
  */
 
 export interface CraftBuddySettings {
-  /** Lookahead search depth (1-96, default: 32) */
+  /** Lookahead search depth (1-96, default: 16) */
   lookaheadDepth: number;
   /** Whether to show the panel in compact mode */
   compactMode: boolean;
@@ -22,11 +22,11 @@ export interface CraftBuddySettings {
   showExpectedFinalState: boolean;
   /** Show optimal rotation */
   showOptimalRotation: boolean;
-  
+
   // Performance settings for late-game optimization
-  /** Maximum time budget for search in milliseconds (10-500, default: 200) */
+  /** Maximum time budget for search in milliseconds (10-500, default: 175) */
   searchTimeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (1000-100000, default: 100000) */
+  /** Maximum nodes to explore before stopping (1000-100000, default: 85000) */
   searchMaxNodes: number;
   /** Beam width - max branches to explore at each level (3-15, default: 6) */
   searchBeamWidth: number;
@@ -35,19 +35,20 @@ export interface CraftBuddySettings {
 const STORAGE_KEY = 'craftbuddy_settings';
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
-  // Default to 32 as a safe-ish baseline for most machines.
-  // Users can increase this for very long crafts, but it can still be expensive.
-  lookaheadDepth: 32,
+  // Benchmark-optimized default: depth 16 provides headroom while time budget
+  // (175ms) is the practical limiter, typically reaching 5-6 effective depth.
+  lookaheadDepth: 16,
   compactMode: false,
   panelVisible: true,
-  maxAlternatives: 2,
+  maxAlternatives: 1,
   maxRotationDisplay: 5,
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
-  // Performance defaults aligned with optimizer search defaults
-  searchTimeBudgetMs: 200,
-  searchMaxNodes: 100000,
+  // Performance defaults tuned via benchmark for accuracy + responsiveness.
+  // Time budget of 175ms balances search depth with snappy UI response.
+  searchTimeBudgetMs: 175,
+  searchMaxNodes: 85000,
   searchBeamWidth: 6,
 };
 
@@ -74,7 +75,9 @@ export function loadSettings(): CraftBuddySettings {
 /**
  * Save settings to localStorage
  */
-export function saveSettings(settings: Partial<CraftBuddySettings>): CraftBuddySettings {
+export function saveSettings(
+  settings: Partial<CraftBuddySettings>,
+): CraftBuddySettings {
   currentSettings = { ...currentSettings, ...settings };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(currentSettings));
@@ -162,7 +165,11 @@ export function setSearchBeamWidth(width: number): number {
 /**
  * Get search configuration for the optimizer
  */
-export function getSearchConfig(): { timeBudgetMs: number; maxNodes: number; beamWidth: number } {
+export function getSearchConfig(): {
+  timeBudgetMs: number;
+  maxNodes: number;
+  beamWidth: number;
+} {
   return {
     timeBudgetMs: currentSettings.searchTimeBudgetMs,
     maxNodes: currentSettings.searchMaxNodes,

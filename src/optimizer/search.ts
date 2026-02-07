@@ -131,10 +131,10 @@ export interface SearchConfig {
 /** Game UI + runtime always expose 3 future conditions. */
 export const VISIBLE_CONDITION_QUEUE_LENGTH = 3;
 
-/** Default search configuration optimized for high-realm (90+ round) scenarios */
+/** Default search configuration tuned via benchmark for accuracy + responsiveness */
 const DEFAULT_SEARCH_CONFIG: SearchConfig = {
-  timeBudgetMs: 200,
-  maxNodes: 100000,
+  timeBudgetMs: 175,
+  maxNodes: 85000,
   beamWidth: 6,
   useAlphaBeta: true,
   progressBucketSize: 100,
