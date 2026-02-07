@@ -31,6 +31,8 @@ import {
   SkillMastery,
   parseRecipeConditionEffects,
   getBonusAndChance,
+  normalizeForecastConditionQueue,
+  VISIBLE_CONDITION_QUEUE_LENGTH,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 import {
@@ -64,6 +66,28 @@ let currentMaxStability = 60;
 let currentCondition: CraftingCondition | undefined = undefined;
 let nextConditions: CraftingCondition[] = [];
 let conditionEffectsCache: RecipeConditionEffect | null = null;
+
+type CompletionBonusSource = 'buff' | 'computed' | 'none';
+
+interface IntegrationDiagnostics {
+  conditionQueueNormalizedCount: number;
+  conditionQueueTrimmedCount: number;
+  conditionQueuePaddedCount: number;
+  completionBonusSource: CompletionBonusSource;
+  completionBonusMismatchCount: number;
+  usingModApiGetNextCondition: boolean;
+  usingModApiTechniqueUpgradeResolver: boolean;
+}
+
+const integrationDiagnostics: IntegrationDiagnostics = {
+  conditionQueueNormalizedCount: 0,
+  conditionQueueTrimmedCount: 0,
+  conditionQueuePaddedCount: 0,
+  completionBonusSource: 'none',
+  completionBonusMismatchCount: 0,
+  usingModApiGetNextCondition: false,
+  usingModApiTechniqueUpgradeResolver: false,
+};
 
 // Toxicity tracking for alchemy crafting
 let currentToxicity = 0;
@@ -290,6 +314,123 @@ function normalizeBuffKey(name: string | undefined): string {
   return String(name || '').toLowerCase().trim().replace(/\s+/g, '_');
 }
 
+function normalizeConditionKey(condition: string | undefined): CraftingCondition {
+  const value = String(condition || '').toLowerCase().trim();
+  switch (value) {
+    case 'neutral':
+    case 'balanced':
+      return 'neutral';
+    case 'positive':
+    case 'harmonious':
+      return 'positive';
+    case 'negative':
+    case 'resistant':
+      return 'negative';
+    case 'verypositive':
+    case 'excellent':
+    case 'brilliant':
+      return 'veryPositive';
+    case 'verynegative':
+    case 'corrupted':
+      return 'veryNegative';
+    default:
+      return 'neutral';
+  }
+}
+
+function getPathValue(root: any, path: string[]): any {
+  let current = root;
+  for (const segment of path) {
+    if (!current || typeof current !== 'object') {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
+function findFirstFunction(root: any, paths: string[][]): ((...args: any[]) => any) | undefined {
+  for (const path of paths) {
+    const candidate = getPathValue(root, path);
+    if (typeof candidate === 'function') {
+      return candidate as (...args: any[]) => any;
+    }
+  }
+  return undefined;
+}
+
+function getModApiNextConditionResolver(): ((progress: any) => any) | undefined {
+  const modApi = (window as any)?.modAPI;
+  return findFirstFunction(modApi, [
+    ['store', 'turnHandling', 'getNextCondition'],
+    ['Store', 'turnHandling', 'getNextCondition'],
+    ['crafting', 'getNextCondition'],
+    ['getNextCondition'],
+  ]) as ((progress: any) => any) | undefined;
+}
+
+function getModApiTechniqueUpgradeResolver():
+  | ((technique: CraftingTechnique) => CraftingTechnique)
+  | undefined {
+  const modApi = (window as any)?.modAPI;
+  return findFirstFunction(modApi, [
+    ['crafting', 'applyTechniqueUpgrades'],
+    ['crafting', 'applyUpgradesToTechnique'],
+    ['crafting', 'applyTechniqueMasteryUpgrades'],
+    ['applyTechniqueUpgrades'],
+  ]) as ((technique: CraftingTechnique) => CraftingTechnique) | undefined;
+}
+
+function normalizeNextConditionQueue(
+  current: string | undefined,
+  rawQueue: string[] | undefined,
+  harmony: number
+): CraftingCondition[] {
+  const targetLength = VISIBLE_CONDITION_QUEUE_LENGTH;
+  const normalizedCurrent = normalizeConditionKey(current);
+  const sourceQueue = Array.isArray(rawQueue) ? rawQueue : [];
+  const normalizedRaw = sourceQueue
+    .map((entry) => normalizeConditionKey(entry))
+    .slice(0, targetLength);
+
+  if (sourceQueue.length > targetLength) {
+    integrationDiagnostics.conditionQueueTrimmedCount++;
+  }
+
+  if (normalizedRaw.length === targetLength) {
+    return normalizedRaw;
+  }
+
+  integrationDiagnostics.conditionQueuePaddedCount++;
+  const resolver = getModApiNextConditionResolver();
+  if (resolver) {
+    try {
+      const queue = normalizedRaw.slice();
+      while (queue.length < targetLength) {
+        const generated = normalizeConditionKey(
+          resolver({
+            condition: normalizedCurrent,
+            nextConditions: queue.slice(),
+            harmony,
+          }) as string | undefined
+        );
+        queue.push(generated);
+      }
+      integrationDiagnostics.usingModApiGetNextCondition = true;
+      return queue;
+    } catch (error) {
+      console.warn('[CraftBuddy] ModAPI getNextCondition resolver failed, using local fallback:', error);
+    }
+  }
+
+  return normalizeForecastConditionQueue(
+    normalizedCurrent,
+    normalizedRaw,
+    harmony,
+    targetLength
+  ) as CraftingCondition[];
+}
+
 function toFinitePositiveNumber(value: unknown): number | undefined {
   const parsed =
     typeof value === 'number'
@@ -369,7 +510,7 @@ function extractCompletionBonusStacks(
   buffs: CraftingBuff[] | undefined,
   completion: number,
   completionTarget: number
-): number {
+): { stacks: number; source: CompletionBonusSource; mismatch: boolean } {
   const expectedFromProgress =
     completionTarget > 0
       ? Math.max(0, getBonusAndChance(completion, completionTarget).guaranteed - 1)
@@ -410,16 +551,22 @@ function extractCompletionBonusStacks(
     }
   }
 
-  if (expectedFromProgress !== undefined) {
-    if (stacksFromBuff !== undefined && stacksFromBuff !== expectedFromProgress) {
+  if (stacksFromBuff !== undefined) {
+    const mismatch =
+      expectedFromProgress !== undefined && stacksFromBuff !== expectedFromProgress;
+    if (mismatch) {
       debugLog(
-        `[CraftBuddy] Completion bonus mismatch (buff=${stacksFromBuff}, computed=${expectedFromProgress}), using computed value`,
+        `[CraftBuddy] Completion bonus mismatch (buff=${stacksFromBuff}, computed=${expectedFromProgress}), using buff value`,
       );
     }
-    return expectedFromProgress;
+    return { stacks: stacksFromBuff, source: 'buff', mismatch };
   }
 
-  return stacksFromBuff ?? 0;
+  if (expectedFromProgress !== undefined) {
+    return { stacks: expectedFromProgress, source: 'computed', mismatch: false };
+  }
+
+  return { stacks: 0, source: 'none', mismatch: false };
 }
 
 /**
@@ -444,24 +591,47 @@ function convertGameTechniques(
   })), null, 2));
 
   const skills: SkillDefinition[] = [];
+  const modApiUpgradeResolver = getModApiTechniqueUpgradeResolver();
 
   for (const tech of techniques) {
     if (!tech) continue;
 
-    const qiCost = tech.poolCost || 0;
-    const stabilityCost = tech.stabilityCost || 0;
-    const toxicityCost = tech.toxicityCost || 0;
-    const techType = tech.type || 'support';
-    const techName = tech.name || 'Unknown';
-    const cooldown = tech.cooldown || 0;
-    const preventsMaxStabilityDecay = tech.noMaxStabilityLoss === true;
-    const masteryData = extractMasteryData(tech.mastery);
+    let sourceTech = tech;
+    let usedModApiUpgradeResolver = false;
+    if (modApiUpgradeResolver) {
+      try {
+        const upgradedTech = modApiUpgradeResolver(tech);
+        if (upgradedTech && upgradedTech !== tech) {
+          sourceTech = upgradedTech;
+          usedModApiUpgradeResolver = true;
+          integrationDiagnostics.usingModApiTechniqueUpgradeResolver = true;
+        }
+      } catch (error) {
+        console.warn('[CraftBuddy] ModAPI technique upgrade resolver failed, using raw technique:', error);
+      }
+    }
+
+    const qiCost = sourceTech.poolCost || 0;
+    const stabilityCost = sourceTech.stabilityCost || 0;
+    const toxicityCost = sourceTech.toxicityCost || 0;
+    const techType = sourceTech.type || 'support';
+    const techName = sourceTech.name || 'Unknown';
+    const cooldown = sourceTech.cooldown || 0;
+    const preventsMaxStabilityDecay = sourceTech.noMaxStabilityLoss === true;
+    const masteryData = extractMasteryData(sourceTech.mastery);
     // poolcost/stabilitycost/successchance masteries are already baked into
     // technique pool/stability/success values by game-side technique construction.
     // Keep only runtime-applied mastery kinds to avoid double counting in simulation.
     const masteryEntries = masteryData.masteryEntries.filter((entry) => {
       const kind = String((entry as any)?.kind || '').toLowerCase();
-      return kind !== 'poolcost' && kind !== 'stabilitycost' && kind !== 'successchance';
+      if (kind === 'poolcost' || kind === 'stabilitycost' || kind === 'successchance') {
+        return false;
+      }
+      // If the game already returned an upgraded technique snapshot, avoid double-applying upgrades.
+      if (usedModApiUpgradeResolver && kind === 'upgrade') {
+        return false;
+      }
+      return true;
     });
     const mastery: SkillMastery = { ...masteryData.bonuses };
     delete mastery.poolCostReduction;
@@ -485,7 +655,7 @@ function convertGameTechniques(
     let buffRequirement: { buffName: string; amount: number } | undefined;
     let buffCost: { buffName: string; amount?: number; consumeAll?: boolean } | undefined;
 
-    const effects = [...(tech.effects || []), ...(masteryData.extraEffects || [])];
+    const effects = [...(sourceTech.effects || []), ...(masteryData.extraEffects || [])];
     for (const effect of effects) {
       if (!effect) continue;
 
@@ -565,7 +735,7 @@ function convertGameTechniques(
     const isDisciplinedTouch = hasConsumeBuff || techName.toLowerCase().includes('disciplined');
     
     // Extract condition requirement (e.g., Harmonious skills require 'positive' or 'veryPositive')
-    const conditionRequirement = tech.conditionRequirement as string | undefined;
+    const conditionRequirement = sourceTech.conditionRequirement as string | undefined;
     
     // Extract Qi restore from 'pool' effect (for skills like Siphon Qi)
     let qiRestore = 0;
@@ -576,14 +746,16 @@ function convertGameTechniques(
     }
 
     // Extract icon from technique (game provides icon as string path)
-    const icon = tech.icon as string | undefined;
+    const icon = sourceTech.icon as string | undefined;
 
     skills.push({
       name: techName,
       key: techName.toLowerCase().replace(/\s+/g, '_'),
       qiCost,
       stabilityCost,
-      successChance: typeof (tech as any).successChance === 'number' ? normalizeChance((tech as any).successChance) : undefined,
+      successChance: typeof (sourceTech as any).successChance === 'number'
+        ? normalizeChance((sourceTech as any).successChance)
+        : undefined,
       baseCompletionGain,
       basePerfectionGain,
       stabilityGain,
@@ -776,7 +948,23 @@ function updateRecommendation(
   checkPrecision(targetCompletion, 'targetCompletion');
   checkPrecision(targetPerfection, 'targetPerfection');
   
-  nextConditions = progressState?.nextConditions || [];
+  const rawNextConditions = Array.isArray(progressState?.nextConditions)
+    ? progressState.nextConditions
+    : [];
+  const normalizedNextConditions = normalizeNextConditionQueue(
+    condition as unknown as string | undefined,
+    rawNextConditions as unknown as string[],
+    Number(progressState?.harmony ?? 0) || 0
+  );
+  if (
+    rawNextConditions.length !== normalizedNextConditions.length ||
+    rawNextConditions.some(
+      (entry, index) => normalizeConditionKey(entry as unknown as string) !== normalizedNextConditions[index]
+    )
+  ) {
+    integrationDiagnostics.conditionQueueNormalizedCount++;
+  }
+  nextConditions = normalizedNextConditions;
   currentCondition = condition;
   
   currentCompletion = completion;
@@ -832,11 +1020,16 @@ function updateRecommendation(
   const stabilityCostPercentage = Number((entity as any)?.stats?.stabilityCostPercentage ?? 100) || 100;
 
   // Extract completion bonus stacks from the Completion Bonus buff
-  const completionBonusStacks = extractCompletionBonusStacks(
+  const completionBonusExtraction = extractCompletionBonusStacks(
     buffs,
     completion,
     targetCompletion
   );
+  const completionBonusStacks = completionBonusExtraction.stacks;
+  integrationDiagnostics.completionBonusSource = completionBonusExtraction.source;
+  if (completionBonusExtraction.mismatch) {
+    integrationDiagnostics.completionBonusMismatchCount++;
+  }
 
   const techniques = entity?.techniques || [];
   currentCooldowns = new Map();
@@ -1557,6 +1750,7 @@ try {
     console.log('Current settings:', currentSettings);
     console.log('Last entity:', lastEntity);
     console.log('Last progressState:', lastProgressState);
+    console.log('Integration diagnostics:', integrationDiagnostics);
     
     // Check screenAPI
     const screenAPI = (window.modAPI as any)?.screenAPI;

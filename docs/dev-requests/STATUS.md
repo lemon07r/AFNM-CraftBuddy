@@ -25,12 +25,16 @@ related_files:
 | Harmony state/config data | Available | 2026-02-07 | None | Integrated into optimizer simulation |
 | Buff definitions/effects payloads | Available | 2026-02-07 | None | Integrated into buff simulation |
 | Condition effect payloads | Available | 2026-02-07 | None | Integrated into condition handling |
-| Stable completion-bonus identifier | Unknown | 2026-02-07 | Ask explicit key/field guidance | Remains open reliability question |
+| Condition transition entrypoint (`Store/turn handling/getNextCondition`) | Path Confirmed | 2026-02-07 | Wire to documented ModAPI symbol when published | Local EV model remains active with provider seam |
+| Technique upgrade helper (returns new technique) | Announced | 2026-02-07 | Wire to documented ModAPI symbol when published | Local mastery-upgrade evaluator remains default |
+| Stable completion-bonus identifier | Deferred (Low Risk) | 2026-02-07 | Optional follow-up only | Buff-first extraction now primary path |
 
 ## Developer follow-up packet
 
 1. Request timeline for the four pending high-impact APIs.
-2. Ask for stable completion-bonus identifier/key.
+2. Capture final ModAPI symbol/path and signatures for:
+   - `getNextCondition`
+   - technique-upgrade helper
 3. Ask whether final post-modifier cost preview helpers can be exposed.
 
 ## Update rule

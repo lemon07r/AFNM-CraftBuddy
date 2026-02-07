@@ -50,7 +50,7 @@ export interface Scaling {
   /** Custom equation string */
   eqn?: string;
   /** Custom scaling with multiplier */
-  customScaling?: { multiplier: number; scaling: string };
+  customScaling?: { multiplier: number; scaling: string; upgradeKey?: string };
   /** Additive equation */
   additiveEqn?: string;
   /** Maximum value cap */

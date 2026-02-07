@@ -15,13 +15,16 @@ related_files:
 
 ## Implemented in runtime path
 
-- scaling evaluation pipeline including nested scaling and mastery upgrade hooks
+- scaling evaluation pipeline including mastery upgrade hooks:
+  - recursive search by `upgradeKey`
+  - direct numeric-property upgrades on matched objects only
+  - additive as `+change`, multiplicative as absolute `*change`
 - crit expected-value handling with excess crit conversion behavior
 - technique effect simulation in transition path
 - buff stat contributions and per-turn/action-specific buff effect execution
 - harmony subsystem simulation (forge/alchemical/inscription/resonance)
 - condition-effect handling from recipe condition config
-- future-condition branching beyond visible queue using probability-weighted EV
+- fixed 3-condition forecast queue normalization with probability-weighted EV beyond forecast
 - training-mode-aware scoring policy
 - large-number-safe parsing/formatting helpers
 

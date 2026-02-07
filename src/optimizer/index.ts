@@ -29,8 +29,17 @@ export {
   findBestSkill,
   greedySearch,
   lookaheadSearch,
+  normalizeForecastConditionQueue,
+  setConditionTransitionProvider,
+  VISIBLE_CONDITION_QUEUE_LENGTH,
 } from './search';
-export type { SkillRecommendation, SearchResult, CraftingConditionType, SearchConfig } from './search';
+export type {
+  SkillRecommendation,
+  SearchResult,
+  CraftingConditionType,
+  SearchConfig,
+  ConditionTransitionProvider,
+} from './search';
 
 // Harmony system exports
 export {

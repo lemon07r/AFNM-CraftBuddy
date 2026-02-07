@@ -37,8 +37,9 @@ related_files:
 ## Probability handling
 
 - Success/crit modeled as expected value in gains.
-- Condition queue is used when available.
+- Condition queue is normalized to fixed length `3` (matches game UI/runtime visibility).
 - Beyond forecast queue, condition transitions are probability-weighted (`enableConditionBranchingAfterForecast`, `conditionBranchLimit`, `conditionBranchMinProbability`).
+- Transition provider seam exists for future ModAPI handoff (`getNextCondition`-based wiring).
 
 ## Scoring intent
 

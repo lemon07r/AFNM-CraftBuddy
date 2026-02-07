@@ -52,6 +52,7 @@ This list contains the smallest set of exposures that materially improve optimiz
 - Data/function: stable key/id for completion bonus stacks
 - Why: avoid name-based brittleness
 - Mod usage: reliable completion bonus extraction in integration layer
+- Current risk status: reduced (buff-first extraction now primary, computed path is fallback)
 
 ### P2-1: Item effect preview helpers for crafting context
 

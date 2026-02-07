@@ -128,6 +128,9 @@ export interface SearchConfig {
   conditionBranchMinProbability: number;
 }
 
+/** Game UI + runtime always expose 3 future conditions. */
+export const VISIBLE_CONDITION_QUEUE_LENGTH = 3;
+
 /** Default search configuration optimized for high-realm (90+ round) scenarios */
 const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   timeBudgetMs: 200,
@@ -203,6 +206,21 @@ interface ConditionTransition {
   nextCondition: CraftingConditionType;
   nextQueue: CraftingConditionType[];
   probability: number;
+}
+
+export type ConditionTransitionProvider = (
+  currentCondition: CraftingConditionType,
+  nextConditions: CraftingConditionType[],
+  harmony: number,
+  cfg: SearchConfig
+) => ConditionTransition[];
+
+let activeConditionTransitionProvider: ConditionTransitionProvider | undefined;
+
+export function setConditionTransitionProvider(
+  provider: ConditionTransitionProvider | undefined
+): void {
+  activeConditionTransitionProvider = provider;
 }
 
 function clampProbability(value: number): number {
@@ -326,12 +344,12 @@ function getConditionTransitions(
       shiftedQueue,
       harmony
     );
-    const appendedCondition = getMostLikelyCondition(appendedDistribution);
-    return [{
+    const appendedBranches = pickBranchConditionDistribution(appendedDistribution, cfg);
+    return appendedBranches.map((entry) => ({
       nextCondition,
-      nextQueue: [...shiftedQueue, appendedCondition],
-      probability: 1,
-    }];
+      nextQueue: [...shiftedQueue, entry.condition],
+      probability: entry.probability,
+    }));
   }
 
   const generatedDistribution = getGeneratedConditionDistribution(currentCondition, queue, harmony);
@@ -345,6 +363,65 @@ function getConditionTransitions(
       probability: entry.probability,
     };
   });
+}
+
+function getConditionTransitionsWithProvider(
+  currentCondition: CraftingConditionType,
+  nextConditions: CraftingConditionType[],
+  harmony: number,
+  cfg: SearchConfig
+): ConditionTransition[] {
+  if (activeConditionTransitionProvider) {
+    try {
+      const provided = activeConditionTransitionProvider(
+        currentCondition,
+        nextConditions,
+        harmony,
+        cfg
+      );
+      if (Array.isArray(provided) && provided.length > 0) {
+        const normalized = provided
+          .map((entry) => ({
+            nextCondition: normalizeConditionType(entry?.nextCondition),
+            nextQueue: Array.isArray(entry?.nextQueue)
+              ? entry.nextQueue.map(normalizeConditionType)
+              : [],
+            probability: clampProbability(entry?.probability ?? 0),
+          }))
+          .filter((entry) => entry.probability > 0);
+        const total = normalized.reduce((sum, entry) => sum + entry.probability, 0);
+        if (total > 0) {
+          return normalized.map((entry) => ({
+            ...entry,
+            probability: entry.probability / total,
+          }));
+        }
+      }
+    } catch (error) {
+      console.warn('[CraftBuddy] Condition transition provider failed, using local fallback:', error);
+    }
+  }
+  return getConditionTransitions(currentCondition, nextConditions, harmony, cfg);
+}
+
+export function normalizeForecastConditionQueue(
+  currentConditionType: CraftingConditionType | undefined,
+  forecastedConditionTypes: CraftingConditionType[],
+  harmony: number,
+  visibleQueueLength: number = VISIBLE_CONDITION_QUEUE_LENGTH
+): CraftingConditionType[] {
+  const targetLength = Math.max(0, Math.floor(visibleQueueLength));
+  const normalizedCurrent = normalizeConditionType(currentConditionType);
+  const queue = forecastedConditionTypes
+    .map(normalizeConditionType)
+    .slice(0, targetLength);
+
+  while (queue.length < targetLength) {
+    const distribution = getGeneratedConditionDistribution(normalizedCurrent, queue, harmony);
+    queue.push(getMostLikelyCondition(distribution));
+  }
+
+  return queue;
 }
 
 function actionConsumesTurn(skill: SkillDefinition): boolean {
@@ -857,10 +934,12 @@ export function lookaheadSearch(
   // Merge with default search config
   const cfg: SearchConfig = { ...DEFAULT_SEARCH_CONFIG, ...searchConfig };
   const normalizedCurrentCondition = normalizeConditionType(currentConditionType);
-  const normalizedForecastedConditions = forecastedConditionTypes
-    .map(normalizeConditionType)
-    .filter((c) => Boolean(c));
-  const initialConditionQueue = normalizedForecastedConditions.slice();
+  const initialConditionQueue = normalizeForecastConditionQueue(
+    normalizedCurrentCondition,
+    forecastedConditionTypes,
+    state.harmony,
+    VISIBLE_CONDITION_QUEUE_LENGTH
+  );
   
   // Search metrics for performance monitoring
   const metrics = {
@@ -1056,7 +1135,7 @@ export function lookaheadSearch(
           beta
         );
       } else {
-        const transitions = getConditionTransitions(
+        const transitions = getConditionTransitionsWithProvider(
           currentConditionAtDepth,
           nextConditionQueueAtDepth,
           newState.harmony,
@@ -1109,7 +1188,7 @@ export function lookaheadSearch(
       );
     }
 
-    const transitions = getConditionTransitions(
+    const transitions = getConditionTransitionsWithProvider(
       conditionAtDepth,
       conditionQueueAtDepth,
       newState.harmony,
@@ -1139,7 +1218,7 @@ export function lookaheadSearch(
       return { nextCondition: conditionAtDepth, nextQueue: conditionQueueAtDepth };
     }
 
-    const transitions = getConditionTransitions(
+    const transitions = getConditionTransitionsWithProvider(
       conditionAtDepth,
       conditionQueueAtDepth,
       newState.harmony,

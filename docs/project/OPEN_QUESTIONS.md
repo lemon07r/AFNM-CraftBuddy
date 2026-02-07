@@ -17,8 +17,8 @@ related_files:
 
 - Question: is the completion-bonus buff key/name stable across versions and locales?
 - Why this matters: reliable completion bonus extraction.
-- Current handling: defensive lookup path.
-- Unblock criteria: developer confirms stable key or exposes explicit field.
+- Current handling: buff-first extraction with computed fallback only when buff is unavailable.
+- Unblock criteria: optional; explicit key/field would reduce diagnostics noise, but no longer blocks parity.
 
 ## Q2: Canonical availability/cost hooks
 

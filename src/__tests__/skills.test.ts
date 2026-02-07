@@ -465,8 +465,8 @@ describe('calculateSkillGains', () => {
     });
 
     const gains = calculateSkillGains(state, skill, config);
-    // 1 * (1 + 0.5) * 12 intensity = 18
-    expect(gains.completion).toBe(18);
+    // Absolute multiplier semantics: 1 * 0.5 * 12 = 6
+    expect(gains.completion).toBe(6);
   });
 
   it('should respect mastery upgrade conditions', () => {
@@ -519,6 +519,64 @@ describe('calculateSkillGains', () => {
 
     const gains = calculateSkillGains(state, skill, config);
     // Raw = 3*12 = 36; upgraded cap = (2+1)*12 = 36
+    expect(gains.completion).toBe(36);
+  });
+
+  it('should only apply upgrades to direct numeric properties of the matched object', () => {
+    const state = new CraftingState();
+    const skill = createTestSkill({
+      baseCompletionGain: 0,
+      scalesWithIntensity: false,
+      effects: [
+        {
+          kind: 'completion',
+          amount: {
+            value: 4,
+            stat: 'intensity',
+            upgradeKey: 'parent_only',
+            max: { value: 2, stat: 'intensity' },
+          },
+        },
+      ] as any,
+      masteryEntries: [
+        { kind: 'upgrade', upgradeKey: 'parent_only', change: 1 },
+      ] as any,
+    });
+
+    const gains = calculateSkillGains(state, skill, config);
+    // Parent value upgraded to 5, but max remains 2*12 => capped at 24.
+    expect(gains.completion).toBe(24);
+  });
+
+  it('should recurse to nested objects and upgrade their direct numeric fields when keys match', () => {
+    const state = new CraftingState({
+      completion: 2,
+    });
+    const skill = createTestSkill({
+      baseCompletionGain: 0,
+      scalesWithIntensity: false,
+      effects: [
+        {
+          kind: 'completion',
+          amount: {
+            value: 1,
+            stat: 'intensity',
+            customScaling: {
+              scaling: 'completion',
+              multiplier: 0.5,
+              upgradeKey: 'custom_scale',
+            },
+          },
+        },
+      ] as any,
+      masteryEntries: [
+        { kind: 'upgrade', upgradeKey: 'custom_scale', change: 0.5 },
+      ] as any,
+    });
+
+    const gains = calculateSkillGains(state, skill, config);
+    // customScaling.multiplier upgraded from 0.5 to 1.0:
+    // 1 * 12 * (1 + 1.0 * 2) = 36
     expect(gains.completion).toBe(36);
   });
 
@@ -1399,13 +1457,13 @@ describe('buff per-turn effects', () => {
       scalesWithIntensity: false,
       scalesWithControl: false,
       masteryEntries: [
-        { kind: 'upgrade', upgradeKey: 'buff_tick', change: 1, shouldMultiply: true },
+        { kind: 'upgrade', upgradeKey: 'buff_tick', change: 2, shouldMultiply: true },
       ] as any,
     });
 
     const result = applySkill(state, skill, config);
     expect(result).not.toBeNull();
-    // upgraded value = 1 * (1 + 1) = 2; stacks = 2 => +4 completion
+    // upgraded value = 1 * 2 = 2; stacks = 2 => +4 completion
     expect(result!.completion).toBe(4);
   });
 });

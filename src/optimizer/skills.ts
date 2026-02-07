@@ -183,27 +183,65 @@ function applyMasteryUpgradesToScaling(
     return scaling;
   }
 
-  const upgradedMax = scaling.max
-    ? applyMasteryUpgradesToScaling(scaling.max, upgrades)
-    : undefined;
+  const visited = new WeakMap<object, unknown>();
+  const applyRecursively = (value: unknown): unknown => {
+    if (!value || typeof value !== 'object') {
+      return value;
+    }
 
-  const upgradeKey = String(scaling.upgradeKey || '').trim();
-  const rule = upgradeKey ? upgrades[upgradeKey] : undefined;
+    const cached = visited.get(value as object);
+    if (cached !== undefined) {
+      return cached;
+    }
 
-  if (!rule && upgradedMax === scaling.max) {
-    return scaling;
-  }
+    if (Array.isArray(value)) {
+      let arrayChanged = false;
+      const upgradedArray = value.map((entry) => {
+        const upgradedEntry = applyRecursively(entry);
+        if (upgradedEntry !== entry) {
+          arrayChanged = true;
+        }
+        return upgradedEntry;
+      });
+      const arrayResult = arrayChanged ? upgradedArray : value;
+      visited.set(value as object, arrayResult);
+      return arrayResult;
+    }
 
-  let nextValue = scaling.value;
-  if (rule) {
-    nextValue = (nextValue + rule.additive) * rule.multiplier;
-  }
+    const source = value as Record<string, unknown>;
+    const clone: Record<string, unknown> = {};
+    visited.set(value as object, clone);
 
-  return {
-    ...scaling,
-    value: nextValue,
-    max: upgradedMax,
+    let changed = false;
+    for (const [key, child] of Object.entries(source)) {
+      const upgradedChild = applyRecursively(child);
+      clone[key] = upgradedChild;
+      if (upgradedChild !== child) {
+        changed = true;
+      }
+    }
+
+    const upgradeKey = String(source.upgradeKey || '').trim();
+    const rule = upgradeKey ? upgrades[upgradeKey] : undefined;
+    if (rule) {
+      for (const [key, child] of Object.entries(clone)) {
+        if (typeof child !== 'number' || !Number.isFinite(child)) {
+          continue;
+        }
+        const upgradedNumber = (child + rule.additive) * rule.multiplier;
+        if (upgradedNumber !== child) {
+          clone[key] = upgradedNumber;
+          changed = true;
+        }
+      }
+    }
+
+    const objectResult = changed ? clone : source;
+    visited.set(value as object, objectResult);
+    return objectResult;
   };
+
+  return applyRecursively(scaling) as Scaling;
 }
 
 function evaluateScalingWithMasteryUpgrades(
@@ -727,7 +765,7 @@ function resolveMasteryBonuses(
 
         const existing = upgrades[upgradeKey] || { additive: 0, multiplier: 1 };
         if (mastery.shouldMultiply) {
-          const multiplier = Math.abs(rawChange) <= 1 ? 1 + rawChange : rawChange;
+          const multiplier = rawChange;
           if (Number.isFinite(multiplier) && multiplier !== 0) {
             existing.multiplier *= multiplier;
           }
