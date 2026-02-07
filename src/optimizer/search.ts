@@ -815,6 +815,9 @@ function orderSkillsForSearch(
   const hasIntensityBuff = state.hasIntensityBuff();
   const lowStability = state.stability <= 25;
 
+  // Check if qi is at or near max (within 10% of max)
+  const qiNearMax = config.maxQi > 0 && state.qi >= config.maxQi * 0.9;
+
   // Score each skill for ordering (higher = search first)
   const scored = skills.map((skill) => {
     let priority = 0;
@@ -829,6 +832,22 @@ function orderSkillsForSearch(
       priority += 500;
     }
 
+    // Deprioritize qi-restore skills when qi is already near max
+    // This prevents recommending Fairy's Blessing, Unstable Reenergisation, etc. at full qi
+    if (qiNearMax) {
+      const isQiRestoreSkill =
+        skill.restoresQi ||
+        (skill.effects || []).some(
+          (effect) =>
+            effect?.kind === 'pool' &&
+            (effect.amount?.value ?? 0) > 0,
+        );
+      if (isQiRestoreSkill) {
+        // Significant penalty - only use if no other options
+        priority -= 500;
+      }
+    }
+
     // Item actions can unlock better follow-up turns (pool restore, emergency stability, buff setup).
     if (skill.actionKind === 'item') {
       const hasImmediateImpact = (skill.effects || []).some(
@@ -836,7 +855,8 @@ function orderSkillsForSearch(
           effect?.kind === 'completion' ||
           effect?.kind === 'perfection' ||
           effect?.kind === 'stability' ||
-          effect?.kind === 'pool' ||
+          // Only count pool effects as valuable if qi is not near max
+          (effect?.kind === 'pool' && !qiNearMax) ||
           effect?.kind === 'createBuff',
       );
       if (hasImmediateImpact) {

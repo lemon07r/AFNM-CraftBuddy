@@ -69,6 +69,7 @@ let currentCompletion = 0;
 let currentPerfection = 0;
 let currentStability = 0;
 let currentMaxStability = 60;
+let currentStep = 0;
 let currentCondition: CraftingCondition | undefined = undefined;
 let nextConditions: CraftingCondition[] = [];
 let conditionEffectsCache: RecipeConditionEffect | null = null;
@@ -1880,6 +1881,7 @@ function clearActiveCraftingRuntimeState(): void {
   currentCondition = undefined;
   nextConditions = [];
   isCalculating = false;
+  currentStep = 0;
 }
 
 /**
@@ -2199,15 +2201,18 @@ function pollCraftingState(): void {
     const newCompletion = progress.completion || 0;
     const newPerfection = progress.perfection || 0;
     const newStability = progress.stability || 0;
+    const newStep = progress.step || 0;
 
     if (
       newCompletion !== currentCompletion ||
       newPerfection !== currentPerfection ||
       newStability !== currentStability ||
+      newStep !== currentStep ||
       !lastEntity
     ) {
+      currentStep = newStep;
       debugLog(
-        `[CraftBuddy] Redux state: Completion=${newCompletion}/${targetCompletion}, Perfection=${newPerfection}/${targetPerfection}, Stability=${newStability}/${currentMaxStability}`,
+        `[CraftBuddy] Redux state: Completion=${newCompletion}/${targetCompletion}, Perfection=${newPerfection}/${targetPerfection}, Stability=${newStability}/${currentMaxStability}, Step=${newStep}`,
       );
       updateRecommendation(
         entity,

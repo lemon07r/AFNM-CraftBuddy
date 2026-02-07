@@ -916,6 +916,56 @@ describe('condition timeline modeling', () => {
     expect(result.recommendation!.skill.name).toBe('Use Qi Pill');
   });
 
+  it('should deprioritize qi-restore skills when qi is near max', () => {
+    const qiPill = createCustomSkill({
+      name: 'Fairy Blessing',
+      key: 'item_fairy_blessing',
+      actionKind: 'item',
+      itemName: 'fairy_blessing',
+      consumesTurn: false,
+      type: 'support',
+      restoresQi: true,
+      qiRestore: 50,
+      effects: [
+        {
+          kind: 'pool',
+          amount: { value: 50 },
+        } as any,
+      ],
+    });
+    const fusion = createCustomSkill({
+      name: 'Simple Fusion',
+      key: 'simple_fusion',
+      type: 'fusion',
+      qiCost: 10,
+      stabilityCost: 10,
+      baseCompletionGain: 20,
+      scalesWithIntensity: false,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      maxQi: 100,
+      skills: [qiPill, fusion],
+      pillsPerRound: 1,
+    });
+
+    // State with qi at 95% of max - should NOT recommend qi restore
+    const stateNearMax = new CraftingState({
+      qi: 95,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      items: new Map([['fairy_blessing', 1]]),
+    });
+
+    const result = lookaheadSearch(stateNearMax, config, 100, 0, 2, 'neutral', []);
+    expect(result.recommendation).not.toBeNull();
+    // Should recommend Fusion, not Fairy Blessing, because qi is near max
+    expect(result.recommendation!.skill.name).toBe('Simple Fusion');
+  });
+
   it('should respect reagent step-zero restriction in lookahead', () => {
     const reagent = createCustomSkill({
       name: 'Use Catalyst',
