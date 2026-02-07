@@ -559,8 +559,9 @@ function configureNativeOptimizerProviders(): void {
         return undefined;
       }
 
-      const nativeTechnique = (context.skill as any)
-        ?.nativeTechnique as CraftingTechnique | undefined;
+      const nativeTechnique = (context.skill as any)?.nativeTechnique as
+        | CraftingTechnique
+        | undefined;
       if (!nativeTechnique) {
         return undefined;
       }
@@ -610,7 +611,10 @@ function configureNativeOptimizerProviders(): void {
 
   setConditionTransitionProvider(
     (currentCondition, nextConditionQueue, harmony) => {
-      if (!Array.isArray(nextConditionQueue) || nextConditionQueue.length === 0) {
+      if (
+        !Array.isArray(nextConditionQueue) ||
+        nextConditionQueue.length === 0
+      ) {
         integrationDiagnostics.conditionProviderFallbackCount++;
         return [];
       }
@@ -1867,12 +1871,11 @@ function hideOverlay(): void {
 
 /**
  * Show the overlay.
+ * Only actually shows if there's active crafting data; otherwise defers to renderOverlay's logic.
  */
 function showOverlay(): void {
-  if (overlayContainer) {
-    overlayContainer.style.display = 'block';
-  }
-  isOverlayVisible = true;
+  // Let renderOverlay decide whether to actually show based on crafting state.
+  // This prevents briefly flashing the overlay when there's no crafting data.
   renderOverlay();
 }
 
@@ -2082,9 +2085,8 @@ function detectCraftingState(): {
       gameRoot.querySelectorAll(
         '[class*="crafting"], [class*="Crafting"], [data-testid*="crafting"]',
       ),
-    ).find(
-      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
-    ) || null;
+    ).find((el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el)) ||
+    null;
 
   // Method 3: Look for specific crafting-related text/elements
   const stabilityElement =
@@ -2131,7 +2133,8 @@ function detectCraftingState(): {
 
   // Require a strong signal to avoid self-detection from our own overlay.
   const hasProgressSignals = !!(stabilityElement || completionElement);
-  const isActive = hasProgressSignals || (!!craftingPanel && hasCraftingButtons);
+  const isActive =
+    hasProgressSignals || (!!craftingPanel && hasCraftingButtons);
 
   return { isActive };
 }
@@ -2208,7 +2211,11 @@ function pollCraftingState(): void {
     trainingMode,
   } = detectCraftingState();
 
-  if (isActive) {
+  // Only consider crafting truly active if we have actual entity/progress data from Redux.
+  // DOM-based detection alone is not reliable (can false-positive on result screens).
+  const hasCraftingData = !!(entity && progress);
+
+  if (isActive && hasCraftingData) {
     wasCraftingActive = true;
     if (currentSettings.panelVisible && !isOverlayVisible) {
       debugLog('[CraftBuddy] Crafting detected, showing overlay');
@@ -2565,12 +2572,14 @@ try {
     else fallbackActive.push('conditionTransition');
     if (d.usingModApiCapGetters) nativeActive.push('capGetters');
     else fallbackActive.push('capGetters');
-    if (d.usingModApiCraftingVariableResolver) nativeActive.push('variableResolver');
+    if (d.usingModApiCraftingVariableResolver)
+      nativeActive.push('variableResolver');
     else fallbackActive.push('variableResolver');
     if (d.usingModApiMaxToxicityGetter) nativeActive.push('maxToxicity');
-    const canUseActionErrorRate = d.nativeCanUseActionCalls > 0
-      ? d.nativeCanUseActionErrors / d.nativeCanUseActionCalls
-      : 0;
+    const canUseActionErrorRate =
+      d.nativeCanUseActionCalls > 0
+        ? d.nativeCanUseActionErrors / d.nativeCanUseActionCalls
+        : 0;
     return {
       nativeProviders: nativeActive,
       fallbackProviders: fallbackActive,
@@ -3141,9 +3150,7 @@ try {
             compactMode: !currentSettings.compactMode,
           });
           renderOverlay();
-          debugLog(
-            `[CraftBuddy] Compact mode: ${currentSettings.compactMode}`,
-          );
+          debugLog(`[CraftBuddy] Compact mode: ${currentSettings.compactMode}`);
           break;
       }
     }
