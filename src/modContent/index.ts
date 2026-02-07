@@ -35,6 +35,7 @@ import {
   VISIBLE_CONDITION_QUEUE_LENGTH,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
+import { CraftBuddyThemeProvider } from '../ui/ThemeProvider';
 import {
   CraftBuddySettings,
   saveSettings,
@@ -1329,7 +1330,10 @@ function renderOverlay(): void {
     craftingType: currentCraftingType,
   });
 
-  reactRoot.render(panel);
+  // Wrap panel with ThemeProvider for styled components
+  const themedPanel = React.createElement(CraftBuddyThemeProvider, null, panel);
+
+  reactRoot.render(themedPanel);
 }
 
 /**
