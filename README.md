@@ -17,6 +17,12 @@ A mod for **Ascend From Nine Mountains** that calculates and displays the recomm
 
 ## Installation
 
+### Steam Workshop (Recommended)
+
+Subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3661729323).
+
+### Manual Install
+
 1. Download the latest release (`afnm-craftbuddy.zip`) from [Releases](https://github.com/lemon07r/AFNM-CraftBuddy/releases)
 2. Create a `mods` folder in your game install directory (same folder as the game executable)
 3. Copy the zip file into `mods` (do not unzip)
