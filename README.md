@@ -13,6 +13,8 @@ A mod for **Ascend From Nine Mountains** that calculates and displays the recomm
 - Buff/mastery-aware simulation
 - Large-number-safe parsing and formatting for late-game values
 
+![CraftBuddy Workshop Preview](pictures/workshop_preview.png)
+
 ## Installation
 
 1. Download the latest release (`afnm-craftbuddy.zip`) from [Releases](https://github.com/lemon07r/AFNM-CraftBuddy/releases)
@@ -29,12 +31,16 @@ During crafting (forge/alchemical/inscription/resonance), the panel shows:
 - brief reasoning
 - alternatives
 
+![CraftBuddy GUI](pictures/gui.png)
+
 ### Keyboard shortcuts
 
 - `Ctrl+Shift+C`: toggle panel visibility
 - `Ctrl+Shift+M`: toggle compact mode
 
 ### Settings
+
+![CraftBuddy Settings](pictures/settings.png)
 
 - `Lookahead Depth` (`1-96`, default `32`)
 - `Search Time Budget` (`10-500ms`, default `200ms`)
