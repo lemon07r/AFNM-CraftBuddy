@@ -1433,7 +1433,8 @@ function pollCraftingState(): void {
   if (isActive && !isOverlayVisible) {
     console.log('[CraftBuddy] Crafting detected, showing overlay');
     showOverlay();
-  } else if (!isActive && isOverlayVisible) {
+  } else if (!isActive && isOverlayVisible && !currentSettings.panelVisible) {
+    // Only auto-hide if crafting ended AND user has not explicitly requested the panel to stay visible
     console.log('[CraftBuddy] Crafting ended, hiding overlay');
     hideOverlay();
     clearCachedTargets();
