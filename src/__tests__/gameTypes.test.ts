@@ -43,6 +43,16 @@ describe('evalExpression', () => {
     expect(result).toBe(0);
   });
 
+  it('should reject this keyword to prevent global object access', () => {
+    const result = evalExpression('this.parseInt(123)', testVariables);
+    expect(result).toBe(0);
+  });
+
+  it('should reject super keyword', () => {
+    const result = evalExpression('super', testVariables);
+    expect(result).toBe(0);
+  });
+
   it('should reject assignment expressions', () => {
     const result = evalExpression('pool = 1', testVariables);
     expect(result).toBe(0);

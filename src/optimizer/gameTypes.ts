@@ -387,7 +387,7 @@ const EXPRESSION_CACHE = new Map<string, (scope: Record<string, number | ((...ar
 const MAX_EXPRESSION_CACHE_SIZE = 256;
 const MAX_EXPRESSION_LENGTH = 1024;
 const ALLOWED_EXPRESSION_CHARS = /^[\w\s+\-*/%().,<>=!&|:{}]+$/;
-const BLOCKED_EXPRESSION_KEYWORDS = /\b(?:while|for|do|switch|try|catch|finally|class|function|new|return|throw|import|export|await|yield|with|const|let|var|delete)\b/i;
+const BLOCKED_EXPRESSION_KEYWORDS = /\b(?:while|for|do|switch|try|catch|finally|class|function|new|return|throw|import|export|await|yield|with|const|let|var|delete|this|super)\b/i;
 const ASSIGNMENT_OPERATOR_RE = /(^|[^=!<>])=($|[^=])/;
 const JS_RESERVED_WORDS = new Set([
   'true',
