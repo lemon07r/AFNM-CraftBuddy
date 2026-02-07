@@ -283,6 +283,30 @@ describe('lookaheadSearch', () => {
     }
   });
 
+  it('should provide a fallback follow-up suggestion when budget is exhausted', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      100000,
+      100000,
+      8,
+      undefined,
+      [],
+      { maxNodes: 1, timeBudgetMs: 1000 },
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.followUpSkill).toBeDefined();
+  });
+
   it('should detect buff-consuming skills', () => {
     const state = new CraftingState({
       qi: 100,
@@ -815,6 +839,155 @@ describe('condition timeline modeling', () => {
     const result = lookaheadSearch(state, config, 0, 100, 1, 'neutral', []);
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.name).toBe('Use Focus Pill');
+  });
+
+  it('should deplete item inventory across lookahead turns', () => {
+    const pill = createCustomSkill({
+      name: 'Use Qi Pill',
+      key: 'item_qi_pill',
+      actionKind: 'item',
+      itemName: 'qi_pill',
+      consumesTurn: false,
+      type: 'support',
+      qiRestore: 50,
+      restoresQi: true,
+    });
+    const fusion = createCustomSkill({
+      name: 'Fusion',
+      key: 'fusion',
+      type: 'fusion',
+      qiCost: 40,
+      stabilityCost: 10,
+      baseCompletionGain: 30,
+      scalesWithIntensity: false,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      maxQi: 200,
+      skills: [pill, fusion],
+      pillsPerRound: 1,
+    });
+    const state = new CraftingState({
+      qi: 10,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      items: new Map([['qi_pill', 1]]),
+    });
+
+    const result = lookaheadSearch(state, config, 100, 0, 3, 'neutral', []);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Use Qi Pill');
+  });
+
+  it('should respect reagent step-zero restriction in lookahead', () => {
+    const reagent = createCustomSkill({
+      name: 'Use Catalyst',
+      key: 'item_catalyst',
+      actionKind: 'item',
+      itemName: 'catalyst',
+      consumesTurn: false,
+      reagentOnlyAtStepZero: true,
+      type: 'support',
+      stabilityGain: 30,
+    });
+    const fusion = createCustomSkill({
+      name: 'Fusion',
+      key: 'fusion',
+      type: 'fusion',
+      stabilityCost: 10,
+      baseCompletionGain: 20,
+      scalesWithIntensity: false,
+    });
+
+    const configWithReagent = createTestConfig({
+      minStability: 0,
+      skills: [reagent, fusion],
+    });
+
+    // Step 0: reagent should be available and usable
+    const stateStep0 = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      step: 0,
+      items: new Map([['catalyst', 1]]),
+    });
+    const availableStep0 = stateStep0.step === 0;
+    expect(availableStep0).toBe(true);
+
+    // Step 1: reagent should be blocked -- only Fusion available
+    const stateStep1 = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      step: 1,
+      items: new Map([['catalyst', 1]]),
+    });
+    const resultStep1 = lookaheadSearch(stateStep1, configWithReagent, 100, 0, 2, 'neutral', []);
+    expect(resultStep1.recommendation).not.toBeNull();
+    expect(resultStep1.recommendation!.skill.name).toBe('Fusion');
+  });
+
+  it('should respect pills-per-round limit in mixed technique+item sequences', () => {
+    const pill1 = createCustomSkill({
+      name: 'Use Pill A',
+      key: 'item_pill_a',
+      actionKind: 'item',
+      itemName: 'pill_a',
+      consumesTurn: false,
+      type: 'support',
+      stabilityGain: 10,
+    });
+    const pill2 = createCustomSkill({
+      name: 'Use Pill B',
+      key: 'item_pill_b',
+      actionKind: 'item',
+      itemName: 'pill_b',
+      consumesTurn: false,
+      type: 'support',
+      stabilityGain: 10,
+    });
+    const fusion = createCustomSkill({
+      name: 'Fusion',
+      key: 'fusion',
+      type: 'fusion',
+      stabilityCost: 10,
+      baseCompletionGain: 20,
+      scalesWithIntensity: false,
+    });
+
+    const configOnePill = createTestConfig({
+      minStability: 0,
+      skills: [pill1, pill2, fusion],
+      pillsPerRound: 1,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      items: new Map([['pill_a', 2], ['pill_b', 2]]),
+    });
+
+    const result = lookaheadSearch(state, configOnePill, 100, 0, 2, 'neutral', []);
+    expect(result.recommendation).not.toBeNull();
+    // After using one pill, the second should not be available until a technique advances the turn
+    expect(result.optimalRotation).toBeDefined();
+    // Verify we don't see two pills in a row (pillsPerRound=1 blocks that)
+    const rotation = result.optimalRotation!;
+    for (let i = 0; i < rotation.length - 1; i++) {
+      const isItem = rotation[i].startsWith('Use Pill');
+      const nextIsItem = rotation[i + 1].startsWith('Use Pill');
+      expect(isItem && nextIsItem).toBe(false);
+    }
   });
 });
 

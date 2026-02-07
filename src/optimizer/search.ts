@@ -1514,6 +1514,7 @@ export function lookaheadSearch(
       depthIndex: number,
       conditionAtDepth: CraftingConditionType,
       nextConditionQueueAtDepth: CraftingConditionType[],
+      useDeepLookahead: boolean = true,
     ): SkillRecommendation['followUpSkill'] | undefined {
       if (stateAfterSkill.targetsMet(targetCompletion, targetPerfection)) {
         return undefined;
@@ -1563,15 +1564,25 @@ export function lookaheadSearch(
           config,
           followUpConditionEffects,
         );
-        const remainingDepth = Math.max(0, depthToSearch - 1 - depthIndex);
-        const followUpScore = evaluateFutureScoreAfterSkill(
-          nextState,
-          remainingDepth,
-          depthIndex + 1,
-          conditionAtDepth,
-          nextConditionQueueAtDepth,
-          followUp,
-        );
+        const followUpScore = useDeepLookahead
+          ? evaluateFutureScoreAfterSkill(
+              nextState,
+              Math.max(0, depthToSearch - 1 - depthIndex),
+              depthIndex + 1,
+              conditionAtDepth,
+              nextConditionQueueAtDepth,
+              followUp,
+            )
+          : scoreState(
+              nextState,
+              targetCompletion,
+              targetPerfection,
+              config.isSublimeCraft || false,
+              config.targetMultiplier || 2.0,
+              isTraining,
+              config.maxCompletion,
+              config.maxPerfection,
+            );
 
         if (followUpScore > bestFollowUpScore) {
           bestFollowUpScore = followUpScore;
@@ -1646,9 +1657,10 @@ export function lookaheadSearch(
     // Second pass: enhance scores with deep lookahead if budget allows
     // Process skills in order of their immediate score (best first)
     scored.sort((a, b) => b.score - a.score);
+    const fallbackFollowUpCount = 3;
 
-    for (const rec of scored) {
-      if (checkBudget()) break;
+    for (let index = 0; index < scored.length; index++) {
+      const rec = scored[index];
 
       const newState = applySkill(
         state,
@@ -1667,25 +1679,35 @@ export function lookaheadSearch(
         rec.skill,
       );
 
-      // Deep evaluation
-      const deepScore = evaluateFutureScoreAfterSkill(
-        newState,
-        Math.max(0, depthToSearch - 1),
-        1,
-        normalizedCurrentCondition,
-        initialConditionQueue,
-        rec.skill,
-      );
-      rec.score = deepScore;
+      const hasBudgetForDeepSearch = !checkBudget();
+      if (hasBudgetForDeepSearch) {
+        // Deep evaluation
+        rec.score = evaluateFutureScoreAfterSkill(
+          newState,
+          Math.max(0, depthToSearch - 1),
+          1,
+          normalizedCurrentCondition,
+          initialConditionQueue,
+          rec.skill,
+        );
+      }
 
-      // Also find follow-up skill if we have budget
-      if (!checkBudget()) {
+      // Always try to provide a follow-up suggestion for top-ranked skills.
+      // If budget is exhausted, fall back to immediate scoring instead of lookahead.
+      const hasBudgetForDeepFollowUp = !checkBudget();
+      const shouldApplyFallback = index < fallbackFollowUpCount;
+      if (hasBudgetForDeepFollowUp || shouldApplyFallback) {
         rec.followUpSkill = findFollowUpSkill(
           newState,
           1,
           firstMoveConditionState.nextCondition,
           firstMoveConditionState.nextQueue,
+          hasBudgetForDeepFollowUp,
         );
+      }
+
+      if (!hasBudgetForDeepFollowUp && !shouldApplyFallback) {
+        break;
       }
     }
 

@@ -40,7 +40,7 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   lookaheadDepth: 16,
   compactMode: false,
   panelVisible: true,
-  maxAlternatives: 1,
+  maxAlternatives: 2,
   maxRotationDisplay: 5,
   showForecastedConditions: true,
   showExpectedFinalState: true,
