@@ -26,14 +26,15 @@ related_files:
 
 ### P1: Native API cutover
 
-- switch to game-native scaling/overcrit/can-use-action when exposed
+- keep native scaling/overcrit/all-depth can-use-action precheck path enabled with fallback
+- keep guarded native condition-transition provider enabled with fallback
 - switch to game-native finalized post-modifier cost helpers when exposed
-- keep one-release fallback path, then retire fallback
-- acceptance: parity tests pass with native path enabled
+- validate all-depth native precheck parity in live crafts
+- retire fallback only after one full release proves stable
 
 ### P2: Cap-aware scoring and gains
 
-- integrate max completion/perfection getters when exposed
+- keep native max completion/perfection getter path enabled with fallback
 - clamp/score with canonical caps
 - acceptance: cap regression tests prove no-value overshoot is de-prioritized
 
@@ -46,6 +47,7 @@ related_files:
 ### P4: Integration observability
 
 - add structured diagnostics for fallback path usage
+- track native precheck call/block/error counters and condition-provider fallback rates
 - surface missing-field counters for faster breakage triage after game updates
 - acceptance: debug output identifies fallback reliance by category
 

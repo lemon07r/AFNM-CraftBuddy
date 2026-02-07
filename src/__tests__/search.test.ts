@@ -13,6 +13,7 @@ import {
   greedySearch,
   lookaheadSearch,
   normalizeForecastConditionQueue,
+  setConditionTransitionProvider,
   VISIBLE_CONDITION_QUEUE_LENGTH,
 } from '../optimizer/search';
 
@@ -178,6 +179,10 @@ describe('greedySearch', () => {
 
 describe('lookaheadSearch', () => {
   const config = createTestConfig();
+
+  afterEach(() => {
+    setConditionTransitionProvider(undefined);
+  });
 
   it('should return targetsMet when targets are already met', () => {
     const state = new CraftingState({
@@ -504,6 +509,10 @@ describe('search algorithm correctness', () => {
 });
 
 describe('condition timeline modeling', () => {
+  afterEach(() => {
+    setConditionTransitionProvider(undefined);
+  });
+
   it('should respect the current root condition instead of using first forecast condition', () => {
     const negativeOnly = createCustomSkill({
       name: 'Negative Burst',
@@ -681,6 +690,93 @@ describe('condition timeline modeling', () => {
     );
 
     expect(normalized).toEqual(['glowing', 'neutral', 'primed']);
+  });
+
+  it('should use condition transition provider when available', () => {
+    const transitionProvider = jest.fn((currentCondition: any, nextConditions: any) => {
+      const queue = Array.isArray(nextConditions) ? nextConditions.slice(1) : [];
+      return [
+        {
+          nextCondition: nextConditions[0] ?? currentCondition,
+          nextQueue: [...queue, 'positive'],
+          probability: 1,
+        },
+      ];
+    });
+    setConditionTransitionProvider(transitionProvider as any);
+
+    const setup = createCustomSkill({
+      name: 'Setup',
+      key: 'setup',
+      type: 'support',
+      qiCost: 0,
+      baseCompletionGain: 0,
+    });
+    const follow = createCustomSkill({
+      name: 'Follow',
+      key: 'follow',
+      type: 'fusion',
+      qiCost: 0,
+      baseCompletionGain: 50,
+      conditionRequirement: 'positive',
+    });
+
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const providerConfig = createTestConfig({
+      minStability: 0,
+      skills: [setup, follow],
+    });
+
+    const result = lookaheadSearch(
+      state,
+      providerConfig,
+      50,
+      0,
+      2,
+      'neutral',
+      ['neutral', 'neutral', 'neutral'],
+    );
+    expect(result.recommendation).not.toBeNull();
+    expect(transitionProvider).toHaveBeenCalled();
+  });
+
+  it('should fall back to local transitions when provider throws', () => {
+    const warnSpy = jest
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    setConditionTransitionProvider(() => {
+      throw new Error('transition provider failure');
+    });
+
+    const fallbackConfig = createTestConfig();
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    try {
+      const result = lookaheadSearch(
+        state,
+        fallbackConfig,
+        100,
+        100,
+        2,
+        'neutral',
+        ['positive', 'negative', 'neutral'],
+      );
+      expect(result.recommendation).not.toBeNull();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('should preserve search depth for non-turn item actions', () => {

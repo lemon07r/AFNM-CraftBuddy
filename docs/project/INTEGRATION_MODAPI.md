@@ -22,6 +22,8 @@ related_files:
 - read live crafting state and recipe data
 - normalize techniques/masteries/buffs into optimizer action definitions
 - collect condition effects and forecasted conditions
+- seed optimizer state with native variable snapshots when available
+- register guarded native provider seams (availability + condition transitions)
 - pass harmony/training mode fields to optimizer config/state
 - map settings to search config
 - update overlay UI and debug surface
@@ -35,14 +37,12 @@ related_files:
 
 ## Known fallback paths
 
-Fallback handling exists for targets/progress extraction and some optional payload fields when game objects are incomplete.
+Fallback handling exists for targets/progress extraction, condition transitions, and optional payload fields when game objects are incomplete.
 
-## Migration targets (pending game API exposure)
+## Migration targets (still pending game API exposure)
 
-- game-native scaling evaluation
-- game-native overcrit calculation
-- game-native action availability precheck
-- game-native completion/perfection caps
+- finalized post-modifier pool/stability cost preview helpers
+- documented stable `getNextCondition` ModAPI symbol/path (guarded path probing currently active)
 
 ## Guardrail
 

@@ -22,8 +22,17 @@ export {
   getEffectiveStabilityCost,
   getBlockedSkillReasons,
   getConditionEffectsForConfig,
+  setNativeCanUseActionProvider,
 } from './skills';
-export type { SkillDefinition, SkillGains, OptimizerConfig, SkillMastery, SkillBlockedReason } from './skills';
+export type {
+  SkillDefinition,
+  SkillGains,
+  OptimizerConfig,
+  SkillMastery,
+  SkillBlockedReason,
+  NativeCanUseActionContext,
+  NativeCanUseActionProvider,
+} from './skills';
 
 export {
   findBestSkill,
@@ -57,6 +66,7 @@ export {
   getBonusAndChance,
   parseRecipeConditionEffects,
   EXPONENTIAL_SCALING_FACTOR,
+  setNativeCraftingUtils,
 } from './gameTypes';
 export type {
   CraftingCondition,
@@ -77,4 +87,5 @@ export type {
   BuffDefinition,
   BuffEffect,
   ActiveBuff,
+  NativeCraftingUtils,
 } from './gameTypes';

@@ -22,17 +22,17 @@ related_files:
 
 ## Q2: Canonical availability/cost hooks
 
-- Question: when will game-native availability/final-cost helpers be exposed?
+- Question: what disagreement/error thresholds should trigger automatic rollback from all-depth native `canUseAction` enforcement?
 - Why this matters: removes duplicated edge-case logic and reduces drift risk.
-- Current handling: internal parity implementation.
-- Unblock criteria: API availability + integration cutover.
+- Current handling: native all-depth precheck with native-variable seeding/propagation + local fallback on failures.
+- Unblock criteria: finalize release gate thresholds for fallback retirement and rollback alarms.
 
 ## Q3: Completion/perfection cap API timeline
 
-- Question: when will max completion/perfection cap getters be exposed?
+- Question: when should heuristic cap extraction be fully retired in favor of native cap getters?
 - Why this matters: cap-aware scoring and gain clamping.
-- Current handling: local model without canonical cap getter.
-- Unblock criteria: API availability + regression tests.
+- Current handling: native cap getter path with local extraction fallback.
+- Unblock criteria: one stable release with no native cap regressions.
 
 ## Q4: Final post-modifier cost preview helpers
 

@@ -326,6 +326,35 @@ export interface ScalingVariables {
  */
 export const EXPONENTIAL_SCALING_FACTOR = 1.3;
 
+export interface NativeCraftingUtils {
+  evaluateScaling?: (
+    scaling: Record<string, unknown>,
+    variables: Record<string, number>,
+    stanceLength: number,
+    preMaxTransform?: (value: number) => number
+  ) => number;
+  calculateCraftingOvercrit?: (
+    critChance: number,
+    critMultiplier: number
+  ) => {
+    multiplier: number;
+    critCount: number;
+    didCrit: boolean;
+  };
+}
+
+let activeNativeCraftingUtils: NativeCraftingUtils | undefined;
+let warnedNativeScalingFailure = false;
+let warnedNativeOvercritFailure = false;
+
+export function setNativeCraftingUtils(
+  nativeUtils: NativeCraftingUtils | undefined
+): void {
+  activeNativeCraftingUtils = nativeUtils;
+  warnedNativeScalingFailure = false;
+  warnedNativeOvercritFailure = false;
+}
+
 /**
  * Calculate bonus count and chance from completion/perfection progress.
  * Matches game's getBonusAndChance function.
@@ -366,6 +395,29 @@ export function calculateExpectedCritMultiplier(
   critChance: number,
   critMultiplier: number
 ): number {
+  const nativeOvercrit = activeNativeCraftingUtils?.calculateCraftingOvercrit;
+  if (nativeOvercrit) {
+    try {
+      const nativeResult = nativeOvercrit(critChance, critMultiplier);
+      const nativeCritMultiplier = Number(nativeResult?.multiplier);
+      if (Number.isFinite(nativeCritMultiplier) && nativeCritMultiplier > 0) {
+        const actualCritChance = Math.min(Math.max(critChance, 0), 100) / 100;
+        const critMultiplierAsRatio = nativeCritMultiplier / 100;
+        return (
+          1 - actualCritChance + actualCritChance * critMultiplierAsRatio
+        );
+      }
+    } catch (error) {
+      if (!warnedNativeOvercritFailure) {
+        console.warn(
+          '[CraftBuddy] Native calculateCraftingOvercrit failed, using local fallback:',
+          error
+        );
+        warnedNativeOvercritFailure = true;
+      }
+    }
+  }
+
   // Excess crit chance (>100%) converts to bonus multiplier at 1:3 ratio
   const excessCritChance = Math.max(0, critChance - 100);
   const bonusCritMultiplier = excessCritChance * 3;
@@ -568,6 +620,28 @@ export function evaluateScaling(
   defaultValue: number = 0
 ): number {
   if (!scaling) return defaultValue;
+
+  const nativeScaling = activeNativeCraftingUtils?.evaluateScaling;
+  if (nativeScaling) {
+    try {
+      const nativeValue = nativeScaling(
+        scaling as unknown as Record<string, unknown>,
+        variables as Record<string, number>,
+        1
+      );
+      if (Number.isFinite(nativeValue)) {
+        return nativeValue;
+      }
+    } catch (error) {
+      if (!warnedNativeScalingFailure) {
+        console.warn(
+          '[CraftBuddy] Native evaluateScaling failed, using local fallback:',
+          error
+        );
+        warnedNativeScalingFailure = true;
+      }
+    }
+  }
 
   let result = scaling.value;
 

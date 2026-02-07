@@ -29,19 +29,23 @@ related_files:
 - training-mode-aware scoring policy
 - large-number-safe parsing/formatting helpers
 - local expression evaluator hardening (guarded formula filtering + bounded compile cache)
+- native `modAPI.utils` provider path for scaling + overcrit, with fallback
+- native all-depth `canUseAction` precheck path with simulated-variable propagation, with fallback
+- native max completion/perfection cap getter path in integration layer, with fallback
+- native crafting variable snapshot seeding (`getVariablesFromCraftingEntity`) for deeper parity checks
+- guarded native condition transition provider wiring via `getNextCondition` path probing, with fallback
+- native max toxicity getter fallback path (`getMaxToxicity`) for alchemy crafts
 
 ## Still dependency-gated (pending external API)
 
-- direct game-native `evaluateScaling`
-- direct game-native overcrit helper
-- direct game-native action availability helper
-- direct game-native completion/perfection cap getters
+- finalized post-modifier pool/stability cost preview helpers
+- documented stable `getNextCondition` ModAPI symbol/path (guarded path probing is currently used)
 
 ## Heuristic/fallback-sensitive areas
 
 - integration fallback extraction paths when full runtime state is missing
 - condition fallback table in `gameTypes.ts` (used when real condition data is unavailable)
-- local expression compilation path remains an internal fallback until native evaluator is exposed
+- local expression compilation path remains an internal fallback if native evaluator is unavailable/fails
 
 ## Verification anchors
 

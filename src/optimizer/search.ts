@@ -964,6 +964,7 @@ export function greedySearch(
       config,
       conditionEffects,
       targetCompletion,
+      normalizedCurrentCondition,
     );
     if (newState === null) continue;
 
@@ -1258,6 +1259,7 @@ export function lookaheadSearch(
         config,
         conditionEffectsAtDepth,
         targetCompletion,
+        currentConditionAtDepth,
       );
       if (newState === null) continue;
 
@@ -1442,6 +1444,7 @@ export function lookaheadSearch(
           config,
           conditionEffectsAtDepth,
           targetCompletion,
+          conditionAtDepth,
         );
         if (nextState === null) continue;
 
@@ -1550,6 +1553,7 @@ export function lookaheadSearch(
           config,
           followUpConditionEffects,
           targetCompletion,
+          conditionAtDepth,
         );
         if (nextState === null) continue;
 
@@ -1599,6 +1603,7 @@ export function lookaheadSearch(
         config,
         currentConditionEffects,
         targetCompletion,
+        normalizedCurrentCondition,
       );
       if (newState === null) continue;
 
@@ -1651,6 +1656,7 @@ export function lookaheadSearch(
         config,
         currentConditionEffects,
         targetCompletion,
+        normalizedCurrentCondition,
       );
       if (newState === null) continue;
 
@@ -1769,6 +1775,7 @@ export function lookaheadSearch(
     config,
     currentConditionEffects,
     targetCompletion,
+    normalizedCurrentCondition,
   );
 
   let optimalRotation: string[] = [bestFirstMove.name];

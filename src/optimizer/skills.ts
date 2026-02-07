@@ -52,6 +52,8 @@ export interface SkillDefinition {
   icon?: string;
   /** Distinguishes technique actions from consumable item actions. */
   actionKind?: 'skill' | 'item';
+  /** Optional raw game technique payload for native availability prechecks. */
+  nativeTechnique?: unknown;
   /** Whether this skill scales with control */
   scalesWithControl?: boolean;
   /** Whether this skill scales with intensity */
@@ -453,8 +455,184 @@ export const DEFAULT_CONFIG: OptimizerConfig = {
   pillsPerRound: 1,
 };
 
+export interface NativeCanUseActionContext {
+  state: CraftingState;
+  skill: SkillDefinition;
+  currentCondition?: string;
+  conditionEffects: ConditionEffect[];
+  maxToxicity: number;
+  minStability: number;
+  pillsPerRound: number;
+  effectiveQiCost: number;
+  variables: Record<string, number>;
+}
+
+export type NativeCanUseActionProvider = (
+  context: NativeCanUseActionContext
+) => boolean | undefined;
+
+let activeNativeCanUseActionProvider: NativeCanUseActionProvider | undefined;
+let warnedNativeCanUseActionFailure = false;
+
+export function setNativeCanUseActionProvider(
+  provider: NativeCanUseActionProvider | undefined
+): void {
+  activeNativeCanUseActionProvider = provider;
+  warnedNativeCanUseActionFailure = false;
+}
+
 function normalizeBuffName(name: string | undefined): string {
   return String(name || '').toLowerCase().trim().replace(/\s+/g, '_');
+}
+
+function buildNativeAvailabilityVariables(
+  state: CraftingState,
+  maxToxicity: number,
+  pillsPerRound: number
+): Record<string, number> {
+  const seededVariables: Record<string, number> = {};
+  if (state.nativeVariables) {
+    for (const [key, value] of Object.entries(state.nativeVariables)) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        seededVariables[key] = value;
+      }
+    }
+  }
+
+  const maxPool = Number.isFinite(seededVariables.maxpool)
+    ? Math.max(1, seededVariables.maxpool)
+    : Math.max(1, state.qi);
+  const derivedMaxToxicity = maxToxicity > 0
+    ? maxToxicity
+    : Number.isFinite(seededVariables.maxtoxicity)
+      ? Math.max(1, seededVariables.maxtoxicity)
+      : Math.max(1, state.maxToxicity);
+
+  const variables: Record<string, number> = {
+    ...seededVariables,
+    pool: state.qi,
+    maxpool: maxPool,
+    completion: state.completion,
+    perfection: state.perfection,
+    stability: state.stability,
+    maxstability: state.maxStability,
+    stabilitypenalty: state.stabilityPenalty,
+    toxicity: state.toxicity,
+    maxtoxicity: derivedMaxToxicity,
+    consumedPills: state.consumedPillsThisTurn,
+    consumedPillsThisTurn: state.consumedPillsThisTurn,
+    pillsPerRound: Math.max(1, Math.floor(pillsPerRound || 1)),
+    step: state.step,
+  };
+
+  state.buffs.forEach((tracked, buffKey) => {
+    variables[buffKey] = tracked.stacks;
+    const normalized = normalizeBuffName(tracked.name || buffKey);
+    if (!(normalized in variables)) {
+      variables[normalized] = tracked.stacks;
+    }
+  });
+
+  return variables;
+}
+
+function runNativeCanUseActionPrecheck(
+  context: Omit<NativeCanUseActionContext, 'variables'>
+): boolean | undefined {
+  if (!activeNativeCanUseActionProvider) {
+    return undefined;
+  }
+
+  const variables = buildNativeAvailabilityVariables(
+    context.state,
+    context.maxToxicity,
+    context.pillsPerRound
+  );
+
+  try {
+    return activeNativeCanUseActionProvider({
+      ...context,
+      variables,
+    });
+  } catch (error) {
+    if (!warnedNativeCanUseActionFailure) {
+      console.warn(
+        '[CraftBuddy] Native canUseAction provider failed, using local fallback:',
+        error
+      );
+      warnedNativeCanUseActionFailure = true;
+    }
+  }
+
+  return undefined;
+}
+
+function propagateNativeVariablesAfterAction(
+  state: CraftingState,
+  nextState: {
+    qi: number;
+    completion: number;
+    perfection: number;
+    stability: number;
+    maxStability: number;
+    stabilityPenalty: number;
+    toxicity: number;
+    consumedPillsThisTurn: number;
+    step: number;
+  },
+  nextBuffs: Map<string, { name: string; stacks: number; definition?: BuffDefinition }>,
+  maxToxicity: number,
+  pillsPerRound: number
+): Record<string, number> | undefined {
+  if (!activeNativeCanUseActionProvider && !state.nativeVariables) {
+    return undefined;
+  }
+
+  const variables = buildNativeAvailabilityVariables(
+    state,
+    maxToxicity,
+    pillsPerRound
+  );
+
+  variables.pool = nextState.qi;
+  variables.completion = nextState.completion;
+  variables.perfection = nextState.perfection;
+  variables.stability = nextState.stability;
+  variables.maxstability = nextState.maxStability;
+  variables.stabilitypenalty = nextState.stabilityPenalty;
+  variables.toxicity = nextState.toxicity;
+  variables.consumedPills = nextState.consumedPillsThisTurn;
+  variables.consumedPillsThisTurn = nextState.consumedPillsThisTurn;
+  variables.pillsPerRound = Math.max(1, Math.floor(pillsPerRound || 1));
+  variables.step = nextState.step;
+  variables.maxtoxicity = maxToxicity > 0
+    ? maxToxicity
+    : Math.max(1, state.maxToxicity);
+
+  const keysToRefresh = new Set<string>();
+  state.buffs.forEach((tracked, buffKey) => {
+    keysToRefresh.add(buffKey);
+    keysToRefresh.add(normalizeBuffName(tracked.name || buffKey));
+  });
+  nextBuffs.forEach((tracked, buffKey) => {
+    keysToRefresh.add(buffKey);
+    keysToRefresh.add(normalizeBuffName(tracked.name || buffKey));
+  });
+  keysToRefresh.forEach((key) => {
+    if (key) {
+      delete variables[key];
+    }
+  });
+  nextBuffs.forEach((tracked, buffKey) => {
+    if (tracked.stacks <= 0) return;
+    variables[buffKey] = tracked.stacks;
+    const normalized = normalizeBuffName(tracked.name || buffKey);
+    if (!(normalized in variables)) {
+      variables[normalized] = tracked.stacks;
+    }
+  });
+
+  return variables;
 }
 
 function buildTechniqueScalingVariables(
@@ -1253,6 +1431,22 @@ export function canApplySkill(
     }
   }
 
+  if (!isItemAction) {
+    const nativeCanUse = runNativeCanUseActionPrecheck({
+      state,
+      skill,
+      currentCondition,
+      conditionEffects,
+      maxToxicity,
+      minStability,
+      pillsPerRound,
+      effectiveQiCost: effectiveCosts.qiCost,
+    });
+    if (nativeCanUse === false) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -1279,7 +1473,8 @@ export function applySkill(
   skill: SkillDefinition,
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[] = [],
-  targetCompletion: number = 0
+  targetCompletion: number = 0,
+  currentCondition?: string
 ): CraftingState | null {
   const maxToxicity = config.maxToxicity || 0;
 
@@ -1289,7 +1484,7 @@ export function applySkill(
     skill,
     config.minStability,
     maxToxicity,
-    undefined,
+    currentCondition,
     conditionEffects,
     config.pillsPerRound || 1
   )) {
@@ -1298,6 +1493,7 @@ export function applySkill(
 
   const isItemAction = skill.actionKind === 'item';
   const consumesTurn = skill.consumesTurn ?? !isItemAction;
+  const nextStep = state.step + (consumesTurn ? 1 : 0);
 
   // Calculate gains BEFORE applying buffs from this skill
   const gains = calculateSkillGains(state, skill, config, conditionEffects);
@@ -1780,6 +1976,27 @@ export function applySkill(
   }
 
   // Create new state with all updates
+  const nextConsumedPillsThisTurn = consumesTurn
+    ? 0
+    : state.consumedPillsThisTurn + (isItemAction ? 1 : 0);
+  const propagatedNativeVariables = propagateNativeVariablesAfterAction(
+    state,
+    {
+      qi: newQi,
+      completion: newCompletion,
+      perfection: newPerfection,
+      stability: newStability,
+      maxStability: state.initialMaxStability - newStabilityPenalty,
+      stabilityPenalty: newStabilityPenalty,
+      toxicity: newToxicity,
+      consumedPillsThisTurn: nextConsumedPillsThisTurn,
+      step: nextStep,
+    },
+    newBuffs,
+    maxToxicity,
+    config.pillsPerRound || 1
+  );
+
   return state.copy({
     qi: newQi,
     stability: newStability,
@@ -1793,14 +2010,13 @@ export function applySkill(
     toxicity: newToxicity,
     cooldowns: newCooldowns,
     items: newItems,
-    consumedPillsThisTurn: consumesTurn
-      ? 0
-      : state.consumedPillsThisTurn + (isItemAction ? 1 : 0),
+    consumedPillsThisTurn: nextConsumedPillsThisTurn,
     buffs: newBuffs,
     harmony: newHarmony,
     harmonyData: newHarmonyData,
-    step: state.step + (consumesTurn ? 1 : 0),
+    step: nextStep,
     completionBonus: newCompletionBonus,
+    nativeVariables: propagatedNativeVariables,
     history: [...state.history, skill.name],
   });
 }
@@ -1982,6 +2198,27 @@ export function getBlockedSkillReasons(
           skillName: skill.name,
           reason: 'toxicity',
           details: `Would exceed max toxicity (${state.toxicity} + ${skill.toxicityCost} > ${maxToxicity})`,
+        });
+        continue;
+      }
+    }
+
+    if (!isItemAction) {
+      const nativeCanUse = runNativeCanUseActionPrecheck({
+        state,
+        skill,
+        currentCondition,
+        conditionEffects,
+        maxToxicity,
+        minStability: config.minStability,
+        pillsPerRound: config.pillsPerRound || 1,
+        effectiveQiCost: effectiveCosts.qiCost,
+      });
+      if (nativeCanUse === false) {
+        reasons.push({
+          skillName: skill.name,
+          reason: 'condition',
+          details: 'Blocked by game-native canUseAction precheck',
         });
         continue;
       }

@@ -16,6 +16,7 @@ import {
   getEffectiveQiCost,
   getEffectiveStabilityCost,
   calculateEffectiveActionCosts,
+  setNativeCanUseActionProvider,
 } from '../optimizer/skills';
 
 // Helper to create a basic test config
@@ -212,6 +213,93 @@ describe('canApplySkill', () => {
 
     // Game canUseAction does not reject based on projected post-action stability.
     expect(canApplySkill(state, skill, 9, 0, undefined, conditionEffects)).toBe(true);
+  });
+});
+
+describe('native canUseAction precheck integration', () => {
+  afterEach(() => {
+    setNativeCanUseActionProvider(undefined);
+  });
+
+  it('should apply native precheck for simulated (non-root) states', () => {
+    const provider = jest.fn(() => false);
+    setNativeCanUseActionProvider(provider);
+
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      history: ['previous action'],
+    });
+    const skill = createTestSkill({
+      nativeTechnique: { name: 'Test Skill' },
+    });
+
+    expect(canApplySkill(state, skill, 0, 0, 'neutral')).toBe(false);
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it('should seed native precheck variables from state.nativeVariables', () => {
+    const provider = jest.fn((context: any) => context.variables.customFlag === 7);
+    setNativeCanUseActionProvider(provider);
+
+    const state = new CraftingState({
+      qi: 90,
+      stability: 40,
+      nativeVariables: {
+        customFlag: 7,
+        maxpool: 500,
+      },
+    });
+    const skill = createTestSkill({
+      nativeTechnique: { name: 'Test Skill' },
+    });
+
+    expect(canApplySkill(state, skill, 0, 0, 'neutral')).toBe(true);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(provider.mock.calls[0][0].variables.maxpool).toBe(500);
+    expect(provider.mock.calls[0][0].variables.pool).toBe(90);
+  });
+
+  it('should pass current condition through applySkill to native precheck', () => {
+    const provider = jest.fn((context: any) => context.currentCondition === 'positive');
+    setNativeCanUseActionProvider(provider);
+
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+    });
+    const skill = createTestSkill({
+      nativeTechnique: { name: 'Test Skill' },
+    });
+    const config = createTestConfig({ minStability: 0, skills: [skill] });
+
+    const nextState = applySkill(state, skill, config, [], 0, 'positive');
+    expect(nextState).not.toBeNull();
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(provider.mock.calls[0][0].currentCondition).toBe('positive');
+  });
+
+  it('should propagate nativeVariables through applySkill state transitions', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      nativeVariables: {
+        customFlag: 11,
+        pool: 100,
+        step: 0,
+      },
+    });
+    const skill = createTestSkill({
+      qiCost: 10,
+      stabilityCost: 0,
+    });
+    const config = createTestConfig({ minStability: 0, skills: [skill] });
+
+    const nextState = applySkill(state, skill, config, [], 0, 'neutral');
+    expect(nextState).not.toBeNull();
+    expect(nextState?.nativeVariables?.customFlag).toBe(11);
+    expect(nextState?.nativeVariables?.pool).toBe(90);
+    expect(nextState?.nativeVariables?.step).toBe(1);
   });
 });
 

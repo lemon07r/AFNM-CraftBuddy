@@ -22,24 +22,28 @@ This list contains the smallest set of exposures that materially improve optimiz
 - Data/function: `evaluateScaling(scaling, variables, defaultValue)`
 - Why: central formula for technique/buff amounts
 - Mod usage: replace internal evaluator in `src/optimizer/gameTypes.ts`
+- Status: available via `modAPI.utils.evaluateScaling` (`afnm-types@0.6.38`)
 
 ### P0-2: Expose game-native overcrit helper
 
 - Data/function: `calculateCraftingOvercrit(...)` (or equivalent effective multiplier)
 - Why: high-realm crit handling must match game exactly
 - Mod usage: replace overcrit EV helper in `src/optimizer/gameTypes.ts`
+- Status: available via `modAPI.utils.calculateCraftingOvercrit` (`afnm-types@0.6.38`)
 
 ### P0-3: Expose canonical action availability precheck
 
 - Data/function: `canUseAction(technique, state)`
 - Why: avoids edge-case drift in internal availability checks
 - Mod usage: authoritative gating before search expansion in `src/optimizer/skills.ts` / `src/optimizer/search.ts`
+- Status: available via `modAPI.utils.canUseAction` (`afnm-types@0.6.38`)
 
 ### P1-1: Expose completion/perfection caps
 
 - Data/function: cap getters used by runtime craft logic
 - Why: avoid recommending gains that will be fully capped away
 - Mod usage: cap-aware clamping and scoring
+- Status: available via `modAPI.utils.getMaxCompletion/getMaxPerfection` (`afnm-types@0.6.38`)
 
 ### P1-2: Expose finalized post-modifier costs
 
@@ -62,4 +66,16 @@ This list contains the smallest set of exposures that materially improve optimiz
 
 ## Current implementation posture
 
-Until these are exposed, CraftBuddy uses internal parity implementations with tests and controlled fallback logic.
+CraftBuddy now uses native provider-backed paths for exposed APIs with guarded fallbacks:
+
+- native scaling + overcrit helpers in optimizer core
+- native all-depth action availability precheck with simulated-variable propagation
+- native completion/perfection cap getters in integration layer
+- native crafting-variable seeding via `getVariablesFromCraftingEntity`
+- guarded condition-transition provider via discovered `getNextCondition` path
+- native alchemy max-toxicity fallback via `getMaxToxicity`
+
+Still pending exposure:
+
+- finalized post-modifier pool/stability cost preview helpers
+- documented stable `getNextCondition` ModAPI symbol/path (guarded path probing currently active)

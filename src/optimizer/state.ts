@@ -59,6 +59,19 @@ function cloneBuffMap(source: Map<string, TrackedBuff>): Map<string, TrackedBuff
   return cloned;
 }
 
+function cloneNativeVariables(
+  source: Record<string, number> | undefined
+): Record<string, number> | undefined {
+  if (!source) return undefined;
+  const cloned: Record<string, number> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      cloned[key] = value;
+    }
+  }
+  return Object.freeze(cloned) as Record<string, number>;
+}
+
 export enum BuffType {
   NONE = 0,
   CONTROL = 1, // +40% to control stat
@@ -126,6 +139,11 @@ export interface CraftingStateData {
   step: number;
   /** Completion bonus stacks (from exceeding completion thresholds) */
   completionBonus: number;
+  /**
+   * Optional native crafting variable snapshot seeded from ModAPI.
+   * Used for deeper native availability prechecks.
+   */
+  nativeVariables?: Record<string, number>;
   history: string[];
 }
 
@@ -163,6 +181,7 @@ export class CraftingState implements CraftingStateData {
   readonly harmonyData?: HarmonyData;
   readonly step: number;
   readonly completionBonus: number;
+  readonly nativeVariables?: Record<string, number>;
   readonly history: string[];
 
   private _cacheKey?: string;
@@ -197,6 +216,7 @@ export class CraftingState implements CraftingStateData {
     this.harmonyData = data.harmonyData ? cloneHarmonyData(data.harmonyData) : undefined;
     this.step = data.step ?? 0;
     this.completionBonus = data.completionBonus ?? 0;
+    this.nativeVariables = cloneNativeVariables(data.nativeVariables);
     this.history = data.history ? [...data.history] : [];
   }
 
@@ -239,6 +259,7 @@ export class CraftingState implements CraftingStateData {
       harmonyData: overrides.harmonyData ?? this.harmonyData,
       step: overrides.step ?? this.step,
       completionBonus: overrides.completionBonus ?? this.completionBonus,
+      nativeVariables: overrides.nativeVariables ?? this.nativeVariables,
       history: overrides.history ?? this.history,
     });
   }
@@ -399,7 +420,10 @@ export class CraftingState implements CraftingStateData {
     // Include initial max stability + harmony fields to avoid cache collisions between
     // states that have different future trajectories but identical visible resources.
     const harmonyDataKey = this.harmonyData ? stableStringify(this.harmonyData) : '';
-    this._cacheKey = `${this.qi}:${this.stability}:${this.initialMaxStability}:${this.stabilityPenalty}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${this.harmony}:${harmonyDataKey}:${critChanceKey}:${critMultKey}:${successBonusKey}:${poolCostKey}:${stabCostKey}:${compBonusKey}:${this.consumedPillsThisTurn}:${cooldownStr}:${itemStr}:${buffStr}`;
+    const nativeVarsKey = this.nativeVariables
+      ? stableStringify(this.nativeVariables)
+      : '';
+    this._cacheKey = `${this.qi}:${this.stability}:${this.initialMaxStability}:${this.stabilityPenalty}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${this.harmony}:${harmonyDataKey}:${critChanceKey}:${critMultKey}:${successBonusKey}:${poolCostKey}:${stabCostKey}:${compBonusKey}:${nativeVarsKey}:${this.consumedPillsThisTurn}:${cooldownStr}:${itemStr}:${buffStr}`;
     return this._cacheKey;
   }
 
@@ -437,6 +461,7 @@ export interface CreateStateOptions {
   harmonyData?: HarmonyData;
   step?: number;
   completionBonus?: number;
+  nativeVariables?: Record<string, number>;
 }
 
 /**
@@ -469,6 +494,7 @@ export function createStateFromGame(opts: CreateStateOptions): CraftingState {
     harmonyData: opts.harmonyData,
     step: opts.step ?? 0,
     completionBonus: opts.completionBonus ?? 0,
+    nativeVariables: opts.nativeVariables,
     history: [],
   });
 }

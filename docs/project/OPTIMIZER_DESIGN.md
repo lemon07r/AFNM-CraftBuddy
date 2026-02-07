@@ -41,7 +41,7 @@ related_files:
 - Condition queue is normalized to fixed length `3` (matches game UI/runtime visibility).
 - Beyond forecast queue, condition transitions are probability-weighted (`enableConditionBranchingAfterForecast`, `conditionBranchLimit`, `conditionBranchMinProbability`).
 - Non-turn item actions do not consume lookahead turn-depth/index.
-- Transition provider seam exists for future ModAPI handoff (`getNextCondition`-based wiring).
+- Guarded ModAPI transition provider wiring is active (`getNextCondition` path probing with local fallback).
 
 ## Scoring intent
 

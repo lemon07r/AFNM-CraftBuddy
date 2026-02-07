@@ -40,6 +40,22 @@ describe('CraftingState', () => {
       expect(state.controlBuffTurns).toBe(2);
       expect(state.toxicity).toBe(10);
     });
+
+    it('should sanitize and clone nativeVariables', () => {
+      const source = {
+        pool: 100,
+        maxpool: 200,
+        invalid: Number.NaN,
+      } as Record<string, number>;
+      const state = new CraftingState({
+        nativeVariables: source,
+      });
+
+      source.pool = 999;
+      expect(state.nativeVariables?.pool).toBe(100);
+      expect(state.nativeVariables?.maxpool).toBe(200);
+      expect(state.nativeVariables?.invalid).toBeUndefined();
+    });
   });
 
   describe('copy', () => {
@@ -76,6 +92,21 @@ describe('CraftingState', () => {
       expect(modified.qi).toBe(80);
       expect(modified.stability).toBe(50); // Unchanged
       expect(modified.completion).toBe(25);
+    });
+
+    it('should preserve nativeVariables across copy operations', () => {
+      const original = new CraftingState({
+        nativeVariables: {
+          pool: 100,
+          custom: 3,
+        },
+      });
+      const copied = original.copy({ qi: 90 });
+
+      expect(copied.nativeVariables).toEqual({
+        pool: 100,
+        custom: 3,
+      });
     });
 
     it('should clone tracked buff entries passed to constructor', () => {

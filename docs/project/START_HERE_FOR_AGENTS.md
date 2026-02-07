@@ -46,5 +46,5 @@ Fast, low-noise onboarding for implementation work on AFNM-CraftBuddy.
 
 ## Verified baseline
 
-- branch context at refresh: `fix/accurate-crafting-mechanics`
-- tests at refresh: 256 passing (`bun run test`, verified 2026-02-07)
+- branch context at refresh: `main`
+- tests at refresh: 270 passing (`bun run test`, verified 2026-02-07)

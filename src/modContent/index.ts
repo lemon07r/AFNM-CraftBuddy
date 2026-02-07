@@ -15,11 +15,13 @@ import {
   CraftingEntity,
   ProgressState,
   CraftingTechnique,
+  CraftingRecipeStats,
   CraftingCondition,
   RecipeConditionEffect,
   CraftingBuff,
   CraftingPillItem,
   CraftingReagentItem,
+  RecipeItem,
 } from 'afnm-types';
 import {
   CraftingState,
@@ -32,7 +34,10 @@ import {
   parseRecipeConditionEffects,
   getBonusAndChance,
   normalizeForecastConditionQueue,
+  setConditionTransitionProvider,
   VISIBLE_CONDITION_QUEUE_LENGTH,
+  setNativeCraftingUtils,
+  setNativeCanUseActionProvider,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 import { CraftBuddyThemeProvider } from '../ui/ThemeProvider';
@@ -74,20 +79,44 @@ interface IntegrationDiagnostics {
   conditionQueueNormalizedCount: number;
   conditionQueueTrimmedCount: number;
   conditionQueuePaddedCount: number;
+  conditionProviderUsedCount: number;
+  conditionProviderFailureCount: number;
+  conditionProviderFallbackCount: number;
   completionBonusSource: CompletionBonusSource;
   completionBonusMismatchCount: number;
   usingModApiGetNextCondition: boolean;
   usingModApiTechniqueUpgradeResolver: boolean;
+  usingModApiScalingEvaluator: boolean;
+  usingModApiOvercritHelper: boolean;
+  usingModApiCanUseActionPrecheck: boolean;
+  usingModApiCapGetters: boolean;
+  usingModApiCraftingVariableResolver: boolean;
+  usingModApiMaxToxicityGetter: boolean;
+  nativeCanUseActionCalls: number;
+  nativeCanUseActionBlocked: number;
+  nativeCanUseActionErrors: number;
 }
 
 const integrationDiagnostics: IntegrationDiagnostics = {
   conditionQueueNormalizedCount: 0,
   conditionQueueTrimmedCount: 0,
   conditionQueuePaddedCount: 0,
+  conditionProviderUsedCount: 0,
+  conditionProviderFailureCount: 0,
+  conditionProviderFallbackCount: 0,
   completionBonusSource: 'none',
   completionBonusMismatchCount: 0,
   usingModApiGetNextCondition: false,
   usingModApiTechniqueUpgradeResolver: false,
+  usingModApiScalingEvaluator: false,
+  usingModApiOvercritHelper: false,
+  usingModApiCanUseActionPrecheck: false,
+  usingModApiCapGetters: false,
+  usingModApiCraftingVariableResolver: false,
+  usingModApiMaxToxicityGetter: false,
+  nativeCanUseActionCalls: 0,
+  nativeCanUseActionBlocked: 0,
+  nativeCanUseActionErrors: 0,
 };
 
 // Toxicity tracking for alchemy crafting
@@ -151,6 +180,8 @@ function snapshotSearchSettings(): void {
 // Store the last entity for rendering
 let lastEntity: CraftingEntity | null = null;
 let lastProgressState: ProgressState | null = null;
+let lastRecipe: RecipeItem | undefined = undefined;
+let lastRecipeStats: CraftingRecipeStats | undefined = undefined;
 
 // DOM overlay elements
 let overlayContainer: HTMLDivElement | null = null;
@@ -448,6 +479,152 @@ function getModApiTechniqueUpgradeResolver():
   ]) as ((technique: CraftingTechnique) => CraftingTechnique) | undefined;
 }
 
+function configureNativeOptimizerProviders(): void {
+  const modUtils = (window as any)?.modAPI?.utils;
+  const nextConditionResolver = getModApiNextConditionResolver();
+
+  const nativeEvaluateScaling =
+    typeof modUtils?.evaluateScaling === 'function'
+      ? (
+          scaling: Record<string, unknown>,
+          variables: Record<string, number>,
+          stanceLength: number,
+          preMaxTransform?: (value: number) => number,
+        ) =>
+          modUtils.evaluateScaling(
+            scaling as any,
+            variables,
+            stanceLength,
+            preMaxTransform,
+          )
+      : undefined;
+  const nativeCalculateOvercrit =
+    typeof modUtils?.calculateCraftingOvercrit === 'function'
+      ? (critChance: number, critMultiplier: number) =>
+          modUtils.calculateCraftingOvercrit(critChance, critMultiplier)
+      : undefined;
+
+  setNativeCraftingUtils(
+    nativeEvaluateScaling || nativeCalculateOvercrit
+      ? {
+          evaluateScaling: nativeEvaluateScaling,
+          calculateCraftingOvercrit: nativeCalculateOvercrit,
+        }
+      : undefined,
+  );
+  integrationDiagnostics.usingModApiScalingEvaluator = !!nativeEvaluateScaling;
+  integrationDiagnostics.usingModApiOvercritHelper = !!nativeCalculateOvercrit;
+
+  const nativeCanUseAction =
+    typeof modUtils?.canUseAction === 'function'
+      ? modUtils.canUseAction.bind(modUtils)
+      : undefined;
+  if (!nativeCanUseAction) {
+    setNativeCanUseActionProvider(undefined);
+  } else {
+    setNativeCanUseActionProvider((context) => {
+      if (context.skill.actionKind === 'item') {
+        return undefined;
+      }
+
+      const nativeTechnique = (context.skill as any)
+        ?.nativeTechnique as CraftingTechnique | undefined;
+      if (!nativeTechnique) {
+        return undefined;
+      }
+
+      const cooldownTurns = context.state.cooldowns.get(context.skill.key) ?? 0;
+      const currentCooldown = Number(nativeTechnique.currentCooldown || 0) || 0;
+      const techniqueForCheck =
+        cooldownTurns === currentCooldown
+          ? nativeTechnique
+          : ({
+              ...nativeTechnique,
+              currentCooldown: cooldownTurns,
+            } as CraftingTechnique);
+      const condition = normalizeConditionKey(context.currentCondition);
+
+      integrationDiagnostics.nativeCanUseActionCalls++;
+      try {
+        const result = nativeCanUseAction(
+          techniqueForCheck,
+          context.variables,
+          context.effectiveQiCost,
+          condition,
+        );
+        if (typeof result === 'boolean') {
+          integrationDiagnostics.usingModApiCanUseActionPrecheck = true;
+          if (result === false) {
+            integrationDiagnostics.nativeCanUseActionBlocked++;
+          }
+          return result;
+        }
+      } catch (error) {
+        integrationDiagnostics.nativeCanUseActionErrors++;
+        console.warn(
+          '[CraftBuddy] ModAPI canUseAction precheck failed, using local fallback:',
+          error,
+        );
+      }
+
+      return undefined;
+    });
+  }
+
+  if (!nextConditionResolver) {
+    setConditionTransitionProvider(undefined);
+    return;
+  }
+
+  setConditionTransitionProvider(
+    (currentCondition, nextConditionQueue, harmony) => {
+      if (!Array.isArray(nextConditionQueue) || nextConditionQueue.length === 0) {
+        integrationDiagnostics.conditionProviderFallbackCount++;
+        return [];
+      }
+
+      const normalizedQueue = nextConditionQueue.map((entry) =>
+        normalizeConditionKey(entry as unknown as string),
+      );
+      if (normalizedQueue.length === 0) {
+        integrationDiagnostics.conditionProviderFallbackCount++;
+        return [];
+      }
+
+      const nextCondition = normalizedQueue[0];
+      const shiftedQueue = normalizedQueue.slice(1);
+
+      try {
+        const appended = normalizeConditionKey(
+          nextConditionResolver({
+            condition: normalizeConditionKey(currentCondition as string),
+            nextConditions: shiftedQueue.slice(),
+            harmony,
+          }) as string | undefined,
+        );
+        integrationDiagnostics.usingModApiGetNextCondition = true;
+        integrationDiagnostics.conditionProviderUsedCount++;
+        return [
+          {
+            nextCondition,
+            nextQueue: [...shiftedQueue, appended],
+            probability: 1,
+          },
+        ];
+      } catch (error) {
+        integrationDiagnostics.conditionProviderFailureCount++;
+        integrationDiagnostics.conditionProviderFallbackCount++;
+        console.warn(
+          '[CraftBuddy] ModAPI condition transition provider failed, using local fallback:',
+          error,
+        );
+      }
+
+      return [];
+    },
+  );
+}
+
 function normalizeNextConditionQueue(
   current: string | undefined,
   rawQueue: string[] | undefined,
@@ -501,6 +678,8 @@ function normalizeNextConditionQueue(
   ) as CraftingCondition[];
 }
 
+configureNativeOptimizerProviders();
+
 function toFinitePositiveNumber(value: unknown): number | undefined {
   const parsed =
     typeof value === 'number'
@@ -512,6 +691,96 @@ function toFinitePositiveNumber(value: unknown): number | undefined {
     return undefined;
   }
   return parsed;
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value)
+        : undefined;
+  if (parsed === undefined || !Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function sanitizeNativeCraftingVariables(
+  raw: unknown,
+): Record<string, number> | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+
+  const result: Record<string, number> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const parsed = toFiniteNumber(value);
+    if (parsed !== undefined) {
+      result[key] = parsed;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function resolveNativeCraftingVariables(
+  entity: CraftingEntity,
+  progressState: ProgressState,
+  recipeStats?: CraftingRecipeStats,
+): Record<string, number> | undefined {
+  if (!recipeStats) {
+    return undefined;
+  }
+
+  const modUtils = (window as any)?.modAPI?.utils;
+  if (typeof modUtils?.getVariablesFromCraftingEntity !== 'function') {
+    return undefined;
+  }
+
+  try {
+    const raw = modUtils.getVariablesFromCraftingEntity(
+      entity,
+      recipeStats,
+      progressState,
+    );
+    const sanitized = sanitizeNativeCraftingVariables(raw);
+    if (sanitized) {
+      integrationDiagnostics.usingModApiCraftingVariableResolver = true;
+      return sanitized;
+    }
+  } catch (error) {
+    console.warn(
+      '[CraftBuddy] ModAPI variable resolver failed, using local variable fallback:',
+      error,
+    );
+  }
+
+  return undefined;
+}
+
+function resolveMaxToxicityCap(
+  realm: string | undefined,
+  fallbackValue: number,
+): number {
+  const modUtils = (window as any)?.modAPI?.utils;
+  if (!realm || typeof modUtils?.getMaxToxicity !== 'function') {
+    return fallbackValue;
+  }
+
+  try {
+    const nativeCap = toFinitePositiveNumber(modUtils.getMaxToxicity(realm));
+    if (nativeCap !== undefined) {
+      integrationDiagnostics.usingModApiMaxToxicityGetter = true;
+      return nativeCap;
+    }
+  } catch (error) {
+    console.warn(
+      '[CraftBuddy] ModAPI max toxicity getter failed, using local fallback:',
+      error,
+    );
+  }
+
+  return fallbackValue;
 }
 
 function extractCapCandidate(source: any, keys: string[]): number | undefined {
@@ -579,6 +848,63 @@ function updateProgressCapsFromRecipeStats(recipeStats: any): void {
   }
   if (perfectionCap !== undefined) {
     maxPerfectionCap = perfectionCap;
+  }
+}
+
+function updateProgressCapsFromModApi(
+  recipe: RecipeItem | undefined,
+  recipeStats: CraftingRecipeStats | undefined,
+  realm: string | undefined,
+): void {
+  if (!recipe || !recipeStats || !realm) {
+    return;
+  }
+
+  const modUtils = (window as any)?.modAPI?.utils;
+  if (
+    typeof modUtils?.getMaxCompletion !== 'function' ||
+    typeof modUtils?.getMaxPerfection !== 'function'
+  ) {
+    return;
+  }
+
+  try {
+    const maxCompletion = modUtils.getMaxCompletion(recipe, recipeStats, realm);
+    const completionCap =
+      extractCapCandidate(maxCompletion, [
+        'flat',
+        'value',
+        'max',
+        'cap',
+        'completion',
+        'maxCompletion',
+      ]) ?? toFinitePositiveNumber(maxCompletion);
+    if (completionCap !== undefined) {
+      maxCompletionCap = completionCap;
+    }
+
+    const maxPerfection = modUtils.getMaxPerfection(recipe, recipeStats, realm);
+    const perfectionCap =
+      extractCapCandidate(maxPerfection, [
+        'flat',
+        'value',
+        'max',
+        'cap',
+        'perfection',
+        'maxPerfection',
+      ]) ?? toFinitePositiveNumber(maxPerfection);
+    if (perfectionCap !== undefined) {
+      maxPerfectionCap = perfectionCap;
+    }
+
+    if (completionCap !== undefined || perfectionCap !== undefined) {
+      integrationDiagnostics.usingModApiCapGetters = true;
+    }
+  } catch (error) {
+    console.warn(
+      '[CraftBuddy] ModAPI cap getters failed, using local fallback:',
+      error,
+    );
   }
 }
 
@@ -890,6 +1216,7 @@ function convertGameTechniques(
       buffMultiplier,
       type: techType,
       icon,
+      nativeTechnique: sourceTech,
       scalesWithControl,
       scalesWithIntensity,
       isDisciplinedTouch,
@@ -998,6 +1325,8 @@ function buildConfigFromEntity(
   entity: CraftingEntity,
   extraSkills: SkillDefinition[] = [],
   trainingMode: boolean = false,
+  recipe?: RecipeItem,
+  recipeStats?: CraftingRecipeStats,
 ): OptimizerConfig {
   const stats = entity.stats;
 
@@ -1015,6 +1344,10 @@ function buildConfigFromEntity(
   if (realmModifier !== 1.0) {
     baseControl = Math.floor(baseControl * realmModifier);
     baseIntensity = Math.floor(baseIntensity * realmModifier);
+  }
+
+  if (recipe && recipeStats) {
+    updateProgressCapsFromModApi(recipe, recipeStats, entity.realm as string);
   }
 
   const skills = [...convertGameTechniques(entity.techniques), ...extraSkills];
@@ -1076,10 +1409,18 @@ function updateRecommendation(
   inventoryItems?: InventoryItemLike[],
   consumedPillsThisTurn: number = 0,
   trainingMode: boolean = false,
+  recipeStats?: CraftingRecipeStats,
+  recipe?: RecipeItem,
 ): void {
   // Store for rendering
   lastEntity = entity;
   lastProgressState = progressState;
+  if (recipe) {
+    lastRecipe = recipe;
+  }
+  if (recipeStats) {
+    lastRecipeStats = recipeStats;
+  }
 
   const pool = parseGameNumber(entity?.stats?.pool, 0);
   const stability = parseGameNumber(progressState?.stability, 0);
@@ -1212,7 +1553,13 @@ function updateRecommendation(
     entity,
     inventoryItems,
   );
-  currentConfig = buildConfigFromEntity(entity, itemActions, trainingMode);
+  currentConfig = buildConfigFromEntity(
+    entity,
+    itemActions,
+    trainingMode,
+    recipe || lastRecipe,
+    recipeStats || lastRecipeStats,
+  );
 
   // Calculate current max stability from targetStability - stabilityPenalty
   // The game tracks stability decay via stabilityPenalty in progressState, not a separate maxStability field
@@ -1229,6 +1576,11 @@ function updateRecommendation(
   const gameHarmonyData = progressState?.harmonyTypeData;
   // @ts-ignore - harmony exists on game's ProgressState
   const gameHarmony = progressState?.harmony ?? 0;
+  const nativeVariables = resolveNativeCraftingVariables(
+    entity,
+    progressState,
+    recipeStats || lastRecipeStats,
+  );
 
   const state = new CraftingState({
     qi: pool,
@@ -1257,6 +1609,7 @@ function updateRecommendation(
       gameHarmonyData ??
       (isSublimeCraft ? { recommendedTechniqueTypes: [] } : undefined),
     completionBonus: completionBonusStacks,
+    nativeVariables,
     step: progressState?.step || 0,
     history: [],
   });
@@ -1519,6 +1872,7 @@ function detectCraftingState(): {
   isActive: boolean;
   entity?: CraftingEntity;
   progress?: ProgressState;
+  recipe?: RecipeItem;
   recipeStats?: any;
   inventoryItems?: InventoryItemLike[];
   consumedPillsThisTurn?: number;
@@ -1540,6 +1894,7 @@ function detectCraftingState(): {
           isActive: true,
           entity: craftingState.player as CraftingEntity,
           progress: craftingState.progressState as ProgressState,
+          recipe: craftingState.recipe as RecipeItem | undefined,
           recipeStats: craftingState.recipeStats,
           inventoryItems: state?.inventory?.items as
             | InventoryItemLike[]
@@ -1556,6 +1911,7 @@ function detectCraftingState(): {
           isActive: true,
           entity: gameCrafting.player as CraftingEntity,
           progress: gameCrafting.progressState as ProgressState,
+          recipe: gameCrafting.recipe as RecipeItem | undefined,
           recipeStats: gameCrafting.recipeStats,
           inventoryItems: state?.inventory?.items as
             | InventoryItemLike[]
@@ -1676,6 +2032,7 @@ function pollCraftingState(): void {
     isActive,
     entity,
     progress,
+    recipe,
     recipeStats,
     inventoryItems,
     consumedPillsThisTurn,
@@ -1692,6 +2049,8 @@ function pollCraftingState(): void {
     clearCachedTargets();
     maxCompletionCap = undefined;
     maxPerfectionCap = undefined;
+    lastRecipe = undefined;
+    lastRecipeStats = undefined;
   }
 
   // If we have entity and progress from Redux, use them directly
@@ -1709,6 +2068,11 @@ function pollCraftingState(): void {
         targetStability = recipeStats.stability;
       }
       updateProgressCapsFromRecipeStats(recipeStats as any);
+      updateProgressCapsFromModApi(
+        recipe,
+        recipeStats as CraftingRecipeStats,
+        entity.realm as string,
+      );
       // Calculate current max stability from recipeStats.stability - progressState.stabilityPenalty
       const stabilityPenalty = (progress as any).stabilityPenalty || 0;
       currentMaxStability = recipeStats.stability - stabilityPenalty;
@@ -1734,6 +2098,8 @@ function pollCraftingState(): void {
         inventoryItems,
         consumedPillsThisTurn || 0,
         !!trainingMode,
+        recipeStats as CraftingRecipeStats | undefined,
+        recipe,
       );
     }
     return;
@@ -1848,6 +2214,8 @@ try {
       if (recipeStats) {
         // Try multiple possible property names for targets
         const statsAny = recipeStats as any;
+        lastRecipe = recipe as RecipeItem | undefined;
+        lastRecipeStats = recipeStats as CraftingRecipeStats;
         targetCompletion =
           statsAny.completionTarget ??
           statsAny.targetCompletion ??
@@ -1864,6 +2232,12 @@ try {
           statsAny.stability ??
           60;
         updateProgressCapsFromRecipeStats(statsAny);
+        updateProgressCapsFromModApi(
+          recipe as RecipeItem | undefined,
+          recipeStats as CraftingRecipeStats,
+          (lastEntity?.realm as string | undefined) ||
+            ((recipe as any)?.realm as string | undefined),
+        );
 
         const conditionType = recipeStats.conditionType;
         if (conditionType) {
@@ -1936,10 +2310,16 @@ try {
         `[CraftBuddy] Sublime craft detection: isSublime=${isSublimeCraft}, isEquipment=${isEquipmentCraft}, isHarmony=${isHarmonyType}, multiplier=${sublimeTargetMultiplier}`,
       );
 
-      if (recipeStatsAny?.maxToxicity) {
-        maxToxicity = recipeStatsAny.maxToxicity;
+      const explicitMaxToxicity = toFinitePositiveNumber(
+        recipeStatsAny?.maxToxicity,
+      );
+      if (explicitMaxToxicity !== undefined) {
+        maxToxicity = explicitMaxToxicity;
       } else if (currentCraftingType === 'alchemical') {
-        maxToxicity = 100;
+        const realmForToxicity =
+          (lastEntity?.realm as string | undefined) ||
+          ((recipe as any)?.realm as string | undefined);
+        maxToxicity = resolveMaxToxicityCap(realmForToxicity, 100);
       } else {
         maxToxicity = 0;
       }
@@ -1997,6 +2377,8 @@ try {
   getSettings: () => currentSettings,
   getLastEntity: () => lastEntity,
   getLastProgressState: () => lastProgressState,
+  getLastRecipe: () => lastRecipe,
+  getLastRecipeStats: () => lastRecipeStats,
 
   setTargets: (completion: number, perfection: number, stability?: number) => {
     targetCompletion = completion;
@@ -2020,7 +2402,13 @@ try {
     );
     // Rebuild config with new sublime settings
     if (lastEntity) {
-      currentConfig = buildConfigFromEntity(lastEntity);
+      currentConfig = buildConfigFromEntity(
+        lastEntity,
+        [],
+        false,
+        lastRecipe,
+        lastRecipeStats,
+      );
     }
     renderOverlay();
   },
@@ -2032,7 +2420,13 @@ try {
       `[CraftBuddy] Sublime mode toggled: ${isSublimeCraft}, multiplier: ${sublimeTargetMultiplier}`,
     );
     if (lastEntity) {
-      currentConfig = buildConfigFromEntity(lastEntity);
+      currentConfig = buildConfigFromEntity(
+        lastEntity,
+        [],
+        false,
+        lastRecipe,
+        lastRecipeStats,
+      );
     }
     renderOverlay();
     return isSublimeCraft;
