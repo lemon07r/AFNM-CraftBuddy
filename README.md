@@ -1,179 +1,113 @@
 # AFNM-CraftBuddy - Crafting Optimizer Mod
 
-A mod for **Ascend From Nine Mountains** that automatically calculates and displays the optimal next skill to use during crafting.
+A mod for **Ascend From Nine Mountains** that calculates and displays the recommended next crafting action.
 
 ## Features
 
-- ✅ **Mod Loaded Indicator**: Brief visual confirmation in the top-right corner when the game starts (fades after 5 seconds)
-- 🔮 **Real-time Recommendations**: Shows the best skill to use based on current crafting state
-- 📊 **Expected Gains**: Displays completion, perfection, and stability gains for each skill
-- 💡 **Reasoning**: Explains why a skill is recommended (buff active, low stability, etc.)
-- 🎯 **Target Tracking**: Monitors progress toward completion and perfection goals
-- 🔄 **Alternative Options**: Shows other viable skills if you prefer a different approach
-- ⚙️ **Settings Panel**: Configure lookahead depth, display options, and more
-- ⌨️ **Keyboard Shortcuts**: Quick toggle for panel visibility and compact mode
-- 📏 **Compact Mode**: Smaller panel for less screen obstruction
-- 🔢 **Large Number Support**: Handles late-game values with compact formatting (e.g., "1.5M" instead of "1500000")
+- Real-time recommendation for the next action during crafting
+- Expected completion/perfection/stability gain preview
+- Alternative action suggestions
+- Lookahead search with performance controls
+- Condition forecast awareness and probabilistic branching beyond forecast queue
+- Harmony-aware simulation for sublime crafts
+- Buff/mastery-aware simulation
+- Large-number-safe parsing and formatting for late-game values
 
 ## Installation
 
 1. Download the latest release (`afnm-craftbuddy.zip`) from [Releases](https://github.com/lemon07r/AFNM-CraftBuddy/releases)
-2. Create a `mods` folder in your game installation directory (same folder as the game executable)
-3. Copy the zip file to the `mods` folder - **do NOT unzip it**
-4. Launch the game - the mod will be loaded automatically
-
-**Example paths:**
-- **Windows (Steam)**: `C:\Program Files (x86)\Steam\steamapps\common\Ascend From Nine Mountains\mods\`
-- **Windows (Direct)**: `C:\Games\Ascend From Nine Mountains\mods\`
-- **Linux (Steam)**: `~/.steam/steam/steamapps/common/Ascend From Nine Mountains/mods/`
-- **Linux (Direct)**: `/path/to/AFNM_Linux/mods/`
-
-**Verify installation:** Look for the "🔮 AFNM-CraftBuddy Loaded" indicator in the top-right corner when the game starts. It will appear briefly for 5 seconds then fade away.
-
-### Enabling Debug Mode (Recommended for Troubleshooting)
-
-To see detailed logs and diagnose issues:
-
-1. Go to your game directory (same folder as the game executable)
-2. Create an empty file called `devMode` (no file extension)
-3. Restart the game
-
-A console window will appear showing detailed logs including all `[CraftBuddy]` messages.
+2. Create a `mods` folder in your game install directory (same folder as the game executable)
+3. Copy the zip file into `mods` (do not unzip)
+4. Launch the game
 
 ## Usage
 
-During any crafting session (forge, alchemical, inscription, or resonance), AFNM-CraftBuddy will display a recommendation panel showing:
+During crafting (forge/alchemical/inscription/resonance), the panel shows:
 
-- The recommended next skill with its type (fusion/refine/stabilize/support)
-- Expected gains from using that skill
-- Brief reasoning for the recommendation
-- Alternative skills you could use instead
+- recommended next action
+- expected gains
+- brief reasoning
+- alternatives
 
-### Keyboard Shortcuts
+### Keyboard shortcuts
 
-- **Ctrl+Shift+C** - Toggle panel visibility
-- **Ctrl+Shift+M** - Toggle compact mode
+- `Ctrl+Shift+C`: toggle panel visibility
+- `Ctrl+Shift+M`: toggle compact mode
 
-### Settings Panel
+### Settings
 
-Click the gear icon (⚙️) on the recommendation panel to access settings:
+- `Lookahead Depth` (`1-96`, default `32`)
+- `Search Time Budget` (`10-500ms`, default `200ms`)
+- `Search Max Nodes` (`1,000-100,000`, default `100,000`)
+- `Search Beam Width` (`3-15`, default `6`)
+- display controls (rotation/final state/conditions/alternatives)
 
-- **Lookahead Depth** (1-24): Default is 4. ⚠️ **WARNING**: Values above 6 are dangerous and may freeze or crash the game!
-- **Compact Mode**: Show only essential information
-- **Show Rotation**: Display suggested skill sequence
-- **Show Final State**: Display projected outcome
-- **Show Conditions**: Display upcoming crafting conditions
-- **Max Alternatives**: Number of alternative skills to show (0-5)
+Higher depth/node/beam values improve search breadth but can increase CPU use.
 
-Settings are automatically saved and persist between sessions.
+## Debug helpers
 
-### Debug Console Commands
-
-Open the browser console (F12) to use these debug functions:
+Open browser devtools and use:
 
 ```javascript
-// View current optimizer config (from game data)
 window.craftBuddyDebug.getConfig()
-
-// View current recommendation
 window.craftBuddyDebug.getRecommendation()
-
-// View targets (from recipe)
 window.craftBuddyDebug.getTargets()
-
-// View current crafting state
 window.craftBuddyDebug.getCurrentState()
-
-// View forecasted conditions (from game)
 window.craftBuddyDebug.getNextConditions()
-
-// View condition effect multipliers
 window.craftBuddyDebug.getConditionEffects()
-
-// Set custom targets for testing
 window.craftBuddyDebug.setTargets(completion, perfection, stability)
-
-// View/modify settings
 window.craftBuddyDebug.getSettings()
-window.craftBuddyDebug.setLookaheadDepth(4)  // 1-24, default: 4 (higher values may freeze the game!)
-window.craftBuddyDebug.togglePanel()         // Toggle visibility
-window.craftBuddyDebug.toggleCompact()       // Toggle compact mode
-
-// Log all game data sources to console
+window.craftBuddyDebug.setLookaheadDepth(32)
+window.craftBuddyDebug.togglePanel()
+window.craftBuddyDebug.toggleCompact()
 window.craftBuddyDebug.logGameData()
-
-// Check for mod conflicts
-window.craftBuddyDebug.getConflicts()    // View detected conflicts
-window.craftBuddyDebug.checkConflicts()  // Manually check for conflicts
+window.craftBuddyDebug.getConflicts()
+window.craftBuddyDebug.checkConflicts()
 ```
 
-## Building from Source
+## Build and test
 
 ```bash
-# Install dependencies (requires Bun: https://bun.sh)
 bun install
-
-# Build the mod
 bun run build
-
-# Run tests
 bun run test
-
-# Output: builds/afnm-craftbuddy.zip
 ```
 
-## How It Works
+Output zip: `builds/afnm-craftbuddy.zip`
 
-CraftBuddy ports the algorithm from the [Python Crafting Optimizer](../Ascend%20From%20Nine%20Mountains%20Crafting%20Optimizer/) to TypeScript and integrates it directly into the game's crafting UI.
+## How it works
 
-The optimizer uses a **lookahead search** algorithm that:
-1. Evaluates all available skills using move ordering (promising skills first)
-2. Simulates applying each skill
-3. Recursively searches several moves ahead
-4. Uses memoization to avoid redundant calculations
-5. Scores states based on progress toward targets
-6. Detects conflicts with other mods that override harmony types
+- Integration layer (`src/modContent/index.ts`) reads crafting state from game/Redux, with DOM/cache fallback paths for resilience.
+- Optimizer (`src/optimizer/*`) simulates candidate actions and runs lookahead search.
+- Search combines deterministic simulation with expected-value modeling for probabilistic outcomes.
+- UI (`src/ui/*`) renders recommendation + alternatives.
 
-## Technical Details
+## Technical notes
 
-- Built with TypeScript, React, and Material-UI
-- Uses the AFNM ModAPI for game integration
-- Overrides all harmony types (forge, alchemical, inscription, resonance) to inject the recommendation panel
-- Hooks into `onDeriveRecipeDifficulty` to capture crafting targets
+- TypeScript + React + Material UI
+- Uses AFNM ModAPI hooks (including `onDeriveRecipeDifficulty`) and runtime state extraction
+- Includes harmony simulation and training-mode-aware scoring behavior
+- Includes docs health scripts (`bun run docs:check`)
 
-## Game Data Integration
+## Data accuracy policy
 
-CraftBuddy reads **all values directly from the game** - no hardcoded assumptions:
+CraftBuddy prefers direct game data when available and uses documented fallback logic only when specific fields are missing.
 
-- **Character Stats**: Control, intensity, max Qi from `entity.stats`
-- **Techniques**: All available skills from `entity.techniques` with costs, effects, and scaling
-- **Buff Multipliers**: Read from active buff stats (e.g., `buff.stats.control.value`)
-- **Condition Effects**: Multipliers from `recipeStats.conditionType.conditionEffects`
-- **Recipe Targets**: Completion, perfection, stability from `recipeStats`
-- **Forecasted Conditions**: Upcoming conditions from `progressState.nextConditions`
-- **Max Stability Decay**: Tracks decay each turn, respects `noMaxStabilityLoss` flag
+## Known limitations
 
-## Limitations
+- Some mechanics still rely on internal reimplementation until equivalent game APIs are exposed (scaling/overcrit/can-use-action/caps)
+- Fallback extraction paths are used when complete runtime state is unavailable
+- Behavior can drift if upstream game mechanics change and required APIs are not exposed yet
 
-- May conflict with other mods that override harmony types (conflict detection will warn you)
-- Equipment bonuses and realm modifiers are detected and logged but may vary by game version
+## Documentation
 
-## Large Number Handling
-
-CraftBuddy is designed to handle the large numbers that appear in late-game crafting:
-
-- **Safe Arithmetic**: Uses overflow-protected math operations to prevent precision loss
-- **Compact Display**: Large values are formatted with suffixes (K, M, B, T, Q) for readability
-- **Precision Warnings**: Logs warnings if values approach JavaScript's safe integer limit (~9 quadrillion)
-- **Robust Parsing**: Safely parses game data including edge cases like NaN or Infinity
+- Authoritative project docs: `docs/project/`
+- Dev API request tracking: `docs/dev-requests/`
+- Historical snapshots: `docs/history/`
+- Curated AFNM reference subset: `docs/reference/`
+- Archived full reference/deprecated snapshots: `archive/` (traceability only)
+- Agent entrypoint: `docs/project/START_HERE_FOR_AGENTS.md`
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## Credits
-
-- Author: [lemon07r](https://github.com/lemon07r)
-- Based on the Python Crafting Optimizer tool
-- Uses the [AFNM Example Mod](https://github.com/Lyeeedar/AfnmExampleMod) template
-- Game: [Ascend From Nine Mountains](https://store.steampowered.com/app/1843760/Ascend_From_Nine_Mountains/)
+MIT License

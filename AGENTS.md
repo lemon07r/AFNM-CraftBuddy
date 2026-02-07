@@ -7,7 +7,9 @@
 - `src/ui/` contains React panels like `RecommendationPanel.tsx` and `SettingsPanel.tsx`.
 - `src/settings/` and `src/utils/` contain configuration and shared helpers.
 - `src/__tests__/` contains unit tests, with mocks under `src/__tests__/__mocks__/`.
-- `docs/` contains project and game-mechanics documentation; `scripts/zip-dist.js` handles packaging.
+- `docs/project/` is authoritative project documentation; `docs/dev-requests/` tracks API requests; `docs/history/` is historical context; `docs/reference/` is a curated non-authoritative reference subset.
+- `archive/` stores large/deprecated documentation snapshots (for traceability only) and is intentionally excluded from active docs checks/inventory.
+- `scripts/zip-dist.js` handles packaging.
 - Generated outputs (`dist/`, `builds/`, `coverage/`) are build artifacts and are gitignored.
 
 ## Build, Test, and Development Commands
@@ -16,7 +18,16 @@
 - `bun run test`: run all Jest tests once.
 - `bun run test:watch`: run tests in watch mode while iterating.
 - `bun run test:coverage`: generate coverage reports in `coverage/` (text, lcov, html).
+- `bun run docs:check`: validate docs links/freshness/authority.
+- `bun run docs:inventory`: regenerate `docs/DOC_INVENTORY.md`.
 - `bun run jest src/__tests__/search.test.ts`: run a focused test file.
+
+## Documentation Workflow
+- Start technical onboarding at `docs/project/START_HERE_FOR_AGENTS.md`.
+- Treat `docs/project/*` as implementation source of truth, then verify against code/tests.
+- Use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` before opening any other reference docs.
+- Use `archive/` only when the curated/active docs are insufficient.
+- If you change docs, run `bun run docs:inventory` and `bun run docs:check` before committing.
 
 ## Coding Style & Naming Conventions
 - Use TypeScript (`strict` mode) and React TSX.

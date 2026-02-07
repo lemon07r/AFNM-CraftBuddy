@@ -11,7 +11,12 @@
     "postbuild": "bun scripts/zip-dist.js",
     "test": "bun run jest",
     "test:watch": "bun run jest --watch",
-    "test:coverage": "bun run jest --coverage"
+    "test:coverage": "bun run jest --coverage",
+    "docs:check-links": "bun run scripts/docs/check-links.js",
+    "docs:check-freshness": "bun run scripts/docs/check-freshness.js",
+    "docs:check-authority": "bun run scripts/docs/check-authority.js",
+    "docs:check": "bun run docs:check-links && bun run docs:check-freshness && bun run docs:check-authority",
+    "docs:inventory": "bun run scripts/docs/generate-inventory.js"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
