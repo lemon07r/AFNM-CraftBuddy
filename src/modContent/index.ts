@@ -219,10 +219,12 @@ let reactRoot: ReactDOM.Root | null = null;
 let isOverlayVisible = false;
 let wasCraftingActive = false;
 let overlayForcedByActiveCraft = false;
+let missingVisibleCraftingUiPolls = 0;
 
 // Polling interval for crafting state detection
 let pollingInterval: number | null = null;
 const POLL_INTERVAL_MS = 500;
+const MISSING_VISIBLE_CRAFTING_UI_POLLS_BEFORE_END = 3;
 
 // LocalStorage key for caching targets (used for mid-craft save loads)
 const TARGETS_CACHE_KEY = 'craftbuddy_targets_cache';
@@ -2018,68 +2020,11 @@ function isElementVisible(element: Element): boolean {
 }
 
 /**
- * Try to extract crafting state from Redux store or DOM.
+ * Detect whether the crafting minigame UI is currently visible on screen.
  */
-function detectCraftingState(): {
-  isActive: boolean;
-  entity?: CraftingEntity;
-  progress?: ProgressState;
-  recipe?: RecipeItem;
-  recipeStats?: any;
-  inventoryItems?: InventoryItemLike[];
-  consumedPillsThisTurn?: number;
-  trainingMode?: boolean;
-} {
-  // Method 1: Try to access Redux store - this is the best source
-  if (!cachedStore) {
-    cachedStore = findReduxStore();
-  }
-
-  if (cachedStore) {
-    try {
-      const state = cachedStore.getState();
-      const craftingState = state?.crafting;
-
-      // Check if we have an active crafting session with player and progressState
-      if (craftingState?.player && craftingState?.progressState) {
-        return {
-          isActive: true,
-          entity: craftingState.player as CraftingEntity,
-          progress: craftingState.progressState as ProgressState,
-          recipe: craftingState.recipe as RecipeItem | undefined,
-          recipeStats: craftingState.recipeStats,
-          inventoryItems: state?.inventory?.items as
-            | InventoryItemLike[]
-            | undefined,
-          consumedPillsThisTurn: Number(craftingState?.consumedPills ?? 0) || 0,
-          trainingMode: !!craftingState?.trainingMode,
-        };
-      }
-
-      // Also check nested paths
-      const gameCrafting = state?.game?.crafting;
-      if (gameCrafting?.player && gameCrafting?.progressState) {
-        return {
-          isActive: true,
-          entity: gameCrafting.player as CraftingEntity,
-          progress: gameCrafting.progressState as ProgressState,
-          recipe: gameCrafting.recipe as RecipeItem | undefined,
-          recipeStats: gameCrafting.recipeStats,
-          inventoryItems: state?.inventory?.items as
-            | InventoryItemLike[]
-            | undefined,
-          consumedPillsThisTurn: Number(gameCrafting?.consumedPills ?? 0) || 0,
-          trainingMode: !!gameCrafting?.trainingMode,
-        };
-      }
-    } catch (e) {
-      // Store access failed
-    }
-  }
-
+function detectVisibleCraftingUi(): boolean {
   const gameRoot = getGameRootElement();
 
-  // Method 2: Check for crafting UI elements in the DOM
   const craftingPanel =
     Array.from(
       gameRoot.querySelectorAll(
@@ -2088,7 +2033,6 @@ function detectCraftingState(): {
     ).find((el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el)) ||
     null;
 
-  // Method 3: Look for specific crafting-related text/elements
   const stabilityElement =
     Array.from(gameRoot.querySelectorAll('[class*="stability"]')).find(
       (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
@@ -2113,30 +2057,118 @@ function detectCraftingState(): {
         el.children.length < 5,
     );
 
-  // Method 4: Check for technique buttons (crafting skills)
-  const techniqueButtons = gameRoot.querySelectorAll('button');
+  const interactiveElements = gameRoot.querySelectorAll('button, [role="button"]');
   let hasCraftingButtons = false;
-  techniqueButtons.forEach((btn) => {
-    if (isElementInCraftBuddyOverlay(btn) || !isElementVisible(btn)) {
+  let visibleButtonCount = 0;
+
+  interactiveElements.forEach((el) => {
+    if (isElementInCraftBuddyOverlay(el) || !isElementVisible(el)) {
       return;
     }
 
-    const text = btn.textContent?.toLowerCase() || '';
+    visibleButtonCount++;
+
+    const htmlElement = el as HTMLElement;
+    const text = (htmlElement.textContent || '').toLowerCase();
+    const classNameRaw = htmlElement.className;
+    const className =
+      typeof classNameRaw === 'string' ? classNameRaw.toLowerCase() : '';
+    const dataTestId = (htmlElement.getAttribute('data-testid') || '').toLowerCase();
+    const ariaLabel = (htmlElement.getAttribute('aria-label') || '').toLowerCase();
+
     if (
       text.includes('fusion') ||
       text.includes('refine') ||
-      text.includes('stabilize')
+      text.includes('stabilize') ||
+      text.includes('support') ||
+      className.includes('technique') ||
+      className.includes('craft') ||
+      dataTestId.includes('technique') ||
+      dataTestId.includes('craft') ||
+      ariaLabel.includes('technique') ||
+      ariaLabel.includes('craft')
     ) {
       hasCraftingButtons = true;
     }
   });
 
-  // Require a strong signal to avoid self-detection from our own overlay.
-  const hasProgressSignals = !!(stabilityElement || completionElement);
-  const isActive =
-    hasProgressSignals || (!!craftingPanel && hasCraftingButtons);
+  // Fallback for icon-only technique buttons where text/class names are unavailable.
+  if (!hasCraftingButtons && craftingPanel && visibleButtonCount >= 6) {
+    hasCraftingButtons = true;
+  }
 
-  return { isActive };
+  const hasProgressSignals = !!(stabilityElement || completionElement);
+
+  // Require interactive crafting controls so result/summary screens don't keep us "active".
+  return hasCraftingButtons && (hasProgressSignals || !!craftingPanel);
+}
+
+/**
+ * Try to extract crafting state from Redux store or DOM.
+ */
+function detectCraftingState(): {
+  isActive: boolean;
+  hasVisibleCraftingUi: boolean;
+  entity?: CraftingEntity;
+  progress?: ProgressState;
+  recipe?: RecipeItem;
+  recipeStats?: any;
+  inventoryItems?: InventoryItemLike[];
+  consumedPillsThisTurn?: number;
+  trainingMode?: boolean;
+} {
+  const hasVisibleCraftingUi = detectVisibleCraftingUi();
+
+  // Method 1: Try to access Redux store - this is the best source
+  if (!cachedStore) {
+    cachedStore = findReduxStore();
+  }
+
+  if (cachedStore) {
+    try {
+      const state = cachedStore.getState();
+      const craftingState = state?.crafting;
+
+      // Check if we have an active crafting session with player and progressState
+      if (craftingState?.player && craftingState?.progressState) {
+        return {
+          isActive: true,
+          hasVisibleCraftingUi,
+          entity: craftingState.player as CraftingEntity,
+          progress: craftingState.progressState as ProgressState,
+          recipe: craftingState.recipe as RecipeItem | undefined,
+          recipeStats: craftingState.recipeStats,
+          inventoryItems: state?.inventory?.items as
+            | InventoryItemLike[]
+            | undefined,
+          consumedPillsThisTurn: Number(craftingState?.consumedPills ?? 0) || 0,
+          trainingMode: !!craftingState?.trainingMode,
+        };
+      }
+
+      // Also check nested paths
+      const gameCrafting = state?.game?.crafting;
+      if (gameCrafting?.player && gameCrafting?.progressState) {
+        return {
+          isActive: true,
+          hasVisibleCraftingUi,
+          entity: gameCrafting.player as CraftingEntity,
+          progress: gameCrafting.progressState as ProgressState,
+          recipe: gameCrafting.recipe as RecipeItem | undefined,
+          recipeStats: gameCrafting.recipeStats,
+          inventoryItems: state?.inventory?.items as
+            | InventoryItemLike[]
+            | undefined,
+          consumedPillsThisTurn: Number(gameCrafting?.consumedPills ?? 0) || 0,
+          trainingMode: !!gameCrafting?.trainingMode,
+        };
+      }
+    } catch (e) {
+      // Store access failed
+    }
+  }
+
+  return { isActive: hasVisibleCraftingUi, hasVisibleCraftingUi };
 }
 
 /**
@@ -2202,6 +2234,7 @@ function parseCraftingValuesFromDOM(): {
 function pollCraftingState(): void {
   const {
     isActive,
+    hasVisibleCraftingUi,
     entity,
     progress,
     recipe,
@@ -2214,10 +2247,25 @@ function pollCraftingState(): void {
   // Only consider crafting truly active if we have actual entity/progress data from Redux.
   // DOM-based detection alone is not reliable (can false-positive on result screens).
   const hasCraftingData = !!(entity && progress);
+  if (hasCraftingData) {
+    if (hasVisibleCraftingUi) {
+      missingVisibleCraftingUiPolls = 0;
+    } else {
+      missingVisibleCraftingUiPolls++;
+    }
+  } else {
+    missingVisibleCraftingUiPolls = 0;
+  }
 
-  if (isActive && hasCraftingData) {
+  const hasReliableCraftingActivity =
+    hasCraftingData &&
+    (hasVisibleCraftingUi ||
+      missingVisibleCraftingUiPolls <
+        MISSING_VISIBLE_CRAFTING_UI_POLLS_BEFORE_END);
+
+  if (hasReliableCraftingActivity) {
     wasCraftingActive = true;
-    if (currentSettings.panelVisible && !isOverlayVisible) {
+    if (hasVisibleCraftingUi && currentSettings.panelVisible && !isOverlayVisible) {
       debugLog('[CraftBuddy] Crafting detected, showing overlay');
       overlayForcedByActiveCraft = true;
       showOverlay();
@@ -2229,7 +2277,7 @@ function pollCraftingState(): void {
   }
 
   // If we have entity and progress from Redux, use them directly
-  if (isActive && entity && progress) {
+  if (hasReliableCraftingActivity && hasVisibleCraftingUi && entity && progress) {
     // CRITICAL: Update target values from recipeStats BEFORE updating recommendation
     // recipeStats contains the authoritative target values (completion, perfection, stability)
     if (recipeStats) {
@@ -2284,7 +2332,7 @@ function pollCraftingState(): void {
   }
 
   // Fallback: If crafting is active but no Redux data, try to update values from DOM
-  if (isActive) {
+  if (isActive && hasVisibleCraftingUi) {
     const domValues = parseCraftingValuesFromDOM();
     if (domValues) {
       // ALWAYS update target values from DOM - these are the live values from the game UI
@@ -3438,8 +3486,12 @@ function processCraftingState(craftingState: any): void {
       `[CraftBuddy] Redux update: Completion=${progress.completion}, Perfection=${progress.perfection}, Stability=${progress.stability}${needsInitialization ? ' (initial load)' : ''}`,
     );
 
-    // Ensure panel is visible when the user has it enabled.
-    if (currentSettings.panelVisible && !isOverlayVisible) {
+    // Ensure panel is visible when the user has it enabled and crafting UI is on-screen.
+    if (
+      currentSettings.panelVisible &&
+      !isOverlayVisible &&
+      detectVisibleCraftingUi()
+    ) {
       overlayForcedByActiveCraft = true;
       showOverlay();
     }
