@@ -1,26 +1,29 @@
 ---
-layout: default
-title: Home
-nav_order: 1
-description: 'AFNM Modding Documentation'
-permalink: /
+title: Docs Index
+status: active
+authoritative: true
+owner: craftbuddy-maintainers
+last_verified: 2026-02-07
+source_of_truth: docs/README.md, docs/project/*
+review_cycle_days: 30
+related_files:
+  - docs/README.md
+  - docs/project/START_HERE_FOR_AGENTS.md
 ---
 
-# AFNM Modding Documentation
+# Docs Index
 
-Welcome to the documentation for modding Ascend from Nine Mountains. This site provides comprehensive guides and references for modding the game.
+## Primary entrypoints
 
-## Quick Start
+- `docs/README.md` - overview of documentation structure
+- `docs/project/START_HERE_FOR_AGENTS.md` - fastest technical onboarding path
 
-- [Project Setup](guides/project-setup) - Set up your development environment and start your first mod
-- [Guides](guides/) - Step-by-step modding tutorials
-- [Core Concepts](concepts/) - Understanding game systems
+## Documentation sections
 
-## What You'll Find Here
+- `docs/project/` - authoritative implementation docs
+- `docs/dev-requests/` - game developer API exposure requests + status
+- `docs/history/` - historical snapshots (non-authoritative)
+- `docs/reference/` - curated AFNM reference subset (reference-only)
+- `archive/` - full imported snapshots/deprecated docs (traceability only)
 
-This documentation covers everything you need to know about creating mods for Ascend from Nine Mountains, including:
-
-- Setting up your modding environment
-- Understanding game mechanics and data structures
-- Creating custom content like items, characters, enemies, and events
-- Advanced modding techniques and best practices
+Use `docs/project/*` as source of truth for implementation work.

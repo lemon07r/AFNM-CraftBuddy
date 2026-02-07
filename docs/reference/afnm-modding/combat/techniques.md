@@ -446,9 +446,9 @@ hits: {
 
 ## Triggered Effects
 
-Certain effects can be configured to only trigger if the main effects (those in the `effects` array) emit a specific trigger. This can hook off any trigger that can be produced (see the [Triggers](triggers) docs for more details).
+Certain effects can be configured to only trigger if the main effects (those in the `effects` array) emit a specific trigger.
 
-Note, triggered effects are not supported by automatic tooltip generation so require a custom tooltp to be written. See [Tooltips](tooltips) for details.
+Note, triggered effects are not supported by automatic tooltip generation so require a custom tooltip definition.
 
 ### Extra effect when healing to full
 

@@ -70,6 +70,10 @@ interface RecommendationPanelProps {
   currentPerfection?: number;
   targetCompletion?: number;
   targetPerfection?: number;
+  /** Optional hard completion cap from game mechanics */
+  maxCompletionCap?: number;
+  /** Optional hard perfection cap from game mechanics */
+  maxPerfectionCap?: number;
   currentStability?: number;
   /** Current max stability (decreases each turn) */
   currentMaxStability?: number;
@@ -483,6 +487,8 @@ export function RecommendationPanel({
   currentPerfection = 0,
   targetCompletion = 0,
   targetPerfection = 0,
+  maxCompletionCap,
+  maxPerfectionCap,
   currentStability = 0,
   currentMaxStability = 0,
   targetStability = 0,
@@ -729,6 +735,11 @@ export function RecommendationPanel({
           <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
             Completion: {formatProgress(currentCompletion, targetCompletion)} | Perfection: {formatProgress(currentPerfection, targetPerfection)}
           </Typography>
+          {(maxCompletionCap !== undefined || maxPerfectionCap !== undefined) && (
+            <Typography variant="body2" sx={{ color: 'rgba(180, 220, 255, 0.7)' }}>
+              Caps: {formatGain(maxCompletionCap ?? targetCompletion)} completion / {formatGain(maxPerfectionCap ?? targetPerfection)} perfection
+            </Typography>
+          )}
           {targetStability > 0 && (
             <Typography variant="body2" sx={{ color: currentStability < 20 ? '#FFA500' : 'rgba(255, 255, 255, 0.6)' }}>
               Stability: {formatProgress(currentStability, currentMaxStability > 0 ? currentMaxStability : targetStability)}

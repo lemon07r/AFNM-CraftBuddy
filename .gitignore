@@ -61,4 +61,5 @@ coverage/
 .junie/
 .output.txt
 
-nonMinifiedCode/
+old-nonMinifiedCode/
+CraftingCode/

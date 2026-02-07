@@ -24,7 +24,7 @@ describe('CraftingState', () => {
       const state = new CraftingState({
         qi: 100,
         stability: 50,
-        maxStability: 60,
+        initialMaxStability: 60,
         completion: 30,
         perfection: 20,
         controlBuffTurns: 2,
@@ -76,6 +76,36 @@ describe('CraftingState', () => {
       expect(modified.qi).toBe(80);
       expect(modified.stability).toBe(50); // Unchanged
       expect(modified.completion).toBe(25);
+    });
+
+    it('should clone tracked buff entries passed to constructor', () => {
+      const sourceBuff = { name: 'focus', stacks: 2 };
+      const state = new CraftingState({
+        buffs: new Map([['focus', sourceBuff]]),
+      });
+
+      sourceBuff.stacks = 99;
+
+      expect(state.getBuffStacks('focus')).toBe(2);
+      expect(state.getBuff('focus')).not.toBe(sourceBuff);
+    });
+
+    it('should keep internal tracked buff entries immutable', () => {
+      const state = new CraftingState({
+        buffs: new Map([['focus', { name: 'focus', stacks: 2 }]]),
+      });
+
+      const tracked = state.getBuff('focus') as any;
+      expect(tracked).toBeDefined();
+      expect(Object.isFrozen(tracked)).toBe(true);
+
+      try {
+        tracked.stacks = 10;
+      } catch (_) {
+        // Assignment may throw in strict mode for frozen objects.
+      }
+
+      expect(state.getBuffStacks('focus')).toBe(2);
     });
   });
 
@@ -261,7 +291,7 @@ describe('CraftingState', () => {
       const state = new CraftingState({
         qi: 100,
         stability: 50,
-        maxStability: 60,
+        initialMaxStability: 60,
         controlBuffTurns: 2,
         intensityBuffTurns: 0,
         toxicity: 10,
@@ -280,11 +310,63 @@ describe('CraftingState', () => {
       expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
     });
 
-    it('should include maxStability in cache key', () => {
-      const state1 = new CraftingState({ qi: 100, stability: 50, maxStability: 60 });
-      const state2 = new CraftingState({ qi: 100, stability: 50, maxStability: 55 });
-      
+    it('should include stabilityPenalty in cache key', () => {
+      // Cache key uses stabilityPenalty (not maxStability directly)
+      // maxStability is derived from initialMaxStability - stabilityPenalty
+      const state1 = new CraftingState({ qi: 100, stability: 50, initialMaxStability: 60, stabilityPenalty: 0 });
+      const state2 = new CraftingState({ qi: 100, stability: 50, initialMaxStability: 60, stabilityPenalty: 5 });
+
       expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
+    });
+
+    it('should include initialMaxStability in cache key', () => {
+      const state1 = new CraftingState({
+        qi: 100,
+        stability: 50,
+        initialMaxStability: 60,
+        stabilityPenalty: 5,
+      });
+      const state2 = new CraftingState({
+        qi: 100,
+        stability: 50,
+        initialMaxStability: 80,
+        stabilityPenalty: 5,
+      });
+
+      expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
+    });
+
+    it('should include harmony and harmonyData in cache key', () => {
+      const base = new CraftingState({
+        qi: 100,
+        stability: 50,
+        harmony: 10,
+        harmonyData: {
+          forgeWorks: { heat: 4 },
+          recommendedTechniqueTypes: ['fusion'],
+        },
+      });
+      const changedHarmony = new CraftingState({
+        qi: 100,
+        stability: 50,
+        harmony: 20,
+        harmonyData: {
+          forgeWorks: { heat: 4 },
+          recommendedTechniqueTypes: ['fusion'],
+        },
+      });
+      const changedData = new CraftingState({
+        qi: 100,
+        stability: 50,
+        harmony: 10,
+        harmonyData: {
+          forgeWorks: { heat: 5 },
+          recommendedTechniqueTypes: ['fusion'],
+        },
+      });
+
+      expect(base.getCacheKey()).not.toBe(changedHarmony.getCacheKey());
+      expect(base.getCacheKey()).not.toBe(changedData.getCacheKey());
     });
 
     it('should include cooldowns in cache key', () => {

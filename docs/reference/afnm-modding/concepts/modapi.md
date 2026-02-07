@@ -204,4 +204,4 @@ const myTreasure: TreasureItem = {
 window.modAPI.actions.addItem(myTreasure);
 ```
 
-For docs on the more advanced features of the Mod API, then see the **[Advanced Mods](../advanced-mods/)** page.
+For broader non-crafting ModAPI examples, consult the archived full snapshot at `archive/reference/afnm-modding-full/advanced-mods/`.

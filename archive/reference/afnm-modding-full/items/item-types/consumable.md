@@ -45,4 +45,4 @@ export const formationSlip: CombatItem = {
 };
 ```
 
-See [TechniqueEffect documentation](../combat/techniques) for available effect types.
+See [TechniqueEffect documentation](../../combat/techniques) for available effect types.

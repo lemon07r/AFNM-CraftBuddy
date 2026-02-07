@@ -48,4 +48,4 @@ export const toxicConcoction: ConcoctionItem = {
 };
 ```
 
-See [TechniqueEffect documentation](../combat/techniques) for available effect types.
+See [TechniqueEffect documentation](../../combat/techniques) for available effect types.

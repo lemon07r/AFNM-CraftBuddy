@@ -34,6 +34,14 @@ interface SettingsPanelProps {
 export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [settings, setSettings] = useState<CraftBuddySettings>(getSettings());
+  const [draftSettings, setDraftSettings] = useState<CraftBuddySettings>(settings);
+
+  type SliderSettingKey =
+    | 'lookaheadDepth'
+    | 'searchTimeBudgetMs'
+    | 'searchMaxNodes'
+    | 'searchBeamWidth'
+    | 'maxAlternatives';
 
   const handleSettingChange = <K extends keyof CraftBuddySettings>(
     key: K,
@@ -41,12 +49,34 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
   ) => {
     const newSettings = saveSettings({ [key]: value });
     setSettings(newSettings);
+    setDraftSettings(newSettings);
     onSettingsChange?.(newSettings);
+  };
+
+  const handleSliderDraftChange = <K extends SliderSettingKey>(
+    key: K,
+    value: number
+  ) => {
+    setDraftSettings((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleSliderCommit = <K extends SliderSettingKey>(
+    key: K,
+    value: number
+  ) => {
+    if (settings[key] === value) {
+      return;
+    }
+    handleSettingChange(key, value as CraftBuddySettings[K]);
   };
 
   const handleReset = () => {
     const newSettings = resetSettings();
     setSettings(newSettings);
+    setDraftSettings(newSettings);
     onSettingsChange?.(newSettings);
   };
 
@@ -92,11 +122,12 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
           {/* Lookahead Depth */}
           <Box sx={{ mb: 2 }}>
             <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}>
-              Lookahead Depth: {settings.lookaheadDepth}
+              Lookahead Depth: {draftSettings.lookaheadDepth}
             </Typography>
             <Slider
-              value={settings.lookaheadDepth}
-              onChange={(_, value) => handleSettingChange('lookaheadDepth', value as number)}
+              value={draftSettings.lookaheadDepth}
+              onChange={(_, value) => handleSliderDraftChange('lookaheadDepth', value as number)}
+              onChangeCommitted={(_, value) => handleSliderCommit('lookaheadDepth', value as number)}
               min={1}
               max={96}
               step={1}
@@ -113,6 +144,49 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
             <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', display: 'block', mt: 0.5 }}>
               Tip: For very long crafts (e.g., 60-90 rounds), try 64 or 96 with a higher time budget and max nodes.
             </Typography>
+          </Box>
+
+          {/* Search Budget */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}>
+              Search Time Budget: {draftSettings.searchTimeBudgetMs}ms
+            </Typography>
+            <Slider
+              value={draftSettings.searchTimeBudgetMs}
+              onChange={(_, value) => handleSliderDraftChange('searchTimeBudgetMs', value as number)}
+              onChangeCommitted={(_, value) => handleSliderCommit('searchTimeBudgetMs', value as number)}
+              min={10}
+              max={500}
+              step={10}
+              size="small"
+              sx={{ color: '#FFD700' }}
+            />
+            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5, mt: 1 }}>
+              Search Max Nodes: {draftSettings.searchMaxNodes.toLocaleString()}
+            </Typography>
+            <Slider
+              value={draftSettings.searchMaxNodes}
+              onChange={(_, value) => handleSliderDraftChange('searchMaxNodes', value as number)}
+              onChangeCommitted={(_, value) => handleSliderCommit('searchMaxNodes', value as number)}
+              min={1000}
+              max={100000}
+              step={1000}
+              size="small"
+              sx={{ color: '#FFD700' }}
+            />
+            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5, mt: 1 }}>
+              Search Beam Width: {draftSettings.searchBeamWidth}
+            </Typography>
+            <Slider
+              value={draftSettings.searchBeamWidth}
+              onChange={(_, value) => handleSliderDraftChange('searchBeamWidth', value as number)}
+              onChangeCommitted={(_, value) => handleSliderCommit('searchBeamWidth', value as number)}
+              min={3}
+              max={15}
+              step={1}
+              size="small"
+              sx={{ color: '#FFD700' }}
+            />
           </Box>
 
           <Divider sx={{ my: 1.5, borderColor: 'rgba(100, 100, 100, 0.5)' }} />
@@ -177,11 +251,12 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
           {/* Max Alternatives */}
           <Box sx={{ mt: 1.5 }}>
             <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}>
-              Max Alternatives: {settings.maxAlternatives}
+              Max Alternatives: {draftSettings.maxAlternatives}
             </Typography>
             <Slider
-              value={settings.maxAlternatives}
-              onChange={(_, value) => handleSettingChange('maxAlternatives', value as number)}
+              value={draftSettings.maxAlternatives}
+              onChange={(_, value) => handleSliderDraftChange('maxAlternatives', value as number)}
+              onChangeCommitted={(_, value) => handleSliderCommit('maxAlternatives', value as number)}
               min={0}
               max={5}
               step={1}

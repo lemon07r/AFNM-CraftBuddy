@@ -1,3 +1,18 @@
+---
+title: Historical AFNM Mod Guide
+status: historical
+authoritative: false
+owner: craftbuddy-maintainers
+last_verified: 2026-02-07
+source_of_truth: historical snapshot from branch workflow
+review_cycle_days: 365
+related_files:
+  - docs/project/START_HERE_FOR_AGENTS.md
+  - docs/history/README.md
+---
+
+> Historical snapshot. Do not treat this file as authoritative current-state documentation.
+
 # AFNM Mod Guide
 
 ## Quick Overview
