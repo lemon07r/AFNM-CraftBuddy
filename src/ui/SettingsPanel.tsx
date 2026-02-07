@@ -1,6 +1,6 @@
 /**
  * CraftBuddy - Settings Panel UI Component
- * 
+ *
  * Provides an in-game UI for configuring optimizer settings.
  */
 
@@ -34,7 +34,8 @@ interface SettingsPanelProps {
 export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [settings, setSettings] = useState<CraftBuddySettings>(getSettings());
-  const [draftSettings, setDraftSettings] = useState<CraftBuddySettings>(settings);
+  const [draftSettings, setDraftSettings] =
+    useState<CraftBuddySettings>(settings);
 
   type SliderSettingKey =
     | 'lookaheadDepth'
@@ -45,7 +46,7 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
 
   const handleSettingChange = <K extends keyof CraftBuddySettings>(
     key: K,
-    value: CraftBuddySettings[K]
+    value: CraftBuddySettings[K],
   ) => {
     const newSettings = saveSettings({ [key]: value });
     setSettings(newSettings);
@@ -55,7 +56,7 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
 
   const handleSliderDraftChange = <K extends SliderSettingKey>(
     key: K,
-    value: number
+    value: number,
   ) => {
     setDraftSettings((prev) => ({
       ...prev,
@@ -65,7 +66,7 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
 
   const handleSliderCommit = <K extends SliderSettingKey>(
     key: K,
-    value: number
+    value: number,
   ) => {
     if (settings[key] === value) {
       return;
@@ -101,7 +102,11 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
           height: 28,
         }}
       >
-        {isOpen ? <CloseIcon fontSize="small" /> : <SettingsIcon fontSize="small" />}
+        {isOpen ? (
+          <CloseIcon fontSize="small" />
+        ) : (
+          <SettingsIcon fontSize="small" />
+        )}
       </IconButton>
 
       {/* Settings panel */}
@@ -115,19 +120,29 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
             borderRadius: 2,
           }}
         >
-          <Typography variant="subtitle1" sx={{ color: '#FFD700', mb: 1.5, fontWeight: 'bold' }}>
-            ⚙️ Settings
+          <Typography
+            variant="subtitle1"
+            sx={{ color: '#FFD700', mb: 1.5, fontWeight: 'bold' }}
+          >
+            Settings
           </Typography>
 
           {/* Lookahead Depth */}
           <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}
+            >
               Lookahead Depth: {draftSettings.lookaheadDepth}
             </Typography>
             <Slider
               value={draftSettings.lookaheadDepth}
-              onChange={(_, value) => handleSliderDraftChange('lookaheadDepth', value as number)}
-              onChangeCommitted={(_, value) => handleSliderCommit('lookaheadDepth', value as number)}
+              onChange={(_, value) =>
+                handleSliderDraftChange('lookaheadDepth', value as number)
+              }
+              onChangeCommitted={(_, value) =>
+                handleSliderCommit('lookaheadDepth', value as number)
+              }
               min={1}
               max={96}
               step={1}
@@ -138,49 +153,82 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
                 '& .MuiSlider-markLabel': { color: 'rgba(255, 255, 255, 0.5)' },
               }}
             />
-            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)' }}>
-              Default: {DEFAULT_SETTINGS.lookaheadDepth}. Higher values can cause lag on slower machines.
+            <Typography
+              variant="caption"
+              sx={{ color: 'rgba(255, 255, 255, 0.4)' }}
+            >
+              Default: {DEFAULT_SETTINGS.lookaheadDepth}. Higher values can
+              cause lag on slower machines.
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', display: 'block', mt: 0.5 }}>
-              Tip: For very long crafts (e.g., 60-90 rounds), try 64 or 96 with a higher time budget and max nodes.
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'rgba(255, 255, 255, 0.4)',
+                display: 'block',
+                mt: 0.5,
+              }}
+            >
+              Tip: For very long crafts (e.g., 60-90 rounds), try 64 or 96 with
+              a higher time budget and max nodes.
             </Typography>
           </Box>
 
           {/* Search Budget */}
           <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}
+            >
               Search Time Budget: {draftSettings.searchTimeBudgetMs}ms
             </Typography>
             <Slider
               value={draftSettings.searchTimeBudgetMs}
-              onChange={(_, value) => handleSliderDraftChange('searchTimeBudgetMs', value as number)}
-              onChangeCommitted={(_, value) => handleSliderCommit('searchTimeBudgetMs', value as number)}
+              onChange={(_, value) =>
+                handleSliderDraftChange('searchTimeBudgetMs', value as number)
+              }
+              onChangeCommitted={(_, value) =>
+                handleSliderCommit('searchTimeBudgetMs', value as number)
+              }
               min={10}
               max={500}
               step={10}
               size="small"
               sx={{ color: '#FFD700' }}
             />
-            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5, mt: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5, mt: 1 }}
+            >
               Search Max Nodes: {draftSettings.searchMaxNodes.toLocaleString()}
             </Typography>
             <Slider
               value={draftSettings.searchMaxNodes}
-              onChange={(_, value) => handleSliderDraftChange('searchMaxNodes', value as number)}
-              onChangeCommitted={(_, value) => handleSliderCommit('searchMaxNodes', value as number)}
+              onChange={(_, value) =>
+                handleSliderDraftChange('searchMaxNodes', value as number)
+              }
+              onChangeCommitted={(_, value) =>
+                handleSliderCommit('searchMaxNodes', value as number)
+              }
               min={1000}
               max={100000}
               step={1000}
               size="small"
               sx={{ color: '#FFD700' }}
             />
-            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5, mt: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5, mt: 1 }}
+            >
               Search Beam Width: {draftSettings.searchBeamWidth}
             </Typography>
             <Slider
               value={draftSettings.searchBeamWidth}
-              onChange={(_, value) => handleSliderDraftChange('searchBeamWidth', value as number)}
-              onChangeCommitted={(_, value) => handleSliderCommit('searchBeamWidth', value as number)}
+              onChange={(_, value) =>
+                handleSliderDraftChange('searchBeamWidth', value as number)
+              }
+              onChangeCommitted={(_, value) =>
+                handleSliderCommit('searchBeamWidth', value as number)
+              }
               min={3}
               max={15}
               step={1}
@@ -192,7 +240,10 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
           <Divider sx={{ my: 1.5, borderColor: 'rgba(100, 100, 100, 0.5)' }} />
 
           {/* Display Options */}
-          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)', mb: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{ color: 'rgba(255, 255, 255, 0.6)', mb: 1 }}
+          >
             Display Options
           </Typography>
 
@@ -200,12 +251,23 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
             control={
               <Switch
                 checked={settings.compactMode}
-                onChange={(e) => handleSettingChange('compactMode', e.target.checked)}
+                onChange={(e) =>
+                  handleSettingChange('compactMode', e.target.checked)
+                }
                 size="small"
-                sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFD700' } }}
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFD700' },
+                }}
               />
             }
-            label={<Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>Compact Mode</Typography>}
+            label={
+              <Typography
+                variant="body2"
+                sx={{ color: 'rgba(255, 255, 255, 0.8)' }}
+              >
+                Compact Mode
+              </Typography>
+            }
             sx={{ mb: 0.5 }}
           />
 
@@ -213,12 +275,23 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
             control={
               <Switch
                 checked={settings.showOptimalRotation}
-                onChange={(e) => handleSettingChange('showOptimalRotation', e.target.checked)}
+                onChange={(e) =>
+                  handleSettingChange('showOptimalRotation', e.target.checked)
+                }
                 size="small"
-                sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFD700' } }}
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFD700' },
+                }}
               />
             }
-            label={<Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>Show Rotation</Typography>}
+            label={
+              <Typography
+                variant="body2"
+                sx={{ color: 'rgba(255, 255, 255, 0.8)' }}
+              >
+                Show Rotation
+              </Typography>
+            }
             sx={{ mb: 0.5 }}
           />
 
@@ -226,12 +299,26 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
             control={
               <Switch
                 checked={settings.showExpectedFinalState}
-                onChange={(e) => handleSettingChange('showExpectedFinalState', e.target.checked)}
+                onChange={(e) =>
+                  handleSettingChange(
+                    'showExpectedFinalState',
+                    e.target.checked,
+                  )
+                }
                 size="small"
-                sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFD700' } }}
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFD700' },
+                }}
               />
             }
-            label={<Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>Show Final State</Typography>}
+            label={
+              <Typography
+                variant="body2"
+                sx={{ color: 'rgba(255, 255, 255, 0.8)' }}
+              >
+                Show Final State
+              </Typography>
+            }
             sx={{ mb: 0.5 }}
           />
 
@@ -239,24 +326,45 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
             control={
               <Switch
                 checked={settings.showForecastedConditions}
-                onChange={(e) => handleSettingChange('showForecastedConditions', e.target.checked)}
+                onChange={(e) =>
+                  handleSettingChange(
+                    'showForecastedConditions',
+                    e.target.checked,
+                  )
+                }
                 size="small"
-                sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFD700' } }}
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFD700' },
+                }}
               />
             }
-            label={<Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>Show Conditions</Typography>}
+            label={
+              <Typography
+                variant="body2"
+                sx={{ color: 'rgba(255, 255, 255, 0.8)' }}
+              >
+                Show Conditions
+              </Typography>
+            }
             sx={{ mb: 0.5 }}
           />
 
           {/* Max Alternatives */}
           <Box sx={{ mt: 1.5 }}>
-            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}
+            >
               Max Alternatives: {draftSettings.maxAlternatives}
             </Typography>
             <Slider
               value={draftSettings.maxAlternatives}
-              onChange={(_, value) => handleSliderDraftChange('maxAlternatives', value as number)}
-              onChangeCommitted={(_, value) => handleSliderCommit('maxAlternatives', value as number)}
+              onChange={(_, value) =>
+                handleSliderDraftChange('maxAlternatives', value as number)
+              }
+              onChangeCommitted={(_, value) =>
+                handleSliderCommit('maxAlternatives', value as number)
+              }
               min={0}
               max={5}
               step={1}
@@ -272,13 +380,22 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
           <Divider sx={{ my: 1.5, borderColor: 'rgba(100, 100, 100, 0.5)' }} />
 
           {/* Keyboard Shortcuts Info */}
-          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)', mb: 0.5 }}>
+          <Typography
+            variant="body2"
+            sx={{ color: 'rgba(255, 255, 255, 0.6)', mb: 0.5 }}
+          >
             Keyboard Shortcuts
           </Typography>
-          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{ color: 'rgba(255, 255, 255, 0.4)', display: 'block' }}
+          >
             Ctrl+Shift+C - Toggle panel visibility
           </Typography>
-          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{ color: 'rgba(255, 255, 255, 0.4)', display: 'block' }}
+          >
             Ctrl+Shift+M - Toggle compact mode
           </Typography>
 

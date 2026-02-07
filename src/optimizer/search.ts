@@ -153,7 +153,7 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
 function getAdaptiveBeamWidth(
   baseBeamWidth: number,
   remainingDepth: number,
-  totalDepth: number
+  totalDepth: number,
 ): number {
   if (totalDepth <= 6) {
     // Short crafts: use full beam
@@ -172,7 +172,9 @@ function getAdaptiveBeamWidth(
   }
 }
 
-function normalizeConditionType(condition: string | undefined): CraftingConditionType {
+function normalizeConditionType(
+  condition: string | undefined,
+): CraftingConditionType {
   if (!condition) return 'neutral';
   const c = String(condition).toLowerCase();
   switch (c) {
@@ -212,13 +214,13 @@ export type ConditionTransitionProvider = (
   currentCondition: CraftingConditionType,
   nextConditions: CraftingConditionType[],
   harmony: number,
-  cfg: SearchConfig
+  cfg: SearchConfig,
 ) => ConditionTransition[];
 
 let activeConditionTransitionProvider: ConditionTransitionProvider | undefined;
 
 export function setConditionTransitionProvider(
-  provider: ConditionTransitionProvider | undefined
+  provider: ConditionTransitionProvider | undefined,
 ): void {
   activeConditionTransitionProvider = provider;
 }
@@ -229,16 +231,22 @@ function clampProbability(value: number): number {
 }
 
 function normalizeConditionDistribution(
-  entries: ConditionDistributionEntry[]
+  entries: ConditionDistributionEntry[],
 ): ConditionDistributionEntry[] {
   const merged = new Map<CraftingConditionType, number>();
   for (const entry of entries) {
     if (!entry?.condition) continue;
     const probability = clampProbability(entry.probability);
     if (probability <= 0) continue;
-    merged.set(entry.condition, (merged.get(entry.condition) || 0) + probability);
+    merged.set(
+      entry.condition,
+      (merged.get(entry.condition) || 0) + probability,
+    );
   }
-  const total = Array.from(merged.values()).reduce((sum, value) => sum + value, 0);
+  const total = Array.from(merged.values()).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
   if (total <= 0) {
     return [{ condition: 'neutral', probability: 1 }];
   }
@@ -253,7 +261,7 @@ function normalizeConditionDistribution(
 function getGeneratedConditionDistribution(
   currentCondition: CraftingConditionType,
   nextConditions: CraftingConditionType[],
-  harmony: number
+  harmony: number,
 ): ConditionDistributionEntry[] {
   const current = normalizeConditionType(currentCondition);
   const queue = nextConditions.map(normalizeConditionType);
@@ -281,7 +289,10 @@ function getGeneratedConditionDistribution(
   }
 
   let changeProbability = 0;
-  if (current === 'neutral' && queue.every((condition) => condition === 'neutral')) {
+  if (
+    current === 'neutral' &&
+    queue.every((condition) => condition === 'neutral')
+  ) {
     changeProbability = 1;
   } else {
     let neutralCount = 0;
@@ -293,7 +304,7 @@ function getGeneratedConditionDistribution(
       }
     }
     changeProbability = clampProbability(
-      neutralCount * (0.15 + 0.15 * Math.max(negativeDelta, positiveDelta))
+      neutralCount * (0.15 + 0.15 * Math.max(negativeDelta, positiveDelta)),
     );
   }
 
@@ -301,13 +312,16 @@ function getGeneratedConditionDistribution(
   return normalizeConditionDistribution([
     { condition: 'neutral', probability: 1 - changeProbability },
     { condition: 'positive', probability: changeProbability * positiveChance },
-    { condition: 'negative', probability: changeProbability * (1 - positiveChance) },
+    {
+      condition: 'negative',
+      probability: changeProbability * (1 - positiveChance),
+    },
   ]);
 }
 
 function pickBranchConditionDistribution(
   distribution: ConditionDistributionEntry[],
-  cfg: SearchConfig
+  cfg: SearchConfig,
 ): ConditionDistributionEntry[] {
   if (!cfg.enableConditionBranchingAfterForecast) {
     const first = distribution[0] || { condition: 'neutral', probability: 1 };
@@ -315,17 +329,18 @@ function pickBranchConditionDistribution(
   }
 
   const keptByProbability = distribution.filter(
-    (entry) => entry.probability >= cfg.conditionBranchMinProbability
+    (entry) => entry.probability >= cfg.conditionBranchMinProbability,
   );
-  const limited = (keptByProbability.length > 0 ? keptByProbability : distribution).slice(
-    0,
-    Math.max(1, Math.floor(cfg.conditionBranchLimit))
-  );
+  const limited = (
+    keptByProbability.length > 0 ? keptByProbability : distribution
+  ).slice(0, Math.max(1, Math.floor(cfg.conditionBranchLimit)));
 
   return normalizeConditionDistribution(limited);
 }
 
-function getMostLikelyCondition(distribution: ConditionDistributionEntry[]): CraftingConditionType {
+function getMostLikelyCondition(
+  distribution: ConditionDistributionEntry[],
+): CraftingConditionType {
   return (distribution[0]?.condition || 'neutral') as CraftingConditionType;
 }
 
@@ -333,7 +348,7 @@ function getConditionTransitions(
   currentCondition: CraftingConditionType,
   nextConditions: CraftingConditionType[],
   harmony: number,
-  cfg: SearchConfig
+  cfg: SearchConfig,
 ): ConditionTransition[] {
   const queue = nextConditions.map(normalizeConditionType);
   if (queue.length > 0) {
@@ -342,9 +357,12 @@ function getConditionTransitions(
     const appendedDistribution = getGeneratedConditionDistribution(
       nextCondition,
       shiftedQueue,
-      harmony
+      harmony,
     );
-    const appendedBranches = pickBranchConditionDistribution(appendedDistribution, cfg);
+    const appendedBranches = pickBranchConditionDistribution(
+      appendedDistribution,
+      cfg,
+    );
     return appendedBranches.map((entry) => ({
       nextCondition,
       nextQueue: [...shiftedQueue, entry.condition],
@@ -352,10 +370,21 @@ function getConditionTransitions(
     }));
   }
 
-  const generatedDistribution = getGeneratedConditionDistribution(currentCondition, queue, harmony);
-  const branchedDistribution = pickBranchConditionDistribution(generatedDistribution, cfg);
+  const generatedDistribution = getGeneratedConditionDistribution(
+    currentCondition,
+    queue,
+    harmony,
+  );
+  const branchedDistribution = pickBranchConditionDistribution(
+    generatedDistribution,
+    cfg,
+  );
   return branchedDistribution.map((entry) => {
-    const appendedDistribution = getGeneratedConditionDistribution(entry.condition, [], harmony);
+    const appendedDistribution = getGeneratedConditionDistribution(
+      entry.condition,
+      [],
+      harmony,
+    );
     const appendedCondition = getMostLikelyCondition(appendedDistribution);
     return {
       nextCondition: entry.condition,
@@ -369,7 +398,7 @@ function getConditionTransitionsWithProvider(
   currentCondition: CraftingConditionType,
   nextConditions: CraftingConditionType[],
   harmony: number,
-  cfg: SearchConfig
+  cfg: SearchConfig,
 ): ConditionTransition[] {
   if (activeConditionTransitionProvider) {
     try {
@@ -377,7 +406,7 @@ function getConditionTransitionsWithProvider(
         currentCondition,
         nextConditions,
         harmony,
-        cfg
+        cfg,
       );
       if (Array.isArray(provided) && provided.length > 0) {
         const normalized = provided
@@ -389,7 +418,10 @@ function getConditionTransitionsWithProvider(
             probability: clampProbability(entry?.probability ?? 0),
           }))
           .filter((entry) => entry.probability > 0);
-        const total = normalized.reduce((sum, entry) => sum + entry.probability, 0);
+        const total = normalized.reduce(
+          (sum, entry) => sum + entry.probability,
+          0,
+        );
         if (total > 0) {
           return normalized.map((entry) => ({
             ...entry,
@@ -398,17 +430,25 @@ function getConditionTransitionsWithProvider(
         }
       }
     } catch (error) {
-      console.warn('[CraftBuddy] Condition transition provider failed, using local fallback:', error);
+      console.warn(
+        '[CraftBuddy] Condition transition provider failed, using local fallback:',
+        error,
+      );
     }
   }
-  return getConditionTransitions(currentCondition, nextConditions, harmony, cfg);
+  return getConditionTransitions(
+    currentCondition,
+    nextConditions,
+    harmony,
+    cfg,
+  );
 }
 
 export function normalizeForecastConditionQueue(
   currentConditionType: CraftingConditionType | undefined,
   forecastedConditionTypes: CraftingConditionType[],
   harmony: number,
-  visibleQueueLength: number = VISIBLE_CONDITION_QUEUE_LENGTH
+  visibleQueueLength: number = VISIBLE_CONDITION_QUEUE_LENGTH,
 ): CraftingConditionType[] {
   const targetLength = Math.max(0, Math.floor(visibleQueueLength));
   const normalizedCurrent = normalizeConditionType(currentConditionType);
@@ -417,7 +457,11 @@ export function normalizeForecastConditionQueue(
     .slice(0, targetLength);
 
   while (queue.length < targetLength) {
-    const distribution = getGeneratedConditionDistribution(normalizedCurrent, queue, harmony);
+    const distribution = getGeneratedConditionDistribution(
+      normalizedCurrent,
+      queue,
+      harmony,
+    );
     queue.push(getMostLikelyCondition(distribution));
   }
 
@@ -434,10 +478,10 @@ function actionConsumesTurn(skill: SkillDefinition): boolean {
 /**
  * Bucket a progress value for cache key normalization.
  * Large numbers are grouped into buckets to improve cache hit rates.
- * 
+ *
  * For values < 1000: exact value (fine-grained for early game)
  * For values >= 1000: bucketed by progressBucketSize
- * 
+ *
  * This dramatically improves cache efficiency in late game where
  * completion/perfection values can be in the millions.
  */
@@ -459,25 +503,30 @@ function getNormalizedCacheKey(
   remainingDepth: number,
   conditionType: string | undefined,
   nextConditionQueue: CraftingConditionType[],
-  bucketSize: number
+  bucketSize: number,
 ): string {
   // For progress values, we care about:
   // 1. Whether we've met the target (exact match matters)
   // 2. How far we are from the target (bucketed for large values)
   const compMet = state.completion >= targetCompletion;
   const perfMet = state.perfection >= targetPerfection;
-  
+
   // If targets are met, we don't need fine-grained progress tracking
-  const compKey = compMet ? 'MET' : bucketProgress(state.completion, bucketSize);
-  const perfKey = perfMet ? 'MET' : bucketProgress(state.perfection, bucketSize);
-  const queueKey = nextConditionQueue.length > 0 ? nextConditionQueue.join('|') : '-';
+  const compKey = compMet
+    ? 'MET'
+    : bucketProgress(state.completion, bucketSize);
+  const perfKey = perfMet
+    ? 'MET'
+    : bucketProgress(state.perfection, bucketSize);
+  const queueKey =
+    nextConditionQueue.length > 0 ? nextConditionQueue.join('|') : '-';
 
   return `${state.getCacheKey()}:${compKey}:${perfKey}:${remainingDepth}:${conditionType || 'n'}:${queueKey}`;
 }
 
 /**
  * Score a state based on progress toward targets.
- * 
+ *
  * Scoring priorities:
  * 1. Progress toward completion and perfection targets (primary)
  * 2. Large bonus for meeting both targets
@@ -485,13 +534,13 @@ function getNormalizedCacheKey(
  * 4. Penalty for going over targets (wasted resources) - reduced/removed for sublime crafting
  * 5. Resource efficiency bonuses (qi and stability remaining)
  * 6. Penalty for risky states (low stability)
- * 
+ *
  * The scoring is designed to:
  * - Strongly prefer states that meet targets
  * - Value buff setup as investment for future gains
  * - Balance progress with resource conservation
  * - For sublime crafting: encourage exceeding targets (up to multiplier limit)
- * 
+ *
  * @param state - Current crafting state
  * @param targetCompletion - Base target completion value
  * @param targetPerfection - Base target perfection value
@@ -507,7 +556,7 @@ function scoreState(
   targetMultiplier: number = 2.0,
   trainingMode: boolean = false,
   maxCompletionCap?: number,
-  maxPerfectionCap?: number
+  maxPerfectionCap?: number,
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
     // No targets - maximize minimum of both (balanced progress)
@@ -516,48 +565,63 @@ function scoreState(
 
   // For sublime crafting, the effective target is multiplied
   // This allows the optimizer to aim for higher values without penalty
-  const effectiveCompTarget = isSublimeCraft ? targetCompletion * targetMultiplier : targetCompletion;
-  const effectivePerfTarget = isSublimeCraft ? targetPerfection * targetMultiplier : targetPerfection;
-  const effectiveCompGoal = maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-    ? Math.min(effectiveCompTarget, maxCompletionCap)
-    : effectiveCompTarget;
-  const effectivePerfGoal = maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-    ? Math.min(effectivePerfTarget, maxPerfectionCap)
-    : effectivePerfTarget;
+  const effectiveCompTarget = isSublimeCraft
+    ? targetCompletion * targetMultiplier
+    : targetCompletion;
+  const effectivePerfTarget = isSublimeCraft
+    ? targetPerfection * targetMultiplier
+    : targetPerfection;
+  const effectiveCompGoal =
+    maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
+      ? Math.min(effectiveCompTarget, maxCompletionCap)
+      : effectiveCompTarget;
+  const effectivePerfGoal =
+    maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
+      ? Math.min(effectivePerfTarget, maxPerfectionCap)
+      : effectivePerfTarget;
 
   // Calculate progress toward each target as a percentage (0-1)
   // Guard against zero targets (e.g., recipes that only require completion OR perfection)
-  const compProgressPct = effectiveCompGoal > 0 ? Math.min(state.completion / effectiveCompGoal, 1) : 1;
-  const perfProgressPct = effectivePerfGoal > 0 ? Math.min(state.perfection / effectivePerfGoal, 1) : 1;
-  
+  const compProgressPct =
+    effectiveCompGoal > 0
+      ? Math.min(state.completion / effectiveCompGoal, 1)
+      : 1;
+  const perfProgressPct =
+    effectivePerfGoal > 0
+      ? Math.min(state.perfection / effectivePerfGoal, 1)
+      : 1;
+
   // Score based on progress toward targets (primary scoring)
   // Use actual progress values for the base score
-  const compProgress = effectiveCompGoal > 0 ? Math.min(state.completion, effectiveCompGoal) : 0;
-  const perfProgress = effectivePerfGoal > 0 ? Math.min(state.perfection, effectivePerfGoal) : 0;
+  const compProgress =
+    effectiveCompGoal > 0 ? Math.min(state.completion, effectiveCompGoal) : 0;
+  const perfProgress =
+    effectivePerfGoal > 0 ? Math.min(state.perfection, effectivePerfGoal) : 0;
   let score = compProgress + perfProgress;
 
   // Large bonus for meeting both BASE targets - this is the minimum goal
   const baseTargetsMet =
     (targetCompletion <= 0 || state.completion >= targetCompletion) &&
     (targetPerfection <= 0 || state.perfection >= targetPerfection);
-  
+
   // For sublime crafting, also check if we've met the extended targets
-  const sublimeTargetsMet = isSublimeCraft && 
+  const sublimeTargetsMet =
+    isSublimeCraft &&
     (effectiveCompTarget <= 0 || state.completion >= effectiveCompTarget) &&
     (effectivePerfTarget <= 0 || state.perfection >= effectivePerfTarget);
-    
+
   if (sublimeTargetsMet) {
     score += 300; // Even bigger bonus for hitting sublime targets
     score += state.qi * 0.05;
     score += state.stability * 0.05;
   } else if (baseTargetsMet) {
     score += 200; // Significant bonus for achieving the base goal
-    
+
     // Additional bonus for resource efficiency when targets are met
     // Prefer paths that leave more qi and stability for safety margin
-    score += state.qi * 0.05;  // Bonus for remaining qi
-    score += state.stability * 0.05;  // Bonus for remaining stability
-    
+    score += state.qi * 0.05; // Bonus for remaining qi
+    score += state.stability * 0.05; // Bonus for remaining stability
+
     // For sublime crafting, add bonus for progress beyond base targets
     if (isSublimeCraft) {
       const compBeyondBase = Math.max(0, state.completion - targetCompletion);
@@ -570,7 +634,7 @@ function scoreState(
     // Buffs are valuable because they amplify future skill gains
     // The value of buffs decreases as we get closer to targets (less future turns to use them)
     const remainingWorkPct = 1 - (compProgressPct + perfProgressPct) / 2;
-    
+
     if (state.hasControlBuff()) {
       // Control buff helps with perfection - value it more when perfection is needed
       const perfNeedPct = 1 - perfProgressPct;
@@ -581,7 +645,7 @@ function scoreState(
       const compNeedPct = 1 - compProgressPct;
       score += state.intensityBuffTurns * 3 * compNeedPct * remainingWorkPct;
     }
-    
+
     // Small bonus for resource efficiency even when targets not met
     // This helps break ties between similar states
     score += state.qi * 0.01;
@@ -592,25 +656,37 @@ function scoreState(
   // For sublime crafting: no penalty until we exceed the multiplied target
   // For normal crafting: small penalty for overshooting
   if (!isSublimeCraft) {
-    const normalCompLimit = maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-      ? Math.min(targetCompletion, maxCompletionCap)
-      : targetCompletion;
-    const normalPerfLimit = maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-      ? Math.min(targetPerfection, maxPerfectionCap)
-      : targetPerfection;
-    const compOver = normalCompLimit > 0 ? Math.max(0, state.completion - normalCompLimit) : 0;
-    const perfOver = normalPerfLimit > 0 ? Math.max(0, state.perfection - normalPerfLimit) : 0;
+    const normalCompLimit =
+      maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
+        ? Math.min(targetCompletion, maxCompletionCap)
+        : targetCompletion;
+    const normalPerfLimit =
+      maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
+        ? Math.min(targetPerfection, maxPerfectionCap)
+        : targetPerfection;
+    const compOver =
+      normalCompLimit > 0 ? Math.max(0, state.completion - normalCompLimit) : 0;
+    const perfOver =
+      normalPerfLimit > 0 ? Math.max(0, state.perfection - normalPerfLimit) : 0;
     score -= (compOver + perfOver) * 0.3;
   } else {
     // For sublime: only penalize if we exceed the multiplied target
-    const sublimeCompLimit = maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-      ? Math.min(effectiveCompTarget, maxCompletionCap)
-      : effectiveCompTarget;
-    const sublimePerfLimit = maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-      ? Math.min(effectivePerfTarget, maxPerfectionCap)
-      : effectivePerfTarget;
-    const compOver = sublimeCompLimit > 0 ? Math.max(0, state.completion - sublimeCompLimit) : 0;
-    const perfOver = sublimePerfLimit > 0 ? Math.max(0, state.perfection - sublimePerfLimit) : 0;
+    const sublimeCompLimit =
+      maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
+        ? Math.min(effectiveCompTarget, maxCompletionCap)
+        : effectiveCompTarget;
+    const sublimePerfLimit =
+      maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
+        ? Math.min(effectivePerfTarget, maxPerfectionCap)
+        : effectivePerfTarget;
+    const compOver =
+      sublimeCompLimit > 0
+        ? Math.max(0, state.completion - sublimeCompLimit)
+        : 0;
+    const perfOver =
+      sublimePerfLimit > 0
+        ? Math.max(0, state.perfection - sublimePerfLimit)
+        : 0;
     score -= (compOver + perfOver) * 0.3;
   }
 
@@ -628,7 +704,8 @@ function scoreState(
   const stabilityThreshold = trainingMode ? 10 : 25;
   const stabilityPenaltyWeight = trainingMode ? 3 : 10;
   if (state.stability < stabilityThreshold) {
-    const stabilityRisk = (stabilityThreshold - state.stability) / stabilityThreshold; // 0 to 1
+    const stabilityRisk =
+      (stabilityThreshold - state.stability) / stabilityThreshold; // 0 to 1
     score -= stabilityRisk * stabilityRisk * stabilityPenaltyWeight;
   }
 
@@ -656,7 +733,7 @@ function generateReasoning(
   state: CraftingState,
   gains: { completion: number; perfection: number; stability: number },
   targetCompletion: number,
-  targetPerfection: number
+  targetPerfection: number,
 ): string {
   const reasons: string[] = [];
 
@@ -717,7 +794,7 @@ function generateReasoning(
 /**
  * Move ordering heuristic - orders skills to search most promising first.
  * This improves search efficiency by finding good solutions early.
- * 
+ *
  * Priority order:
  * 1. Stabilize skills when stability is low (<= 25)
  * 2. Buff-granting skills when no buff is active
@@ -730,23 +807,23 @@ function orderSkillsForSearch(
   state: CraftingState,
   config: OptimizerConfig,
   targetCompletion: number,
-  targetPerfection: number
+  targetPerfection: number,
 ): SkillDefinition[] {
   const needsCompletion = state.completion < targetCompletion;
   const needsPerfection = state.perfection < targetPerfection;
   const hasControlBuff = state.hasControlBuff();
   const hasIntensityBuff = state.hasIntensityBuff();
   const lowStability = state.stability <= 25;
-  
+
   // Score each skill for ordering (higher = search first)
-  const scored = skills.map(skill => {
+  const scored = skills.map((skill) => {
     let priority = 0;
-    
+
     // Highest priority: stabilize when low
     if (lowStability && skill.type === 'stabilize') {
       priority += 1000;
     }
-    
+
     // High priority: buff-consuming skills when buffs active
     if (skill.isDisciplinedTouch && (hasControlBuff || hasIntensityBuff)) {
       priority += 500;
@@ -754,34 +831,46 @@ function orderSkillsForSearch(
 
     // Item actions can unlock better follow-up turns (pool restore, emergency stability, buff setup).
     if (skill.actionKind === 'item') {
-      const hasImmediateImpact = (skill.effects || []).some(effect =>
-        effect?.kind === 'completion' ||
-        effect?.kind === 'perfection' ||
-        effect?.kind === 'stability' ||
-        effect?.kind === 'pool' ||
-        effect?.kind === 'createBuff'
+      const hasImmediateImpact = (skill.effects || []).some(
+        (effect) =>
+          effect?.kind === 'completion' ||
+          effect?.kind === 'perfection' ||
+          effect?.kind === 'stability' ||
+          effect?.kind === 'pool' ||
+          effect?.kind === 'createBuff',
       );
       if (hasImmediateImpact) {
         priority += 320;
       }
       if (skill.toxicityCost && state.maxToxicity > 0) {
-        const toxicityHeadroom = Math.max(0, state.maxToxicity - state.toxicity);
+        const toxicityHeadroom = Math.max(
+          0,
+          state.maxToxicity - state.toxicity,
+        );
         if (toxicityHeadroom <= skill.toxicityCost * 2) {
           priority -= 200;
         }
       }
     }
-    
+
     // High priority: buff-granting skills when no buff
     if (skill.buffDuration > 0) {
-      if (skill.buffType === BuffType.CONTROL && !hasControlBuff && needsPerfection) {
+      if (
+        skill.buffType === BuffType.CONTROL &&
+        !hasControlBuff &&
+        needsPerfection
+      ) {
         priority += 400;
       }
-      if (skill.buffType === BuffType.INTENSITY && !hasIntensityBuff && needsCompletion) {
+      if (
+        skill.buffType === BuffType.INTENSITY &&
+        !hasIntensityBuff &&
+        needsCompletion
+      ) {
         priority += 400;
       }
     }
-    
+
     // Medium priority: skills that address current needs
     if (needsCompletion && skill.baseCompletionGain > 0) {
       priority += skill.baseCompletionGain * 2;
@@ -789,7 +878,7 @@ function orderSkillsForSearch(
     if (needsPerfection && skill.basePerfectionGain > 0) {
       priority += skill.basePerfectionGain * 2;
     }
-    
+
     // Bonus for using buffs effectively
     if (hasControlBuff && skill.scalesWithControl) {
       priority += 100;
@@ -797,14 +886,14 @@ function orderSkillsForSearch(
     if (hasIntensityBuff && skill.scalesWithIntensity) {
       priority += 100;
     }
-    
+
     return { skill, priority };
   });
-  
+
   // Sort by priority descending
   scored.sort((a, b) => b.priority - a.priority);
-  
-  return scored.map(s => s.skill);
+
+  return scored.map((s) => s.skill);
 }
 
 /**
@@ -818,13 +907,14 @@ export function greedySearch(
   config: OptimizerConfig,
   targetCompletion: number = 0,
   targetPerfection: number = 0,
-  currentConditionType?: CraftingConditionType
+  currentConditionType?: CraftingConditionType,
 ): SearchResult {
   // Extract settings from config
   const isSublime = config.isSublimeCraft || false;
   const targetMult = config.targetMultiplier || 2.0;
   const isTraining = config.trainingMode || false;
-  const normalizedCurrentCondition = normalizeConditionType(currentConditionType);
+  const normalizedCurrentCondition =
+    normalizeConditionType(currentConditionType);
 
   // Check if targets already met
   // For sublime crafting, do NOT terminate at base targets; allow optimizer to push beyond.
@@ -846,18 +936,35 @@ export function greedySearch(
       alternativeSkills: [],
       isTerminal: true,
       targetsMet: false,
-      blockedReasons: getBlockedSkillReasons(state, config, normalizedCurrentCondition),
+      blockedReasons: getBlockedSkillReasons(
+        state,
+        config,
+        normalizedCurrentCondition,
+      ),
     };
   }
 
   // Get condition effects for current condition
-  const conditionEffects = getConditionEffectsForConfig(config, normalizedCurrentCondition);
+  const conditionEffects = getConditionEffectsForConfig(
+    config,
+    normalizedCurrentCondition,
+  );
 
-  const availableSkills = getAvailableSkills(state, config, normalizedCurrentCondition);
+  const availableSkills = getAvailableSkills(
+    state,
+    config,
+    normalizedCurrentCondition,
+  );
   const scoredSkills: SkillRecommendation[] = [];
 
   for (const skill of availableSkills) {
-    const newState = applySkill(state, skill, config, conditionEffects, targetCompletion);
+    const newState = applySkill(
+      state,
+      skill,
+      config,
+      conditionEffects,
+      targetCompletion,
+    );
     if (newState === null) continue;
 
     const gains = calculateSkillGains(state, skill, config, conditionEffects);
@@ -869,9 +976,15 @@ export function greedySearch(
       targetMult,
       isTraining,
       config.maxCompletion,
-      config.maxPerfection
+      config.maxPerfection,
     );
-    const reasoning = generateReasoning(skill, state, gains, targetCompletion, targetPerfection);
+    const reasoning = generateReasoning(
+      skill,
+      state,
+      gains,
+      targetCompletion,
+      targetPerfection,
+    );
 
     scoredSkills.push({
       skill,
@@ -890,7 +1003,11 @@ export function greedySearch(
       alternativeSkills: [],
       isTerminal: true,
       targetsMet: false,
-      blockedReasons: getBlockedSkillReasons(state, config, normalizedCurrentCondition),
+      blockedReasons: getBlockedSkillReasons(
+        state,
+        config,
+        normalizedCurrentCondition,
+      ),
     };
   }
 
@@ -905,13 +1022,13 @@ export function greedySearch(
 /**
  * Lookahead search with memoization and performance optimizations.
  * Searches N moves ahead to find the best first move.
- * 
+ *
  * Performance features:
  * - Alpha-beta pruning to cut off unpromising branches
  * - Beam search to limit branches at each level
  * - Time budget to prevent UI freezes
  * - Progress bucketing for better cache hits with large numbers
- * 
+ *
  * @param state - Current crafting state
  * @param config - Optimizer config with skills and character stats
  * @param targetCompletion - Target completion value
@@ -929,18 +1046,19 @@ export function lookaheadSearch(
   depth: number = 3,
   currentConditionType?: CraftingConditionType,
   forecastedConditionTypes: CraftingConditionType[] = [],
-  searchConfig: Partial<SearchConfig> = {}
+  searchConfig: Partial<SearchConfig> = {},
 ): SearchResult {
   // Merge with default search config
   const cfg: SearchConfig = { ...DEFAULT_SEARCH_CONFIG, ...searchConfig };
-  const normalizedCurrentCondition = normalizeConditionType(currentConditionType);
+  const normalizedCurrentCondition =
+    normalizeConditionType(currentConditionType);
   const initialConditionQueue = normalizeForecastConditionQueue(
     normalizedCurrentCondition,
     forecastedConditionTypes,
     state.harmony,
-    VISIBLE_CONDITION_QUEUE_LENGTH
+    VISIBLE_CONDITION_QUEUE_LENGTH,
   );
-  
+
   // Search metrics for performance monitoring
   const metrics = {
     nodesExplored: 0,
@@ -950,7 +1068,7 @@ export function lookaheadSearch(
     pruned: 0,
   };
   const startTime = Date.now();
-  
+
   // Extract settings from config
   const isSublime = config.isSublimeCraft || false;
   const isTraining = config.trainingMode || false;
@@ -982,7 +1100,7 @@ export function lookaheadSearch(
 
   // Memoization cache: cacheKey -> best score achievable from that state
   const cache = new Map<string, number>();
-  
+
   // Flag to signal early termination due to time/node budget
   let shouldTerminate = false;
   let activeDepth = depth;
@@ -992,26 +1110,26 @@ export function lookaheadSearch(
    */
   function checkBudget(): boolean {
     if (shouldTerminate) return true;
-    
+
     // Check time budget
     if (Date.now() - startTime > cfg.timeBudgetMs) {
       shouldTerminate = true;
       return true;
     }
-    
+
     // Check node budget
     if (metrics.nodesExplored >= cfg.maxNodes) {
       shouldTerminate = true;
       return true;
     }
-    
+
     return false;
   }
 
   /**
    * Recursive search function with alpha-beta pruning
    * Uses forecasted conditions at each depth level for more accurate simulation
-   * 
+   *
    * @param currentState - Current state to evaluate
    * @param remainingDepth - Remaining search depth
    * @param depthIndex - Current depth index for condition lookups
@@ -1019,20 +1137,20 @@ export function lookaheadSearch(
    * @param beta - Best score achievable by minimizer (for pruning, unused in single-player)
    */
   function search(
-    currentState: CraftingState, 
-    remainingDepth: number, 
+    currentState: CraftingState,
+    remainingDepth: number,
     depthIndex: number,
     currentConditionAtDepth: CraftingConditionType,
     nextConditionQueueAtDepth: CraftingConditionType[],
     alpha: number = -Infinity,
-    beta: number = Infinity
+    beta: number = Infinity,
   ): number {
     metrics.nodesExplored++;
-    
+
     // Extract sublime crafting settings from config
     const isSublime = config.isSublimeCraft || false;
     const targetMult = config.targetMultiplier || 2.0;
-    
+
     // Check budget constraints
     if (checkBudget()) {
       return scoreState(
@@ -1043,12 +1161,15 @@ export function lookaheadSearch(
         targetMult,
         isTraining,
         config.maxCompletion,
-        config.maxPerfection
+        config.maxPerfection,
       );
     }
 
     // Base case: depth exhausted or terminal
-    if (remainingDepth === 0 || isTerminalState(currentState, config, currentConditionAtDepth)) {
+    if (
+      remainingDepth === 0 ||
+      isTerminalState(currentState, config, currentConditionAtDepth)
+    ) {
       return scoreState(
         currentState,
         targetCompletion,
@@ -1057,7 +1178,7 @@ export function lookaheadSearch(
         targetMult,
         isTraining,
         config.maxCompletion,
-        config.maxPerfection
+        config.maxPerfection,
       );
     }
 
@@ -1073,7 +1194,7 @@ export function lookaheadSearch(
           targetMult,
           isTraining,
           config.maxCompletion,
-          config.maxPerfection
+          config.maxPerfection,
         );
       }
     }
@@ -1086,17 +1207,25 @@ export function lookaheadSearch(
       remainingDepth,
       currentConditionAtDepth,
       nextConditionQueueAtDepth,
-      cfg.progressBucketSize
+      cfg.progressBucketSize,
     );
     if (cache.has(cacheKey)) {
       metrics.cacheHits++;
       return cache.get(cacheKey)!;
     }
 
-    const availableSkills = getAvailableSkills(currentState, config, currentConditionAtDepth);
+    const availableSkills = getAvailableSkills(
+      currentState,
+      config,
+      currentConditionAtDepth,
+    );
     // Apply move ordering to search promising skills first
     const orderedSkills = orderSkillsForSearch(
-      availableSkills, currentState, config, targetCompletion, targetPerfection
+      availableSkills,
+      currentState,
+      config,
+      targetCompletion,
+      targetPerfection,
     );
 
     // Apply adaptive beam search: use narrower beam for deep searches
@@ -1113,14 +1242,23 @@ export function lookaheadSearch(
       targetMult,
       isTraining,
       config.maxCompletion,
-      config.maxPerfection
+      config.maxPerfection,
     );
 
     // Get condition effects for this depth
-    const conditionEffectsAtDepth = getConditionEffectsForConfig(config, currentConditionAtDepth);
+    const conditionEffectsAtDepth = getConditionEffectsForConfig(
+      config,
+      currentConditionAtDepth,
+    );
 
     for (const skill of beamSkills) {
-      const newState = applySkill(currentState, skill, config, conditionEffectsAtDepth, targetCompletion);
+      const newState = applySkill(
+        currentState,
+        skill,
+        config,
+        conditionEffectsAtDepth,
+        targetCompletion,
+      );
       if (newState === null) continue;
 
       let score = 0;
@@ -1132,14 +1270,14 @@ export function lookaheadSearch(
           currentConditionAtDepth,
           nextConditionQueueAtDepth,
           bestScore,
-          beta
+          beta,
         );
       } else {
         const transitions = getConditionTransitionsWithProvider(
           currentConditionAtDepth,
           nextConditionQueueAtDepth,
           newState.harmony,
-          cfg
+          cfg,
         );
         for (const transition of transitions) {
           const branchScore = search(
@@ -1149,7 +1287,7 @@ export function lookaheadSearch(
             transition.nextCondition,
             transition.nextQueue,
             bestScore,
-            beta
+            beta,
           );
           score += transition.probability * branchScore;
         }
@@ -1176,7 +1314,7 @@ export function lookaheadSearch(
     depthIndex: number,
     conditionAtDepth: CraftingConditionType,
     conditionQueueAtDepth: CraftingConditionType[],
-    skill: SkillDefinition
+    skill: SkillDefinition,
   ): number {
     if (!actionConsumesTurn(skill)) {
       return search(
@@ -1184,7 +1322,7 @@ export function lookaheadSearch(
         remainingDepth,
         depthIndex,
         conditionAtDepth,
-        conditionQueueAtDepth
+        conditionQueueAtDepth,
       );
     }
 
@@ -1192,7 +1330,7 @@ export function lookaheadSearch(
       conditionAtDepth,
       conditionQueueAtDepth,
       newState.harmony,
-      cfg
+      cfg,
     );
     let expectedScore = 0;
     for (const transition of transitions) {
@@ -1201,7 +1339,7 @@ export function lookaheadSearch(
         remainingDepth,
         depthIndex,
         transition.nextCondition,
-        transition.nextQueue
+        transition.nextQueue,
       );
       expectedScore += transition.probability * branchScore;
     }
@@ -1212,21 +1350,30 @@ export function lookaheadSearch(
     newState: CraftingState,
     conditionAtDepth: CraftingConditionType,
     conditionQueueAtDepth: CraftingConditionType[],
-    skill: SkillDefinition
-  ): { nextCondition: CraftingConditionType; nextQueue: CraftingConditionType[] } {
+    skill: SkillDefinition,
+  ): {
+    nextCondition: CraftingConditionType;
+    nextQueue: CraftingConditionType[];
+  } {
     if (!actionConsumesTurn(skill)) {
-      return { nextCondition: conditionAtDepth, nextQueue: conditionQueueAtDepth };
+      return {
+        nextCondition: conditionAtDepth,
+        nextQueue: conditionQueueAtDepth,
+      };
     }
 
     const transitions = getConditionTransitionsWithProvider(
       conditionAtDepth,
       conditionQueueAtDepth,
       newState.harmony,
-      cfg
+      cfg,
     );
     const bestTransition = transitions[0];
     if (!bestTransition) {
-      return { nextCondition: conditionAtDepth, nextQueue: conditionQueueAtDepth };
+      return {
+        nextCondition: conditionAtDepth,
+        nextQueue: conditionQueueAtDepth,
+      };
     }
     return {
       nextCondition: bestTransition.nextCondition,
@@ -1237,7 +1384,7 @@ export function lookaheadSearch(
   /**
    * Find the optimal path (rotation) from a given state
    * Returns the sequence of skill names and the final state
-   * 
+   *
    * @param startState - State to start from
    * @param maxDepth - Maximum depth to search
    * @param startDepthIndex - The depth index to start from (for condition lookups)
@@ -1247,7 +1394,7 @@ export function lookaheadSearch(
     maxDepth: number,
     startDepthIndex: number = 0,
     startConditionAtDepth: CraftingConditionType = normalizedCurrentCondition,
-    startConditionQueueAtDepth: CraftingConditionType[] = initialConditionQueue
+    startConditionQueueAtDepth: CraftingConditionType[] = initialConditionQueue,
   ): { path: string[]; finalState: CraftingState } {
     const path: string[] = [];
     let currentState = startState;
@@ -1270,7 +1417,11 @@ export function lookaheadSearch(
       const skills = getAvailableSkills(currentState, config, conditionAtDepth);
       // Apply move ordering for faster path finding
       const orderedSkills = orderSkillsForSearch(
-        skills, currentState, config, targetCompletion, targetPerfection
+        skills,
+        currentState,
+        config,
+        targetCompletion,
+        targetPerfection,
       );
       let bestSkill: SkillDefinition | null = null;
       let bestScore = -Infinity;
@@ -1279,10 +1430,19 @@ export function lookaheadSearch(
       let bestNextConditionQueue: CraftingConditionType[] | null = null;
 
       // Get condition effects for this depth
-      const conditionEffectsAtDepth = getConditionEffectsForConfig(config, conditionAtDepth);
+      const conditionEffectsAtDepth = getConditionEffectsForConfig(
+        config,
+        conditionAtDepth,
+      );
 
       for (const skill of orderedSkills) {
-        const nextState = applySkill(currentState, skill, config, conditionEffectsAtDepth, targetCompletion);
+        const nextState = applySkill(
+          currentState,
+          skill,
+          config,
+          conditionEffectsAtDepth,
+          targetCompletion,
+        );
         if (nextState === null) continue;
 
         const score = evaluateFutureScoreAfterSkill(
@@ -1291,13 +1451,13 @@ export function lookaheadSearch(
           globalDepth + 1,
           conditionAtDepth,
           conditionQueueAtDepth,
-          skill
+          skill,
         );
         const nextConditionState = getMostLikelyConditionStateAfterSkill(
           nextState,
           conditionAtDepth,
           conditionQueueAtDepth,
-          skill
+          skill,
         );
         if (score > bestScore) {
           bestScore = score;
@@ -1308,7 +1468,12 @@ export function lookaheadSearch(
         }
       }
 
-      if (bestSkill && bestNextState && bestNextCondition && bestNextConditionQueue) {
+      if (
+        bestSkill &&
+        bestNextState &&
+        bestNextCondition &&
+        bestNextConditionQueue
+      ) {
         path.push(bestSkill.name);
         currentState = bestNextState;
         conditionAtDepth = bestNextCondition;
@@ -1327,9 +1492,17 @@ export function lookaheadSearch(
    */
   function evaluateFirstMoves(depthToSearch: number): SkillRecommendation[] {
     activeDepth = depthToSearch;
-    const availableSkills = getAvailableSkills(state, config, normalizedCurrentCondition);
+    const availableSkills = getAvailableSkills(
+      state,
+      config,
+      normalizedCurrentCondition,
+    );
     const orderedSkills = orderSkillsForSearch(
-      availableSkills, state, config, targetCompletion, targetPerfection
+      availableSkills,
+      state,
+      config,
+      targetCompletion,
+      targetPerfection,
     );
     const scored: SkillRecommendation[] = [];
 
@@ -1337,7 +1510,7 @@ export function lookaheadSearch(
       stateAfterSkill: CraftingState,
       depthIndex: number,
       conditionAtDepth: CraftingConditionType,
-      nextConditionQueueAtDepth: CraftingConditionType[]
+      nextConditionQueueAtDepth: CraftingConditionType[],
     ): SkillRecommendation['followUpSkill'] | undefined {
       if (stateAfterSkill.targetsMet(targetCompletion, targetPerfection)) {
         return undefined;
@@ -1346,24 +1519,46 @@ export function lookaheadSearch(
         return undefined;
       }
 
-      const followUpSkills = getAvailableSkills(stateAfterSkill, config, conditionAtDepth);
+      const followUpSkills = getAvailableSkills(
+        stateAfterSkill,
+        config,
+        conditionAtDepth,
+      );
       if (followUpSkills.length === 0) return undefined;
 
       const orderedFollowUpSkills = orderSkillsForSearch(
-        followUpSkills, stateAfterSkill, config, targetCompletion, targetPerfection
+        followUpSkills,
+        stateAfterSkill,
+        config,
+        targetCompletion,
+        targetPerfection,
       );
 
       let bestFollowUp: SkillDefinition | null = null;
       let bestFollowUpScore = -Infinity;
       let bestFollowUpGains = { completion: 0, perfection: 0, stability: 0 };
 
-      const followUpConditionEffects = getConditionEffectsForConfig(config, conditionAtDepth);
+      const followUpConditionEffects = getConditionEffectsForConfig(
+        config,
+        conditionAtDepth,
+      );
 
       for (const followUp of orderedFollowUpSkills) {
-        const nextState = applySkill(stateAfterSkill, followUp, config, followUpConditionEffects, targetCompletion);
+        const nextState = applySkill(
+          stateAfterSkill,
+          followUp,
+          config,
+          followUpConditionEffects,
+          targetCompletion,
+        );
         if (nextState === null) continue;
 
-        const followUpGains = calculateSkillGains(stateAfterSkill, followUp, config, followUpConditionEffects);
+        const followUpGains = calculateSkillGains(
+          stateAfterSkill,
+          followUp,
+          config,
+          followUpConditionEffects,
+        );
         const remainingDepth = Math.max(0, depthToSearch - 1 - depthIndex);
         const followUpScore = evaluateFutureScoreAfterSkill(
           nextState,
@@ -1371,7 +1566,7 @@ export function lookaheadSearch(
           depthIndex + 1,
           conditionAtDepth,
           nextConditionQueueAtDepth,
-          followUp
+          followUp,
         );
 
         if (followUpScore > bestFollowUpScore) {
@@ -1390,43 +1585,102 @@ export function lookaheadSearch(
       };
     }
 
-    const currentConditionEffects = getConditionEffectsForConfig(config, normalizedCurrentCondition);
-    for (const skill of orderedSkills) {
-      if (checkBudget()) break;
+    const currentConditionEffects = getConditionEffectsForConfig(
+      config,
+      normalizedCurrentCondition,
+    );
 
-      const newState = applySkill(state, skill, config, currentConditionEffects, targetCompletion);
+    // First pass: evaluate ALL first-level skills with basic scoring
+    // This ensures we always have alternatives even if deep search times out
+    for (const skill of orderedSkills) {
+      const newState = applySkill(
+        state,
+        skill,
+        config,
+        currentConditionEffects,
+        targetCompletion,
+      );
       if (newState === null) continue;
 
-      const gains = calculateSkillGains(state, skill, config, currentConditionEffects);
+      const gains = calculateSkillGains(
+        state,
+        skill,
+        config,
+        currentConditionEffects,
+      );
+      const reasoning = generateReasoning(
+        skill,
+        state,
+        gains,
+        targetCompletion,
+        targetPerfection,
+      );
+
+      // Use immediate score as baseline (no deep search yet)
+      const immediateScore = scoreState(
+        newState,
+        targetCompletion,
+        targetPerfection,
+        config.isSublimeCraft || false,
+        config.targetMultiplier || 2.0,
+        isTraining,
+        config.maxCompletion,
+        config.maxPerfection,
+      );
+
+      scored.push({
+        skill,
+        expectedGains: gains,
+        score: immediateScore,
+        reasoning,
+        consumesBuff: skill.isDisciplinedTouch === true,
+        followUpSkill: undefined, // Will be filled in second pass if budget allows
+      });
+    }
+
+    // Second pass: enhance scores with deep lookahead if budget allows
+    // Process skills in order of their immediate score (best first)
+    scored.sort((a, b) => b.score - a.score);
+
+    for (const rec of scored) {
+      if (checkBudget()) break;
+
+      const newState = applySkill(
+        state,
+        rec.skill,
+        config,
+        currentConditionEffects,
+        targetCompletion,
+      );
+      if (newState === null) continue;
+
       const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
         newState,
         normalizedCurrentCondition,
         initialConditionQueue,
-        skill
+        rec.skill,
       );
-      const score = evaluateFutureScoreAfterSkill(
+
+      // Deep evaluation
+      const deepScore = evaluateFutureScoreAfterSkill(
         newState,
         Math.max(0, depthToSearch - 1),
         1,
         normalizedCurrentCondition,
         initialConditionQueue,
-        skill
+        rec.skill,
       );
-      const reasoning = generateReasoning(skill, state, gains, targetCompletion, targetPerfection);
+      rec.score = deepScore;
 
-      scored.push({
-        skill,
-        expectedGains: gains,
-        score,
-        reasoning,
-        consumesBuff: skill.isDisciplinedTouch === true,
-        followUpSkill: findFollowUpSkill(
+      // Also find follow-up skill if we have budget
+      if (!checkBudget()) {
+        rec.followUpSkill = findFollowUpSkill(
           newState,
           1,
           firstMoveConditionState.nextCondition,
-          firstMoveConditionState.nextQueue
-        ),
-      });
+          firstMoveConditionState.nextQueue,
+        );
+      }
     }
 
     scored.sort((a, b) => b.score - a.score);
@@ -1437,7 +1691,10 @@ export function lookaheadSearch(
     if (!cfg.useIterativeDeepening || depth <= 1) {
       return [depth];
     }
-    const minDepth = Math.max(1, Math.min(cfg.iterativeDeepeningMinDepth, depth));
+    const minDepth = Math.max(
+      1,
+      Math.min(cfg.iterativeDeepeningMinDepth, depth),
+    );
     const depths: number[] = [];
     for (let d = minDepth; d <= depth; d++) {
       depths.push(d);
@@ -1469,7 +1726,11 @@ export function lookaheadSearch(
       alternativeSkills: [],
       isTerminal: true,
       targetsMet: false,
-      blockedReasons: getBlockedSkillReasons(state, config, normalizedCurrentCondition),
+      blockedReasons: getBlockedSkillReasons(
+        state,
+        config,
+        normalizedCurrentCondition,
+      ),
       searchMetrics: metrics,
     };
   }
@@ -1480,12 +1741,17 @@ export function lookaheadSearch(
 
   // Calculate quality ratings (0-100) based on score difference from best
   const bestScore = scoredSkills[0].score;
-  const worstScore = scoredSkills.length > 1 ? scoredSkills[scoredSkills.length - 1].score : bestScore;
+  const worstScore =
+    scoredSkills.length > 1
+      ? scoredSkills[scoredSkills.length - 1].score
+      : bestScore;
   const scoreRange = bestScore - worstScore;
 
   for (const rec of scoredSkills) {
     if (scoreRange > 0) {
-      rec.qualityRating = Math.round(((rec.score - worstScore) / scoreRange) * 100);
+      rec.qualityRating = Math.round(
+        ((rec.score - worstScore) / scoreRange) * 100,
+      );
     } else {
       rec.qualityRating = 100; // All skills are equally good
     }
@@ -1493,18 +1759,27 @@ export function lookaheadSearch(
 
   // Find the optimal rotation starting from the best first move
   const bestFirstMove = scoredSkills[0].skill;
-  const currentConditionEffects = getConditionEffectsForConfig(config, normalizedCurrentCondition);
-  const stateAfterFirstMove = applySkill(state, bestFirstMove, config, currentConditionEffects, targetCompletion);
-  
+  const currentConditionEffects = getConditionEffectsForConfig(
+    config,
+    normalizedCurrentCondition,
+  );
+  const stateAfterFirstMove = applySkill(
+    state,
+    bestFirstMove,
+    config,
+    currentConditionEffects,
+    targetCompletion,
+  );
+
   let optimalRotation: string[] = [bestFirstMove.name];
   let expectedFinalState: SearchResult['expectedFinalState'] = undefined;
-  
+
   if (stateAfterFirstMove) {
     const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
       stateAfterFirstMove,
       normalizedCurrentCondition,
       initialConditionQueue,
-      bestFirstMove
+      bestFirstMove,
     );
     // Find the rest of the optimal path, starting from depth index 1 (after first move)
     const { path, finalState } = findOptimalPath(
@@ -1512,16 +1787,18 @@ export function lookaheadSearch(
       Math.max(0, usedDepth - 1),
       1,
       firstMoveConditionState.nextCondition,
-      firstMoveConditionState.nextQueue
+      firstMoveConditionState.nextQueue,
     );
     optimalRotation = [bestFirstMove.name, ...path];
-    
+
     // Calculate turns remaining (estimate based on progress needed)
     const compRemaining = Math.max(0, targetCompletion - finalState.completion);
     const perfRemaining = Math.max(0, targetPerfection - finalState.perfection);
     const avgGainPerTurn = 15; // Rough estimate
-    const turnsRemaining = Math.ceil((compRemaining + perfRemaining) / avgGainPerTurn);
-    
+    const turnsRemaining = Math.ceil(
+      (compRemaining + perfRemaining) / avgGainPerTurn,
+    );
+
     expectedFinalState = {
       completion: finalState.completion,
       perfection: finalState.perfection,
@@ -1533,7 +1810,7 @@ export function lookaheadSearch(
 
   // Record final metrics
   metrics.timeTakenMs = Date.now() - startTime;
-  
+
   return {
     recommendation: scoredSkills[0],
     alternativeSkills: scoredSkills.slice(1),
@@ -1552,7 +1829,7 @@ export type CraftingConditionType = string;
 
 /**
  * Main optimizer function - uses lookahead by default.
- * 
+ *
  * @param state - Current crafting state
  * @param config - Optimizer config with character stats and skills (from game)
  * @param targetCompletion - Target completion value (from recipe)
@@ -1572,14 +1849,26 @@ export function findBestSkill(
   lookaheadDepth: number = 3,
   currentConditionType?: CraftingConditionType,
   forecastedConditionTypes: CraftingConditionType[] = [],
-  searchConfig: Partial<SearchConfig> = {}
+  searchConfig: Partial<SearchConfig> = {},
 ): SearchResult {
   if (useGreedy) {
-    return greedySearch(state, config, targetCompletion, targetPerfection, currentConditionType);
+    return greedySearch(
+      state,
+      config,
+      targetCompletion,
+      targetPerfection,
+      currentConditionType,
+    );
   }
-  
+
   return lookaheadSearch(
-    state, config, targetCompletion, targetPerfection, lookaheadDepth, 
-    currentConditionType, forecastedConditionTypes, searchConfig
+    state,
+    config,
+    targetCompletion,
+    targetPerfection,
+    lookaheadDepth,
+    currentConditionType,
+    forecastedConditionTypes,
+    searchConfig,
   );
 }

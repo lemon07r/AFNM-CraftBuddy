@@ -46,23 +46,39 @@ Higher depth/node/beam values improve search breadth but can increase CPU use.
 
 ## Debug helpers
 
+### Enabling Game Dev Mode
+
+To access browser devtools (F12) in the game, create an empty file called `devMode` (case-sensitive) in your game installation directory, next to the game executable:
+
+```
+AFNM_Linux/                              # or Windows equivalent
+├── AscendFromNineMountains              # Game executable
+├── devMode                              # ← Empty file, no extension
+└── mods/
+    └── afnm-craftbuddy.zip
+```
+
+Restart the game after creating this file.
+
+### Debug Console Commands
+
 Open browser devtools and use:
 
 ```javascript
-window.craftBuddyDebug.getConfig()
-window.craftBuddyDebug.getRecommendation()
-window.craftBuddyDebug.getTargets()
-window.craftBuddyDebug.getCurrentState()
-window.craftBuddyDebug.getNextConditions()
-window.craftBuddyDebug.getConditionEffects()
-window.craftBuddyDebug.setTargets(completion, perfection, stability)
-window.craftBuddyDebug.getSettings()
-window.craftBuddyDebug.setLookaheadDepth(32)
-window.craftBuddyDebug.togglePanel()
-window.craftBuddyDebug.toggleCompact()
-window.craftBuddyDebug.logGameData()
-window.craftBuddyDebug.getConflicts()
-window.craftBuddyDebug.checkConflicts()
+window.craftBuddyDebug.getConfig();
+window.craftBuddyDebug.getRecommendation();
+window.craftBuddyDebug.getTargets();
+window.craftBuddyDebug.getCurrentState();
+window.craftBuddyDebug.getNextConditions();
+window.craftBuddyDebug.getConditionEffects();
+window.craftBuddyDebug.setTargets(completion, perfection, stability);
+window.craftBuddyDebug.getSettings();
+window.craftBuddyDebug.setLookaheadDepth(32);
+window.craftBuddyDebug.togglePanel();
+window.craftBuddyDebug.toggleCompact();
+window.craftBuddyDebug.logGameData();
+window.craftBuddyDebug.getConflicts();
+window.craftBuddyDebug.checkConflicts();
 ```
 
 ## Build and test
