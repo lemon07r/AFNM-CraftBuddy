@@ -112,7 +112,41 @@ let currentSettings: CraftBuddySettings = loadSettings();
 
 // Calculation state tracking for loading indicator
 let isCalculating = false;
-let settingsStale = false;
+
+// Track search-affecting settings for stale detection
+interface LastSearchSettings {
+  lookaheadDepth: number;
+  searchTimeBudgetMs: number;
+  searchMaxNodes: number;
+  searchBeamWidth: number;
+}
+let lastSearchSettings: LastSearchSettings | null = null;
+
+/**
+ * Check if current settings differ from last calculated settings.
+ */
+function areSearchSettingsStale(): boolean {
+  if (!lastSearchSettings) return false;
+  return (
+    currentSettings.lookaheadDepth !== lastSearchSettings.lookaheadDepth ||
+    currentSettings.searchTimeBudgetMs !==
+      lastSearchSettings.searchTimeBudgetMs ||
+    currentSettings.searchMaxNodes !== lastSearchSettings.searchMaxNodes ||
+    currentSettings.searchBeamWidth !== lastSearchSettings.searchBeamWidth
+  );
+}
+
+/**
+ * Snapshot current search settings after a calculation completes.
+ */
+function snapshotSearchSettings(): void {
+  lastSearchSettings = {
+    lookaheadDepth: currentSettings.lookaheadDepth,
+    searchTimeBudgetMs: currentSettings.searchTimeBudgetMs,
+    searchMaxNodes: currentSettings.searchMaxNodes,
+    searchBeamWidth: currentSettings.searchBeamWidth,
+  };
+}
 
 // Store the last entity for rendering
 let lastEntity: CraftingEntity | null = null;
@@ -1259,9 +1293,9 @@ function updateRecommendation(
       searchConfig,
     );
 
-    // Clear calculating and stale flags after search completes
+    // Clear calculating flag and snapshot settings after search completes
     isCalculating = false;
-    settingsStale = false;
+    snapshotSearchSettings();
 
     console.log(
       `[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Completion=${completion}/${targetCompletion}, Perfection=${perfection}/${targetPerfection}`,
@@ -1334,9 +1368,9 @@ function renderOverlay(): void {
     renderOverlay();
   };
 
-  const handleSearchSettingsChange = (_newSettings: CraftBuddySettings) => {
-    // Mark settings as stale when search-affecting settings change
-    settingsStale = true;
+  const handleSearchSettingsChange = (newSettings: CraftBuddySettings) => {
+    // Update settings and re-render to reflect stale state
+    currentSettings = newSettings;
     renderOverlay();
   };
 
@@ -1370,7 +1404,7 @@ function renderOverlay(): void {
     maxToxicity,
     craftingType: currentCraftingType,
     isCalculating,
-    settingsStale,
+    settingsStale: areSearchSettingsStale(),
     onRecalculate: handleRecalculate,
   });
 
