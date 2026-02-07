@@ -19,6 +19,7 @@ related_files:
 - `searchTimeBudgetMs` (`10-500`, default `200`)
 - `searchMaxNodes` (`1,000-100,000`, default `100,000`)
 - `searchBeamWidth` (`3-15`, default `6`)
+- settings sliders persist on commit (not every drag event) to reduce UI churn
 
 ## Internal search defaults
 

@@ -672,6 +672,54 @@ describe('condition timeline modeling', () => {
     expect(normalizedExtra).toEqual(normalizedThree);
     expect(normalizedExtra.length).toBe(VISIBLE_CONDITION_QUEUE_LENGTH);
   });
+
+  it('should normalize unknown condition names to lowercase', () => {
+    const normalized = normalizeForecastConditionQueue(
+      'Primed' as any,
+      ['Glowing', 'neutral', 'Primed'] as any,
+      0
+    );
+
+    expect(normalized).toEqual(['glowing', 'neutral', 'primed']);
+  });
+
+  it('should preserve search depth for non-turn item actions', () => {
+    const setupItem = createCustomSkill({
+      name: 'Use Focus Pill',
+      key: 'item_focus_pill',
+      actionKind: 'item',
+      itemName: 'focus_pill',
+      consumesTurn: false,
+      type: 'support',
+      buffType: BuffType.CONTROL,
+      buffDuration: 2,
+      buffMultiplier: 3,
+    });
+    const refine = createCustomSkill({
+      name: 'Refine Push',
+      key: 'refine_push',
+      type: 'refine',
+      basePerfectionGain: 1,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      baseControl: 20,
+      skills: [setupItem, refine],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      items: new Map([['focus_pill', 1]]),
+    });
+
+    const result = lookaheadSearch(state, config, 0, 100, 1, 'neutral', []);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Use Focus Pill');
+  });
 });
 
 describe('search performance', () => {

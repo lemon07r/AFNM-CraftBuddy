@@ -25,8 +25,10 @@ related_files:
 - harmony subsystem simulation (forge/alchemical/inscription/resonance)
 - condition-effect handling from recipe condition config
 - fixed 3-condition forecast queue normalization with probability-weighted EV beyond forecast
+- non-turn item actions keep turn-depth/index in lookahead search
 - training-mode-aware scoring policy
 - large-number-safe parsing/formatting helpers
+- local expression evaluator hardening (guarded formula filtering + bounded compile cache)
 
 ## Still dependency-gated (pending external API)
 
@@ -39,6 +41,7 @@ related_files:
 
 - integration fallback extraction paths when full runtime state is missing
 - condition fallback table in `gameTypes.ts` (used when real condition data is unavailable)
+- local expression compilation path remains an internal fallback until native evaluator is exposed
 
 ## Verification anchors
 

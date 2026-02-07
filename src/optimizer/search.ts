@@ -193,7 +193,7 @@ function normalizeConditionType(condition: string | undefined): CraftingConditio
     case 'corrupted':
       return 'veryNegative';
     default:
-      return condition as CraftingConditionType;
+      return c as CraftingConditionType;
   }
 }
 
@@ -1127,8 +1127,8 @@ export function lookaheadSearch(
       if (!actionConsumesTurn(skill)) {
         score = search(
           newState,
-          remainingDepth - 1,
-          depthIndex + 1,
+          remainingDepth,
+          depthIndex,
           currentConditionAtDepth,
           nextConditionQueueAtDepth,
           bestScore,

@@ -42,6 +42,23 @@ function cloneHarmonyData(hd: HarmonyData): HarmonyData {
   return clone;
 }
 
+function cloneTrackedBuff(buff: TrackedBuff): TrackedBuff {
+  const cloned: TrackedBuff = {
+    name: buff.name,
+    stacks: buff.stacks,
+    definition: buff.definition,
+  };
+  return Object.freeze(cloned);
+}
+
+function cloneBuffMap(source: Map<string, TrackedBuff>): Map<string, TrackedBuff> {
+  const cloned = new Map<string, TrackedBuff>();
+  source.forEach((buff, key) => {
+    cloned.set(key, cloneTrackedBuff(buff));
+  });
+  return cloned;
+}
+
 export enum BuffType {
   NONE = 0,
   CONTROL = 1, // +40% to control stat
@@ -172,7 +189,7 @@ export class CraftingState implements CraftingStateData {
     this.items = data.items ? new Map(data.items) : new Map();
     this.consumedPillsThisTurn = data.consumedPillsThisTurn ?? 0;
     if (data.buffs) {
-      this.buffs = new Map(data.buffs);
+      this.buffs = cloneBuffMap(data.buffs);
     } else {
       this.buffs = new Map();
     }

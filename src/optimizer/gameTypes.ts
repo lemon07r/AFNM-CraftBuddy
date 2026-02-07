@@ -380,12 +380,15 @@ export function calculateExpectedCritMultiplier(
 }
 
 /**
- * Safe recursive descent parser for simple arithmetic expressions.
- * Supports: +, -, *, /, parentheses, and numeric literals.
- * No eval() -- prevents code injection.
+ * Expression compiler for trusted game-authored formulas.
+ * Uses `new Function` with constrained input checks and guarded scope access.
  */
 const EXPRESSION_CACHE = new Map<string, (scope: Record<string, number | ((...args: number[]) => number)>) => number>();
+const MAX_EXPRESSION_CACHE_SIZE = 256;
+const MAX_EXPRESSION_LENGTH = 1024;
 const ALLOWED_EXPRESSION_CHARS = /^[\w\s+\-*/%().,<>=!&|:{}]+$/;
+const BLOCKED_EXPRESSION_KEYWORDS = /\b(?:while|for|do|switch|try|catch|finally|class|function|new|return|throw|import|export|await|yield|with|const|let|var|delete)\b/i;
+const ASSIGNMENT_OPERATOR_RE = /(^|[^=!<>])=($|[^=])/;
 const JS_RESERVED_WORDS = new Set([
   'true',
   'false',
@@ -432,6 +435,19 @@ function normalizeVariableKey(key: string): string {
   return key.trim().toLowerCase().replace(/\s+/g, '_');
 }
 
+function cacheCompiledExpression(
+  eqn: string,
+  compiled: (scope: Record<string, number | ((...args: number[]) => number)>) => number
+): void {
+  if (!EXPRESSION_CACHE.has(eqn) && EXPRESSION_CACHE.size >= MAX_EXPRESSION_CACHE_SIZE) {
+    const oldestKey = EXPRESSION_CACHE.keys().next().value as string | undefined;
+    if (oldestKey !== undefined) {
+      EXPRESSION_CACHE.delete(oldestKey);
+    }
+  }
+  EXPRESSION_CACHE.set(eqn, compiled);
+}
+
 function getVariableValue(variables: ScalingVariables, key: string): number {
   if (!key) return 0;
   if (key in variables) {
@@ -453,6 +469,10 @@ function compileExpression(eqn: string): ((scope: Record<string, number | ((...a
     return EXPRESSION_CACHE.get(eqn)!;
   }
 
+  if (!eqn || eqn.length > MAX_EXPRESSION_LENGTH) {
+    return null;
+  }
+
   if (!ALLOWED_EXPRESSION_CHARS.test(eqn)) {
     return null;
   }
@@ -461,6 +481,14 @@ function compileExpression(eqn: string): ((scope: Record<string, number | ((...a
     .replace(/\band\b/g, '&&')
     .replace(/\bor\b/g, '||')
     .replace(/\{rng\}/g, '0.5');
+
+  if (BLOCKED_EXPRESSION_KEYWORDS.test(normalized)) {
+    return null;
+  }
+
+  if (ASSIGNMENT_OPERATOR_RE.test(normalized)) {
+    return null;
+  }
 
   const symbolMatches = normalized.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
   const referencedSymbols = new Set(
@@ -499,7 +527,7 @@ function compileExpression(eqn: string): ((scope: Record<string, number | ((...a
       const result = fn(proxy);
       return typeof result === 'number' && Number.isFinite(result) ? result : 0;
     };
-    EXPRESSION_CACHE.set(eqn, wrapped);
+    cacheCompiledExpression(eqn, wrapped);
     return wrapped;
   } catch {
     return null;
@@ -508,7 +536,7 @@ function compileExpression(eqn: string): ((scope: Record<string, number | ((...a
 
 /**
  * Expression evaluator for game equations with variable substitution.
- * Uses a safe recursive descent parser instead of eval().
+ * Returns 0 for invalid or blocked expressions.
  */
 export function evalExpression(eqn: string, variables: ScalingVariables): number {
   if (!eqn) return 1;

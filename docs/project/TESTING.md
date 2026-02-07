@@ -27,7 +27,7 @@ related_files:
 
 ## Current baseline
 
-- verified 2026-02-07: 6 suites, 256 tests passing
+- verified 2026-02-07: 7 suites, 268 tests passing
 
 ## Test ownership by area
 
@@ -36,6 +36,7 @@ related_files:
 - `skills.test.ts`: transition logic + buffs/masteries/effects
 - `search.test.ts`: recommendation/search behavior
 - `state.test.ts`: state invariants/cache key behavior
+- `gameTypes.test.ts`: expression evaluation guardrails and helper behavior
 - `largeNumbers.test.ts`: numeric safety
 
 ## Required validation for mechanics changes

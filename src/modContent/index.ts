@@ -1016,8 +1016,14 @@ function updateRecommendation(
 
   // Read pool/stability cost percentage modifiers from entity stats + buffs
   // Game default is 100 (= 100%, i.e. no modification)
-  const poolCostPercentage = Number((entity as any)?.stats?.poolCostPercentage ?? 100) || 100;
-  const stabilityCostPercentage = Number((entity as any)?.stats?.stabilityCostPercentage ?? 100) || 100;
+  const poolCostPercentageRaw = Number((entity as any)?.stats?.poolCostPercentage ?? 100);
+  const poolCostPercentage = Number.isFinite(poolCostPercentageRaw)
+    ? poolCostPercentageRaw
+    : 100;
+  const stabilityCostPercentageRaw = Number((entity as any)?.stats?.stabilityCostPercentage ?? 100);
+  const stabilityCostPercentage = Number.isFinite(stabilityCostPercentageRaw)
+    ? stabilityCostPercentageRaw
+    : 100;
 
   // Extract completion bonus stacks from the Completion Bonus buff
   const completionBonusExtraction = extractCompletionBonusStacks(

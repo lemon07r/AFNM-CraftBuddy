@@ -77,6 +77,36 @@ describe('CraftingState', () => {
       expect(modified.stability).toBe(50); // Unchanged
       expect(modified.completion).toBe(25);
     });
+
+    it('should clone tracked buff entries passed to constructor', () => {
+      const sourceBuff = { name: 'focus', stacks: 2 };
+      const state = new CraftingState({
+        buffs: new Map([['focus', sourceBuff]]),
+      });
+
+      sourceBuff.stacks = 99;
+
+      expect(state.getBuffStacks('focus')).toBe(2);
+      expect(state.getBuff('focus')).not.toBe(sourceBuff);
+    });
+
+    it('should keep internal tracked buff entries immutable', () => {
+      const state = new CraftingState({
+        buffs: new Map([['focus', { name: 'focus', stacks: 2 }]]),
+      });
+
+      const tracked = state.getBuff('focus') as any;
+      expect(tracked).toBeDefined();
+      expect(Object.isFrozen(tracked)).toBe(true);
+
+      try {
+        tracked.stacks = 10;
+      } catch (_) {
+        // Assignment may throw in strict mode for frozen objects.
+      }
+
+      expect(state.getBuffStacks('focus')).toBe(2);
+    });
   });
 
   describe('getControl', () => {

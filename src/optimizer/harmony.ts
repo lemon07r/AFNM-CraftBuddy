@@ -175,7 +175,7 @@ function processAlchemicalArts(
 
   let harmonyDelta = 0;
   let statModifiers = { ...DEFAULT_MODIFIERS, ...(existingReaction ?? {}) };
-  let nextReaction = existingReaction;
+  let nextReaction: Partial<HarmonyStatModifiers>;
 
   if (aa.charges.length < 3) {
     const recommended = getNextValidChargeTypes(aa.charges);
