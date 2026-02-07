@@ -198,3 +198,18 @@ Tech debt that can be cleaned up when convenient:
 3. Item 2 (buff effects) -- unblocked after item 5
 4. Items 4, 8, 3 -- lower priority, implement when convenient
 5. Item 9 -- cleanup pass after major features land
+
+
+## Agent implementation results
+
+⛬  All phases complete. Here's the summary of what was implemented in this session:
+
+   Phase 1 - Harmony System (largest feature): Created src/optimizer/harmony.ts (460 lines) with full simulation for all 4 harmony types (Forge Works, Alchemical Arts, Inscribed Patterns, Spiritual Resonance). Integrated into applySkill(), calculateSkillGains(), and scoreState(). Added 32 new tests.
+
+   Phase 2 - Legacy Cleanup: Removed controlCondition/forecastedConditions number params from search functions, removed deprecated maxStability/buffStacks aliases from CraftingStateData, removed positional createStateFromGame overload, removed legacy number overload from calculateSkillGains/applySkill. Updated 75+ call sites across test files.
+
+   Phase 3 - Training Mode: Added trainingMode to OptimizerConfig, reduces stability penalty weight in scoring (3 vs 10) and threshold (10 vs 25) for more aggressive strategies.
+
+   Phase 4 - Buff Per-Turn Effects: Added buff effect processing in applySkill() -- executes per-turn effects[] and action-type-specific blocks (onFusion, onRefine, etc.) using evaluateScaling(). 4 new tests.
+
+   Final state: 233 tests passing, build succeeds, 2 commits made.

@@ -18,6 +18,8 @@ import {
   CraftingCondition,
   RecipeConditionEffect,
   CraftingBuff,
+  CraftingPillItem,
+  CraftingReagentItem,
 } from 'afnm-types';
 import {
   CraftingState,
@@ -28,12 +30,14 @@ import {
   SkillDefinition,
   SkillMastery,
   parseRecipeConditionEffects,
+  getBonusAndChance,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 import {
   CraftBuddySettings,
   saveSettings,
   loadSettings,
+  getSearchConfig,
 } from '../settings';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
@@ -51,6 +55,8 @@ let currentConfig: OptimizerConfig | null = null;
 let targetCompletion = 100;
 let targetPerfection = 100;
 let targetStability = 60;
+let maxCompletionCap: number | undefined = undefined;
+let maxPerfectionCap: number | undefined = undefined;
 let currentCompletion = 0;
 let currentPerfection = 0;
 let currentStability = 0;
@@ -220,14 +226,17 @@ function extractBuffInfo(
 function extractMasteryData(mastery: any[] | undefined): {
   bonuses: SkillMastery;
   extraEffects: any[];
+  masteryEntries: any[];
 } {
   const bonuses: SkillMastery = {};
   const extraEffects: any[] = [];
+  const masteryEntries: any[] = [];
 
-  if (!mastery || mastery.length === 0) return { bonuses, extraEffects };
+  if (!mastery || mastery.length === 0) return { bonuses, extraEffects, masteryEntries };
 
   for (const m of mastery) {
     if (!m) continue;
+    masteryEntries.push(m);
 
     switch (m.kind) {
       case 'control':
@@ -253,13 +262,23 @@ function extractMasteryData(mastery: any[] | undefined): {
         break;
       case 'effect':
         if (Array.isArray(m.effects)) {
-          extraEffects.push(...m.effects);
+          if (m.condition) {
+            for (const effect of m.effects) {
+              if (!effect) continue;
+              extraEffects.push({
+                ...effect,
+                condition: effect.condition || m.condition,
+              });
+            }
+          } else {
+            extraEffects.push(...m.effects);
+          }
         }
         break;
     }
   }
 
-  return { bonuses, extraEffects };
+  return { bonuses, extraEffects, masteryEntries };
 }
 
 function normalizeChance(value: number | undefined): number {
@@ -267,29 +286,140 @@ function normalizeChance(value: number | undefined): number {
   return value > 1 ? value / 100 : value;
 }
 
-function extractCraftingStatFromBuffs(
+function normalizeBuffKey(name: string | undefined): string {
+  return String(name || '').toLowerCase().trim().replace(/\s+/g, '_');
+}
+
+function toFinitePositiveNumber(value: unknown): number | undefined {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value)
+        : undefined;
+  if (parsed === undefined || !Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function extractCapCandidate(source: any, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const raw = source?.[key];
+    if (raw === undefined || raw === null) continue;
+
+    if (typeof raw === 'object') {
+      const nested =
+        toFinitePositiveNumber(raw.flat) ??
+        toFinitePositiveNumber(raw.value) ??
+        toFinitePositiveNumber(raw.max) ??
+        toFinitePositiveNumber(raw.cap);
+      if (nested !== undefined) {
+        return nested;
+      }
+      continue;
+    }
+
+    const parsed = toFinitePositiveNumber(raw);
+    if (parsed !== undefined) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function updateProgressCapsFromRecipeStats(recipeStats: any): void {
+  if (!recipeStats) return;
+
+  const completionCap =
+    extractCapCandidate(recipeStats, [
+      'maxCompletion',
+      'maxcompletion',
+      'completionMax',
+      'completionCap',
+      'completionLimit',
+      'maxCompletionValue',
+    ]) ??
+    extractCapCandidate(recipeStats?.caps, ['completion', 'maxCompletion']) ??
+    extractCapCandidate(recipeStats?.limits, ['completion', 'maxCompletion']) ??
+    extractCapCandidate(recipeStats?.maxValues, ['completion', 'maxCompletion']);
+
+  const perfectionCap =
+    extractCapCandidate(recipeStats, [
+      'maxPerfection',
+      'maxperfection',
+      'perfectionMax',
+      'perfectionCap',
+      'perfectionLimit',
+      'maxPerfectionValue',
+    ]) ??
+    extractCapCandidate(recipeStats?.caps, ['perfection', 'maxPerfection']) ??
+    extractCapCandidate(recipeStats?.limits, ['perfection', 'maxPerfection']) ??
+    extractCapCandidate(recipeStats?.maxValues, ['perfection', 'maxPerfection']);
+
+  if (completionCap !== undefined) {
+    maxCompletionCap = completionCap;
+  }
+  if (perfectionCap !== undefined) {
+    maxPerfectionCap = perfectionCap;
+  }
+}
+
+function extractCompletionBonusStacks(
   buffs: CraftingBuff[] | undefined,
-  statKey: string
+  completion: number,
+  completionTarget: number
 ): number {
-  if (!buffs) return 0;
+  const expectedFromProgress =
+    completionTarget > 0
+      ? Math.max(0, getBonusAndChance(completion, completionTarget).guaranteed - 1)
+      : undefined;
 
-  let total = 0;
-  for (const buff of buffs) {
-    const scaling = (buff as any)?.stats?.[statKey];
-    if (!scaling) continue;
+  let stacksFromBuff: number | undefined = undefined;
+  if (buffs) {
+    for (const buff of buffs) {
+      const stacks = Number((buff as any)?.stacks ?? 0);
+      if (!Number.isFinite(stacks) || stacks <= 0) continue;
 
-    const baseValue = Number(scaling.value ?? 0);
-    if (!Number.isFinite(baseValue) || baseValue === 0) continue;
+      const key = normalizeBuffKey(buff?.name);
+      const isNamedCompletionBonus =
+        key === 'completion_bonus' || (key.includes('completion') && key.includes('bonus'));
 
-    // Most crafting buff stats scale by stacks when `scaling: 'stacks'`.
-    // Otherwise treat as a flat modifier.
-    const scaleKind = String(scaling.scaling ?? '').toLowerCase();
-    const stacks = Number((buff as any)?.stacks ?? 1);
-    const multiplier = scaleKind === 'stacks' ? stacks : 1;
-    total += baseValue * multiplier;
+      const controlStat = (buff as any)?.stats?.control;
+      const controlValue = Number(controlStat?.value ?? NaN);
+      const controlScaling = String(controlStat?.scaling ?? '').toLowerCase();
+      const hasNoActionBlocks =
+        !((buff as any)?.effects?.length) &&
+        !((buff as any)?.onFusion?.length) &&
+        !((buff as any)?.onRefine?.length) &&
+        !((buff as any)?.onStabilize?.length) &&
+        !((buff as any)?.onSupport?.length);
+      const isControlStacksSignature =
+        Number.isFinite(controlValue) &&
+        Math.abs(controlValue - 0.1) < 1e-6 &&
+        controlScaling === 'stacks' &&
+        hasNoActionBlocks;
+
+      if (isNamedCompletionBonus || isControlStacksSignature) {
+        const normalizedStacks = Math.max(0, Math.floor(stacks));
+        stacksFromBuff =
+          stacksFromBuff === undefined
+            ? normalizedStacks
+            : Math.max(stacksFromBuff, normalizedStacks);
+      }
+    }
   }
 
-  return total;
+  if (expectedFromProgress !== undefined) {
+    if (stacksFromBuff !== undefined && stacksFromBuff !== expectedFromProgress) {
+      debugLog(
+        `[CraftBuddy] Completion bonus mismatch (buff=${stacksFromBuff}, computed=${expectedFromProgress}), using computed value`,
+      );
+    }
+    return expectedFromProgress;
+  }
+
+  return stacksFromBuff ?? 0;
 }
 
 /**
@@ -326,7 +456,17 @@ function convertGameTechniques(
     const cooldown = tech.cooldown || 0;
     const preventsMaxStabilityDecay = tech.noMaxStabilityLoss === true;
     const masteryData = extractMasteryData(tech.mastery);
-    const mastery = masteryData.bonuses;
+    // poolcost/stabilitycost/successchance masteries are already baked into
+    // technique pool/stability/success values by game-side technique construction.
+    // Keep only runtime-applied mastery kinds to avoid double counting in simulation.
+    const masteryEntries = masteryData.masteryEntries.filter((entry) => {
+      const kind = String((entry as any)?.kind || '').toLowerCase();
+      return kind !== 'poolcost' && kind !== 'stabilitycost' && kind !== 'successchance';
+    });
+    const mastery: SkillMastery = { ...masteryData.bonuses };
+    delete mastery.poolCostReduction;
+    delete mastery.stabilityCostReduction;
+    delete mastery.successChanceBonus;
 
     let baseCompletionGain = 0;
     let basePerfectionGain = 0;
@@ -411,19 +551,6 @@ function convertGameTechniques(
       }
     }
 
-    // Heuristic for schema drift:
-    // Some newer game builds appear to send already-scaled, flat gains while still populating `amount.stat`.
-    // CraftBuddy's optimizer treats `baseXxxGain` as a multiplier when `scalesWithControl/intensity` is true,
-    // which would wildly overpredict if the value is already a final flat amount (e.g. 1898).
-    // Multipliers in the game are typically small (e.g. 0.5, 1.0, 1.8, 2.0). Treat large values as flat.
-    const LARGE_GAIN_THRESHOLD = 20;
-    if (completionScalingStat === 'intensity' && baseCompletionGain > LARGE_GAIN_THRESHOLD) {
-      completionScalingStat = undefined;
-    }
-    if (perfectionScalingStat === 'control' && basePerfectionGain > LARGE_GAIN_THRESHOLD) {
-      perfectionScalingStat = undefined;
-    }
-
     // Some skills (e.g., Restoring Brilliance) fully restore max stability.
     // The effect shape for this can vary; use a name-based fallback if we didn't detect a dedicated effect kind.
     if (!restoresMaxStabilityToFull && techName.toLowerCase().includes('restoring brilliance')) {
@@ -474,12 +601,15 @@ function convertGameTechniques(
       toxicityCleanse: toxicityCleanse > 0 ? toxicityCleanse : undefined,
       cooldown: cooldown > 0 ? cooldown : undefined,
       mastery: Object.keys(mastery).length > 0 ? mastery : undefined,
+      masteryEntries: masteryEntries.length > 0 ? masteryEntries : undefined,
       conditionRequirement,
       buffRequirement,
       buffCost,
       restoresQi: qiRestore > 0,
       qiRestore: qiRestore > 0 ? qiRestore : undefined,
       restoresMaxStabilityToFull: restoresMaxStabilityToFull || undefined,
+      effects: effects as any,
+      grantedBuff: effects.find(e => e?.kind === 'createBuff')?.buff as any,
     });
   }
 
@@ -487,10 +617,78 @@ function convertGameTechniques(
   return skills;
 }
 
+interface InventoryItemLike {
+  name: string;
+  stacks: number;
+}
+
+function convertGameItemsToActions(
+  entity: CraftingEntity,
+  inventoryItems: InventoryItemLike[] | undefined
+): { itemActions: SkillDefinition[]; itemCounts: Map<string, number> } {
+  const itemActions: SkillDefinition[] = [];
+  const itemCounts = new Map<string, number>();
+  const quickAccess = ((entity as any)?.craftingQuickAccess || []) as (string | undefined)[];
+  if (!quickAccess || quickAccess.length === 0) {
+    return { itemActions, itemCounts };
+  }
+
+  const gameItems = (window as any)?.modAPI?.gameData?.items || {};
+  const seen = new Set<string>();
+
+  for (const name of quickAccess) {
+    if (!name) continue;
+    const normalizedName = String(name).toLowerCase().trim().replace(/\s+/g, '_');
+    if (!normalizedName || seen.has(normalizedName)) continue;
+    seen.add(normalizedName);
+
+    const inventoryEntry = inventoryItems?.find((entry) => entry?.name === name);
+    const stacks = Number(inventoryEntry?.stacks ?? 0);
+    if (!Number.isFinite(stacks) || stacks <= 0) continue;
+
+    const gameItem = gameItems[name] as (CraftingPillItem | CraftingReagentItem | undefined);
+    if (!gameItem) continue;
+    if (gameItem.kind !== 'pill' && gameItem.kind !== 'reagent') continue;
+
+    const effects = Array.isArray((gameItem as any).effects) ? (gameItem as any).effects : [];
+    if (effects.length === 0) continue;
+
+    itemCounts.set(normalizedName, Math.floor(stacks));
+    itemActions.push({
+      name: `Use ${name}`,
+      key: `item_${normalizedName}`,
+      actionKind: 'item',
+      itemName: normalizedName,
+      consumesTurn: false,
+      reagentOnlyAtStepZero: gameItem.kind === 'reagent',
+      qiCost: 0,
+      stabilityCost: 0,
+      successChance: 1,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      stabilityGain: 0,
+      maxStabilityChange: 0,
+      buffType: BuffType.NONE,
+      buffDuration: 0,
+      buffMultiplier: 1,
+      type: 'support',
+      toxicityCost: Number((gameItem as any).toxicity || 0) || undefined,
+      effects: effects as any,
+      icon: (gameItem as any).icon as string | undefined,
+    });
+  }
+
+  return { itemActions, itemCounts };
+}
+
 /**
  * Build optimizer config from game entity stats.
  */
-function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
+function buildConfigFromEntity(
+  entity: CraftingEntity,
+  extraSkills: SkillDefinition[] = [],
+  trainingMode: boolean = false
+): OptimizerConfig {
   const stats = entity.stats;
   
   // Stats can come in as numbers or numeric strings; normalize to numbers.
@@ -508,7 +706,8 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     baseIntensity = Math.floor(baseIntensity * realmModifier);
   }
   
-  const skills = convertGameTechniques(entity.techniques);
+  const skills = [...convertGameTechniques(entity.techniques), ...extraSkills];
+  const pillsPerRound = Math.max(1, parseGameNumber((stats as any)?.pillsPerRound, 1));
   
   let defaultBuffMultiplier = 1.4;
   for (const skill of skills) {
@@ -526,11 +725,13 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     conditionEffectsData = parseRecipeConditionEffects(conditionEffectsCache.conditionEffects);
   }
 
-  console.log(`[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}, conditionData=${conditionEffectsData ? 'real' : 'none'}`);
+  console.log(`[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}, conditionData=${conditionEffectsData ? 'real' : 'none'}, compCap=${maxCompletionCap ?? 'n/a'}, perfCap=${maxPerfectionCap ?? 'n/a'}`);
   
   return {
     maxQi,
     maxStability: targetStability,
+    maxCompletion: maxCompletionCap,
+    maxPerfection: maxPerfectionCap,
     baseIntensity,
     baseControl,
     minStability: 0,
@@ -543,8 +744,8 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     conditionEffectsData: conditionEffectsData as any,
     targetCompletion,
     targetPerfection,
-    // @ts-ignore - trainingMode exists on game's CraftingState
-    trainingMode: !!(entity as any)?.trainingMode,
+    trainingMode,
+    pillsPerRound,
   };
 }
 
@@ -553,7 +754,10 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
  */
 function updateRecommendation(
   entity: CraftingEntity,
-  progressState: ProgressState
+  progressState: ProgressState,
+  inventoryItems?: InventoryItemLike[],
+  consumedPillsThisTurn: number = 0,
+  trainingMode: boolean = false
 ): void {
   // Store for rendering
   lastEntity = entity;
@@ -594,54 +798,45 @@ function updateRecommendation(
   // Game stores critchance/critmultiplier as percentages (e.g., 50 = 50%, 150 = 1.5x).
   // The optimizer's calculateExpectedCritMultiplier expects these raw percentage values.
   // Do NOT normalize to [0,1] -- that would destroy the overcrit formula.
-  const baseCritChance = Number((entity as any)?.stats?.critchance ?? 0) || 0;
-  const buffCritChance = extractCraftingStatFromBuffs(buffs, 'critchance');
-  const critChance = Math.max(0, baseCritChance + buffCritChance);
+  const critChance = Math.max(0, Number((entity as any)?.stats?.critchance ?? 0) || 0);
+  const critMultiplier = Math.max(0, Number((entity as any)?.stats?.critmultiplier ?? 0) || 0);
 
-  const baseCritMultiplier = Number((entity as any)?.stats?.critmultiplier ?? 0) || 0;
-  const buffCritMultBonus = extractCraftingStatFromBuffs(buffs, 'critmultiplier');
-  const critMultiplier = Math.max(0, baseCritMultiplier + buffCritMultBonus);
+  // Success chance bonus is a 0-1 fraction in game data.
+  const successChanceBonus = Math.max(
+    0,
+    Math.min(1, Number((entity as any)?.stats?.successChanceBonus ?? 0) || 0),
+  );
 
-  // Success chance bonus: game stores as 0-1 fraction, keep as-is
-  const baseSuccessBonus = Number((entity as any)?.stats?.successChanceBonus ?? 0) || 0;
-  const buffSuccessBonus = extractCraftingStatFromBuffs(buffs, 'successChanceBonus');
-  const successChanceBonus = Math.max(0, Math.min(1, baseSuccessBonus + buffSuccessBonus));
-
-  const extractedBuffs = new Map<string, { name: string; stacks: number }>();
+  const extractedBuffs = new Map<string, { name: string; stacks: number; definition?: any }>();
   if (buffs) {
     for (const buff of buffs) {
-      const rawName = (buff?.name || '').toLowerCase().trim();
-      if (!rawName) continue;
-      const key = rawName.replace(/\s+/g, '_');
+      const key = normalizeBuffKey(buff?.name);
+      if (!key) continue;
       const stacks = buff?.stacks ?? 0;
       if (stacks > 0) {
-        extractedBuffs.set(key, { name: key, stacks });
+        extractedBuffs.set(key, {
+          name: key,
+          stacks,
+          definition: {
+            ...(buff as any),
+            effects: (buff as any)?.effects ?? [],
+          },
+        });
       }
     }
   }
 
   // Read pool/stability cost percentage modifiers from entity stats + buffs
   // Game default is 100 (= 100%, i.e. no modification)
-  const basePoolCostPct = Number((entity as any)?.stats?.poolCostPercentage ?? 100) || 100;
-  const buffPoolCostPct = extractCraftingStatFromBuffs(buffs, 'poolCostPercentage');
-  const poolCostPercentage = buffPoolCostPct !== 0
-    ? Math.floor((basePoolCostPct / 100) * (buffPoolCostPct / 100) * 100)
-    : basePoolCostPct;
-
-  const baseStabCostPct = Number((entity as any)?.stats?.stabilityCostPercentage ?? 100) || 100;
-  const buffStabCostPct = extractCraftingStatFromBuffs(buffs, 'stabilityCostPercentage');
-  const stabilityCostPercentage = buffStabCostPct !== 0
-    ? Math.floor((baseStabCostPct / 100) * (buffStabCostPct / 100) * 100)
-    : baseStabCostPct;
+  const poolCostPercentage = Number((entity as any)?.stats?.poolCostPercentage ?? 100) || 100;
+  const stabilityCostPercentage = Number((entity as any)?.stats?.stabilityCostPercentage ?? 100) || 100;
 
   // Extract completion bonus stacks from the Completion Bonus buff
-  let completionBonusStacks = 0;
-  if (buffs) {
-    const compBonusBuff = buffs.find(b => b.name === 'Completion Bonus');
-    if (compBonusBuff && compBonusBuff.stacks > 0) {
-      completionBonusStacks = compBonusBuff.stacks;
-    }
-  }
+  const completionBonusStacks = extractCompletionBonusStacks(
+    buffs,
+    completion,
+    targetCompletion
+  );
 
   const techniques = entity?.techniques || [];
   currentCooldowns = new Map();
@@ -652,7 +847,8 @@ function updateRecommendation(
     }
   }
 
-  currentConfig = buildConfigFromEntity(entity);
+  const { itemActions, itemCounts } = convertGameItemsToActions(entity, inventoryItems);
+  currentConfig = buildConfigFromEntity(entity, itemActions, trainingMode);
   
   // Calculate current max stability from targetStability - stabilityPenalty
   // The game tracks stability decay via stabilityPenalty in progressState, not a separate maxStability field
@@ -689,6 +885,8 @@ function updateRecommendation(
     toxicity: currentToxicity,
     maxToxicity: currentConfig?.maxToxicity || maxToxicity,
     cooldowns: currentCooldowns,
+    items: itemCounts,
+    consumedPillsThisTurn,
     buffs: extractedBuffs,
     harmony: gameHarmony,
     harmonyData: gameHarmonyData ?? (isSublimeCraft ? { recommendedTechniqueTypes: [] } : undefined),
@@ -701,6 +899,7 @@ function updateRecommendation(
   const forecastedConditionTypes = nextConditions as unknown as (string)[];
 
   const lookaheadDepth = currentSettings.lookaheadDepth;
+  const searchConfig = getSearchConfig();
   currentRecommendation = findBestSkill(
     state,
     currentConfig,
@@ -709,7 +908,8 @@ function updateRecommendation(
     false,
     lookaheadDepth,
     currentConditionType,
-    forecastedConditionTypes
+    forecastedConditionTypes,
+    searchConfig
   );
   
   console.log(`[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Completion=${completion}/${targetCompletion}, Perfection=${perfection}/${targetPerfection}`);
@@ -776,6 +976,8 @@ function renderOverlay(): void {
     currentPerfection,
     targetCompletion,
     targetPerfection,
+    maxCompletionCap,
+    maxPerfectionCap,
     currentStability,
     currentMaxStability,
     settings: currentSettings,
@@ -890,7 +1092,15 @@ let cachedStore: any = null;
 /**
  * Try to extract crafting state from Redux store or DOM.
  */
-function detectCraftingState(): { isActive: boolean; entity?: CraftingEntity; progress?: ProgressState; recipeStats?: any } {
+function detectCraftingState(): {
+  isActive: boolean;
+  entity?: CraftingEntity;
+  progress?: ProgressState;
+  recipeStats?: any;
+  inventoryItems?: InventoryItemLike[];
+  consumedPillsThisTurn?: number;
+  trainingMode?: boolean;
+} {
   // Method 1: Try to access Redux store - this is the best source
   if (!cachedStore) {
     cachedStore = findReduxStore();
@@ -907,7 +1117,10 @@ function detectCraftingState(): { isActive: boolean; entity?: CraftingEntity; pr
           isActive: true, 
           entity: craftingState.player as CraftingEntity,
           progress: craftingState.progressState as ProgressState,
-          recipeStats: craftingState.recipeStats
+          recipeStats: craftingState.recipeStats,
+          inventoryItems: state?.inventory?.items as InventoryItemLike[] | undefined,
+          consumedPillsThisTurn: Number(craftingState?.consumedPills ?? 0) || 0,
+          trainingMode: !!craftingState?.trainingMode,
         };
       }
       
@@ -918,7 +1131,10 @@ function detectCraftingState(): { isActive: boolean; entity?: CraftingEntity; pr
           isActive: true,
           entity: gameCrafting.player as CraftingEntity,
           progress: gameCrafting.progressState as ProgressState,
-          recipeStats: gameCrafting.recipeStats
+          recipeStats: gameCrafting.recipeStats,
+          inventoryItems: state?.inventory?.items as InventoryItemLike[] | undefined,
+          consumedPillsThisTurn: Number(gameCrafting?.consumedPills ?? 0) || 0,
+          trainingMode: !!gameCrafting?.trainingMode,
         };
       }
     } catch (e) {
@@ -1005,7 +1221,15 @@ function parseCraftingValuesFromDOM(): {
  * Poll for crafting state changes.
  */
 function pollCraftingState(): void {
-  const { isActive, entity, progress, recipeStats } = detectCraftingState();
+  const {
+    isActive,
+    entity,
+    progress,
+    recipeStats,
+    inventoryItems,
+    consumedPillsThisTurn,
+    trainingMode,
+  } = detectCraftingState();
   
   if (isActive && !isOverlayVisible) {
     console.log('[CraftBuddy] Crafting detected, showing overlay');
@@ -1014,6 +1238,8 @@ function pollCraftingState(): void {
     console.log('[CraftBuddy] Crafting ended, hiding overlay');
     hideOverlay();
     clearCachedTargets();
+    maxCompletionCap = undefined;
+    maxPerfectionCap = undefined;
   }
   
   // If we have entity and progress from Redux, use them directly
@@ -1030,6 +1256,7 @@ function pollCraftingState(): void {
       if (recipeStats.stability !== undefined && recipeStats.stability > 0) {
         targetStability = recipeStats.stability;
       }
+      updateProgressCapsFromRecipeStats(recipeStats as any);
       // Calculate current max stability from recipeStats.stability - progressState.stabilityPenalty
       const stabilityPenalty = (progress as any).stabilityPenalty || 0;
       currentMaxStability = recipeStats.stability - stabilityPenalty;
@@ -1045,7 +1272,13 @@ function pollCraftingState(): void {
         newStability !== currentStability ||
         !lastEntity) {
       console.log(`[CraftBuddy] Redux state: Completion=${newCompletion}/${targetCompletion}, Perfection=${newPerfection}/${targetPerfection}, Stability=${newStability}/${currentMaxStability}`);
-      updateRecommendation(entity, progress);
+      updateRecommendation(
+        entity,
+        progress,
+        inventoryItems,
+        consumedPillsThisTurn || 0,
+        !!trainingMode
+      );
     }
     return;
   }
@@ -1123,6 +1356,11 @@ try {
   window.modAPI.hooks.onDeriveRecipeDifficulty((recipe, recipeStats, gameFlags) => {
     console.log('[CraftBuddy] onDeriveRecipeDifficulty called for:', recipe?.name);
     console.log('[CraftBuddy] Full recipeStats:', JSON.stringify(recipeStats, null, 2));
+
+    // Reset optional progress caps for the new craft. They will be repopulated
+    // when exposed by recipeStats (or remain undefined if unavailable).
+    maxCompletionCap = undefined;
+    maxPerfectionCap = undefined;
     
     if (recipeStats) {
       // Try multiple possible property names for targets
@@ -1130,13 +1368,16 @@ try {
       targetCompletion = statsAny.completionTarget ?? statsAny.targetCompletion ?? statsAny.completion ?? 100;
       targetPerfection = statsAny.perfectionTarget ?? statsAny.targetPerfection ?? statsAny.perfection ?? 100;
       targetStability = statsAny.stabilityTarget ?? statsAny.targetStability ?? statsAny.stability ?? 60;
+      updateProgressCapsFromRecipeStats(statsAny);
       
       const conditionType = recipeStats.conditionType;
       if (conditionType) {
         conditionEffectsCache = conditionType;
       }
       
-      console.log(`[CraftBuddy] Targets: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}`);
+      console.log(
+        `[CraftBuddy] Targets: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}, caps=${maxCompletionCap ?? 'n/a'}/${maxPerfectionCap ?? 'n/a'}`
+      );
       
       // Cache targets for mid-craft save recovery
       cacheTargets(recipe?.name);
@@ -1230,6 +1471,7 @@ try {
   getConfig: () => currentConfig,
   getRecommendation: () => currentRecommendation,
   getTargets: () => ({ targetCompletion, targetPerfection, targetStability }),
+  getCaps: () => ({ maxCompletionCap, maxPerfectionCap }),
   getCurrentState: () => ({ 
     currentCompletion, 
     currentPerfection, 
@@ -1240,6 +1482,8 @@ try {
     craftingType: currentCraftingType,
     isSublimeCraft,
     sublimeTargetMultiplier,
+    maxCompletionCap,
+    maxPerfectionCap,
   }),
   getCooldowns: () => Object.fromEntries(currentCooldowns),
   getNextConditions: () => nextConditions,
@@ -1888,7 +2132,14 @@ function processCraftingState(craftingState: any): void {
       showOverlay();
     }
     
-    updateRecommendation(entity, progress);
+    const inventoryItems = cachedStore?.getState?.()?.inventory?.items as InventoryItemLike[] | undefined;
+    updateRecommendation(
+      entity,
+      progress,
+      inventoryItems,
+      Number(craftingState?.consumedPills ?? 0) || 0,
+      !!craftingState?.trainingMode
+    );
   }
 }
 

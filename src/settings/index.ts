@@ -24,11 +24,11 @@ export interface CraftBuddySettings {
   showOptimalRotation: boolean;
   
   // Performance settings for late-game optimization
-  /** Maximum time budget for search in milliseconds (10-500, default: 100) */
+  /** Maximum time budget for search in milliseconds (10-500, default: 200) */
   searchTimeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (1000-100000, default: 50000) */
+  /** Maximum nodes to explore before stopping (1000-100000, default: 100000) */
   searchMaxNodes: number;
-  /** Beam width - max branches to explore at each level (3-15, default: 8) */
+  /** Beam width - max branches to explore at each level (3-15, default: 6) */
   searchBeamWidth: number;
 }
 
@@ -45,10 +45,10 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
-  // Performance defaults - balanced for responsiveness
-  searchTimeBudgetMs: 100,
-  searchMaxNodes: 50000,
-  searchBeamWidth: 8,
+  // Performance defaults aligned with optimizer search defaults
+  searchTimeBudgetMs: 200,
+  searchMaxNodes: 100000,
+  searchBeamWidth: 6,
 };
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };

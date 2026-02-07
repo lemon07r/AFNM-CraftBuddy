@@ -165,17 +165,27 @@ function processAlchemicalArts(
   const aa: AlchemicalArtsData = harmonyData.alchemicalArts
     ? { charges: [...harmonyData.alchemicalArts.charges], lastCombo: [...harmonyData.alchemicalArts.lastCombo] }
     : { charges: [], lastCombo: [] };
+  const additionalData: Record<string, unknown> = harmonyData.additionalData
+    ? { ...harmonyData.additionalData }
+    : {};
+  const existingReaction = additionalData.alchemicalReactionModifiers as Partial<HarmonyStatModifiers> | undefined;
 
   aa.charges.push(techniqueType);
   aa.charges.sort();
 
   let harmonyDelta = 0;
-  let statModifiers = { ...DEFAULT_MODIFIERS };
+  let statModifiers = { ...DEFAULT_MODIFIERS, ...(existingReaction ?? {}) };
+  let nextReaction = existingReaction;
 
   if (aa.charges.length < 3) {
     const recommended = getNextValidChargeTypes(aa.charges);
     return {
-      harmonyData: { ...harmonyData, alchemicalArts: aa, recommendedTechniqueTypes: recommended },
+      harmonyData: {
+        ...harmonyData,
+        alchemicalArts: aa,
+        recommendedTechniqueTypes: recommended,
+        additionalData,
+      },
       harmonyDelta: 0,
       statModifiers,
       stabilityDelta: 0,
@@ -192,17 +202,25 @@ function processAlchemicalArts(
 
   if (matchingCombo) {
     harmonyDelta = 20;
-    statModifiers = { ...DEFAULT_MODIFIERS, ...matchingCombo.modifiers };
+    nextReaction = matchingCombo.modifiers;
+    statModifiers = { ...DEFAULT_MODIFIERS, ...nextReaction };
   } else {
     harmonyDelta = -20;
-    statModifiers = { ...DEFAULT_MODIFIERS, controlMultiplier: 0.75 };
+    nextReaction = { controlMultiplier: 0.75 };
+    statModifiers = { ...DEFAULT_MODIFIERS, ...nextReaction };
   }
 
   aa.lastCombo = aa.charges.slice(-3);
   aa.charges = [];
+  additionalData.alchemicalReactionModifiers = nextReaction as Record<string, unknown>;
 
   return {
-    harmonyData: { ...harmonyData, alchemicalArts: aa, recommendedTechniqueTypes: [] },
+    harmonyData: {
+      ...harmonyData,
+      alchemicalArts: aa,
+      recommendedTechniqueTypes: [],
+      additionalData,
+    },
     harmonyDelta,
     statModifiers,
     stabilityDelta: 0,
@@ -431,11 +449,10 @@ export function getHarmonyStatModifiers(
       return getForgeWorksStatModifiers(heat);
     }
     case 'alchemical': {
-      // Alchemical modifiers come from the Reaction buff which persists
-      // until next combo. We don't track the buff separately -- the combo
-      // result sets modifiers for the next 3 actions. For lookahead we
-      // return defaults since the buff is transient.
-      return { ...DEFAULT_MODIFIERS };
+      const mods = harmonyData.additionalData?.alchemicalReactionModifiers as
+        | Partial<HarmonyStatModifiers>
+        | undefined;
+      return { ...DEFAULT_MODIFIERS, ...(mods ?? {}) };
     }
     case 'inscription': {
       const stacks = harmonyData.inscribedPatterns?.stacks ?? 0;

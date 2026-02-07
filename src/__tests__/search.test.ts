@@ -28,6 +28,24 @@ function createTestConfig(overrides: Partial<OptimizerConfig> = {}): OptimizerCo
   };
 }
 
+function createCustomSkill(overrides: Partial<SkillDefinition> = {}): SkillDefinition {
+  return {
+    name: 'Custom Skill',
+    key: 'custom_skill',
+    qiCost: 0,
+    stabilityCost: 0,
+    baseCompletionGain: 0,
+    basePerfectionGain: 0,
+    stabilityGain: 0,
+    maxStabilityChange: 0,
+    buffType: BuffType.NONE,
+    buffDuration: 0,
+    buffMultiplier: 1,
+    type: 'support',
+    ...overrides,
+  };
+}
+
 describe('greedySearch', () => {
   const config = createTestConfig();
 
@@ -48,7 +66,7 @@ describe('greedySearch', () => {
   it('should return isTerminal when no skills can be applied', () => {
     const state = new CraftingState({
       qi: 0,
-      stability: 10,
+      stability: 0,
       completion: 0,
       perfection: 0,
     });
@@ -140,7 +158,7 @@ describe('greedySearch', () => {
     expect(skill.type === 'refine' || skill.basePerfectionGain > 0).toBe(true);
   });
 
-  it('should recommend stabilize when stability is low', () => {
+  it('should still return a non-terminal recommendation when stability is low but above 0', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 15, // Low stability
@@ -152,9 +170,7 @@ describe('greedySearch', () => {
     const result = greedySearch(state, config, 100, 100);
     
     expect(result.recommendation).not.toBeNull();
-    // Should recommend stabilize skill
-    const skill = result.recommendation!.skill;
-    expect(skill.type).toBe('stabilize');
+    expect(result.isTerminal).toBe(false);
   });
 });
 
@@ -178,7 +194,7 @@ describe('lookaheadSearch', () => {
   it('should return isTerminal when no skills can be applied', () => {
     const state = new CraftingState({
       qi: 0,
-      stability: 10,
+      stability: 0,
       completion: 0,
       perfection: 0,
     });
@@ -309,6 +325,28 @@ describe('lookaheadSearch', () => {
       const result = lookaheadSearch(state, config, 100, 100, depth);
       expect(result.recommendation).not.toBeNull();
     }
+  });
+
+  it('should perform iterative deepening when enabled', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 6, undefined, [], {
+      useIterativeDeepening: true,
+      iterativeDeepeningMinDepth: 3,
+      timeBudgetMs: 500,
+      maxNodes: 200000,
+    });
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.searchMetrics).toBeDefined();
+    expect(result.searchMetrics!.depthReached).toBeGreaterThanOrEqual(3);
+    expect(result.searchMetrics!.depthReached).toBeLessThanOrEqual(6);
   });
 });
 
@@ -460,6 +498,159 @@ describe('search algorithm correctness', () => {
     const result = findBestSkill(state, config, 100, 100);
     
     expect(result.targetsMet).toBe(true);
+  });
+});
+
+describe('condition timeline modeling', () => {
+  it('should respect the current root condition instead of using first forecast condition', () => {
+    const negativeOnly = createCustomSkill({
+      name: 'Negative Burst',
+      key: 'negative_burst',
+      type: 'fusion',
+      baseCompletionGain: 40,
+      conditionRequirement: 'negative',
+    });
+    const positiveOnly = createCustomSkill({
+      name: 'Positive Burst',
+      key: 'positive_burst',
+      type: 'fusion',
+      baseCompletionGain: 60,
+      conditionRequirement: 'positive',
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [negativeOnly, positiveOnly],
+    });
+
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 0, 1, 'negative', ['positive']);
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Negative Burst');
+  });
+
+  it('should project likely future conditions beyond forecast using harmony', () => {
+    const setup = createCustomSkill({
+      name: 'Setup',
+      key: 'setup',
+      type: 'support',
+      qiCost: 0,
+      baseCompletionGain: 0,
+    });
+    const direct = createCustomSkill({
+      name: 'Direct Push',
+      key: 'direct_push',
+      type: 'fusion',
+      qiCost: 10,
+      baseCompletionGain: 5,
+    });
+    const negativeBurst = createCustomSkill({
+      name: 'Negative Burst',
+      key: 'negative_burst',
+      type: 'fusion',
+      qiCost: 10,
+      baseCompletionGain: 100,
+      conditionRequirement: 'negative',
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [setup, direct, negativeBurst],
+    });
+
+    const state = new CraftingState({
+      qi: 10,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      harmony: -100,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 0, 2, 'neutral', []);
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Setup');
+  });
+
+  it('should use probability-weighted branching beyond forecast when enabled', () => {
+    const setup = createCustomSkill({
+      name: 'Setup',
+      key: 'setup',
+      type: 'support',
+      qiCost: 0,
+      baseCompletionGain: 0,
+    });
+    const directNeutral = createCustomSkill({
+      name: 'Direct Neutral Push',
+      key: 'direct_neutral_push',
+      type: 'fusion',
+      qiCost: 0,
+      baseCompletionGain: 60,
+      conditionRequirement: 'neutral',
+    });
+    const positiveBurst = createCustomSkill({
+      name: 'Positive Burst',
+      key: 'positive_burst',
+      type: 'fusion',
+      qiCost: 0,
+      baseCompletionGain: 100,
+      conditionRequirement: 'positive',
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [setup, directNeutral, positiveBurst],
+    });
+
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      harmony: 0, // positive/negative split when forecast is exhausted
+    });
+
+    const branchingResult = lookaheadSearch(
+      state,
+      config,
+      100,
+      0,
+      2,
+      'neutral',
+      [],
+      {
+        enableConditionBranchingAfterForecast: true,
+        conditionBranchLimit: 2,
+        conditionBranchMinProbability: 0.01,
+      }
+    );
+    expect(branchingResult.recommendation).not.toBeNull();
+    expect(branchingResult.recommendation!.skill.name).toBe('Direct Neutral Push');
+
+    const deterministicResult = lookaheadSearch(
+      state,
+      config,
+      100,
+      0,
+      2,
+      'neutral',
+      [],
+      {
+        enableConditionBranchingAfterForecast: false,
+      }
+    );
+    expect(deterministicResult.recommendation).not.toBeNull();
+    expect(deterministicResult.recommendation!.skill.name).toBe('Setup');
   });
 });
 

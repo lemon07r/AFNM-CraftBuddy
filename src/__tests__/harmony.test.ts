@@ -192,6 +192,8 @@ describe('Alchemical Arts', () => {
     const result = processHarmonyEffect(hd, 'alchemical', 'stabilize');
     expect(result.harmonyDelta).toBe(20);
     expect(result.statModifiers.critChanceBonus).toBe(25);
+    const persistent = getHarmonyStatModifiers(result.harmonyData, 'alchemical');
+    expect(persistent.critChanceBonus).toBe(25);
   });
 
   it('should apply -20 harmony and -25% control for invalid combo', () => {
@@ -202,6 +204,8 @@ describe('Alchemical Arts', () => {
     const result = processHarmonyEffect(hd, 'alchemical', 'fusion');
     expect(result.harmonyDelta).toBe(-20);
     expect(result.statModifiers.controlMultiplier).toBe(0.75);
+    const persistent = getHarmonyStatModifiers(result.harmonyData, 'alchemical');
+    expect(persistent.controlMultiplier).toBe(0.75);
   });
 
   it('should reset charges after combo (valid or invalid)', () => {

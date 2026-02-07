@@ -289,6 +289,56 @@ describe('CraftingState', () => {
       expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
     });
 
+    it('should include initialMaxStability in cache key', () => {
+      const state1 = new CraftingState({
+        qi: 100,
+        stability: 50,
+        initialMaxStability: 60,
+        stabilityPenalty: 5,
+      });
+      const state2 = new CraftingState({
+        qi: 100,
+        stability: 50,
+        initialMaxStability: 80,
+        stabilityPenalty: 5,
+      });
+
+      expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
+    });
+
+    it('should include harmony and harmonyData in cache key', () => {
+      const base = new CraftingState({
+        qi: 100,
+        stability: 50,
+        harmony: 10,
+        harmonyData: {
+          forgeWorks: { heat: 4 },
+          recommendedTechniqueTypes: ['fusion'],
+        },
+      });
+      const changedHarmony = new CraftingState({
+        qi: 100,
+        stability: 50,
+        harmony: 20,
+        harmonyData: {
+          forgeWorks: { heat: 4 },
+          recommendedTechniqueTypes: ['fusion'],
+        },
+      });
+      const changedData = new CraftingState({
+        qi: 100,
+        stability: 50,
+        harmony: 10,
+        harmonyData: {
+          forgeWorks: { heat: 5 },
+          recommendedTechniqueTypes: ['fusion'],
+        },
+      });
+
+      expect(base.getCacheKey()).not.toBe(changedHarmony.getCacheKey());
+      expect(base.getCacheKey()).not.toBe(changedData.getCacheKey());
+    });
+
     it('should include cooldowns in cache key', () => {
       const cooldowns1 = new Map<string, number>();
       cooldowns1.set('stabilize', 2);

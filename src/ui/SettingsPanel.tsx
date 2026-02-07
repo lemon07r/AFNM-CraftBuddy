@@ -115,6 +115,46 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
             </Typography>
           </Box>
 
+          {/* Search Budget */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5 }}>
+              Search Time Budget: {settings.searchTimeBudgetMs}ms
+            </Typography>
+            <Slider
+              value={settings.searchTimeBudgetMs}
+              onChange={(_, value) => handleSettingChange('searchTimeBudgetMs', value as number)}
+              min={10}
+              max={500}
+              step={10}
+              size="small"
+              sx={{ color: '#FFD700' }}
+            />
+            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5, mt: 1 }}>
+              Search Max Nodes: {settings.searchMaxNodes.toLocaleString()}
+            </Typography>
+            <Slider
+              value={settings.searchMaxNodes}
+              onChange={(_, value) => handleSettingChange('searchMaxNodes', value as number)}
+              min={1000}
+              max={100000}
+              step={1000}
+              size="small"
+              sx={{ color: '#FFD700' }}
+            />
+            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 0.5, mt: 1 }}>
+              Search Beam Width: {settings.searchBeamWidth}
+            </Typography>
+            <Slider
+              value={settings.searchBeamWidth}
+              onChange={(_, value) => handleSettingChange('searchBeamWidth', value as number)}
+              min={3}
+              max={15}
+              step={1}
+              size="small"
+              sx={{ color: '#FFD700' }}
+            />
+          </Box>
+
           <Divider sx={{ my: 1.5, borderColor: 'rgba(100, 100, 100, 0.5)' }} />
 
           {/* Display Options */}

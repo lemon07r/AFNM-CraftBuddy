@@ -526,11 +526,10 @@ describe('Stability Cost Calculation Order', () => {
     const newState = applySkill(state, skill, config, conditionEffects);
 
     expect(newState).not.toBeNull();
-    // Game order: ceil(10 * 80/100) = ceil(8) = 8, then floor(8 * 0.7) = floor(5.6) = 5
-    // So stability should be 50 - 5 = 45
-    // If done wrong order: floor(10 * 0.7) = 7, then ceil(7 * 80/100) = ceil(5.6) = 6
-    // So stability would be 50 - 6 = 44
-    expect(newState!.stability).toBe(45);
+    // Game path uses negative deltas:
+    // amount=-10; ceil(-10 * 80/100)=ceil(-8)=-8; floor(-8 * 0.7)=floor(-5.6)=-6
+    // So stability should be 50 - 6 = 44
+    expect(newState!.stability).toBe(44);
   });
 });
 

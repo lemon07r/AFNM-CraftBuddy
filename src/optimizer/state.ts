@@ -11,6 +11,18 @@ import {
   ScalingVariables,
 } from './gameTypes';
 
+function stableStringify(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  const parts = keys.map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`);
+  return `{${parts.join(',')}}`;
+}
+
 function cloneHarmonyData(hd: HarmonyData): HarmonyData {
   const clone: HarmonyData = { recommendedTechniqueTypes: [...hd.recommendedTechniqueTypes] };
   if (hd.forgeWorks) clone.forgeWorks = { ...hd.forgeWorks };
@@ -24,6 +36,9 @@ function cloneHarmonyData(hd: HarmonyData): HarmonyData {
     stacks: hd.inscribedPatterns.stacks,
   };
   if (hd.resonance) clone.resonance = { ...hd.resonance };
+  if (hd.additionalData !== undefined) {
+    clone.additionalData = JSON.parse(JSON.stringify(hd.additionalData)) as Record<string, unknown>;
+  }
   return clone;
 }
 
@@ -75,6 +90,13 @@ export interface CraftingStateData {
   /** Map of skill keys to their current cooldown turns remaining */
   cooldowns: Map<string, number>;
   /**
+   * Remaining craft-usable item counts keyed by normalized item name.
+   * This is consumed by item actions during lookahead.
+   */
+  items: Map<string, number>;
+  /** Pills consumed during the current turn (resets after a technique action). */
+  consumedPillsThisTurn: number;
+  /**
    * Active buffs with stacks and optional definitions.
    * Keyed by normalized buff name.
    */
@@ -117,6 +139,8 @@ export class CraftingState implements CraftingStateData {
   readonly toxicity: number;
   readonly maxToxicity: number;
   readonly cooldowns: Map<string, number>;
+  readonly items: Map<string, number>;
+  readonly consumedPillsThisTurn: number;
   readonly buffs: Map<string, TrackedBuff>;
   readonly harmony: number;
   readonly harmonyData?: HarmonyData;
@@ -145,6 +169,8 @@ export class CraftingState implements CraftingStateData {
     this.toxicity = data.toxicity ?? 0;
     this.maxToxicity = data.maxToxicity ?? 100;
     this.cooldowns = data.cooldowns ? new Map(data.cooldowns) : new Map();
+    this.items = data.items ? new Map(data.items) : new Map();
+    this.consumedPillsThisTurn = data.consumedPillsThisTurn ?? 0;
     if (data.buffs) {
       this.buffs = new Map(data.buffs);
     } else {
@@ -189,6 +215,8 @@ export class CraftingState implements CraftingStateData {
       toxicity: overrides.toxicity ?? this.toxicity,
       maxToxicity: overrides.maxToxicity ?? this.maxToxicity,
       cooldowns: overrides.cooldowns ?? this.cooldowns,
+      items: overrides.items ?? this.items,
+      consumedPillsThisTurn: overrides.consumedPillsThisTurn ?? this.consumedPillsThisTurn,
       buffs: overrides.buffs ?? this.buffs,
       harmony: overrides.harmony ?? this.harmony,
       harmonyData: overrides.harmonyData ?? this.harmonyData,
@@ -318,6 +346,11 @@ export class CraftingState implements CraftingStateData {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}:${v}`)
       .join(',');
+    const itemStr = Array.from(this.items.entries())
+      .filter(([_, v]) => v > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join(',');
 
     // Include buff multipliers in cache key - different multipliers produce different gains
     // Round multipliers to 2 decimal places to avoid floating point comparison issues
@@ -346,7 +379,10 @@ export class CraftingState implements CraftingStateData {
     // Include completion bonus (affects control via +10% per stack)
     const compBonusKey = this.completionBonus;
 
-    this._cacheKey = `${this.qi}:${this.stability}:${this.stabilityPenalty}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${critChanceKey}:${critMultKey}:${successBonusKey}:${poolCostKey}:${stabCostKey}:${compBonusKey}:${cooldownStr}:${buffStr}`;
+    // Include initial max stability + harmony fields to avoid cache collisions between
+    // states that have different future trajectories but identical visible resources.
+    const harmonyDataKey = this.harmonyData ? stableStringify(this.harmonyData) : '';
+    this._cacheKey = `${this.qi}:${this.stability}:${this.initialMaxStability}:${this.stabilityPenalty}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${this.harmony}:${harmonyDataKey}:${critChanceKey}:${critMultKey}:${successBonusKey}:${poolCostKey}:${stabCostKey}:${compBonusKey}:${this.consumedPillsThisTurn}:${cooldownStr}:${itemStr}:${buffStr}`;
     return this._cacheKey;
   }
 
@@ -372,6 +408,8 @@ export interface CreateStateOptions {
   toxicity?: number;
   maxToxicity?: number;
   cooldowns?: Map<string, number>;
+  items?: Map<string, number>;
+  consumedPillsThisTurn?: number;
   buffs?: Map<string, TrackedBuff>;
   critChance?: number;
   critMultiplier?: number;
@@ -402,6 +440,8 @@ export function createStateFromGame(opts: CreateStateOptions): CraftingState {
     toxicity: opts.toxicity ?? 0,
     maxToxicity: opts.maxToxicity ?? 100,
     cooldowns: opts.cooldowns ?? new Map(),
+    items: opts.items ?? new Map(),
+    consumedPillsThisTurn: opts.consumedPillsThisTurn ?? 0,
     buffs: opts.buffs ?? new Map(),
     critChance: opts.critChance ?? 0,
     critMultiplier: opts.critMultiplier ?? 150,

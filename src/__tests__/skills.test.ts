@@ -15,6 +15,7 @@ import {
   isTerminalState,
   getEffectiveQiCost,
   getEffectiveStabilityCost,
+  calculateEffectiveActionCosts,
 } from '../optimizer/skills';
 
 // Helper to create a basic test config
@@ -73,15 +74,15 @@ describe('canApplySkill', () => {
     expect(canApplySkill(state, skill, 0)).toBe(false);
   });
 
-  it('should reject skill when stability would drop below the provided minimum', () => {
+  it('should allow skill when stability is above 0 even if effective cost crosses minStability', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 15,
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 10 });
     
-    // 15 - 10 = 5, which is below minStability of 10
-    expect(canApplySkill(state, skill, 10)).toBe(false);
+    // Matches game canUseAction: only checks current stability > 0.
+    expect(canApplySkill(state, skill, 10)).toBe(true);
   });
 
   it('should allow skill when stability exactly meets the provided minimum after cost', () => {
@@ -105,9 +106,10 @@ describe('canApplySkill', () => {
     // 10 - 10 = 0 is allowed.
     expect(canApplySkill(state, skill, 0)).toBe(true);
 
-    // But going negative is not.
+    // Game allows attempting actions while current stability is above 0;
+    // apply step clamps resulting stability at 0.
     const tooExpensive = createTestSkill({ qiCost: 0, stabilityCost: 11 });
-    expect(canApplySkill(state, tooExpensive, 0)).toBe(false);
+    expect(canApplySkill(state, tooExpensive, 0)).toBe(true);
   });
 
   it('should reject skill on cooldown', () => {
@@ -185,6 +187,32 @@ describe('canApplySkill', () => {
     // 80 + 15 = 95, which is within maxToxicity of 100
     expect(canApplySkill(state, skill, 10, 100)).toBe(true);
   });
+
+  it('should reject skill when condition-modified qi cost exceeds available qi', () => {
+    const state = new CraftingState({
+      qi: 12,
+      stability: 50,
+      poolCostPercentage: 120,
+    });
+    const skill = createTestSkill({ qiCost: 10, stabilityCost: 0 });
+    const conditionEffects = [{ kind: 'pool' as const, multiplier: 1.3 }];
+
+    // Effective Qi cost: floor(floor(10 * 1.3) * 1.2) = floor(13 * 1.2) = 15
+    expect(canApplySkill(state, skill, 0, 0, undefined, conditionEffects)).toBe(false);
+  });
+
+  it('should allow skill even when condition-modified stability cost exceeds available stability', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 10,
+      stabilityCostPercentage: 120,
+    });
+    const skill = createTestSkill({ qiCost: 0, stabilityCost: 1 });
+    const conditionEffects = [{ kind: 'stability' as const, multiplier: 1.6 }];
+
+    // Game canUseAction does not reject based on projected post-action stability.
+    expect(canApplySkill(state, skill, 9, 0, undefined, conditionEffects)).toBe(true);
+  });
 });
 
 describe('getEffectiveQiCost', () => {
@@ -222,6 +250,35 @@ describe('getEffectiveStabilityCost', () => {
       mastery: { stabilityCostReduction: 2 },
     });
     expect(getEffectiveStabilityCost(skill)).toBe(8);
+  });
+});
+
+describe('calculateEffectiveActionCosts', () => {
+  it('should match game rounding for stability costs (negative-delta path)', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 10,
+      stabilityCostPercentage: 120,
+    });
+    const skill = createTestSkill({ qiCost: 0, stabilityCost: 1 });
+    const conditionEffects = [{ kind: 'stability' as const, multiplier: 1.6 }];
+
+    const costs = calculateEffectiveActionCosts(state, skill, 0, conditionEffects);
+    expect(costs.stabilityCost).toBe(2);
+  });
+
+  it('should apply pool cost modifiers in game order', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      poolCostPercentage: 80,
+    });
+    const skill = createTestSkill({ qiCost: 17, stabilityCost: 0 });
+    const conditionEffects = [{ kind: 'pool' as const, multiplier: 1.3 }];
+
+    // floor(floor(17 * 1.3) * 0.8) = floor(22 * 0.8) = 17
+    const costs = calculateEffectiveActionCosts(state, skill, 0, conditionEffects);
+    expect(costs.qiCost).toBe(17);
   });
 });
 
@@ -334,6 +391,164 @@ describe('calculateSkillGains', () => {
     expect(gains.perfection).toBe(0);
     expect(gains.stability).toBe(20);
   });
+
+  it('should prefer full effect definitions when provided', () => {
+    const state = new CraftingState();
+    const skill = createTestSkill({
+      // Deliberately wrong legacy scalar fields.
+      baseCompletionGain: 999,
+      basePerfectionGain: 999,
+      scalesWithControl: true,
+      scalesWithIntensity: true,
+      effects: [
+        { kind: 'completion', amount: { value: 1, stat: 'intensity' } },
+        { kind: 'perfection', amount: { value: 1, stat: 'control' } },
+      ] as any,
+    });
+
+    const gains = calculateSkillGains(state, skill, config);
+    expect(gains.completion).toBe(12);
+    expect(gains.perfection).toBe(16);
+  });
+
+  it('should clamp predicted completion/perfection gains to remaining cap room', () => {
+    const configWithCaps = createTestConfig({
+      maxCompletion: 40,
+      maxPerfection: 55,
+    });
+    const state = new CraftingState({
+      completion: 35,
+      perfection: 52,
+    });
+    const skill = createTestSkill({
+      type: 'support',
+      baseCompletionGain: 20,
+      basePerfectionGain: 20,
+      scalesWithControl: false,
+      scalesWithIntensity: false,
+    });
+
+    const gains = calculateSkillGains(state, skill, configWithCaps);
+    expect(gains.completion).toBe(5);
+    expect(gains.perfection).toBe(3);
+  });
+
+  it('should apply additive mastery upgrades to matching scaling upgradeKey', () => {
+    const state = new CraftingState();
+    const skill = createTestSkill({
+      baseCompletionGain: 0,
+      scalesWithIntensity: false,
+      effects: [
+        { kind: 'completion', amount: { value: 1, stat: 'intensity', upgradeKey: 'fusion_gain' } },
+      ] as any,
+      masteryEntries: [
+        { kind: 'upgrade', upgradeKey: 'fusion_gain', change: 0.5 },
+      ] as any,
+    });
+
+    const gains = calculateSkillGains(state, skill, config);
+    // (1 + 0.5) * 12 intensity = 18
+    expect(gains.completion).toBe(18);
+  });
+
+  it('should apply multiplicative mastery upgrades to matching scaling upgradeKey', () => {
+    const state = new CraftingState();
+    const skill = createTestSkill({
+      baseCompletionGain: 0,
+      scalesWithIntensity: false,
+      effects: [
+        { kind: 'completion', amount: { value: 1, stat: 'intensity', upgradeKey: 'fusion_gain' } },
+      ] as any,
+      masteryEntries: [
+        { kind: 'upgrade', upgradeKey: 'fusion_gain', change: 0.5, shouldMultiply: true },
+      ] as any,
+    });
+
+    const gains = calculateSkillGains(state, skill, config);
+    // 1 * (1 + 0.5) * 12 intensity = 18
+    expect(gains.completion).toBe(18);
+  });
+
+  it('should respect mastery upgrade conditions', () => {
+    const state = new CraftingState({
+      completion: 0,
+    });
+    const conditionedConfig = createTestConfig({
+      targetCompletion: 100,
+    });
+    const skill = createTestSkill({
+      baseCompletionGain: 0,
+      scalesWithIntensity: false,
+      effects: [
+        { kind: 'completion', amount: { value: 1, stat: 'intensity', upgradeKey: 'fusion_gain' } },
+      ] as any,
+      masteryEntries: [
+        {
+          kind: 'upgrade',
+          upgradeKey: 'fusion_gain',
+          change: 1,
+          condition: { kind: 'completion', mode: 'more', percentage: 80 },
+        },
+      ] as any,
+    });
+
+    const gains = calculateSkillGains(state, skill, conditionedConfig);
+    // condition not met, no upgrade applied
+    expect(gains.completion).toBe(12);
+  });
+
+  it('should apply upgrades on nested max scaling values', () => {
+    const state = new CraftingState();
+    const skill = createTestSkill({
+      baseCompletionGain: 0,
+      scalesWithIntensity: false,
+      effects: [
+        {
+          kind: 'completion',
+          amount: {
+            value: 3,
+            stat: 'intensity',
+            max: { value: 2, stat: 'intensity', upgradeKey: 'cap_gain' },
+          },
+        },
+      ] as any,
+      masteryEntries: [
+        { kind: 'upgrade', upgradeKey: 'cap_gain', change: 1 },
+      ] as any,
+    });
+
+    const gains = calculateSkillGains(state, skill, config);
+    // Raw = 3*12 = 36; upgraded cap = (2+1)*12 = 36
+    expect(gains.completion).toBe(36);
+  });
+
+  it('should apply upgrades to buff stat scaling during gain calculation', () => {
+    const buff = {
+      name: 'mastery_boost',
+      canStack: false,
+      effects: [],
+      stats: {
+        control: { value: 10, upgradeKey: 'buff_control' },
+      },
+    };
+    const state = new CraftingState({
+      buffs: new Map([['mastery_boost', { name: 'mastery_boost', stacks: 1, definition: buff as any }]]),
+    });
+    const skill = createTestSkill({
+      baseCompletionGain: 0,
+      basePerfectionGain: 1,
+      type: 'refine',
+      scalesWithControl: true,
+      scalesWithIntensity: false,
+      masteryEntries: [
+        { kind: 'upgrade', upgradeKey: 'buff_control', change: 5 },
+      ] as any,
+    });
+
+    const gains = calculateSkillGains(state, skill, config);
+    // base control 16 + upgraded buff control (10 + 5) = 31
+    expect(gains.perfection).toBe(31);
+  });
 });
 
 describe('applySkill', () => {
@@ -375,6 +590,34 @@ describe('applySkill', () => {
     // 1.0 * 12 (base intensity) = 12, so 20 + 12 = 32
     expect(newState!.completion).toBe(32);
     expect(newState!.perfection).toBe(10); // unchanged
+  });
+
+  it('should clamp resulting completion/perfection to configured caps', () => {
+    const configWithCaps = createTestConfig({
+      maxCompletion: 40,
+      maxPerfection: 60,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 39,
+      perfection: 59,
+    });
+    const skill = createTestSkill({
+      type: 'support',
+      baseCompletionGain: 10,
+      basePerfectionGain: 10,
+      scalesWithControl: false,
+      scalesWithIntensity: false,
+      qiCost: 0,
+      stabilityCost: 0,
+    });
+
+    const newState = applySkill(state, skill, configWithCaps);
+    expect(newState).not.toBeNull();
+    expect(newState!.completion).toBe(40);
+    expect(newState!.perfection).toBe(60);
   });
 
   it('should decay max stability by 1 unless prevented', () => {
@@ -420,6 +663,26 @@ describe('applySkill', () => {
     
     expect(newState).not.toBeNull();
     expect(newState!.maxStability).toBe(55); // 60 - 5
+  });
+
+  it('should clamp max-stability penalty after maxStabilityChange adjustments', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      stabilityPenalty: 58,
+    });
+    const skill = createTestSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      maxStabilityChange: -10,
+      preventsMaxStabilityDecay: true,
+    });
+
+    const newState = applySkill(state, skill, config);
+    expect(newState).not.toBeNull();
+    expect(newState!.stabilityPenalty).toBe(60);
+    expect(newState!.maxStability).toBe(0);
   });
 
   it('should cap stability at max stability', () => {
@@ -615,6 +878,27 @@ describe('applySkill', () => {
     
     const newState = applySkill(state, skill, config);
     
+    expect(newState).toBeNull();
+  });
+
+  it('should return null when modified costs become unaffordable', () => {
+    const state = new CraftingState({
+      qi: 12,
+      stability: 10,
+      initialMaxStability: 60,
+      poolCostPercentage: 120,
+      stabilityCostPercentage: 120,
+    });
+    const skill = createTestSkill({
+      qiCost: 10,
+      stabilityCost: 1,
+    });
+    const conditionEffects = [
+      { kind: 'pool' as const, multiplier: 1.3 },
+      { kind: 'stability' as const, multiplier: 1.6 },
+    ];
+
+    const newState = applySkill(state, skill, config, conditionEffects);
     expect(newState).toBeNull();
   });
 
@@ -1027,5 +1311,101 @@ describe('buff per-turn effects', () => {
     expect(result!.stability).toBe(32);
     // Qi: 100 - 5(cost) - 10(buff drain) = 85
     expect(result!.qi).toBe(85);
+  });
+
+  it('should create buffs from buff createBuff effects', () => {
+    const createdBuff = {
+      name: 'Empower',
+      canStack: true,
+      maxStacks: 10,
+      effects: [],
+    };
+    const generator = {
+      name: 'generator',
+      canStack: true,
+      effects: [
+        {
+          kind: 'createBuff' as const,
+          buff: createdBuff,
+          stacks: { value: 2 },
+        },
+      ],
+    };
+
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      buffs: new Map([['generator', { name: 'generator', stacks: 1, definition: generator }]]),
+    });
+    const skill = createTestSkill({ qiCost: 0, stabilityCost: 0 });
+
+    const result = applySkill(state, skill, config);
+    expect(result).not.toBeNull();
+    expect(result!.getBuffStacks('empower')).toBe(2);
+  });
+
+  it('should apply addStack and negate buff effects', () => {
+    const pressure = {
+      name: 'pressure',
+      canStack: true,
+      maxStacks: 5,
+      effects: [{ kind: 'addStack' as const, stacks: { value: 1 } }],
+    };
+    const temporary = {
+      name: 'temporary',
+      canStack: true,
+      effects: [{ kind: 'negate' as const }],
+    };
+
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      buffs: new Map([
+        ['pressure', { name: 'pressure', stacks: 2, definition: pressure }],
+        ['temporary', { name: 'temporary', stacks: 1, definition: temporary }],
+      ]),
+    });
+    const skill = createTestSkill({ qiCost: 0, stabilityCost: 0 });
+
+    const result = applySkill(state, skill, config);
+    expect(result).not.toBeNull();
+    expect(result!.getBuffStacks('pressure')).toBe(3);
+    expect(result!.hasBuff('temporary')).toBe(false);
+  });
+
+  it('should apply mastery upgrades to buff per-turn scaling', () => {
+    const upgradedBuff = {
+      name: 'upgraded_tick',
+      canStack: true,
+      maxStacks: 10,
+      effects: [
+        { kind: 'completion' as const, amount: { value: 1, stat: 'stacks', upgradeKey: 'buff_tick' } },
+      ],
+    };
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      buffs: new Map([['upgraded_tick', { name: 'upgraded_tick', stacks: 2, definition: upgradedBuff }]]),
+    });
+    const skill = createTestSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      type: 'support',
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      scalesWithIntensity: false,
+      scalesWithControl: false,
+      masteryEntries: [
+        { kind: 'upgrade', upgradeKey: 'buff_tick', change: 1, shouldMultiply: true },
+      ] as any,
+    });
+
+    const result = applySkill(state, skill, config);
+    expect(result).not.toBeNull();
+    // upgraded value = 1 * (1 + 1) = 2; stacks = 2 => +4 completion
+    expect(result!.completion).toBe(4);
   });
 });

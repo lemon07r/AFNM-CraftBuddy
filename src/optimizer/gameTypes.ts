@@ -55,6 +55,47 @@ export interface Scaling {
   additiveEqn?: string;
   /** Maximum value cap */
   max?: Scaling;
+  /** Game flag for multi-stance contexts (crafting uses 1). */
+  divideByStanceLength?: boolean;
+  /** Mastery upgrade hook key on scaling nodes. */
+  upgradeKey?: string;
+  /** Optional incremental scaling field in game data. */
+  increment?: number;
+  /** Optional buff payload passthrough from game data. */
+  buff?: unknown;
+}
+
+/**
+ * Technique/buff effect condition types used by the game.
+ */
+export type CraftingTechniqueCondition =
+  | {
+      kind: 'buff';
+      buff: { name: string } | 'self';
+      count: number;
+      mode: 'more' | 'less' | 'equal';
+    }
+  | {
+      kind: 'perfection' | 'stability' | 'completion' | 'pool' | 'toxicity';
+      percentage: number;
+      mode: 'more' | 'less';
+    }
+  | {
+      kind: 'condition';
+      condition: string;
+    }
+  | {
+      kind: 'chance';
+      percentage: number;
+    };
+
+/**
+ * Result for deterministic condition evaluation.
+ * `probability` is 0..1 and defaults to 1 for hard conditions.
+ */
+export interface ConditionEvaluation {
+  met: boolean;
+  probability: number;
 }
 
 /**
@@ -79,6 +120,7 @@ export interface BuffEffect {
   amount?: Scaling;
   stacks?: Scaling;
   buff?: BuffDefinition;
+  condition?: CraftingTechniqueCondition;
 }
 
 /**
@@ -147,6 +189,7 @@ export interface TechniqueEffect {
   amount?: Scaling;
   stacks?: Scaling;
   buff?: BuffDefinition;
+  condition?: CraftingTechniqueCondition;
 }
 
 /**
@@ -249,6 +292,11 @@ export interface HarmonyData {
   inscribedPatterns?: InscribedPatternsData;
   resonance?: ResonanceData;
   recommendedTechniqueTypes: TechniqueType[];
+  /**
+   * Optional extensible payload used by some harmony systems.
+   * The base game exposes this as `additionalData?: any`.
+   */
+  additionalData?: Record<string, unknown>;
 }
 
 /**
@@ -336,51 +384,126 @@ export function calculateExpectedCritMultiplier(
  * Supports: +, -, *, /, parentheses, and numeric literals.
  * No eval() -- prevents code injection.
  */
-function safeParseMath(expr: string): number {
-  let pos = 0;
-  const s = expr.replace(/\s+/g, '');
+const EXPRESSION_CACHE = new Map<string, (scope: Record<string, number | ((...args: number[]) => number)>) => number>();
+const ALLOWED_EXPRESSION_CHARS = /^[\w\s+\-*/%().,<>=!&|:{}]+$/;
+const JS_RESERVED_WORDS = new Set([
+  'true',
+  'false',
+  'null',
+  'undefined',
+  'if',
+  'else',
+  'return',
+  'const',
+  'let',
+  'var',
+  'new',
+  'this',
+  'typeof',
+  'instanceof',
+  'in',
+  'void',
+  'delete',
+  'function',
+  'while',
+  'for',
+  'do',
+  'switch',
+  'case',
+  'break',
+  'continue',
+  'default',
+  'try',
+  'catch',
+  'finally',
+  'throw',
+  'class',
+  'extends',
+  'super',
+  'import',
+  'export',
+  'await',
+  'yield',
+  'with',
+  'Math',
+]);
 
-  function parseExpr(): number {
-    let result = parseTerm();
-    while (pos < s.length && (s[pos] === '+' || s[pos] === '-')) {
-      const op = s[pos++];
-      const right = parseTerm();
-      result = op === '+' ? result + right : result - right;
-    }
-    return result;
+function normalizeVariableKey(key: string): string {
+  return key.trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function getVariableValue(variables: ScalingVariables, key: string): number {
+  if (!key) return 0;
+  if (key in variables) {
+    return variables[key];
+  }
+  const lower = key.toLowerCase();
+  if (lower in variables) {
+    return variables[lower];
+  }
+  const normalized = normalizeVariableKey(key);
+  if (normalized in variables) {
+    return variables[normalized];
+  }
+  return 0;
+}
+
+function compileExpression(eqn: string): ((scope: Record<string, number | ((...args: number[]) => number)>) => number) | null {
+  if (EXPRESSION_CACHE.has(eqn)) {
+    return EXPRESSION_CACHE.get(eqn)!;
   }
 
-  function parseTerm(): number {
-    let result = parseFactor();
-    while (pos < s.length && (s[pos] === '*' || s[pos] === '/')) {
-      const op = s[pos++];
-      const right = parseFactor();
-      result = op === '*' ? result * right : (right !== 0 ? result / right : 0);
-    }
-    return result;
+  if (!ALLOWED_EXPRESSION_CHARS.test(eqn)) {
+    return null;
   }
 
-  function parseFactor(): number {
-    if (s[pos] === '(') {
-      pos++;
-      const result = parseExpr();
-      if (s[pos] === ')') pos++;
-      return result;
-    }
-    if (s[pos] === '-') {
-      pos++;
-      return -parseFactor();
-    }
-    const start = pos;
-    while (pos < s.length && (s[pos] >= '0' && s[pos] <= '9' || s[pos] === '.')) {
-      pos++;
-    }
-    const num = parseFloat(s.slice(start, pos));
-    return isNaN(num) ? 0 : num;
-  }
+  let normalized = eqn
+    .replace(/\band\b/g, '&&')
+    .replace(/\bor\b/g, '||')
+    .replace(/\{rng\}/g, '0.5');
 
-  const result = parseExpr();
-  return isFinite(result) ? result : 0;
+  const symbolMatches = normalized.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
+  const referencedSymbols = new Set(
+    symbolMatches.filter(
+      (symbol) =>
+        !JS_RESERVED_WORDS.has(symbol) &&
+        symbol !== 'floor' &&
+        symbol !== 'ceil' &&
+        symbol !== 'round' &&
+        symbol !== 'min' &&
+        symbol !== 'max' &&
+        symbol !== 'abs'
+    )
+  );
+
+  try {
+    const fn = new Function(
+      'scope',
+      `with (scope) { return (${normalized}); }`
+    ) as (scope: Record<string, number | ((...args: number[]) => number)>) => number;
+
+    const wrapped = (scope: Record<string, number | ((...args: number[]) => number)>): number => {
+      const proxy = new Proxy(scope, {
+        has: () => true,
+        get: (target, prop: string | symbol): number | ((...args: number[]) => number) => {
+          if (typeof prop !== 'string') return 0;
+          if (prop in target) {
+            return target[prop]!;
+          }
+          if (referencedSymbols.has(prop)) {
+            return 0;
+          }
+          return 0;
+        },
+      });
+      const result = fn(proxy);
+      return typeof result === 'number' && Number.isFinite(result) ? result : 0;
+    };
+    EXPRESSION_CACHE.set(eqn, wrapped);
+    return wrapped;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -389,29 +512,22 @@ function safeParseMath(expr: string): number {
  */
 export function evalExpression(eqn: string, variables: ScalingVariables): number {
   if (!eqn) return 1;
-
-  // Sort variable names by length descending to prevent partial matches
-  // (e.g., 'maxpool' must be replaced before 'pool')
-  const sortedKeys = Object.keys(variables).sort((a, b) => b.length - a.length);
-
-  let expr = eqn;
-  for (const key of sortedKeys) {
-    const regex = new RegExp(`\\b${key}\\b`, 'g');
-    expr = expr.replace(regex, String(variables[key]));
+  const compiled = compileExpression(eqn);
+  if (!compiled) {
+    console.warn(`[CraftBuddy] Failed to compile expression: ${eqn}`);
+    return 0;
   }
 
-  // Check that all variables were substituted (only numbers and operators remain)
-  if (!/^[\d\s+\-*/().]+$/.test(expr)) {
-    console.warn(`[CraftBuddy] Unresolved variables in expression: ${eqn} -> ${expr}`);
-    return 1;
-  }
-
-  try {
-    return safeParseMath(expr);
-  } catch {
-    console.warn(`[CraftBuddy] Failed to evaluate expression: ${eqn}`);
-    return 1;
-  }
+  const scope: Record<string, number | ((...args: number[]) => number)> = {
+    floor: Math.floor,
+    ceil: Math.ceil,
+    round: Math.round,
+    min: Math.min,
+    max: Math.max,
+    abs: Math.abs,
+    ...variables,
+  };
+  return compiled(scope);
 }
 
 /**
@@ -428,13 +544,13 @@ export function evaluateScaling(
   let result = scaling.value;
 
   // Multiply by stat value if specified
-  if (scaling.stat && scaling.stat in variables) {
-    result *= variables[scaling.stat];
+  if (scaling.stat) {
+    result *= getVariableValue(variables, scaling.stat);
   }
 
   // Multiply by scaling variable if specified
-  if (scaling.scaling && scaling.scaling in variables) {
-    result *= variables[scaling.scaling];
+  if (scaling.scaling) {
+    result *= getVariableValue(variables, scaling.scaling);
   }
 
   // Apply custom equation
@@ -444,7 +560,7 @@ export function evaluateScaling(
 
   // Apply custom scaling with multiplier
   if (scaling.customScaling) {
-    const scaleValue = variables[scaling.customScaling.scaling] || 0;
+    const scaleValue = getVariableValue(variables, scaling.customScaling.scaling);
     result *= 1 + scaling.customScaling.multiplier * scaleValue;
   }
 
@@ -453,10 +569,25 @@ export function evaluateScaling(
     result += evalExpression(scaling.additiveEqn, variables);
   }
 
+  if (result > 10) {
+    result = Math.floor(result);
+  } else if (result < -10) {
+    result = Math.ceil(result);
+  } else {
+    result = parseFloat(result.toFixed(2));
+    if (result % 1 === 0) {
+      result = Math.floor(result);
+    }
+  }
+
   // Apply max cap
   if (scaling.max) {
     const maxValue = evaluateScaling(scaling.max, variables, Infinity);
-    result = Math.min(result, maxValue);
+    result = maxValue < 0 ? Math.max(result, maxValue) : Math.min(result, maxValue);
+  }
+
+  if (scaling.divideByStanceLength) {
+    result = Math.floor(result);
   }
 
   return result;
