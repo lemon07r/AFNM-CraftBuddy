@@ -216,6 +216,8 @@ let lastRecipeStats: CraftingRecipeStats | undefined = undefined;
 let overlayContainer: HTMLDivElement | null = null;
 let reactRoot: ReactDOM.Root | null = null;
 let isOverlayVisible = false;
+let wasCraftingActive = false;
+let overlayForcedByActiveCraft = false;
 
 // Polling interval for crafting state detection
 let pollingInterval: number | null = null;
@@ -1869,6 +1871,42 @@ function showOverlay(): void {
 }
 
 /**
+ * Clear state that should only exist during an active crafting session.
+ */
+function clearActiveCraftingRuntimeState(): void {
+  lastEntity = null;
+  lastProgressState = null;
+  currentRecommendation = null;
+  currentCondition = undefined;
+  nextConditions = [];
+  isCalculating = false;
+}
+
+/**
+ * Handle a transition from crafting -> non-crafting.
+ */
+function handleCraftingEnded(): void {
+  const shouldAutoHideOverlay =
+    overlayForcedByActiveCraft || !currentSettings.panelVisible;
+  overlayForcedByActiveCraft = false;
+
+  clearActiveCraftingRuntimeState();
+  clearCachedTargets();
+  maxCompletionCap = undefined;
+  maxPerfectionCap = undefined;
+  lastRecipe = undefined;
+  lastRecipeStats = undefined;
+  isSublimeCraft = false;
+  sublimeTargetMultiplier = 1.0;
+
+  if (isOverlayVisible && shouldAutoHideOverlay) {
+    hideOverlay();
+  } else if (isOverlayVisible) {
+    renderOverlay();
+  }
+}
+
+/**
  * Try to find the Redux store from the window object or React fiber tree.
  * The game uses React 19 with a different fiber structure.
  */
@@ -2119,18 +2157,17 @@ function pollCraftingState(): void {
     trainingMode,
   } = detectCraftingState();
 
-  if (isActive && !isOverlayVisible) {
-    debugLog('[CraftBuddy] Crafting detected, showing overlay');
-    showOverlay();
-  } else if (!isActive && isOverlayVisible && !currentSettings.panelVisible) {
-    // Only auto-hide if crafting ended AND user has not explicitly requested the panel to stay visible
-    debugLog('[CraftBuddy] Crafting ended, hiding overlay');
-    hideOverlay();
-    clearCachedTargets();
-    maxCompletionCap = undefined;
-    maxPerfectionCap = undefined;
-    lastRecipe = undefined;
-    lastRecipeStats = undefined;
+  if (isActive) {
+    wasCraftingActive = true;
+    if (!isOverlayVisible) {
+      debugLog('[CraftBuddy] Crafting detected, showing overlay');
+      overlayForcedByActiveCraft = true;
+      showOverlay();
+    }
+  } else if (wasCraftingActive) {
+    wasCraftingActive = false;
+    debugLog('[CraftBuddy] Crafting ended, clearing active state');
+    handleCraftingEnded();
   }
 
   // If we have entity and progress from Redux, use them directly
@@ -2415,10 +2452,12 @@ try {
       currentConfig = null;
       nextConditions = [];
 
-      // Force panel visible and show overlay when crafting starts
-      currentSettings = saveSettings({ panelVisible: true });
+      // Show panel when crafting starts without mutating persisted user visibility settings.
+      const wasVisibleBeforeCraft = isOverlayVisible;
+      overlayForcedByActiveCraft = !wasVisibleBeforeCraft;
+      wasCraftingActive = true;
       isOverlayVisible = false; // Reset so showOverlay will work
-      debugLog('[CraftBuddy] Crafting starting, forcing panel visible');
+      debugLog('[CraftBuddy] Crafting starting, showing panel');
       showOverlay();
 
       return recipeStats;
@@ -3118,8 +3157,14 @@ startPolling();
  */
 function processCraftingState(craftingState: any): void {
   if (!craftingState?.player || !craftingState?.progressState) {
+    if (wasCraftingActive) {
+      wasCraftingActive = false;
+      debugLog('[CraftBuddy] Redux reports crafting inactive, clearing state');
+      handleCraftingEnded();
+    }
     return;
   }
+  wasCraftingActive = true;
 
   const progress = craftingState.progressState;
   const entity = craftingState.player;
@@ -3332,7 +3377,7 @@ function processCraftingState(craftingState: any): void {
 
     // Ensure panel is visible
     if (!isOverlayVisible) {
-      currentSettings = saveSettings({ panelVisible: true });
+      overlayForcedByActiveCraft = true;
       showOverlay();
     }
 
