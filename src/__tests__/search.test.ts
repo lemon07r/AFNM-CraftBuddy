@@ -841,6 +841,40 @@ describe('condition timeline modeling', () => {
     expect(result.recommendation!.skill.name).toBe('Use Focus Pill');
   });
 
+  it('should continue sublime projections beyond base targets', () => {
+    const dualProgress = createCustomSkill({
+      name: 'Dual Step',
+      key: 'dual_step',
+      qiCost: 0,
+      stabilityCost: 0,
+      type: 'support',
+      baseCompletionGain: 100,
+      basePerfectionGain: 100,
+    });
+
+    const sublimeConfig = createTestConfig({
+      minStability: 0,
+      skills: [dualProgress],
+      isSublimeCraft: true,
+      targetMultiplier: 2.0,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(state, sublimeConfig, 100, 100, 2, 'neutral', []);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.followUpSkill?.name).toBe('Dual Step');
+    expect(result.optimalRotation).toEqual(['Dual Step', 'Dual Step']);
+    expect(result.expectedFinalState).toBeDefined();
+    expect(result.expectedFinalState!.completion).toBeGreaterThanOrEqual(200);
+    expect(result.expectedFinalState!.perfection).toBeGreaterThanOrEqual(200);
+  });
+
   it('should deplete item inventory across lookahead turns', () => {
     const pill = createCustomSkill({
       name: 'Use Qi Pill',

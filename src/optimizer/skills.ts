@@ -1494,6 +1494,9 @@ export function applySkill(
   const isItemAction = skill.actionKind === 'item';
   const consumesTurn = skill.consumesTurn ?? !isItemAction;
   const nextStep = state.step + (consumesTurn ? 1 : 0);
+  const qiCap = Math.max(0, config.maxQi);
+  const clampQi = (value: number): number =>
+    Math.max(0, Math.min(qiCap, value));
 
   // Calculate gains BEFORE applying buffs from this skill
   const gains = calculateSkillGains(state, skill, config, conditionEffects);
@@ -1503,9 +1506,17 @@ export function applySkill(
   const effectiveStabilityCost = effectiveCosts.stabilityCost;
 
   // Calculate new resource values
-  let newQi = state.qi - effectiveQiCost;
-  if (skill.restoresQi && skill.qiRestore && skill.qiRestore > 0) {
-    newQi = Math.min(config.maxQi, newQi + skill.qiRestore);
+  let newQi = clampQi(state.qi - effectiveQiCost);
+  const hasExplicitPoolEffect =
+    Array.isArray(skill.effects) &&
+    skill.effects.some((effect) => effect?.kind === 'pool');
+  if (
+    !hasExplicitPoolEffect &&
+    skill.restoresQi &&
+    skill.qiRestore &&
+    skill.qiRestore > 0
+  ) {
+    newQi = clampQi(newQi + skill.qiRestore);
   }
 
   // Handle max stability using game's penalty system:
@@ -1911,7 +1922,7 @@ export function applySkill(
   // Calculate new completion/perfection (including buff per-turn contributions)
   let newCompletion = safeAdd(state.completion, gains.completion + buffCompletion);
   let newPerfection = safeAdd(state.perfection, gains.perfection + buffPerfection);
-  newQi = Math.max(0, newQi + techniquePoolDelta);
+  newQi = clampQi(newQi + techniquePoolDelta);
 
   // Clamp to optional hard craft caps when available.
   if (config.maxCompletion !== undefined && Number.isFinite(config.maxCompletion)) {
@@ -1940,7 +1951,7 @@ export function applySkill(
 
   // Apply buff per-turn state changes
   newStability = Math.max(0, newStability + buffStabilityDelta);
-  newQi = Math.max(0, newQi + buffPoolDelta);
+  newQi = clampQi(newQi + buffPoolDelta);
   newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
   if (buffMaxStabilityDelta !== 0) {
     newStabilityPenalty = Math.min(
@@ -1964,7 +1975,7 @@ export function applySkill(
       newStability = Math.max(0, newStability + harmonyResult.stabilityDelta);
     }
     if (harmonyResult.poolDelta !== 0) {
-      newQi = Math.max(0, newQi + harmonyResult.poolDelta);
+      newQi = clampQi(newQi + harmonyResult.poolDelta);
     }
     if (harmonyResult.stabilityPenaltyDelta !== 0) {
       newStabilityPenalty += harmonyResult.stabilityPenaltyDelta;

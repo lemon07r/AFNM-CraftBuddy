@@ -941,6 +941,58 @@ describe('applySkill', () => {
     expect(newState!.qi).toBe(75);
   });
 
+  it('should not double-count legacy qiRestore when pool effect data exists', () => {
+    const state = new CraftingState({
+      qi: 50,
+      stability: 50,
+      initialMaxStability: 60,
+    });
+
+    const skill = createTestSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      successChance: 0.5,
+      restoresQi: true,
+      qiRestore: 50,
+      effects: [
+        {
+          kind: 'pool',
+          amount: { value: 50, stat: undefined },
+        } as any,
+      ],
+    });
+
+    const newState = applySkill(state, skill, createTestConfig({ maxQi: 200 }));
+
+    expect(newState).not.toBeNull();
+    // Expected-value pool effect only: +25 (not +50 legacy + +25 effect).
+    expect(newState!.qi).toBe(75);
+  });
+
+  it('should clamp qi to maxQi after pool effects are applied', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+    });
+
+    const skill = createTestSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      effects: [
+        {
+          kind: 'pool',
+          amount: { value: 50, stat: undefined },
+        } as any,
+      ],
+    });
+
+    const newState = applySkill(state, skill, createTestConfig({ maxQi: 100 }));
+
+    expect(newState).not.toBeNull();
+    expect(newState!.qi).toBe(100);
+  });
+
   it('should restore max stability to initial max when skill requests full restore', () => {
     // State with penalty (initialMaxStability: 60, penalty: 30 → initialMaxStability: 30)
     const state = new CraftingState({

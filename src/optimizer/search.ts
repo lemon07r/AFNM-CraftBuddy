@@ -1072,20 +1072,44 @@ export function lookaheadSearch(
 
   // Extract settings from config
   const isSublime = config.isSublimeCraft || false;
+  const targetMult = config.targetMultiplier || 2.0;
   const isTraining = config.trainingMode || false;
+  const effectiveCompTarget = isSublime
+    ? targetCompletion * targetMult
+    : targetCompletion;
+  const effectivePerfTarget = isSublime
+    ? targetPerfection * targetMult
+    : targetPerfection;
+  const effectiveCompGoal =
+    config.maxCompletion !== undefined && Number.isFinite(config.maxCompletion)
+      ? Math.min(effectiveCompTarget, config.maxCompletion)
+      : effectiveCompTarget;
+  const effectivePerfGoal =
+    config.maxPerfection !== undefined && Number.isFinite(config.maxPerfection)
+      ? Math.min(effectivePerfTarget, config.maxPerfection)
+      : effectivePerfTarget;
+  const targetsMetForCurrentMode = (candidate: CraftingState): boolean => {
+    if (isSublime) {
+      return (
+        (effectiveCompGoal <= 0 || candidate.completion >= effectiveCompGoal) &&
+        (effectivePerfGoal <= 0 || candidate.perfection >= effectivePerfGoal)
+      );
+    }
+    if (targetCompletion > 0 && targetPerfection > 0) {
+      return candidate.targetsMet(targetCompletion, targetPerfection);
+    }
+    return false;
+  };
 
   // Check if targets already met
-  // For sublime crafting, do NOT terminate at base targets; allow optimizer to push beyond.
-  if (!isSublime && targetCompletion > 0 && targetPerfection > 0) {
-    if (state.targetsMet(targetCompletion, targetPerfection)) {
-      return {
-        recommendation: null,
-        alternativeSkills: [],
-        isTerminal: false,
-        targetsMet: true,
-        searchMetrics: metrics,
-      };
-    }
+  if (targetsMetForCurrentMode(state)) {
+    return {
+      recommendation: null,
+      alternativeSkills: [],
+      isTerminal: false,
+      targetsMet: true,
+      searchMetrics: metrics,
+    };
   }
 
   // Check if terminal state (use current condition type for filtering)
@@ -1148,10 +1172,6 @@ export function lookaheadSearch(
   ): number {
     metrics.nodesExplored++;
 
-    // Extract sublime crafting settings from config
-    const isSublime = config.isSublimeCraft || false;
-    const targetMult = config.targetMultiplier || 2.0;
-
     // Check budget constraints
     if (checkBudget()) {
       return scoreState(
@@ -1183,21 +1203,18 @@ export function lookaheadSearch(
       );
     }
 
-    // Check if targets met - early termination with bonus
-    // For sublime crafting, don't terminate early - we want to exceed targets
-    if (!isSublime && targetCompletion > 0 && targetPerfection > 0) {
-      if (currentState.targetsMet(targetCompletion, targetPerfection)) {
-        return scoreState(
-          currentState,
-          targetCompletion,
-          targetPerfection,
-          isSublime,
-          targetMult,
-          isTraining,
-          config.maxCompletion,
-          config.maxPerfection,
-        );
-      }
+    // Check if active goals are met - early termination with score.
+    if (targetsMetForCurrentMode(currentState)) {
+      return scoreState(
+        currentState,
+        targetCompletion,
+        targetPerfection,
+        isSublime,
+        targetMult,
+        isTraining,
+        config.maxCompletion,
+        config.maxPerfection,
+      );
     }
 
     // Check cache with normalized key (buckets large progress values)
@@ -1408,11 +1425,9 @@ export function lookaheadSearch(
       currentDepth < maxDepth &&
       !isTerminalState(currentState, config, conditionAtDepth)
     ) {
-      // Check if targets met
-      if (targetCompletion > 0 && targetPerfection > 0) {
-        if (currentState.targetsMet(targetCompletion, targetPerfection)) {
-          break;
-        }
+      // Check if active goals are met
+      if (targetsMetForCurrentMode(currentState)) {
+        break;
       }
 
       const globalDepth = startDepthIndex + currentDepth;
@@ -1516,7 +1531,7 @@ export function lookaheadSearch(
       nextConditionQueueAtDepth: CraftingConditionType[],
       useDeepLookahead: boolean = true,
     ): SkillRecommendation['followUpSkill'] | undefined {
-      if (stateAfterSkill.targetsMet(targetCompletion, targetPerfection)) {
+      if (targetsMetForCurrentMode(stateAfterSkill)) {
         return undefined;
       }
       if (isTerminalState(stateAfterSkill, config, conditionAtDepth)) {
@@ -1821,8 +1836,8 @@ export function lookaheadSearch(
     optimalRotation = [bestFirstMove.name, ...path];
 
     // Calculate turns remaining (estimate based on progress needed)
-    const compRemaining = Math.max(0, targetCompletion - finalState.completion);
-    const perfRemaining = Math.max(0, targetPerfection - finalState.perfection);
+    const compRemaining = Math.max(0, effectiveCompGoal - finalState.completion);
+    const perfRemaining = Math.max(0, effectivePerfGoal - finalState.perfection);
     const avgGainPerTurn = 15; // Rough estimate
     const turnsRemaining = Math.ceil(
       (compRemaining + perfRemaining) / avgGainPerTurn,

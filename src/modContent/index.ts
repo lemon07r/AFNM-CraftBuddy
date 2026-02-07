@@ -1086,7 +1086,17 @@ function convertGameTechniques(
     const toxicityCost = sourceTech.toxicityCost || 0;
     const techType = sourceTech.type || 'support';
     const techName = sourceTech.name || 'Unknown';
-    const cooldown = sourceTech.cooldown || 0;
+    const cooldown = (() => {
+      const staticCooldown = Number(sourceTech.cooldown || 0);
+      if (Number.isFinite(staticCooldown) && staticCooldown > 0) {
+        return staticCooldown;
+      }
+      const observedCooldown = Number(sourceTech.currentCooldown || 0);
+      if (Number.isFinite(observedCooldown) && observedCooldown > 0) {
+        return observedCooldown;
+      }
+      return 0;
+    })();
     const preventsMaxStabilityDecay = sourceTech.noMaxStabilityLoss === true;
     const masteryData = extractMasteryData(sourceTech.mastery);
     // poolcost/stabilitycost/successchance masteries are already baked into
@@ -1790,12 +1800,29 @@ function renderOverlay(): void {
     }
   };
 
+  const effectiveTargetCompletion = (() => {
+    if (!isSublimeCraft) return targetCompletion;
+    const scaled = targetCompletion * sublimeTargetMultiplier;
+    if (maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)) {
+      return Math.min(scaled, maxCompletionCap);
+    }
+    return scaled;
+  })();
+  const effectiveTargetPerfection = (() => {
+    if (!isSublimeCraft) return targetPerfection;
+    const scaled = targetPerfection * sublimeTargetMultiplier;
+    if (maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)) {
+      return Math.min(scaled, maxPerfectionCap);
+    }
+    return scaled;
+  })();
+
   const panel = React.createElement(RecommendationPanel, {
     result: currentRecommendation,
     currentCompletion,
     currentPerfection,
-    targetCompletion,
-    targetPerfection,
+    targetCompletion: effectiveTargetCompletion,
+    targetPerfection: effectiveTargetPerfection,
     maxCompletionCap,
     maxPerfectionCap,
     currentStability,
