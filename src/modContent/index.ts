@@ -27,6 +27,7 @@ import {
   OptimizerConfig,
   SkillDefinition,
   SkillMastery,
+  parseRecipeConditionEffects,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 import {
@@ -227,42 +228,6 @@ function extractBuffStacks(buffs: CraftingBuff[] | undefined): Map<string, numbe
   }
 
   return result;
-}
-
-/**
- * Get condition multiplier from game's recipeConditionEffects.
- */
-function getConditionMultiplier(
-  condition: CraftingCondition | undefined,
-  effectType: 'control' | 'intensity' | 'pool' | 'stability'
-): number {
-  if (!condition) return 1.0;
-  
-  if (conditionEffectsCache) {
-    const conditionData = conditionEffectsCache.conditionEffects[condition];
-    if (conditionData?.effects) {
-      for (const effect of conditionData.effects) {
-        if (effect.kind === effectType) {
-          return effect.multiplier;
-        }
-      }
-    }
-  }
-  
-  const recipeConditionEffects = window.modAPI?.gameData?.recipeConditionEffects;
-  if (recipeConditionEffects && recipeConditionEffects.length > 0) {
-    const condEffect = recipeConditionEffects[0];
-    const conditionData = condEffect?.conditionEffects?.[condition];
-    if (conditionData?.effects) {
-      for (const effect of conditionData.effects) {
-        if (effect.kind === effectType) {
-          return effect.multiplier;
-        }
-      }
-    }
-  }
-  
-  return 1.0;
 }
 
 /**
@@ -572,23 +537,15 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     }
   }
   
-  // Determine condition effect type from cached recipe data
-  let conditionEffectType: string | undefined;
-  if (conditionEffectsCache) {
-    // Try to determine the type from the effect structure
-    const positiveEffects = conditionEffectsCache.conditionEffects?.positive?.effects || [];
-    if (positiveEffects.length > 0) {
-      const firstEffect = positiveEffects[0];
-      if (firstEffect.kind === 'control' && positiveEffects.length === 1) conditionEffectType = 'perfectable';
-      else if (firstEffect.kind === 'intensity' && positiveEffects.length === 1) conditionEffectType = 'fuseable';
-      else if (firstEffect.kind === 'control' && positiveEffects.length === 2) conditionEffectType = 'flowing';
-      else if (firstEffect.kind === 'pool') conditionEffectType = 'energised';
-      else if (firstEffect.kind === 'stability') conditionEffectType = 'stable';
-      else if (firstEffect.kind === 'chance') conditionEffectType = 'fortuitous';
-    }
+  // Parse real condition effects from cached recipe data.
+  // This passes the actual game multipliers directly to the optimizer,
+  // avoiding the fragile reverse-engineering of condition type names.
+  let conditionEffectsData: Record<string, any[]> | undefined;
+  if (conditionEffectsCache?.conditionEffects) {
+    conditionEffectsData = parseRecipeConditionEffects(conditionEffectsCache.conditionEffects);
   }
 
-  console.log(`[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}, conditionType=${conditionEffectType}`);
+  console.log(`[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}, conditionData=${conditionEffectsData ? 'real' : 'none'}`);
   
   return {
     maxQi,
@@ -602,7 +559,7 @@ function buildConfigFromEntity(entity: CraftingEntity): OptimizerConfig {
     craftingType: currentCraftingType,
     isSublimeCraft,
     targetMultiplier: sublimeTargetMultiplier,
-    conditionEffectType: conditionEffectType as any,
+    conditionEffectsData: conditionEffectsData as any,
     targetCompletion,
     targetPerfection,
   };
@@ -738,13 +695,9 @@ function updateRecommendation(
     history: [],
   });
 
-  const controlMultiplier = getConditionMultiplier(condition, 'control');
-  const forecastedMultipliers: number[] = nextConditions.map(cond => 
-    getConditionMultiplier(cond, 'control')
-  );
-  
-  // Get current/forecasted condition types for skill filtering.
-  // Treat them as strings because some game/mod setups may expose variants like 'excellent'.
+  // Condition effects are now passed via config.conditionEffectsData (real game data).
+  // The legacy controlCondition number parameter is kept at 1.0 for backwards compatibility
+  // but is ignored when conditionEffectsData is present on config.
   const currentConditionType = condition as unknown as string | undefined;
   const forecastedConditionTypes = nextConditions as unknown as (string)[];
 
@@ -754,10 +707,10 @@ function updateRecommendation(
     currentConfig,
     targetCompletion,
     targetPerfection,
-    controlMultiplier,
+    1.0,
     false,
     lookaheadDepth,
-    forecastedMultipliers,
+    [],
     currentConditionType,
     forecastedConditionTypes
   );

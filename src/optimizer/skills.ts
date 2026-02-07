@@ -162,8 +162,14 @@ export interface OptimizerConfig {
   craftingType?: HarmonyType;
   /**
    * Recipe condition effect type (affects which stat conditions modify).
+   * Used as fallback when conditionEffectsData is not available.
    */
   conditionEffectType?: RecipeConditionEffectType;
+  /**
+   * Actual condition effects data from the game's RecipeConditionEffect object.
+   * When present, used directly instead of the hardcoded fallback table.
+   */
+  conditionEffectsData?: Record<CraftingCondition, ConditionEffect[]>;
   /**
    * Whether this is sublime/harmony crafting mode.
    * Sublime crafting allows exceeding normal target limits.
@@ -852,17 +858,25 @@ export function isTerminalState(
 
 /**
  * Get condition effects for the current condition and recipe type.
- * Helper to bridge config to condition effect lookup.
+ * Prefers real game data (conditionEffectsData) over the hardcoded fallback table.
  */
 export function getConditionEffectsForConfig(
   config: OptimizerConfig,
   condition: CraftingCondition | string | undefined
 ): ConditionEffect[] {
-  if (!condition || !config.conditionEffectType) {
+  if (!condition) {
     return [];
   }
   const normalizedCondition = normalizeCondition(condition as string);
   if (!normalizedCondition) {
+    return [];
+  }
+  // Prefer real game data when available
+  if (config.conditionEffectsData) {
+    return config.conditionEffectsData[normalizedCondition] || [];
+  }
+  // Fall back to hardcoded table
+  if (!config.conditionEffectType) {
     return [];
   }
   return getConditionEffects(config.conditionEffectType, normalizedCondition);

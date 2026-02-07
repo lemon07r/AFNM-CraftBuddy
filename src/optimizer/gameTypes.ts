@@ -434,7 +434,43 @@ export function evaluateScaling(
 }
 
 /**
+ * Parse a game RecipeConditionEffect object into a map of condition -> ConditionEffect[].
+ * This extracts the real multiplier values from game data so we don't rely on hardcoded tables.
+ */
+export function parseRecipeConditionEffects(
+  conditionEffects: Record<string, { effects?: Array<{ kind: string; multiplier?: number; bonus?: number }> }>
+): Record<CraftingCondition, ConditionEffect[]> {
+  const result: Record<CraftingCondition, ConditionEffect[]> = {
+    neutral: [],
+    positive: [],
+    negative: [],
+    veryPositive: [],
+    veryNegative: [],
+  };
+
+  const conditions: CraftingCondition[] = ['neutral', 'positive', 'negative', 'veryPositive', 'veryNegative'];
+  for (const cond of conditions) {
+    const data = conditionEffects[cond];
+    if (!data?.effects) continue;
+    result[cond] = data.effects
+      .filter(e => e && e.kind)
+      .map(e => {
+        const effect: ConditionEffect = { kind: e.kind as ConditionEffect['kind'] };
+        if (e.kind === 'chance') {
+          effect.bonus = e.bonus;
+        } else {
+          effect.multiplier = e.multiplier;
+        }
+        return effect;
+      });
+  }
+
+  return result;
+}
+
+/**
  * Get condition effects for a given condition and recipe type.
+ * Hardcoded fallback table -- used when real game data is not available.
  */
 export function getConditionEffects(
   conditionType: RecipeConditionEffectType,

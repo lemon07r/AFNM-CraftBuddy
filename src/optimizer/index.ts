@@ -38,6 +38,7 @@ export {
   calculateExpectedCritMultiplier,
   getConditionEffects,
   getBonusAndChance,
+  parseRecipeConditionEffects,
   EXPONENTIAL_SCALING_FACTOR,
 } from './gameTypes';
 export type {

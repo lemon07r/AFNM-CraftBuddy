@@ -26,7 +26,10 @@ import {
   getConditionEffects,
   evaluateScaling,
   evalExpression,
+  parseRecipeConditionEffects,
+  ConditionEffect,
 } from '../optimizer/gameTypes';
+import { getConditionEffectsForConfig } from '../optimizer/skills';
 import { BuffType } from '../optimizer/state';
 
 describe('Game-Accurate Mechanics', () => {
@@ -528,5 +531,152 @@ describe('Stability Cost Calculation Order', () => {
     // If done wrong order: floor(10 * 0.7) = 7, then ceil(7 * 80/100) = ceil(5.6) = 6
     // So stability would be 50 - 6 = 44
     expect(newState!.stability).toBe(45);
+  });
+});
+
+describe('Real Condition Effects Data (parseRecipeConditionEffects)', () => {
+  it('should parse perfectable condition effects correctly', () => {
+    const gameData = {
+      neutral: { effects: [] },
+      positive: { effects: [{ kind: 'control', multiplier: 0.5 }] },
+      negative: { effects: [{ kind: 'control', multiplier: -0.5 }] },
+      veryPositive: { effects: [{ kind: 'control', multiplier: 1 }] },
+      veryNegative: { effects: [{ kind: 'control', multiplier: -1 }] },
+    };
+
+    const parsed = parseRecipeConditionEffects(gameData);
+    expect(parsed.neutral).toEqual([]);
+    expect(parsed.positive).toEqual([{ kind: 'control', multiplier: 0.5 }]);
+    expect(parsed.veryPositive).toEqual([{ kind: 'control', multiplier: 1 }]);
+    expect(parsed.negative).toEqual([{ kind: 'control', multiplier: -0.5 }]);
+  });
+
+  it('should parse flowing condition effects with multiple effect kinds', () => {
+    const gameData = {
+      neutral: { effects: [] },
+      positive: {
+        effects: [
+          { kind: 'intensity', multiplier: 0.25 },
+          { kind: 'control', multiplier: 0.25 },
+        ],
+      },
+      negative: {
+        effects: [
+          { kind: 'intensity', multiplier: -0.25 },
+          { kind: 'control', multiplier: -0.25 },
+        ],
+      },
+      veryPositive: {
+        effects: [
+          { kind: 'intensity', multiplier: 0.5 },
+          { kind: 'control', multiplier: 0.5 },
+        ],
+      },
+      veryNegative: {
+        effects: [
+          { kind: 'intensity', multiplier: -0.5 },
+          { kind: 'control', multiplier: -0.5 },
+        ],
+      },
+    };
+
+    const parsed = parseRecipeConditionEffects(gameData);
+    expect(parsed.positive).toHaveLength(2);
+    expect(parsed.positive[0]).toEqual({ kind: 'intensity', multiplier: 0.25 });
+    expect(parsed.positive[1]).toEqual({ kind: 'control', multiplier: 0.25 });
+  });
+
+  it('should parse fortuitous condition effects using bonus instead of multiplier', () => {
+    const gameData = {
+      neutral: { effects: [] },
+      positive: { effects: [{ kind: 'chance', bonus: 0.25 }] },
+      negative: { effects: [{ kind: 'chance', bonus: -0.25 }] },
+      veryPositive: { effects: [{ kind: 'chance', bonus: 0.5 }] },
+      veryNegative: { effects: [{ kind: 'chance', bonus: -0.5 }] },
+    };
+
+    const parsed = parseRecipeConditionEffects(gameData);
+    expect(parsed.positive).toEqual([{ kind: 'chance', bonus: 0.25 }]);
+    expect(parsed.veryNegative).toEqual([{ kind: 'chance', bonus: -0.5 }]);
+  });
+
+  it('should handle missing or empty effects gracefully', () => {
+    const gameData = {
+      neutral: { effects: [] },
+      positive: {},
+      negative: { effects: [] },
+    } as any;
+
+    const parsed = parseRecipeConditionEffects(gameData);
+    expect(parsed.neutral).toEqual([]);
+    expect(parsed.positive).toEqual([]);
+    expect(parsed.veryPositive).toEqual([]);
+  });
+
+  it('should match hardcoded fallback table for known condition types', () => {
+    // Verify that parsing the game's actual condition data produces
+    // the same results as our hardcoded fallback table
+    const gameControlCondition = {
+      neutral: { effects: [] },
+      positive: { effects: [{ kind: 'control', multiplier: 0.5 }] },
+      negative: { effects: [{ kind: 'control', multiplier: -0.5 }] },
+      veryPositive: { effects: [{ kind: 'control', multiplier: 1 }] },
+      veryNegative: { effects: [{ kind: 'control', multiplier: -1 }] },
+    };
+
+    const parsed = parseRecipeConditionEffects(gameControlCondition);
+    const hardcoded = getConditionEffects('perfectable', 'positive');
+
+    expect(parsed.positive).toEqual(hardcoded);
+  });
+});
+
+describe('getConditionEffectsForConfig prefers real data', () => {
+  it('should use conditionEffectsData when present', () => {
+    const realData: Record<string, ConditionEffect[]> = {
+      neutral: [],
+      positive: [{ kind: 'control', multiplier: 0.75 }], // Custom value, not standard 0.5
+      negative: [{ kind: 'control', multiplier: -0.75 }],
+      veryPositive: [{ kind: 'control', multiplier: 1.5 }],
+      veryNegative: [{ kind: 'control', multiplier: -1.5 }],
+    };
+
+    const config: OptimizerConfig = {
+      ...DEFAULT_CONFIG,
+      conditionEffectType: 'perfectable',
+      conditionEffectsData: realData as any,
+    };
+
+    const effects = getConditionEffectsForConfig(config, 'positive');
+    // Should use the real data (0.75), not the hardcoded perfectable value (0.5)
+    expect(effects).toEqual([{ kind: 'control', multiplier: 0.75 }]);
+  });
+
+  it('should fall back to hardcoded table when conditionEffectsData is absent', () => {
+    const config: OptimizerConfig = {
+      ...DEFAULT_CONFIG,
+      conditionEffectType: 'perfectable',
+    };
+
+    const effects = getConditionEffectsForConfig(config, 'positive');
+    expect(effects).toEqual([{ kind: 'control', multiplier: 0.5 }]);
+  });
+
+  it('should return empty for unknown conditions even with real data', () => {
+    const realData: Record<string, ConditionEffect[]> = {
+      neutral: [],
+      positive: [{ kind: 'control', multiplier: 0.5 }],
+      negative: [],
+      veryPositive: [],
+      veryNegative: [],
+    };
+
+    const config: OptimizerConfig = {
+      ...DEFAULT_CONFIG,
+      conditionEffectsData: realData as any,
+    };
+
+    const effects = getConditionEffectsForConfig(config, 'someInvalidCondition');
+    expect(effects).toEqual([]);
   });
 });

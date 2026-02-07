@@ -184,3 +184,42 @@ If exposing these values is not feasible, the following alternatives would help:
 3. **Test crafting mode** - A sandbox mode where we can run crafting sequences and observe results would enable empirical validation.
 
 The most critical need is accurate access to the scaling/gain calculation formulas, as these affect every skill recommendation.
+
+---
+
+## Developer Response (Feb 2026)
+
+The game developer reviewed this document and provided the following resolution status.
+
+### Already Available (confirmed by dev)
+
+| Item | How to Access | Our Usage | Status |
+|------|---------------|-----------|--------|
+| Condition effect type | `recipeStats.conditionType` (full `RecipeConditionEffect` object with multipliers) | Cached from `onDeriveRecipeDifficulty` hook; real multipliers now passed directly to optimizer | **Working** |
+| Full buff definitions | `entity.techniques[].effects` + `entity.buffs` | Read both in `convertGameTechniques()` and `extractBuffInfo()` | **Working** |
+| Harmony type data | `modAPI.gameData.harmonyConfigs` (typed `Record<RecipeHarmonyType, HarmonyTypeConfig>`) | Referenced in debug logging only | **Not yet implemented** (future: simulate harmony for sublime crafts) |
+| Mastery applied values | Crafting loadout / technique `mastery[]` arrays | Read via `extractMasteryData()` | **Working** |
+| Condition generation state | `progressState.nextConditions` (2 conditions ahead) | Used for lookahead simulation | **Working** |
+| Item effect previews | Defined on the item itself | Not implemented | **Future work** |
+
+### Coming in modAPI (not yet available)
+
+| Item | Benefit When Available |
+|------|----------------------|
+| `evaluateScaling()` | Replace our reimplementation; stay in sync with formula changes |
+| `calculateCraftingOvercrit()` | Replace our overcrit reimplementation |
+| Completion/perfection caps (`getMaxCompletion`/`getMaxPerfection`) | Avoid recommending skills past caps |
+| Technique availability check (`canUseAction`) | Replace our availability reimplementation |
+
+### Still Unknown to Dev (needs follow-up)
+
+| Item | Our Current Approach | Question for Dev |
+|------|---------------------|------------------|
+| Completion bonus stacks | Read from `entity.buffs.find(b => b.name === 'Completion Bonus').stacks` | Is this buff name stable/reliable across versions? |
+| Final costs after modifiers | Calculate ourselves using cost percentage modifiers + condition effects | Could be exposed for validation to catch stacking order bugs |
+
+### Dev Notes
+
+> "Condition effect, Full buff effects, Harmony effects -- I think should already be available through the mod api"
+
+> Re: Difficulty calculation inputs -- "Not sure why you need this, `deriveRecipeDifficulty` gives you the results that matter"
