@@ -120,12 +120,15 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
             borderRadius: 2,
           }}
         >
-          <Typography
-            variant="subtitle1"
-            sx={{ color: '#FFD700', mb: 1.5, fontWeight: 'bold' }}
-          >
-            Settings
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+            <SettingsIcon sx={{ color: '#FFD700', fontSize: 20 }} />
+            <Typography
+              variant="subtitle1"
+              sx={{ color: '#FFD700', fontWeight: 'bold' }}
+            >
+              Settings
+            </Typography>
+          </Box>
 
           {/* Lookahead Depth */}
           <Box sx={{ mb: 2 }}>

@@ -2467,7 +2467,7 @@ function createTitleScreenIndicator(): void {
 
     const indicator = document.createElement('div');
     indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = `🔮 AFNM-CraftBuddy v${MOD_METADATA.version} Loaded`;
+    indicator.innerHTML = `AFNM-CraftBuddy v${MOD_METADATA.version} Loaded`;
 
     Object.assign(indicator.style, {
       position: 'fixed',

@@ -8,6 +8,18 @@
 import React from 'react';
 import { Box, Typography, Paper, Chip, Divider, Avatar } from '@mui/material';
 import {
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  WaterDrop as WaterDropIcon,
+  Shield as ShieldIcon,
+  Timer as TimerIcon,
+  Stars as StarsIcon,
+  Dangerous as DangerousIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  ElectricBolt as ElectricBoltIcon,
+  TrendingUp as TrendingUpIcon,
+} from '@mui/icons-material';
+import {
   SearchResult,
   SkillRecommendation,
   CraftingConditionType,
@@ -336,7 +348,8 @@ function SingleSkillBox({
             {/* Buff granted indicator */}
             {buffGranted && buffDuration > 0 && (
               <Chip
-                label={`◆ ${buffGranted} x${buffDuration}`}
+                icon={<AutoAwesomeIcon sx={{ fontSize: 12 }} />}
+                label={`${buffGranted} x${buffDuration}`}
                 size="small"
                 sx={{
                   backgroundColor: buffGranted.toLowerCase().includes('control')
@@ -344,7 +357,8 @@ function SingleSkillBox({
                     : '#90EE90',
                   color: '#000',
                   fontSize: '0.6rem',
-                  height: 16,
+                  height: 18,
+                  '& .MuiChip-icon': { color: '#000' },
                 }}
               />
             )}
@@ -352,13 +366,15 @@ function SingleSkillBox({
             {/* Buff consumer indicator */}
             {consumesBuff && (
               <Chip
-                label="» Uses Buff"
+                icon={<ElectricBoltIcon sx={{ fontSize: 12 }} />}
+                label="Uses Buff"
                 size="small"
                 sx={{
                   backgroundColor: '#FFD700',
                   color: '#000',
                   fontSize: '0.6rem',
-                  height: 16,
+                  height: 18,
+                  '& .MuiChip-icon': { color: '#000' },
                 }}
               />
             )}
@@ -563,9 +579,12 @@ export function RecommendationPanel({
           borderRadius: 2,
         }}
       >
-        <Typography variant="h6" sx={{ color: '#00FF00', mb: 1 }}>
-          [OK] Targets Met!
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <CheckCircleIcon sx={{ color: '#00FF00', fontSize: 24 }} />
+          <Typography variant="h6" sx={{ color: '#00FF00' }}>
+            Targets Met!
+          </Typography>
+        </Box>
         <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
           Completion: {currentCompletion}/{targetCompletion}
         </Typography>
@@ -609,9 +628,12 @@ export function RecommendationPanel({
           overflow: 'auto',
         }}
       >
-        <Typography variant="h6" sx={{ color: '#FF6B6B', mb: 1 }}>
-          [!] No Valid Actions
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <WarningIcon sx={{ color: '#FF6B6B', fontSize: 24 }} />
+          <Typography variant="h6" sx={{ color: '#FF6B6B' }}>
+            No Valid Actions
+          </Typography>
+        </Box>
         <Typography
           variant="body2"
           sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 1 }}
@@ -636,12 +658,15 @@ export function RecommendationPanel({
             {/* Qi blocked skills */}
             {qiBlocked.length > 0 && (
               <Box sx={{ mb: 1 }}>
-                <Typography
-                  variant="caption"
-                  sx={{ color: '#87CEEB', fontWeight: 'bold' }}
-                >
-                  [Qi] Insufficient Qi ({qiBlocked.length} skills):
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <WaterDropIcon sx={{ color: '#87CEEB', fontSize: 14 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{ color: '#87CEEB', fontWeight: 'bold' }}
+                  >
+                    Insufficient Qi ({qiBlocked.length} skills):
+                  </Typography>
+                </Box>
                 <Box sx={{ pl: 1, mt: 0.5 }}>
                   {qiBlocked.slice(0, 3).map((r, i) => (
                     <Typography
@@ -670,12 +695,15 @@ export function RecommendationPanel({
             {/* Stability blocked skills */}
             {stabilityBlocked.length > 0 && (
               <Box sx={{ mb: 1 }}>
-                <Typography
-                  variant="caption"
-                  sx={{ color: '#FFA500', fontWeight: 'bold' }}
-                >
-                  [Stab] Stability too low ({stabilityBlocked.length} skills):
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <ShieldIcon sx={{ color: '#FFA500', fontSize: 14 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{ color: '#FFA500', fontWeight: 'bold' }}
+                  >
+                    Stability too low ({stabilityBlocked.length} skills):
+                  </Typography>
+                </Box>
                 <Box sx={{ pl: 1, mt: 0.5 }}>
                   {stabilityBlocked.slice(0, 3).map((r, i) => (
                     <Typography
@@ -704,12 +732,15 @@ export function RecommendationPanel({
             {/* Cooldown blocked skills */}
             {cooldownBlocked.length > 0 && (
               <Box sx={{ mb: 1 }}>
-                <Typography
-                  variant="caption"
-                  sx={{ color: '#9370DB', fontWeight: 'bold' }}
-                >
-                  [CD] On Cooldown ({cooldownBlocked.length} skills):
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <TimerIcon sx={{ color: '#9370DB', fontSize: 14 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{ color: '#9370DB', fontWeight: 'bold' }}
+                  >
+                    On Cooldown ({cooldownBlocked.length} skills):
+                  </Typography>
+                </Box>
                 <Box sx={{ pl: 1, mt: 0.5 }}>
                   {cooldownBlocked.slice(0, 3).map((r, i) => (
                     <Typography
@@ -738,12 +769,15 @@ export function RecommendationPanel({
             {/* Condition blocked skills */}
             {conditionBlocked.length > 0 && (
               <Box sx={{ mb: 1 }}>
-                <Typography
-                  variant="caption"
-                  sx={{ color: '#90EE90', fontWeight: 'bold' }}
-                >
-                  [Cond] Wrong Condition ({conditionBlocked.length} skills):
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <StarsIcon sx={{ color: '#90EE90', fontSize: 14 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{ color: '#90EE90', fontWeight: 'bold' }}
+                  >
+                    Wrong Condition ({conditionBlocked.length} skills):
+                  </Typography>
+                </Box>
                 <Box sx={{ pl: 1, mt: 0.5 }}>
                   {conditionBlocked.slice(0, 3).map((r, i) => (
                     <Typography
@@ -772,12 +806,15 @@ export function RecommendationPanel({
             {/* Toxicity blocked skills */}
             {toxicityBlocked.length > 0 && (
               <Box sx={{ mb: 1 }}>
-                <Typography
-                  variant="caption"
-                  sx={{ color: '#FF6B6B', fontWeight: 'bold' }}
-                >
-                  [Tox] Toxicity Limit ({toxicityBlocked.length} skills):
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <DangerousIcon sx={{ color: '#FF6B6B', fontSize: 14 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{ color: '#FF6B6B', fontWeight: 'bold' }}
+                  >
+                    Toxicity Limit ({toxicityBlocked.length} skills):
+                  </Typography>
+                </Box>
                 <Box sx={{ pl: 1, mt: 0.5 }}>
                   {toxicityBlocked.slice(0, 3).map((r, i) => (
                     <Typography
@@ -833,7 +870,7 @@ export function RecommendationPanel({
         variant={compactMode ? 'subtitle1' : 'h6'}
         sx={{ color: '#FFD700', mb: compactMode ? 1 : 1.5 }}
       >
-        {compactMode ? 'CraftBuddy' : 'CraftBuddy Recommends'}
+        {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
       </Typography>
 
       {/* Progress display */}
@@ -897,9 +934,14 @@ export function RecommendationPanel({
             >
               Toxicity: {formatProgress(currentToxicity, maxToxicity)}
               {currentToxicity >= maxToxicity * 0.8 && (
-                <span style={{ color: '#FF6B6B', marginLeft: 4 }}>
-                  [!] High!
-                </span>
+                <WarningIcon
+                  sx={{
+                    color: '#FF6B6B',
+                    fontSize: 14,
+                    ml: 0.5,
+                    verticalAlign: 'middle',
+                  }}
+                />
               )}
             </Typography>
           )}
@@ -1049,16 +1091,22 @@ export function RecommendationPanel({
             borderRadius: 1,
           }}
         >
-          <Typography
-            variant="body2"
-            sx={{
-              color: 'rgba(100, 200, 255, 0.8)',
-              mb: 0.5,
-              fontWeight: 'bold',
-            }}
+          <Box
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}
           >
-            After {result.optimalRotation?.length || 1} turns:
-          </Typography>
+            <TrendingUpIcon
+              sx={{ color: 'rgba(100, 200, 255, 0.8)', fontSize: 16 }}
+            />
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'rgba(100, 200, 255, 0.8)',
+                fontWeight: 'bold',
+              }}
+            >
+              After {result.optimalRotation?.length || 1} turns:
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <Typography variant="body2" sx={{ color: '#90EE90' }}>
               Comp:{' '}
@@ -1080,12 +1128,22 @@ export function RecommendationPanel({
           </Box>
           {result.expectedFinalState.completion >= targetCompletion &&
             result.expectedFinalState.perfection >= targetPerfection && (
-              <Typography
-                variant="body2"
-                sx={{ color: '#00ff00', mt: 0.5, fontStyle: 'italic' }}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  mt: 0.5,
+                }}
               >
-                [OK] Targets will be met!
-              </Typography>
+                <CheckCircleIcon sx={{ color: '#00ff00', fontSize: 14 }} />
+                <Typography
+                  variant="body2"
+                  sx={{ color: '#00ff00', fontStyle: 'italic' }}
+                >
+                  Targets will be met!
+                </Typography>
+              </Box>
             )}
           {result.expectedFinalState.turnsRemaining > 0 && (
             <Typography
