@@ -2057,6 +2057,30 @@ function detectVisibleCraftingUi(): boolean {
         el.children.length < 5,
     );
 
+  const perfectionElement =
+    Array.from(gameRoot.querySelectorAll('[class*="perfection"]')).find(
+      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
+    ) ||
+    Array.from(gameRoot.querySelectorAll('*')).find(
+      (el) =>
+        !isElementInCraftBuddyOverlay(el) &&
+        isElementVisible(el) &&
+        el.textContent?.includes('Perfection:') &&
+        el.children.length < 5,
+    );
+
+  const poolElement =
+    Array.from(gameRoot.querySelectorAll('[class*="pool"], [class*="qi"]')).find(
+      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
+    ) ||
+    Array.from(gameRoot.querySelectorAll('*')).find(
+      (el) =>
+        !isElementInCraftBuddyOverlay(el) &&
+        isElementVisible(el) &&
+        /(?:Qi|Pool):/i.test(el.textContent || '') &&
+        el.children.length < 5,
+    );
+
   const interactiveElements = gameRoot.querySelectorAll('button, [role="button"]');
   let hasCraftingButtons = false;
   let visibleButtonCount = 0;
@@ -2092,15 +2116,56 @@ function detectVisibleCraftingUi(): boolean {
     }
   });
 
+  const hasProgressSignals = !!(
+    stabilityElement ||
+    completionElement ||
+    perfectionElement ||
+    poolElement
+  );
+  const domValues = parseCraftingValuesFromDOM();
+  const hasDomProgressValues =
+    !!domValues &&
+    !!(
+      domValues.targetCompletion ||
+      domValues.targetPerfection ||
+      domValues.targetStability
+    );
+
   // Fallback for icon-only technique buttons where text/class names are unavailable.
-  if (!hasCraftingButtons && craftingPanel && visibleButtonCount >= 6) {
+  // Crafting UIs consistently have several visible action buttons plus live progress readouts.
+  if (
+    !hasCraftingButtons &&
+    visibleButtonCount >= 3 &&
+    (hasProgressSignals || hasDomProgressValues || !!craftingPanel)
+  ) {
     hasCraftingButtons = true;
   }
 
-  const hasProgressSignals = !!(stabilityElement || completionElement);
-
   // Require interactive crafting controls so result/summary screens don't keep us "active".
-  return hasCraftingButtons && (hasProgressSignals || !!craftingPanel);
+  return hasCraftingButtons && (hasProgressSignals || hasDomProgressValues || !!craftingPanel);
+}
+
+function extractActiveCraftingState(state: any): any | null {
+  const gameHasCraftingSlice =
+    !!state?.game &&
+    Object.prototype.hasOwnProperty.call(state.game, 'crafting');
+
+  if (gameHasCraftingSlice) {
+    const gameCrafting = state.game?.crafting;
+    if (gameCrafting?.player && gameCrafting?.progressState) {
+      return gameCrafting;
+    }
+    // If the modern game slice exists but is inactive, treat crafting as inactive and
+    // avoid falling back to stale legacy slices.
+    return null;
+  }
+
+  const rootCrafting = state?.crafting;
+  if (rootCrafting?.player && rootCrafting?.progressState) {
+    return rootCrafting;
+  }
+
+  return null;
 }
 
 /**
@@ -2127,10 +2192,10 @@ function detectCraftingState(): {
   if (cachedStore) {
     try {
       const state = cachedStore.getState();
-      const craftingState = state?.crafting;
+      const craftingState = extractActiveCraftingState(state);
 
       // Check if we have an active crafting session with player and progressState
-      if (craftingState?.player && craftingState?.progressState) {
+      if (craftingState) {
         return {
           isActive: true,
           hasVisibleCraftingUi,
@@ -2143,24 +2208,6 @@ function detectCraftingState(): {
             | undefined,
           consumedPillsThisTurn: Number(craftingState?.consumedPills ?? 0) || 0,
           trainingMode: !!craftingState?.trainingMode,
-        };
-      }
-
-      // Also check nested paths
-      const gameCrafting = state?.game?.crafting;
-      if (gameCrafting?.player && gameCrafting?.progressState) {
-        return {
-          isActive: true,
-          hasVisibleCraftingUi,
-          entity: gameCrafting.player as CraftingEntity,
-          progress: gameCrafting.progressState as ProgressState,
-          recipe: gameCrafting.recipe as RecipeItem | undefined,
-          recipeStats: gameCrafting.recipeStats,
-          inventoryItems: state?.inventory?.items as
-            | InventoryItemLike[]
-            | undefined,
-          consumedPillsThisTurn: Number(gameCrafting?.consumedPills ?? 0) || 0,
-          trainingMode: !!gameCrafting?.trainingMode,
         };
       }
     } catch (e) {
@@ -3519,8 +3566,8 @@ setTimeout(() => {
     // IMPORTANT: Check for active crafting immediately on subscription
     // This handles the case where user loads a save mid-craft
     const initialState = store.getState();
-    const initialCraftingState = initialState?.crafting;
-    if (initialCraftingState?.player && initialCraftingState?.progressState) {
+    const initialCraftingState = extractActiveCraftingState(initialState);
+    if (initialCraftingState) {
       debugLog(
         '[CraftBuddy] Detected active crafting session on load (mid-craft save)',
       );
@@ -3530,7 +3577,7 @@ setTimeout(() => {
     // Subscribe to future changes
     store.subscribe(() => {
       const state = store.getState();
-      const craftingState = state?.crafting;
+      const craftingState = extractActiveCraftingState(state);
       processCraftingState(craftingState);
     });
   }
