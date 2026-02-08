@@ -785,6 +785,103 @@ function pickPositiveGameNumber(
   return fallback;
 }
 
+type CraftingType = 'forge' | 'alchemical' | 'inscription' | 'resonance';
+
+function normalizeCraftingType(value: unknown): CraftingType | undefined {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .trim();
+  switch (normalized) {
+    case 'forge':
+    case 'alchemical':
+    case 'inscription':
+    case 'resonance':
+      return normalized as CraftingType;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Keep crafting-mode context in sync even when lifecycle hooks are skipped
+ * (e.g., loading directly into an active crafting save).
+ */
+function syncCraftingContextFromState(
+  recipe: RecipeItem | undefined,
+  recipeStats: CraftingRecipeStats | undefined,
+  entity?: CraftingEntity,
+): void {
+  const recipeAny = recipe as any;
+  const recipeStatsAny = recipeStats as any;
+
+  const detectedCraftingType = normalizeCraftingType(
+    recipeStatsAny?.harmonyType ??
+      recipeAny?.harmonyType ??
+      recipeAny?.harmonyTypeOverride ??
+      recipeAny?.type,
+  );
+  if (detectedCraftingType) {
+    currentCraftingType = detectedCraftingType;
+  }
+
+  const explicitSublimeSignal =
+    [recipeAny?.isSublimeCraft, recipeAny?.isSublime, recipeAny?.sublime].find(
+      (entry) => typeof entry === 'boolean',
+    ) ??
+    [recipeStatsAny?.isSublime, recipeStatsAny?.sublime].find(
+      (entry) => typeof entry === 'boolean',
+    );
+  const craftingMode = String(recipeAny?.craftingMode || '').toLowerCase();
+  const hasModeSignal =
+    craftingMode === 'sublime' || craftingMode === 'harmony';
+  const hasHarmonySignal = !!recipeAny?.usesHarmony || !!recipeStatsAny?.harmonyBased;
+  const completionCapRatio =
+    targetCompletion > 0 && maxCompletionCap !== undefined
+      ? maxCompletionCap / targetCompletion
+      : 1;
+  const perfectionCapRatio =
+    targetPerfection > 0 && maxPerfectionCap !== undefined
+      ? maxPerfectionCap / targetPerfection
+      : 1;
+  const inferredCapMultiplier = Math.max(
+    1,
+    completionCapRatio,
+    perfectionCapRatio,
+  );
+  const capSuggestsSublime = inferredCapMultiplier >= 1.8;
+
+  const inferredSublimeCraft =
+    explicitSublimeSignal === true ||
+    (explicitSublimeSignal !== false &&
+      (hasModeSignal || hasHarmonySignal || capSuggestsSublime));
+  isSublimeCraft = inferredSublimeCraft;
+
+  if (isSublimeCraft) {
+    const isEquipmentCraft =
+      recipeAny?.isEquipment ||
+      recipeAny?.category === 'equipment' ||
+      recipeAny?.type === 'equipment' ||
+      recipeAny?.resultType === 'equipment';
+    const minimumMultiplier = isEquipmentCraft ? 3.0 : 2.0;
+    sublimeTargetMultiplier = Math.max(minimumMultiplier, inferredCapMultiplier);
+  } else {
+    sublimeTargetMultiplier = 1.0;
+  }
+
+  const explicitMaxToxicity = toFinitePositiveNumber(recipeStatsAny?.maxToxicity);
+  if (explicitMaxToxicity !== undefined) {
+    maxToxicity = explicitMaxToxicity;
+  } else if (currentCraftingType === 'alchemical') {
+    const realmForToxicity =
+      (entity?.realm as string | undefined) ||
+      (lastEntity?.realm as string | undefined) ||
+      (recipeAny?.realm as string | undefined);
+    maxToxicity = resolveMaxToxicityCap(realmForToxicity, 100);
+  } else {
+    maxToxicity = 0;
+  }
+}
+
 function sanitizeNativeCraftingVariables(
   raw: unknown,
 ): Record<string, number> | undefined {
@@ -1519,6 +1616,9 @@ function updateRecommendation(
   const completion = parseGameNumber(progressState?.completion, 0);
   const perfection = parseGameNumber(progressState?.perfection, 0);
   const condition = progressState?.condition;
+  const normalizedCondition = normalizeConditionKey(
+    condition as unknown as string | undefined,
+  );
   const buffs = entity?.buffs;
 
   // Check for very large numbers that might cause precision issues
@@ -1531,7 +1631,7 @@ function updateRecommendation(
     ? progressState.nextConditions
     : [];
   const normalizedNextConditions = normalizeNextConditionQueue(
-    condition as unknown as string | undefined,
+    normalizedCondition,
     rawNextConditions as unknown as string[],
     Number(progressState?.harmony ?? 0) || 0,
   );
@@ -1546,11 +1646,12 @@ function updateRecommendation(
     integrationDiagnostics.conditionQueueNormalizedCount++;
   }
   nextConditions = normalizedNextConditions;
-  currentCondition = condition;
+  currentCondition = normalizedCondition;
 
   currentCompletion = completion;
   currentPerfection = perfection;
   currentStability = stability;
+  currentStep = parseGameNumber(progressState?.step, 0);
 
   // @ts-ignore
   const gameToxicity = progressState?.toxicity ?? entity?.stats?.toxicity ?? 0;
@@ -1706,7 +1807,9 @@ function updateRecommendation(
     history: [],
   });
 
-  const currentConditionType = condition as unknown as string | undefined;
+  const currentConditionType = normalizedCondition as unknown as
+    | string
+    | undefined;
   const forecastedConditionTypes = nextConditions as unknown as string[];
 
   const lookaheadDepth = currentSettings.lookaheadDepth;
@@ -2015,6 +2118,102 @@ function findReduxStore(): any {
 
 // Cache the Redux store once found
 let cachedStore: any = null;
+let unsubscribeFromReduxStore: (() => void) | null = null;
+let reduxStoreReconnectChecks = 0;
+const REDUX_STORE_RECHECK_INTERVAL_POLLS = 4;
+
+function isReduxStoreLike(
+  store: any,
+): store is {
+  getState: () => any;
+  subscribe: (listener: () => void) => () => void;
+} {
+  return (
+    !!store &&
+    typeof store.getState === 'function' &&
+    typeof store.subscribe === 'function'
+  );
+}
+
+function disconnectReduxStoreSubscription(): void {
+  if (!unsubscribeFromReduxStore) return;
+  try {
+    unsubscribeFromReduxStore();
+  } catch (error) {
+    console.warn('[CraftBuddy] Failed to unsubscribe from Redux store:', error);
+  } finally {
+    unsubscribeFromReduxStore = null;
+  }
+}
+
+function processCraftingStateFromStore(store: any): void {
+  if (!isReduxStoreLike(store)) return;
+  try {
+    const state = store.getState();
+    const craftingState = extractActiveCraftingState(state);
+    processCraftingState(craftingState);
+  } catch (error) {
+    console.warn('[CraftBuddy] Failed to read crafting state from store:', error);
+  }
+}
+
+function connectReduxStore(store: any): void {
+  if (!isReduxStoreLike(store)) return;
+  if (cachedStore === store && unsubscribeFromReduxStore) {
+    return;
+  }
+
+  disconnectReduxStoreSubscription();
+  cachedStore = store;
+
+  try {
+    unsubscribeFromReduxStore = store.subscribe(() => {
+      processCraftingStateFromStore(store);
+    });
+    debugLog('[CraftBuddy] Connected to Redux store for crafting updates');
+    processCraftingStateFromStore(store);
+  } catch (error) {
+    console.warn('[CraftBuddy] Failed to subscribe to Redux store:', error);
+    disconnectReduxStoreSubscription();
+    cachedStore = null;
+  }
+}
+
+function refreshReduxStoreConnection(force: boolean = false): void {
+  reduxStoreReconnectChecks++;
+  const shouldCheck =
+    force ||
+    !cachedStore ||
+    reduxStoreReconnectChecks % REDUX_STORE_RECHECK_INTERVAL_POLLS === 0;
+  if (!shouldCheck) {
+    return;
+  }
+
+  if (cachedStore && !isReduxStoreLike(cachedStore)) {
+    cachedStore = null;
+    disconnectReduxStoreSubscription();
+  }
+
+  const discoveredStore = findReduxStore();
+  if (!isReduxStoreLike(discoveredStore)) {
+    if (!cachedStore) {
+      disconnectReduxStoreSubscription();
+    }
+    return;
+  }
+
+  if (discoveredStore !== cachedStore) {
+    if (cachedStore) {
+      debugLog('[CraftBuddy] Redux store reference changed, reconnecting');
+    }
+    connectReduxStore(discoveredStore);
+    return;
+  }
+
+  if (!unsubscribeFromReduxStore) {
+    connectReduxStore(discoveredStore);
+  }
+}
 
 function getGameRootElement(): ParentNode {
   return (
@@ -2176,8 +2375,12 @@ function extractActiveCraftingState(state: any): any | null {
     if (gameCrafting?.player && gameCrafting?.progressState) {
       return gameCrafting;
     }
-    // If the modern game slice exists but is inactive, treat crafting as inactive and
-    // avoid falling back to stale legacy slices.
+    // Some runtime versions expose both state.game.crafting and state.crafting.
+    // If the modern slice is present but empty, fall back to the active legacy slice.
+    const rootCrafting = state?.crafting;
+    if (rootCrafting?.player && rootCrafting?.progressState) {
+      return rootCrafting;
+    }
     return null;
   }
 
@@ -2205,12 +2408,12 @@ function detectCraftingState(): {
 } {
   const hasVisibleCraftingUi = detectVisibleCraftingUi();
 
-  // Method 1: Try to access Redux store - this is the best source
   if (!cachedStore) {
-    cachedStore = findReduxStore();
+    refreshReduxStoreConnection(true);
   }
 
-  if (cachedStore) {
+  // Method 1: Try to access Redux store - this is the best source
+  if (isReduxStoreLike(cachedStore)) {
     try {
       const state = cachedStore.getState();
       const craftingState = extractActiveCraftingState(state);
@@ -2233,6 +2436,7 @@ function detectCraftingState(): {
       }
     } catch (e) {
       // Store access failed
+      refreshReduxStoreConnection(true);
     }
   }
 
@@ -2300,6 +2504,8 @@ function parseCraftingValuesFromDOM(): {
  * Poll for crafting state changes.
  */
 function pollCraftingState(): void {
+  refreshReduxStoreConnection();
+
   const {
     isActive,
     hasVisibleCraftingUi,
@@ -2374,18 +2580,47 @@ function pollCraftingState(): void {
         currentMaxStability = maxStabilityTarget - stabilityPenalty;
       }
     }
+    syncCraftingContextFromState(
+      recipe as RecipeItem | undefined,
+      recipeStats as CraftingRecipeStats | undefined,
+      entity,
+    );
 
     // Check if state changed
-    const newCompletion = progress.completion || 0;
-    const newPerfection = progress.perfection || 0;
-    const newStability = progress.stability || 0;
-    const newStep = progress.step || 0;
+    const newCompletion = parseGameNumber(progress.completion, 0);
+    const newPerfection = parseGameNumber(progress.perfection, 0);
+    const newStability = parseGameNumber(progress.stability, 0);
+    const newStep = parseGameNumber((progress as any)?.step, 0);
+    const newPool = parseGameNumber((entity as any)?.stats?.pool, 0);
+    const newToxicity = parseGameNumber(
+      (progress as any)?.toxicity ?? (entity as any)?.stats?.toxicity,
+      0,
+    );
+    const normalizedCondition = normalizeConditionKey(
+      (progress as any)?.condition as string | undefined,
+    );
+    const rawNextConditions = Array.isArray((progress as any)?.nextConditions)
+      ? ((progress as any).nextConditions as string[])
+      : [];
+    const normalizedQueue = normalizeNextConditionQueue(
+      normalizedCondition,
+      rawNextConditions,
+      Number((progress as any)?.harmony ?? 0) || 0,
+    );
+    const queueChanged =
+      normalizedQueue.length !== nextConditions.length ||
+      normalizedQueue.some((entry, index) => entry !== nextConditions[index]);
+    const previousPool = parseGameNumber((lastEntity as any)?.stats?.pool, 0);
 
     if (
       newCompletion !== currentCompletion ||
       newPerfection !== currentPerfection ||
       newStability !== currentStability ||
       newStep !== currentStep ||
+      normalizedCondition !== currentCondition ||
+      queueChanged ||
+      newPool !== previousPool ||
+      newToxicity !== currentToxicity ||
       !lastEntity
     ) {
       currentStep = newStep;
@@ -2632,6 +2867,12 @@ try {
       } else {
         maxToxicity = 0;
       }
+
+      syncCraftingContextFromState(
+        recipe as RecipeItem | undefined,
+        recipeStats as CraftingRecipeStats | undefined,
+        lastEntity || undefined,
+      );
 
       // Reset state
       currentRecommendation = null;
@@ -3362,6 +3603,7 @@ function processCraftingState(craftingState: any): void {
 
   const progress = craftingState.progressState;
   const entity = craftingState.player;
+  const recipe = craftingState.recipe as RecipeItem | undefined;
 
   // Read targets from recipeStats in Redux state (this is the authoritative source)
   const recipeStats = craftingState.recipeStats;
@@ -3436,6 +3678,12 @@ function processCraftingState(craftingState: any): void {
       targetStability = stabilityTarget;
       foundTargets = true;
     }
+    updateProgressCapsFromRecipeStats(recipeStats as any);
+    updateProgressCapsFromModApi(
+      recipe,
+      recipeStats as CraftingRecipeStats,
+      entity?.realm as string | undefined,
+    );
 
     // Calculate current max stability from recipeStats.stability - progressState.stabilityPenalty
     // The game tracks stability decay via stabilityPenalty, not a separate maxStability field
@@ -3582,12 +3830,44 @@ function processCraftingState(craftingState: any): void {
     );
   }
 
+  syncCraftingContextFromState(
+    recipe,
+    recipeStats as CraftingRecipeStats | undefined,
+    entity as CraftingEntity,
+  );
+
   // Check if state changed OR if we haven't initialized yet (lastEntity is null)
+  const normalizedCondition = normalizeConditionKey(
+    (progress as any)?.condition as string | undefined,
+  );
+  const rawNextConditions = Array.isArray((progress as any)?.nextConditions)
+    ? ((progress as any).nextConditions as string[])
+    : [];
+  const normalizedQueue = normalizeNextConditionQueue(
+    normalizedCondition,
+    rawNextConditions,
+    Number((progress as any)?.harmony ?? 0) || 0,
+  );
+  const queueChanged =
+    normalizedQueue.length !== nextConditions.length ||
+    normalizedQueue.some((entry, index) => entry !== nextConditions[index]);
+  const progressStep = parseGameNumber((progress as any)?.step, 0);
+  const progressPool = parseGameNumber((entity as any)?.stats?.pool, 0);
+  const previousPool = parseGameNumber((lastEntity as any)?.stats?.pool, 0);
+  const progressToxicity = parseGameNumber(
+    (progress as any)?.toxicity ?? (entity as any)?.stats?.toxicity,
+    0,
+  );
   const stateChanged =
-    progress.completion !== currentCompletion ||
-    progress.perfection !== currentPerfection ||
-    progress.stability !== currentStability;
-  const needsInitialization = !lastEntity;
+    parseGameNumber(progress.completion, 0) !== currentCompletion ||
+    parseGameNumber(progress.perfection, 0) !== currentPerfection ||
+    parseGameNumber(progress.stability, 0) !== currentStability ||
+    progressStep !== currentStep ||
+    normalizedCondition !== currentCondition ||
+    queueChanged ||
+    progressPool !== previousPool ||
+    progressToxicity !== currentToxicity;
+  const needsInitialization = !lastEntity || !lastProgressState;
 
   if (stateChanged || needsInitialization) {
     debugLog(
@@ -3613,35 +3893,15 @@ function processCraftingState(craftingState: any): void {
       inventoryItems,
       Number(craftingState?.consumedPills ?? 0) || 0,
       !!craftingState?.trainingMode,
+      recipeStats as CraftingRecipeStats | undefined,
+      recipe,
     );
   }
 }
 
 // Subscribe to Redux store for state changes
 setTimeout(() => {
-  const store = findReduxStore();
-  if (store && typeof store.subscribe === 'function') {
-    cachedStore = store;
-    debugLog('[CraftBuddy] Subscribing to Redux store for state changes');
-
-    // IMPORTANT: Check for active crafting immediately on subscription
-    // This handles the case where user loads a save mid-craft
-    const initialState = store.getState();
-    const initialCraftingState = extractActiveCraftingState(initialState);
-    if (initialCraftingState) {
-      debugLog(
-        '[CraftBuddy] Detected active crafting session on load (mid-craft save)',
-      );
-      processCraftingState(initialCraftingState);
-    }
-
-    // Subscribe to future changes
-    store.subscribe(() => {
-      const state = store.getState();
-      const craftingState = extractActiveCraftingState(state);
-      processCraftingState(craftingState);
-    });
-  }
+  refreshReduxStoreConnection(true);
 }, 1000); // Wait 1 second for game to initialize
 
 console.log('[CraftBuddy] Mod loaded successfully!');
