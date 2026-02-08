@@ -268,6 +268,12 @@ describe('parseGameNumber', () => {
   it('should handle BigInt', () => {
     expect(parseGameNumber(BigInt(1000))).toBe(1000);
   });
+
+  it('should parse common numeric object shapes', () => {
+    expect(parseGameNumber({ value: 42 })).toBe(42);
+    expect(parseGameNumber({ flat: '17' })).toBe(17);
+    expect(parseGameNumber({ current: { value: '9' } })).toBe(9);
+  });
 });
 
 describe('constants', () => {

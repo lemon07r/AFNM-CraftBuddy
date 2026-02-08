@@ -492,32 +492,69 @@ function bucketProgress(value: number, bucketSize: number = 100): number {
   return Math.floor(value / bucketSize) * bucketSize;
 }
 
+function getProgressCacheComponent(
+  value: number,
+  goal: number,
+  bucketSize: number,
+): string {
+  const hasGoal = Number.isFinite(goal) && goal > 0;
+  if (!hasGoal) {
+    return String(bucketProgress(value, bucketSize));
+  }
+
+  if (value < goal) {
+    return String(bucketProgress(value, bucketSize));
+  }
+
+  // Distinguish post-target overshoot to avoid collapsing materially different
+  // "target met" states into the same cache entry.
+  const overshoot = Math.max(0, value - goal);
+  return `MET+${bucketProgress(overshoot, bucketSize)}`;
+}
+
+function goalsMet(
+  state: CraftingState,
+  completionGoal: number,
+  perfectionGoal: number,
+): boolean {
+  const hasCompletionGoal =
+    Number.isFinite(completionGoal) && completionGoal > 0;
+  const hasPerfectionGoal =
+    Number.isFinite(perfectionGoal) && perfectionGoal > 0;
+
+  if (!hasCompletionGoal && !hasPerfectionGoal) {
+    return false;
+  }
+
+  return (
+    (!hasCompletionGoal || state.completion >= completionGoal) &&
+    (!hasPerfectionGoal || state.perfection >= perfectionGoal)
+  );
+}
+
 /**
  * Generate a normalized cache key that buckets large progress values.
  * This improves cache hit rates significantly in late game scenarios.
  */
 function getNormalizedCacheKey(
   state: CraftingState,
-  targetCompletion: number,
-  targetPerfection: number,
+  completionGoal: number,
+  perfectionGoal: number,
   remainingDepth: number,
   conditionType: string | undefined,
   nextConditionQueue: CraftingConditionType[],
   bucketSize: number,
 ): string {
-  // For progress values, we care about:
-  // 1. Whether we've met the target (exact match matters)
-  // 2. How far we are from the target (bucketed for large values)
-  const compMet = state.completion >= targetCompletion;
-  const perfMet = state.perfection >= targetPerfection;
-
-  // If targets are met, we don't need fine-grained progress tracking
-  const compKey = compMet
-    ? 'MET'
-    : bucketProgress(state.completion, bucketSize);
-  const perfKey = perfMet
-    ? 'MET'
-    : bucketProgress(state.perfection, bucketSize);
+  const compKey = getProgressCacheComponent(
+    state.completion,
+    completionGoal,
+    bucketSize,
+  );
+  const perfKey = getProgressCacheComponent(
+    state.perfection,
+    perfectionGoal,
+    bucketSize,
+  );
   const queueKey =
     nextConditionQueue.length > 0 ? nextConditionQueue.join('|') : '-';
 
@@ -933,20 +970,33 @@ export function greedySearch(
   const isSublime = config.isSublimeCraft || false;
   const targetMult = config.targetMultiplier || 2.0;
   const isTraining = config.trainingMode || false;
+  const effectiveCompTarget = isSublime
+    ? targetCompletion * targetMult
+    : targetCompletion;
+  const effectivePerfTarget = isSublime
+    ? targetPerfection * targetMult
+    : targetPerfection;
+  const effectiveCompGoal =
+    config.maxCompletion !== undefined && Number.isFinite(config.maxCompletion)
+      ? Math.min(effectiveCompTarget, config.maxCompletion)
+      : effectiveCompTarget;
+  const effectivePerfGoal =
+    config.maxPerfection !== undefined && Number.isFinite(config.maxPerfection)
+      ? Math.min(effectivePerfTarget, config.maxPerfection)
+      : effectivePerfTarget;
+  const modeCompGoal = isSublime ? effectiveCompGoal : targetCompletion;
+  const modePerfGoal = isSublime ? effectivePerfGoal : targetPerfection;
   const normalizedCurrentCondition =
     normalizeConditionType(currentConditionType);
 
-  // Check if targets already met
-  // For sublime crafting, do NOT terminate at base targets; allow optimizer to push beyond.
-  if (!isSublime && targetCompletion > 0 && targetPerfection > 0) {
-    if (state.targetsMet(targetCompletion, targetPerfection)) {
-      return {
-        recommendation: null,
-        alternativeSkills: [],
-        isTerminal: false,
-        targetsMet: true,
-      };
-    }
+  // Check if active goals are already met.
+  if (goalsMet(state, modeCompGoal, modePerfGoal)) {
+    return {
+      recommendation: null,
+      alternativeSkills: [],
+      isTerminal: false,
+      targetsMet: true,
+    };
   }
 
   // Check if terminal state
@@ -1108,18 +1158,14 @@ export function lookaheadSearch(
     config.maxPerfection !== undefined && Number.isFinite(config.maxPerfection)
       ? Math.min(effectivePerfTarget, config.maxPerfection)
       : effectivePerfTarget;
-  const targetsMetForCurrentMode = (candidate: CraftingState): boolean => {
-    if (isSublime) {
-      return (
-        (effectiveCompGoal <= 0 || candidate.completion >= effectiveCompGoal) &&
-        (effectivePerfGoal <= 0 || candidate.perfection >= effectivePerfGoal)
-      );
-    }
-    if (targetCompletion > 0 && targetPerfection > 0) {
-      return candidate.targetsMet(targetCompletion, targetPerfection);
-    }
-    return false;
-  };
+  const modeCompGoal = isSublime ? effectiveCompGoal : targetCompletion;
+  const modePerfGoal = isSublime ? effectivePerfGoal : targetPerfection;
+  const orderingCompGoal =
+    effectiveCompGoal > 0 ? effectiveCompGoal : targetCompletion;
+  const orderingPerfGoal =
+    effectivePerfGoal > 0 ? effectivePerfGoal : targetPerfection;
+  const targetsMetForCurrentMode = (candidate: CraftingState): boolean =>
+    goalsMet(candidate, modeCompGoal, modePerfGoal);
 
   // Check if targets already met
   if (targetsMetForCurrentMode(state)) {
@@ -1240,8 +1286,8 @@ export function lookaheadSearch(
     // Check cache with normalized key (buckets large progress values)
     const cacheKey = getNormalizedCacheKey(
       currentState,
-      targetCompletion,
-      targetPerfection,
+      effectiveCompGoal,
+      effectivePerfGoal,
       remainingDepth,
       currentConditionAtDepth,
       nextConditionQueueAtDepth,
@@ -1262,8 +1308,8 @@ export function lookaheadSearch(
       availableSkills,
       currentState,
       config,
-      targetCompletion,
-      targetPerfection,
+      orderingCompGoal,
+      orderingPerfGoal,
     );
 
     // Apply adaptive beam search: use narrower beam for deep searches
@@ -1457,8 +1503,8 @@ export function lookaheadSearch(
         skills,
         currentState,
         config,
-        targetCompletion,
-        targetPerfection,
+        orderingCompGoal,
+        orderingPerfGoal,
       );
       let bestSkill: SkillDefinition | null = null;
       let bestScore = -Infinity;
@@ -1539,8 +1585,8 @@ export function lookaheadSearch(
       availableSkills,
       state,
       config,
-      targetCompletion,
-      targetPerfection,
+      orderingCompGoal,
+      orderingPerfGoal,
     );
     const scored: SkillRecommendation[] = [];
 
@@ -1569,8 +1615,8 @@ export function lookaheadSearch(
         followUpSkills,
         stateAfterSkill,
         config,
-        targetCompletion,
-        targetPerfection,
+        orderingCompGoal,
+        orderingPerfGoal,
       );
 
       let bestFollowUp: SkillDefinition | null = null;

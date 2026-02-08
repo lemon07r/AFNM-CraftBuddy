@@ -764,6 +764,27 @@ function toFiniteNumber(value: unknown): number | undefined {
   return parsed;
 }
 
+function parsePositiveGameNumber(value: unknown): number | undefined {
+  const parsed = parseGameNumber(value, Number.NaN);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function pickPositiveGameNumber(
+  candidates: unknown[],
+  fallback: number,
+): number {
+  for (const candidate of candidates) {
+    const parsed = parsePositiveGameNumber(candidate);
+    if (parsed !== undefined) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
 function sanitizeNativeCraftingVariables(
   raw: unknown,
 ): Record<string, number> | undefined {
@@ -2328,14 +2349,17 @@ function pollCraftingState(): void {
     // CRITICAL: Update target values from recipeStats BEFORE updating recommendation
     // recipeStats contains the authoritative target values (completion, perfection, stability)
     if (recipeStats) {
-      if (recipeStats.completion !== undefined && recipeStats.completion > 0) {
-        targetCompletion = recipeStats.completion;
+      const completionTarget = parsePositiveGameNumber(recipeStats.completion);
+      if (completionTarget !== undefined) {
+        targetCompletion = completionTarget;
       }
-      if (recipeStats.perfection !== undefined && recipeStats.perfection > 0) {
-        targetPerfection = recipeStats.perfection;
+      const perfectionTarget = parsePositiveGameNumber(recipeStats.perfection);
+      if (perfectionTarget !== undefined) {
+        targetPerfection = perfectionTarget;
       }
-      if (recipeStats.stability !== undefined && recipeStats.stability > 0) {
-        targetStability = recipeStats.stability;
+      const stabilityTarget = parsePositiveGameNumber(recipeStats.stability);
+      if (stabilityTarget !== undefined) {
+        targetStability = stabilityTarget;
       }
       updateProgressCapsFromRecipeStats(recipeStats as any);
       updateProgressCapsFromModApi(
@@ -2345,7 +2369,10 @@ function pollCraftingState(): void {
       );
       // Calculate current max stability from recipeStats.stability - progressState.stabilityPenalty
       const stabilityPenalty = (progress as any).stabilityPenalty || 0;
-      currentMaxStability = recipeStats.stability - stabilityPenalty;
+      const maxStabilityTarget = parsePositiveGameNumber(recipeStats.stability);
+      if (maxStabilityTarget !== undefined) {
+        currentMaxStability = maxStabilityTarget - stabilityPenalty;
+      }
     }
 
     // Check if state changed
@@ -2489,21 +2516,30 @@ try {
         const statsAny = recipeStats as any;
         lastRecipe = recipe as RecipeItem | undefined;
         lastRecipeStats = recipeStats as CraftingRecipeStats;
-        targetCompletion =
-          statsAny.completionTarget ??
-          statsAny.targetCompletion ??
-          statsAny.completion ??
-          100;
-        targetPerfection =
-          statsAny.perfectionTarget ??
-          statsAny.targetPerfection ??
-          statsAny.perfection ??
-          100;
-        targetStability =
-          statsAny.stabilityTarget ??
-          statsAny.targetStability ??
-          statsAny.stability ??
-          60;
+        targetCompletion = pickPositiveGameNumber(
+          [
+            statsAny.completionTarget,
+            statsAny.targetCompletion,
+            statsAny.completion,
+          ],
+          100,
+        );
+        targetPerfection = pickPositiveGameNumber(
+          [
+            statsAny.perfectionTarget,
+            statsAny.targetPerfection,
+            statsAny.perfection,
+          ],
+          100,
+        );
+        targetStability = pickPositiveGameNumber(
+          [
+            statsAny.stabilityTarget,
+            statsAny.targetStability,
+            statsAny.stability,
+          ],
+          60,
+        );
         updateProgressCapsFromRecipeStats(statsAny);
         updateProgressCapsFromModApi(
           recipe as RecipeItem | undefined,
@@ -3385,26 +3421,31 @@ function processCraftingState(craftingState: any): void {
   // Source 1: recipeStats (preferred) - this is the authoritative source from Redux
   // recipeStats is calculated by deriveRecipeDifficulty() when crafting starts and IS persisted in saves
   if (recipeStats) {
-    if (recipeStats.completion !== undefined && recipeStats.completion > 0) {
-      targetCompletion = recipeStats.completion;
+    const completionTarget = parsePositiveGameNumber(recipeStats.completion);
+    if (completionTarget !== undefined) {
+      targetCompletion = completionTarget;
       foundTargets = true;
     }
-    if (recipeStats.perfection !== undefined && recipeStats.perfection > 0) {
-      targetPerfection = recipeStats.perfection;
+    const perfectionTarget = parsePositiveGameNumber(recipeStats.perfection);
+    if (perfectionTarget !== undefined) {
+      targetPerfection = perfectionTarget;
       foundTargets = true;
     }
-    if (recipeStats.stability !== undefined && recipeStats.stability > 0) {
-      targetStability = recipeStats.stability;
+    const stabilityTarget = parsePositiveGameNumber(recipeStats.stability);
+    if (stabilityTarget !== undefined) {
+      targetStability = stabilityTarget;
       foundTargets = true;
     }
 
     // Calculate current max stability from recipeStats.stability - progressState.stabilityPenalty
     // The game tracks stability decay via stabilityPenalty, not a separate maxStability field
     const stabilityPenalty = progress.stabilityPenalty || 0;
-    currentMaxStability = recipeStats.stability - stabilityPenalty;
-    debugLog(
-      `[CraftBuddy] Current max stability: ${currentMaxStability} (target: ${recipeStats.stability}, penalty: ${stabilityPenalty})`,
-    );
+    if (stabilityTarget !== undefined) {
+      currentMaxStability = stabilityTarget - stabilityPenalty;
+      debugLog(
+        `[CraftBuddy] Current max stability: ${currentMaxStability} (target: ${stabilityTarget}, penalty: ${stabilityPenalty})`,
+      );
+    }
   }
 
   // Source 2: recipe object (fallback)
@@ -3412,34 +3453,54 @@ function processCraftingState(craftingState: any): void {
     const recipe = craftingState.recipe;
     // Try recipe.stats
     if (recipe.stats) {
-      if (recipe.stats.completion > 0)
-        targetCompletion = recipe.stats.completion;
-      if (recipe.stats.perfection > 0)
-        targetPerfection = recipe.stats.perfection;
-      if (recipe.stats.stability > 0) targetStability = recipe.stats.stability;
-      foundTargets = true;
+      const completionTarget = parsePositiveGameNumber(recipe.stats.completion);
+      if (completionTarget !== undefined) {
+        targetCompletion = completionTarget;
+        foundTargets = true;
+      }
+      const perfectionTarget = parsePositiveGameNumber(recipe.stats.perfection);
+      if (perfectionTarget !== undefined) {
+        targetPerfection = perfectionTarget;
+        foundTargets = true;
+      }
+      const stabilityTarget = parsePositiveGameNumber(recipe.stats.stability);
+      if (stabilityTarget !== undefined) {
+        targetStability = stabilityTarget;
+        foundTargets = true;
+      }
     }
     // Try recipe.difficulty (note: this is usually just a string like 'hard', not an object)
     if (recipe.difficulty && typeof recipe.difficulty === 'object') {
-      if (recipe.difficulty.completion > 0)
-        targetCompletion = recipe.difficulty.completion;
-      if (recipe.difficulty.perfection > 0)
-        targetPerfection = recipe.difficulty.perfection;
-      if (recipe.difficulty.stability > 0)
-        targetStability = recipe.difficulty.stability;
-      foundTargets = true;
+      const completionTarget = parsePositiveGameNumber(recipe.difficulty.completion);
+      if (completionTarget !== undefined) {
+        targetCompletion = completionTarget;
+        foundTargets = true;
+      }
+      const perfectionTarget = parsePositiveGameNumber(recipe.difficulty.perfection);
+      if (perfectionTarget !== undefined) {
+        targetPerfection = perfectionTarget;
+        foundTargets = true;
+      }
+      const stabilityTarget = parsePositiveGameNumber(recipe.difficulty.stability);
+      if (stabilityTarget !== undefined) {
+        targetStability = stabilityTarget;
+        foundTargets = true;
+      }
     }
     // Try direct properties on recipe
-    if (recipe.completion > 0) {
-      targetCompletion = recipe.completion;
+    const completionTarget = parsePositiveGameNumber(recipe.completion);
+    if (completionTarget !== undefined) {
+      targetCompletion = completionTarget;
       foundTargets = true;
     }
-    if (recipe.perfection > 0) {
-      targetPerfection = recipe.perfection;
+    const perfectionTarget = parsePositiveGameNumber(recipe.perfection);
+    if (perfectionTarget !== undefined) {
+      targetPerfection = perfectionTarget;
       foundTargets = true;
     }
-    if (recipe.stability > 0) {
-      targetStability = recipe.stability;
+    const stabilityTarget = parsePositiveGameNumber(recipe.stability);
+    if (stabilityTarget !== undefined) {
+      targetStability = stabilityTarget;
       foundTargets = true;
     }
   }

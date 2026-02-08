@@ -7,6 +7,8 @@ import {
   SkillDefinition,
   OptimizerConfig,
   DEFAULT_SKILLS,
+  calculateSkillGains,
+  getAvailableSkills,
 } from '../optimizer/skills';
 import {
   findBestSkill,
@@ -47,6 +49,44 @@ function createCustomSkill(overrides: Partial<SkillDefinition> = {}): SkillDefin
     type: 'support',
     ...overrides,
   };
+}
+
+function createTutorialConfig(
+  overrides: Partial<OptimizerConfig> = {},
+): OptimizerConfig {
+  const simpleFusion = createCustomSkill({
+    name: 'Simple Fusion',
+    key: 'simple_fusion',
+    type: 'fusion',
+    qiCost: 0,
+    stabilityCost: 10,
+    baseCompletionGain: 1,
+    scalesWithIntensity: true,
+  });
+  const simpleRefine = createCustomSkill({
+    name: 'Simple Refine',
+    key: 'simple_refine',
+    type: 'refine',
+    qiCost: 18,
+    stabilityCost: 10,
+    basePerfectionGain: 1,
+    scalesWithControl: true,
+  });
+  const forcefulStabilize = createCustomSkill({
+    name: 'Forceful Stabilize',
+    key: 'forceful_stabilize',
+    type: 'stabilize',
+    qiCost: 88,
+    stabilityCost: 0,
+    stabilityGain: 40,
+    preventsMaxStabilityDecay: true,
+  });
+
+  return createTestConfig({
+    minStability: 0,
+    skills: [simpleFusion, simpleRefine, forcefulStabilize],
+    ...overrides,
+  });
 }
 
 describe('greedySearch', () => {
@@ -194,6 +234,34 @@ describe('lookaheadSearch', () => {
     
     const result = lookaheadSearch(state, config, 100, 100, 3);
     
+    expect(result.targetsMet).toBe(true);
+    expect(result.recommendation).toBeNull();
+  });
+
+  it('should return targetsMet for completion-only crafts when completion target is reached', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      completion: 100,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 0, 3);
+
+    expect(result.targetsMet).toBe(true);
+    expect(result.recommendation).toBeNull();
+  });
+
+  it('should return targetsMet for perfection-only crafts when perfection target is reached', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      completion: 0,
+      perfection: 100,
+    });
+
+    const result = lookaheadSearch(state, config, 0, 100, 3);
+
     expect(result.targetsMet).toBe(true);
     expect(result.recommendation).toBeNull();
   });
@@ -379,6 +447,46 @@ describe('lookaheadSearch', () => {
     expect(result.searchMetrics!.depthReached).toBeGreaterThanOrEqual(3);
     expect(result.searchMetrics!.depthReached).toBeLessThanOrEqual(6);
   });
+
+  it('should avoid recommending stabilize at full stability when direct perfection is stronger', () => {
+    const refine = createCustomSkill({
+      name: 'Simple Refine',
+      key: 'simple_refine',
+      type: 'refine',
+      qiCost: 18,
+      stabilityCost: 10,
+      basePerfectionGain: 1,
+      scalesWithControl: true,
+    });
+    const forcefulStabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      type: 'stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      stabilityGain: 40,
+      preventsMaxStabilityDecay: true,
+    });
+
+    const focusedConfig = createTestConfig({
+      minStability: 0,
+      baseControl: 16,
+      skills: [refine, forcefulStabilize],
+    });
+
+    const state = new CraftingState({
+      qi: 154,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 211,
+      perfection: 44,
+      completionBonus: 2,
+    });
+
+    const result = lookaheadSearch(state, focusedConfig, 50, 100, 4);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Simple Refine');
+  });
 });
 
 describe('findBestSkill', () => {
@@ -529,6 +637,115 @@ describe('search algorithm correctness', () => {
     const result = findBestSkill(state, config, 100, 100);
     
     expect(result.targetsMet).toBe(true);
+  });
+});
+
+describe('tutorial regression scenarios', () => {
+  const tutorialConfig = createTutorialConfig();
+
+  it('should not recommend stabilize at full stability when both progress bars are unmet', () => {
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(state, tutorialConfig, 100, 100, 4);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).not.toBe('stabilize');
+  });
+
+  it('should prioritize refine when completion is met but perfection is behind', () => {
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(state, tutorialConfig, 100, 100, 4);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Simple Refine');
+  });
+
+  it('should prioritize fusion when perfection is met but completion is behind', () => {
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 100,
+    });
+
+    const result = lookaheadSearch(state, tutorialConfig, 100, 100, 4);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Simple Fusion');
+  });
+
+  it('should allow stabilize when progress skills are unavailable', () => {
+    const cooldowns = new Map<string, number>([
+      ['simple_fusion', 2],
+      ['simple_refine', 2],
+    ]);
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      cooldowns,
+    });
+
+    const result = lookaheadSearch(state, tutorialConfig, 100, 100, 4);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('stabilize');
+  });
+
+  it('should never pick stabilize at full stability when an available progress skill advances unmet targets', () => {
+    const qiValues = [90, 120, 160, 194];
+    const completionValues = [0, 20, 60, 99];
+    const perfectionValues = [0, 20, 60, 99];
+
+    for (const qi of qiValues) {
+      for (const completion of completionValues) {
+        for (const perfection of perfectionValues) {
+          const state = new CraftingState({
+            qi,
+            stability: 60,
+            initialMaxStability: 60,
+            completion,
+            perfection,
+          });
+
+          const available = getAvailableSkills(state, tutorialConfig, 'neutral');
+          const hasUsefulProgress = available.some((skill) => {
+            if (skill.type === 'stabilize') return false;
+            const gains = calculateSkillGains(state, skill, tutorialConfig, []);
+            const helpsCompletion = completion < 100 && gains.completion > 0;
+            const helpsPerfection = perfection < 100 && gains.perfection > 0;
+            return helpsCompletion || helpsPerfection;
+          });
+
+          if (!hasUsefulProgress) continue;
+
+          const result = lookaheadSearch(
+            state,
+            tutorialConfig,
+            100,
+            100,
+            3,
+            'neutral',
+            [],
+          );
+
+          expect(result.recommendation).not.toBeNull();
+          expect(result.recommendation!.skill.type).not.toBe('stabilize');
+        }
+      }
+    }
   });
 });
 

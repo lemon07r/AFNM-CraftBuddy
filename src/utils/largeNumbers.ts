@@ -256,6 +256,30 @@ export function parseGameNumber(value: unknown, defaultValue: number = 0): numbe
     const num = Number(value);
     return clampToSafe(num).value;
   }
+
+  if (typeof value === 'object' && value !== null) {
+    const candidate = value as Record<string, unknown>;
+    const commonNumericKeys = [
+      'value',
+      'flat',
+      'current',
+      'base',
+      'max',
+      'cap',
+      'target',
+      'completion',
+      'perfection',
+      'stability',
+    ];
+
+    for (const key of commonNumericKeys) {
+      if (!(key in candidate)) continue;
+      const parsed = parseGameNumber(candidate[key], Number.NaN);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
   
   return defaultValue;
 }
