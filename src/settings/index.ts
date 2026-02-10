@@ -24,7 +24,7 @@ export interface CraftBuddySettings {
   showOptimalRotation: boolean;
 
   // Performance settings for late-game optimization
-  /** Maximum time budget for search in milliseconds (10-500, default: 175) */
+  /** Maximum time budget for search in milliseconds (10-10000, default: 175) */
   searchTimeBudgetMs: number;
   /** Maximum nodes to explore before stopping (1000-100000, default: 85000) */
   searchMaxNodes: number;
@@ -136,10 +136,10 @@ export function setLookaheadDepth(depth: number): number {
 }
 
 /**
- * Set search time budget (clamped to 10-500ms)
+ * Set search time budget (clamped to 10-10000ms)
  */
 export function setSearchTimeBudget(ms: number): number {
-  currentSettings.searchTimeBudgetMs = Math.max(10, Math.min(500, ms));
+  currentSettings.searchTimeBudgetMs = Math.max(10, Math.min(10000, ms));
   saveSettings(currentSettings);
   return currentSettings.searchTimeBudgetMs;
 }

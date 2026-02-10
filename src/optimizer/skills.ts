@@ -262,6 +262,14 @@ export interface SkillGains {
   toxicityCleanse?: number;
 }
 
+export interface SkillGainOptions {
+  /**
+   * Include expected-value random factors (crit/success) in predicted gains.
+   * Disable for tooltip-parity "immediate" gain previews.
+   */
+  includeExpectedValue?: boolean;
+}
+
 export interface OptimizerConfig {
   maxQi: number;
   maxStability: number;
@@ -1057,7 +1065,8 @@ export function calculateDisciplinedTouchGains(
   state: CraftingState,
   skill: SkillDefinition,
   config: OptimizerConfig,
-  conditionEffects: ConditionEffect[] = []
+  conditionEffects: ConditionEffect[] = [],
+  options: SkillGainOptions = {}
 ): SkillGains {
   const baseVars = buildTechniqueScalingVariables(
     state,
@@ -1078,10 +1087,13 @@ export function calculateDisciplinedTouchGains(
   const perfectionGain = safeFloor(safeMultiply(skill.basePerfectionGain, effectiveVars.control));
 
   // Apply crit (only to positive gains)
-  const critMultiplier = calculateExpectedCritMultiplier(
-    effectiveVars.critchance,
-    effectiveVars.critmultiplier
-  );
+  const includeExpectedValue = options.includeExpectedValue ?? true;
+  const critMultiplier = includeExpectedValue
+    ? calculateExpectedCritMultiplier(
+        effectiveVars.critchance,
+        effectiveVars.critmultiplier
+      )
+    : 1;
 
   return {
     completion: safeFloor(safeMultiply(completionGain, critMultiplier)),
@@ -1109,8 +1121,10 @@ export function calculateSkillGains(
   state: CraftingState,
   skill: SkillDefinition,
   config: OptimizerConfig,
-  conditionEffects: ConditionEffect[] = []
+  conditionEffects: ConditionEffect[] = [],
+  options: SkillGainOptions = {}
 ): SkillGains {
+  const includeExpectedValue = options.includeExpectedValue ?? true;
   const clampPredictedProgressGain = (
     gain: number,
     current: number,
@@ -1128,7 +1142,13 @@ export function calculateSkillGains(
 
   // Handle Disciplined Touch specially - it uses both intensity and control with buffs
   if (skill.isDisciplinedTouch) {
-    const disciplined = calculateDisciplinedTouchGains(state, skill, config, conditionEffects);
+    const disciplined = calculateDisciplinedTouchGains(
+      state,
+      skill,
+      config,
+      conditionEffects,
+      options
+    );
     return {
       ...disciplined,
       completion: safeFloor(
@@ -1173,10 +1193,12 @@ export function calculateSkillGains(
   scalingVars.critmultiplier += mastery.critMultiplierBonus || 0;
   scalingVars.successChanceBonus += mastery.successChanceBonus || 0;
 
-  const critFactor = calculateExpectedCritMultiplier(
-    scalingVars.critchance,
-    scalingVars.critmultiplier
-  );
+  const critFactor = includeExpectedValue
+    ? calculateExpectedCritMultiplier(
+        scalingVars.critchance,
+        scalingVars.critmultiplier
+      )
+    : 1;
 
   const baseSuccessChance = skill.successChance ?? 1;
   const totalSuccessChance = Math.min(
@@ -1184,9 +1206,9 @@ export function calculateSkillGains(
     Math.max(0, baseSuccessChance + scalingVars.successChanceBonus)
   );
 
-  // Expected value = successChance * (gains with crit)
-  // Note: Only positive gains can crit (matching game behavior)
-  const expectedFactor = totalSuccessChance;
+  // Expected value = successChance * (gains with crit).
+  // Note: Only positive gains can crit (matching game behavior).
+  const expectedFactor = includeExpectedValue ? totalSuccessChance : 1;
 
   // Preferred path: evaluate authoritative technique effects.
   if (skill.effects && skill.effects.length > 0) {

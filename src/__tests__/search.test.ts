@@ -137,6 +137,40 @@ describe('greedySearch', () => {
     expect(result.recommendation!.reasoning).toBeDefined();
   });
 
+  it('should expose immediate gains separately from projected EV gains', () => {
+    const critFusion = createCustomSkill({
+      name: 'Crit Fusion',
+      key: 'crit_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 1.0,
+      scalesWithIntensity: true,
+    });
+    const critConfig = createTestConfig({
+      baseIntensity: 12,
+      baseControl: 16,
+      skills: [critFusion],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      critChance: 150,
+      critMultiplier: 150,
+    });
+
+    const result = greedySearch(state, critConfig, 100, 0);
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.immediateGains.completion).toBe(12);
+    expect(result.recommendation!.expectedGains.completion).toBeGreaterThan(
+      result.recommendation!.immediateGains.completion,
+    );
+  });
+
   it('should provide alternative skills', () => {
     const state = new CraftingState({
       qi: 100,

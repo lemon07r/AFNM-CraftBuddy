@@ -47,6 +47,7 @@ import {
   loadSettings,
   getSearchConfig,
 } from '../settings';
+import { resolveBaseCraftingStats } from './configStats';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 
@@ -1515,22 +1516,13 @@ function buildConfigFromEntity(
   recipeStats?: CraftingRecipeStats,
 ): OptimizerConfig {
   const stats = entity.stats;
-
-  // Stats can come in as numbers or numeric strings; normalize to numbers.
-  let baseControl = parseGameNumber((stats as any)?.control, 10);
-  let baseIntensity = parseGameNumber((stats as any)?.intensity, 10);
-  let maxQi = parseGameNumber((stats as any)?.maxpool, 100);
+  const resolvedStats = resolveBaseCraftingStats(entity);
+  const baseControl = resolvedStats.baseControl;
+  const baseIntensity = resolvedStats.baseIntensity;
+  const maxQi = parseGameNumber((stats as any)?.maxpool, 100);
 
   // @ts-ignore
   const entityMaxToxicity = stats?.maxtoxicity || 0;
-
-  // @ts-ignore - realmModifier/craftingModifier may exist on game entity
-  const realmModifier =
-    (entity as any)?.realmModifier || (entity as any)?.craftingModifier || 1.0;
-  if (realmModifier !== 1.0) {
-    baseControl = Math.floor(baseControl * realmModifier);
-    baseIntensity = Math.floor(baseIntensity * realmModifier);
-  }
 
   if (recipe && recipeStats) {
     updateProgressCapsFromModApi(recipe, recipeStats, entity.realm as string);
@@ -1561,7 +1553,7 @@ function buildConfigFromEntity(
   }
 
   debugLog(
-    `[CraftBuddy] Config: control=${baseControl}, intensity=${baseIntensity}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}, conditionData=${conditionEffectsData ? 'real' : 'none'}, compCap=${maxCompletionCap ?? 'n/a'}, perfCap=${maxPerfectionCap ?? 'n/a'}`,
+    `[CraftBuddy] Config: control=${baseControl} (raw=${resolvedStats.rawControl}), intensity=${baseIntensity} (raw=${resolvedStats.rawIntensity}), realmModifier=${resolvedStats.realmModifier}, source=${resolvedStats.source}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}, conditionData=${conditionEffectsData ? 'real' : 'none'}, compCap=${maxCompletionCap ?? 'n/a'}, perfCap=${maxPerfectionCap ?? 'n/a'}`,
   );
 
   return {

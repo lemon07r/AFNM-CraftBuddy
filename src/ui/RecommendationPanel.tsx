@@ -76,6 +76,35 @@ function formatGain(value: number): string {
   return value.toLocaleString();
 }
 
+function formatGainSummary(gains: {
+  completion: number;
+  perfection: number;
+  stability: number;
+}): string {
+  const parts: string[] = [];
+  if (gains.completion > 0) {
+    parts.push(`+${formatGain(gains.completion)} Comp`);
+  }
+  if (gains.perfection > 0) {
+    parts.push(`+${formatGain(gains.perfection)} Perf`);
+  }
+  if (gains.stability > 0) {
+    parts.push(`+${formatGain(gains.stability)} Stab`);
+  }
+  return parts.join(' | ');
+}
+
+function gainsDiffer(
+  a: { completion: number; perfection: number; stability: number },
+  b: { completion: number; perfection: number; stability: number },
+): boolean {
+  return (
+    a.completion !== b.completion ||
+    a.perfection !== b.perfection ||
+    a.stability !== b.stability
+  );
+}
+
 // Condition display names
 const CONDITION_NAMES: Record<CraftingConditionType, string> = {
   veryPositive: 'Excellent',
@@ -136,6 +165,7 @@ const SingleSkillBox = memo(function SingleSkillBox({
   name,
   type,
   gains,
+  projectedGains,
   icon,
   qiCost = 0,
   stabilityCost = 0,
@@ -149,6 +179,7 @@ const SingleSkillBox = memo(function SingleSkillBox({
   name: string;
   type: string;
   gains: { completion: number; perfection: number; stability: number };
+  projectedGains?: { completion: number; perfection: number; stability: number };
   icon?: string;
   qiCost?: number;
   stabilityCost?: number;
@@ -193,6 +224,19 @@ const SingleSkillBox = memo(function SingleSkillBox({
             stability={gains.stability}
             formatFn={formatGain}
           />
+          {projectedGains && gainsDiffer(gains, projectedGains) && (
+            <Typography
+              variant="caption"
+              sx={{
+                color: colors.textMuted,
+                display: 'block',
+                mt: 0.25,
+                lineHeight: 1.2,
+              }}
+            >
+              Projected EV: {formatGainSummary(projectedGains)}
+            </Typography>
+          )}
 
           {/* Buff indicators */}
           <FlexRow gap={0.5} wrap sx={{ mt: 0.25 }}>
@@ -278,7 +322,8 @@ const SkillCard = memo(function SkillCard({
           <SingleSkillBox
             name={rec.skill.name}
             type={rec.skill.type}
-            gains={rec.expectedGains}
+            gains={rec.immediateGains}
+            projectedGains={rec.expectedGains}
             icon={rec.skill.icon}
             qiCost={qiCost}
             stabilityCost={stabilityCost}
@@ -299,7 +344,8 @@ const SkillCard = memo(function SkillCard({
               <SingleSkillBox
                 name={rec.followUpSkill.name}
                 type={rec.followUpSkill.type}
-                gains={rec.followUpSkill.expectedGains}
+                gains={rec.followUpSkill.immediateGains}
+                projectedGains={rec.followUpSkill.expectedGains}
                 icon={rec.followUpSkill.icon}
                 isPrimary={isPrimary}
                 isFollowUp={true}

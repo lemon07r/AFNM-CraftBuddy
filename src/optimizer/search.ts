@@ -26,13 +26,18 @@ import {
   getConditionEffectsForConfig,
 } from './skills';
 
+interface GainPreview {
+  completion: number;
+  perfection: number;
+  stability: number;
+}
+
 export interface SkillRecommendation {
   skill: SkillDefinition;
-  expectedGains: {
-    completion: number;
-    perfection: number;
-    stability: number;
-  };
+  /** Projected expected-value gain (includes RNG EV). */
+  expectedGains: GainPreview;
+  /** Immediate tooltip-style gain (without RNG EV multipliers). */
+  immediateGains: GainPreview;
   score: number;
   reasoning: string;
   /** Quality rating from 0-100 based on how close to optimal this choice is */
@@ -44,11 +49,8 @@ export interface SkillRecommendation {
     name: string;
     type: string;
     icon?: string;
-    expectedGains: {
-      completion: number;
-      perfection: number;
-      stability: number;
-    };
+    expectedGains: GainPreview;
+    immediateGains: GainPreview;
   };
 }
 
@@ -617,24 +619,33 @@ function scoreState(
       ? Math.min(effectivePerfTarget, maxPerfectionCap)
       : effectivePerfTarget;
 
-  // Calculate progress toward each target as a percentage (0-1)
-  // Guard against zero targets (e.g., recipes that only require completion OR perfection)
-  const compProgressPct =
-    effectiveCompGoal > 0
-      ? Math.min(state.completion / effectiveCompGoal, 1)
-      : 1;
-  const perfProgressPct =
-    effectivePerfGoal > 0
-      ? Math.min(state.perfection / effectivePerfGoal, 1)
-      : 1;
+  // Calculate progress need and objective deficit balance.
+  const compRemaining =
+    effectiveCompGoal > 0 ? Math.max(0, effectiveCompGoal - state.completion) : 0;
+  const perfRemaining =
+    effectivePerfGoal > 0 ? Math.max(0, effectivePerfGoal - state.perfection) : 0;
+  const totalRemaining = compRemaining + perfRemaining;
+  const compNeedShare = totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
+  const perfNeedShare = totalRemaining > 0 ? perfRemaining / totalRemaining : 0.5;
+  const compNeedPct =
+    effectiveCompGoal > 0 ? Math.max(0, Math.min(1, compRemaining / effectiveCompGoal)) : 0;
+  const perfNeedPct =
+    effectivePerfGoal > 0 ? Math.max(0, Math.min(1, perfRemaining / effectivePerfGoal)) : 0;
+  const remainingWorkPct = Math.max(
+    compNeedPct,
+    perfNeedPct,
+    (compNeedPct + perfNeedPct) / 2
+  );
 
   // Score based on progress toward targets (primary scoring)
-  // Use actual progress values for the base score
+  // Use dynamic weighting based on whichever objective is further behind.
   const compProgress =
     effectiveCompGoal > 0 ? Math.min(state.completion, effectiveCompGoal) : 0;
   const perfProgress =
     effectivePerfGoal > 0 ? Math.min(state.perfection, effectivePerfGoal) : 0;
-  let score = compProgress + perfProgress;
+  const compWeight = 1 + compNeedShare;
+  const perfWeight = 1 + perfNeedShare;
+  let score = compProgress * compWeight + perfProgress * perfWeight;
 
   // Large bonus for meeting both BASE targets - this is the minimum goal
   const baseTargetsMet =
@@ -670,23 +681,21 @@ function scoreState(
     // Bonus for active buffs when targets not yet met
     // Buffs are valuable because they amplify future skill gains
     // The value of buffs decreases as we get closer to targets (less future turns to use them)
-    const remainingWorkPct = 1 - (compProgressPct + perfProgressPct) / 2;
-
     if (state.hasControlBuff()) {
       // Control buff helps with perfection - value it more when perfection is needed
-      const perfNeedPct = 1 - perfProgressPct;
-      score += state.controlBuffTurns * 3 * perfNeedPct * remainingWorkPct;
+      score +=
+        state.controlBuffTurns * 3.5 * (0.5 + perfNeedShare) * remainingWorkPct;
     }
     if (state.hasIntensityBuff()) {
       // Intensity buff helps with completion - value it more when completion is needed
-      const compNeedPct = 1 - compProgressPct;
-      score += state.intensityBuffTurns * 3 * compNeedPct * remainingWorkPct;
+      score +=
+        state.intensityBuffTurns * 3.5 * (0.5 + compNeedShare) * remainingWorkPct;
     }
 
     // Small bonus for resource efficiency even when targets not met
     // This helps break ties between similar states
     score += state.qi * 0.01;
-    score += state.stability * 0.01;
+    score += state.stability * (0.01 + remainingWorkPct * 0.01);
   }
 
   // Penalize going over targets (wasted resources)
@@ -736,14 +745,28 @@ function scoreState(
     score -= Math.max(0, state.perfection - maxPerfectionCap) * 3;
   }
 
-  // Penalty for low stability (risky state)
-  // In training mode, reduce penalty since failure has no real consequences
-  const stabilityThreshold = trainingMode ? 10 : 25;
-  const stabilityPenaltyWeight = trainingMode ? 3 : 10;
+  // Penalty for low stability (risky state).
+  // Threshold scales with remaining work so long sequences preserve runway.
+  const stabilityThreshold = trainingMode
+    ? 8 + remainingWorkPct * 8
+    : 14 + remainingWorkPct * 26;
+  const stabilityPenaltyWeight = trainingMode ? 4 : 12;
   if (state.stability < stabilityThreshold) {
     const stabilityRisk =
       (stabilityThreshold - state.stability) / stabilityThreshold; // 0 to 1
     score -= stabilityRisk * stabilityRisk * stabilityPenaltyWeight;
+  }
+
+  // Additional runway penalty: avoid lines that are unlikely to have enough
+  // stability-bearing turns left to finish remaining deficits.
+  const estimatedTurnsRemaining =
+    remainingWorkPct > 0
+      ? Math.ceil(remainingWorkPct * (isSublimeCraft ? 14 : 10))
+      : 0;
+  const estimatedRunwayTurns = Math.floor(Math.max(0, state.stability) / 10);
+  if (estimatedTurnsRemaining > estimatedRunwayTurns) {
+    const gap = estimatedTurnsRemaining - estimatedRunwayTurns;
+    score -= gap * (trainingMode ? 1.5 : 3);
   }
 
   // Small penalty for high toxicity in alchemy crafting
@@ -760,6 +783,64 @@ function scoreState(
   }
 
   return score;
+}
+
+function calculateRecommendationGains(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
+): { expectedGains: GainPreview; immediateGains: GainPreview } {
+  const expected = calculateSkillGains(state, skill, config, conditionEffects);
+  const immediate = calculateSkillGains(
+    state,
+    skill,
+    config,
+    conditionEffects,
+    { includeExpectedValue: false },
+  );
+
+  return {
+    expectedGains: {
+      completion: expected.completion,
+      perfection: expected.perfection,
+      stability: expected.stability,
+    },
+    immediateGains: {
+      completion: immediate.completion,
+      perfection: immediate.perfection,
+      stability: immediate.stability,
+    },
+  };
+}
+
+function diversifyRecommendations(
+  scored: SkillRecommendation[],
+): SkillRecommendation[] {
+  if (scored.length <= 2) {
+    return scored;
+  }
+
+  const result: SkillRecommendation[] = [];
+  const remaining = [...scored];
+  const usedTypes = new Set<string>();
+
+  const best = remaining.shift();
+  if (!best) return [];
+  result.push(best);
+  usedTypes.add(best.skill.type);
+
+  while (remaining.length > 0) {
+    const diverseIndex = remaining.findIndex(
+      (candidate) => !usedTypes.has(candidate.skill.type),
+    );
+    const nextIndex = diverseIndex >= 0 ? diverseIndex : 0;
+    const [next] = remaining.splice(nextIndex, 1);
+    result.push(next);
+    usedTypes.add(next.skill.type);
+  }
+
+  return result;
 }
 
 /**
@@ -1038,7 +1119,12 @@ export function greedySearch(
     );
     if (newState === null) continue;
 
-    const gains = calculateSkillGains(state, skill, config, conditionEffects);
+    const { expectedGains, immediateGains } = calculateRecommendationGains(
+      state,
+      skill,
+      config,
+      conditionEffects,
+    );
     const score = scoreState(
       newState,
       targetCompletion,
@@ -1052,14 +1138,15 @@ export function greedySearch(
     const reasoning = generateReasoning(
       skill,
       state,
-      gains,
+      immediateGains,
       targetCompletion,
       targetPerfection,
     );
 
     scoredSkills.push({
       skill,
-      expectedGains: gains,
+      expectedGains,
+      immediateGains,
       score,
       reasoning,
     });
@@ -1067,8 +1154,9 @@ export function greedySearch(
 
   // Sort by score descending
   scoredSkills.sort((a, b) => b.score - a.score);
+  const rankedSkills = diversifyRecommendations(scoredSkills);
 
-  if (scoredSkills.length === 0) {
+  if (rankedSkills.length === 0) {
     return {
       recommendation: null,
       alternativeSkills: [],
@@ -1083,8 +1171,8 @@ export function greedySearch(
   }
 
   return {
-    recommendation: scoredSkills[0],
-    alternativeSkills: scoredSkills.slice(1),
+    recommendation: rankedSkills[0],
+    alternativeSkills: rankedSkills.slice(1),
     isTerminal: false,
     targetsMet: false,
   };
@@ -1621,7 +1709,16 @@ export function lookaheadSearch(
 
       let bestFollowUp: SkillDefinition | null = null;
       let bestFollowUpScore = -Infinity;
-      let bestFollowUpGains = { completion: 0, perfection: 0, stability: 0 };
+      let bestFollowUpExpectedGains: GainPreview = {
+        completion: 0,
+        perfection: 0,
+        stability: 0,
+      };
+      let bestFollowUpImmediateGains: GainPreview = {
+        completion: 0,
+        perfection: 0,
+        stability: 0,
+      };
 
       const followUpConditionEffects = getConditionEffectsForConfig(
         config,
@@ -1639,7 +1736,7 @@ export function lookaheadSearch(
         );
         if (nextState === null) continue;
 
-        const followUpGains = calculateSkillGains(
+        const { expectedGains, immediateGains } = calculateRecommendationGains(
           stateAfterSkill,
           followUp,
           config,
@@ -1668,7 +1765,8 @@ export function lookaheadSearch(
         if (followUpScore > bestFollowUpScore) {
           bestFollowUpScore = followUpScore;
           bestFollowUp = followUp;
-          bestFollowUpGains = followUpGains;
+          bestFollowUpExpectedGains = expectedGains;
+          bestFollowUpImmediateGains = immediateGains;
         }
       }
 
@@ -1677,7 +1775,8 @@ export function lookaheadSearch(
         name: bestFollowUp.name,
         type: bestFollowUp.type,
         icon: bestFollowUp.icon,
-        expectedGains: bestFollowUpGains,
+        expectedGains: bestFollowUpExpectedGains,
+        immediateGains: bestFollowUpImmediateGains,
       };
     }
 
@@ -1699,7 +1798,7 @@ export function lookaheadSearch(
       );
       if (newState === null) continue;
 
-      const gains = calculateSkillGains(
+      const { expectedGains, immediateGains } = calculateRecommendationGains(
         state,
         skill,
         config,
@@ -1708,7 +1807,7 @@ export function lookaheadSearch(
       const reasoning = generateReasoning(
         skill,
         state,
-        gains,
+        immediateGains,
         targetCompletion,
         targetPerfection,
       );
@@ -1727,7 +1826,8 @@ export function lookaheadSearch(
 
       scored.push({
         skill,
-        expectedGains: gains,
+        expectedGains,
+        immediateGains,
         score: immediateScore,
         reasoning,
         consumesBuff: skill.isDisciplinedTouch === true,
@@ -1920,10 +2020,11 @@ export function lookaheadSearch(
 
   // Record final metrics
   metrics.timeTakenMs = Date.now() - startTime;
+  const rankedSkills = diversifyRecommendations(scoredSkills);
 
   return {
-    recommendation: scoredSkills[0],
-    alternativeSkills: scoredSkills.slice(1),
+    recommendation: rankedSkills[0],
+    alternativeSkills: rankedSkills.slice(1),
     isTerminal: false,
     targetsMet: false,
     optimalRotation,

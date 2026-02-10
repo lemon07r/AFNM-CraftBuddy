@@ -302,8 +302,14 @@ export const SettingsPanel = memo(function SettingsPanel({
             value={settings.searchTimeBudgetMs}
             draftValue={draftSettings.searchTimeBudgetMs}
             min={10}
-            max={500}
-            step={10}
+            max={10000}
+            step={50}
+            hint={`Default: ${DEFAULT_SETTINGS.searchTimeBudgetMs}ms. Higher values improve quality but can stall UI updates.`}
+            tip={
+              draftSettings.searchTimeBudgetMs > 1500
+                ? 'Warning: High time budgets can pause the crafting UI while searching.'
+                : undefined
+            }
             onChange={(v) => handleSliderDraftChange('searchTimeBudgetMs', v)}
             onCommit={(v) => handleSliderCommit('searchTimeBudgetMs', v)}
           />

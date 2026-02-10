@@ -16,7 +16,7 @@ related_files:
 ## User-tunable controls
 
 - `lookaheadDepth` (`1-96`, default `16`)
-- `searchTimeBudgetMs` (`10-500`, default `175`)
+- `searchTimeBudgetMs` (`10-10,000`, default `175`)
 - `searchMaxNodes` (`1,000-100,000`, default `85,000`)
 - `searchBeamWidth` (`3-15`, default `6`)
 - settings sliders persist on commit (not every drag event) to reduce UI churn
