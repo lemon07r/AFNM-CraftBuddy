@@ -20,7 +20,9 @@ import {
 } from '../optimizer/skills';
 
 // Helper to create a basic test config
-function createTestConfig(overrides: Partial<OptimizerConfig> = {}): OptimizerConfig {
+function createTestConfig(
+  overrides: Partial<OptimizerConfig> = {},
+): OptimizerConfig {
   return {
     maxQi: 194,
     maxStability: 60,
@@ -34,7 +36,9 @@ function createTestConfig(overrides: Partial<OptimizerConfig> = {}): OptimizerCo
 }
 
 // Helper to create a basic skill
-function createTestSkill(overrides: Partial<SkillDefinition> = {}): SkillDefinition {
+function createTestSkill(
+  overrides: Partial<SkillDefinition> = {},
+): SkillDefinition {
   return {
     name: 'Test Skill',
     key: 'test_skill',
@@ -61,7 +65,7 @@ describe('canApplySkill', () => {
       stability: 50,
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 10 });
-    
+
     expect(canApplySkill(state, skill, 0)).toBe(true);
   });
 
@@ -71,7 +75,7 @@ describe('canApplySkill', () => {
       stability: 50,
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 10 });
-    
+
     expect(canApplySkill(state, skill, 0)).toBe(false);
   });
 
@@ -81,7 +85,7 @@ describe('canApplySkill', () => {
       stability: 15,
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 10 });
-    
+
     // Matches game canUseAction: only checks current stability > 0.
     expect(canApplySkill(state, skill, 10)).toBe(true);
   });
@@ -92,7 +96,7 @@ describe('canApplySkill', () => {
       stability: 20,
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 10 });
-    
+
     // 20 - 10 = 10, which equals minStability
     expect(canApplySkill(state, skill, 10)).toBe(true);
   });
@@ -122,7 +126,7 @@ describe('canApplySkill', () => {
       cooldowns,
     });
     const skill = createTestSkill({ key: 'test_skill' });
-    
+
     expect(canApplySkill(state, skill, 0)).toBe(false);
   });
 
@@ -171,7 +175,7 @@ describe('canApplySkill', () => {
       maxToxicity: 100,
     });
     const skill = createTestSkill({ toxicityCost: 15 });
-    
+
     // 90 + 15 = 105, which exceeds maxToxicity of 100
     expect(canApplySkill(state, skill, 10, 100)).toBe(false);
   });
@@ -184,7 +188,7 @@ describe('canApplySkill', () => {
       maxToxicity: 100,
     });
     const skill = createTestSkill({ toxicityCost: 15 });
-    
+
     // 80 + 15 = 95, which is within maxToxicity of 100
     expect(canApplySkill(state, skill, 10, 100)).toBe(true);
   });
@@ -199,7 +203,9 @@ describe('canApplySkill', () => {
     const conditionEffects = [{ kind: 'pool' as const, multiplier: 1.3 }];
 
     // Effective Qi cost: floor(floor(10 * 1.3) * 1.2) = floor(13 * 1.2) = 15
-    expect(canApplySkill(state, skill, 0, 0, undefined, conditionEffects)).toBe(false);
+    expect(canApplySkill(state, skill, 0, 0, undefined, conditionEffects)).toBe(
+      false,
+    );
   });
 
   it('should allow skill even when condition-modified stability cost exceeds available stability', () => {
@@ -212,7 +218,9 @@ describe('canApplySkill', () => {
     const conditionEffects = [{ kind: 'stability' as const, multiplier: 1.6 }];
 
     // Game canUseAction does not reject based on projected post-action stability.
-    expect(canApplySkill(state, skill, 9, 0, undefined, conditionEffects)).toBe(true);
+    expect(canApplySkill(state, skill, 9, 0, undefined, conditionEffects)).toBe(
+      true,
+    );
   });
 });
 
@@ -239,7 +247,9 @@ describe('native canUseAction precheck integration', () => {
   });
 
   it('should seed native precheck variables from state.nativeVariables', () => {
-    const provider = jest.fn((context: any) => context.variables.customFlag === 7);
+    const provider = jest.fn(
+      (context: any) => context.variables.customFlag === 7,
+    );
     setNativeCanUseActionProvider(provider);
 
     const state = new CraftingState({
@@ -261,7 +271,9 @@ describe('native canUseAction precheck integration', () => {
   });
 
   it('should pass current condition through applySkill to native precheck', () => {
-    const provider = jest.fn((context: any) => context.currentCondition === 'positive');
+    const provider = jest.fn(
+      (context: any) => context.currentCondition === 'positive',
+    );
     setNativeCanUseActionProvider(provider);
 
     const state = new CraftingState({
@@ -351,7 +363,12 @@ describe('calculateEffectiveActionCosts', () => {
     const skill = createTestSkill({ qiCost: 0, stabilityCost: 1 });
     const conditionEffects = [{ kind: 'stability' as const, multiplier: 1.6 }];
 
-    const costs = calculateEffectiveActionCosts(state, skill, 0, conditionEffects);
+    const costs = calculateEffectiveActionCosts(
+      state,
+      skill,
+      0,
+      conditionEffects,
+    );
     expect(costs.stabilityCost).toBe(2);
   });
 
@@ -365,7 +382,12 @@ describe('calculateEffectiveActionCosts', () => {
     const conditionEffects = [{ kind: 'pool' as const, multiplier: 1.3 }];
 
     // floor(floor(17 * 1.3) * 0.8) = floor(22 * 0.8) = 17
-    const costs = calculateEffectiveActionCosts(state, skill, 0, conditionEffects);
+    const costs = calculateEffectiveActionCosts(
+      state,
+      skill,
+      0,
+      conditionEffects,
+    );
     expect(costs.qiCost).toBe(17);
   });
 });
@@ -381,9 +403,9 @@ describe('calculateSkillGains', () => {
       type: 'fusion',
       scalesWithIntensity: true,
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     // Base intensity 12, multiplier 1.0, so 1.0 * 12 = 12
     expect(gains.completion).toBe(12);
     expect(gains.perfection).toBe(0);
@@ -398,9 +420,9 @@ describe('calculateSkillGains', () => {
       scalesWithControl: true,
       scalesWithIntensity: false,
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     // Base control 16, multiplier 1.0, so 1.0 * 16 = 16
     expect(gains.completion).toBe(0);
     expect(gains.perfection).toBe(16);
@@ -418,9 +440,9 @@ describe('calculateSkillGains', () => {
       scalesWithControl: true,
       scalesWithIntensity: false,
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     // Control with buff: 16 * 1.4 = 22.4
     // Perfection: 1.0 * 22.4 = 22 (floored)
     expect(gains.perfection).toBe(22);
@@ -437,9 +459,9 @@ describe('calculateSkillGains', () => {
       type: 'fusion',
       scalesWithIntensity: true,
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     // Intensity with buff: 12 * 1.4 = 16.8
     // Completion: 1.0 * 16.8 = 16 (floored)
     expect(gains.completion).toBe(16);
@@ -455,9 +477,9 @@ describe('calculateSkillGains', () => {
       scalesWithIntensity: false,
       mastery: { controlBonus: 0.25 }, // +25% control
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     // Base control 16 * 1.25 = 20
     // Perfection: 1.0 * 20 = 20
     expect(gains.perfection).toBe(20);
@@ -472,9 +494,9 @@ describe('calculateSkillGains', () => {
       type: 'stabilize',
       scalesWithIntensity: false,
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     expect(gains.completion).toBe(0);
     expect(gains.perfection).toBe(0);
     expect(gains.stability).toBe(20);
@@ -527,7 +549,10 @@ describe('calculateSkillGains', () => {
       baseCompletionGain: 0,
       scalesWithIntensity: false,
       effects: [
-        { kind: 'completion', amount: { value: 1, stat: 'intensity', upgradeKey: 'fusion_gain' } },
+        {
+          kind: 'completion',
+          amount: { value: 1, stat: 'intensity', upgradeKey: 'fusion_gain' },
+        },
       ] as any,
       masteryEntries: [
         { kind: 'upgrade', upgradeKey: 'fusion_gain', change: 0.5 },
@@ -545,10 +570,18 @@ describe('calculateSkillGains', () => {
       baseCompletionGain: 0,
       scalesWithIntensity: false,
       effects: [
-        { kind: 'completion', amount: { value: 1, stat: 'intensity', upgradeKey: 'fusion_gain' } },
+        {
+          kind: 'completion',
+          amount: { value: 1, stat: 'intensity', upgradeKey: 'fusion_gain' },
+        },
       ] as any,
       masteryEntries: [
-        { kind: 'upgrade', upgradeKey: 'fusion_gain', change: 0.5, shouldMultiply: true },
+        {
+          kind: 'upgrade',
+          upgradeKey: 'fusion_gain',
+          change: 0.5,
+          shouldMultiply: true,
+        },
       ] as any,
     });
 
@@ -568,7 +601,10 @@ describe('calculateSkillGains', () => {
       baseCompletionGain: 0,
       scalesWithIntensity: false,
       effects: [
-        { kind: 'completion', amount: { value: 1, stat: 'intensity', upgradeKey: 'fusion_gain' } },
+        {
+          kind: 'completion',
+          amount: { value: 1, stat: 'intensity', upgradeKey: 'fusion_gain' },
+        },
       ] as any,
       masteryEntries: [
         {
@@ -678,7 +714,12 @@ describe('calculateSkillGains', () => {
       },
     };
     const state = new CraftingState({
-      buffs: new Map([['mastery_boost', { name: 'mastery_boost', stacks: 1, definition: buff as any }]]),
+      buffs: new Map([
+        [
+          'mastery_boost',
+          { name: 'mastery_boost', stacks: 1, definition: buff as any },
+        ],
+      ]),
     });
     const skill = createTestSkill({
       baseCompletionGain: 0,
@@ -707,9 +748,9 @@ describe('applySkill', () => {
       initialMaxStability: 60,
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 10 });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.qi).toBe(90);
     expect(newState!.stability).toBe(40);
@@ -729,9 +770,9 @@ describe('applySkill', () => {
       type: 'fusion',
       scalesWithIntensity: true,
     });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     // 1.0 * 12 (base intensity) = 12, so 20 + 12 = 32
     expect(newState!.completion).toBe(32);
@@ -773,9 +814,9 @@ describe('applySkill', () => {
       initialMaxStability: 60,
     });
     const skill = createTestSkill({ preventsMaxStabilityDecay: false });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.maxStability).toBe(59); // 60 - 1
   });
@@ -787,9 +828,9 @@ describe('applySkill', () => {
       initialMaxStability: 60,
     });
     const skill = createTestSkill({ preventsMaxStabilityDecay: true });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.maxStability).toBe(60); // unchanged
   });
@@ -804,9 +845,9 @@ describe('applySkill', () => {
       maxStabilityChange: -5,
       preventsMaxStabilityDecay: true, // Prevent normal decay to isolate effect
     });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.maxStability).toBe(55); // 60 - 5
   });
@@ -842,9 +883,9 @@ describe('applySkill', () => {
       stabilityCost: 0,
       preventsMaxStabilityDecay: true,
     });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     // 55 + 20 = 75, but capped at maxStability 60
     expect(newState!.stability).toBe(60);
@@ -862,9 +903,9 @@ describe('applySkill', () => {
       buffDuration: 2,
       buffMultiplier: 1.4,
     });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.controlBuffTurns).toBe(2);
     expect(newState!.controlBuffMultiplier).toBe(1.4);
@@ -882,9 +923,9 @@ describe('applySkill', () => {
       buffDuration: 3,
       buffMultiplier: 1.5,
     });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.intensityBuffTurns).toBe(3);
     expect(newState!.intensityBuffMultiplier).toBe(1.5);
@@ -899,9 +940,9 @@ describe('applySkill', () => {
       intensityBuffTurns: 1,
     });
     const skill = createTestSkill({ buffType: BuffType.NONE });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.controlBuffTurns).toBe(1); // 2 - 1
     expect(newState!.intensityBuffTurns).toBe(0); // 1 - 1
@@ -915,9 +956,9 @@ describe('applySkill', () => {
       toxicity: 20,
     });
     const skill = createTestSkill({ toxicityCost: 15 });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.toxicity).toBe(35); // 20 + 15
   });
@@ -1026,9 +1067,9 @@ describe('applySkill', () => {
       toxicity: 50,
     });
     const skill = createTestSkill({ toxicityCleanse: 20 });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.toxicity).toBe(30); // 50 - 20
   });
@@ -1043,9 +1084,9 @@ describe('applySkill', () => {
       key: 'cooldown_skill',
       cooldown: 3,
     });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.getCooldown('cooldown_skill')).toBe(3);
   });
@@ -1060,9 +1101,9 @@ describe('applySkill', () => {
       cooldowns,
     });
     const skill = createTestSkill({ key: 'test_skill' });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.getCooldown('other_skill')).toBe(1); // 2 - 1
   });
@@ -1073,9 +1114,9 @@ describe('applySkill', () => {
       stability: 50,
     });
     const skill = createTestSkill({ qiCost: 10 });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).toBeNull();
   });
 
@@ -1108,9 +1149,9 @@ describe('applySkill', () => {
       history: ['previous_skill'],
     });
     const skill = createTestSkill({ name: 'New Skill' });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     expect(newState!.history).toEqual(['previous_skill', 'New Skill']);
   });
@@ -1123,9 +1164,9 @@ describe('getAvailableSkills', () => {
       stability: 50,
     });
     const config = createTestConfig();
-    
+
     const available = getAvailableSkills(state, config);
-    
+
     expect(available.length).toBeGreaterThan(0);
     // All returned skills should be applicable
     for (const skill of available) {
@@ -1139,9 +1180,9 @@ describe('getAvailableSkills', () => {
       stability: 50,
     });
     const config = createTestConfig();
-    
+
     const available = getAvailableSkills(state, config);
-    
+
     // Should only include skills with 0 qi cost
     for (const skill of available) {
       expect(skill.qiCost).toBe(0);
@@ -1157,11 +1198,11 @@ describe('getAvailableSkills', () => {
       cooldowns,
     });
     const config = createTestConfig();
-    
+
     const available = getAvailableSkills(state, config);
-    
+
     // Should not include the skill on cooldown
-    const hasSimpleFusion = available.some(s => s.key === 'simple_fusion');
+    const hasSimpleFusion = available.some((s) => s.key === 'simple_fusion');
     expect(hasSimpleFusion).toBe(false);
   });
 });
@@ -1173,7 +1214,7 @@ describe('isTerminalState', () => {
       stability: 0,
     });
     const config = createTestConfig();
-    
+
     expect(isTerminalState(state, config)).toBe(true);
   });
 
@@ -1183,7 +1224,7 @@ describe('isTerminalState', () => {
       stability: 50,
     });
     const config = createTestConfig();
-    
+
     expect(isTerminalState(state, config)).toBe(false);
   });
 });
@@ -1206,9 +1247,9 @@ describe('Disciplined Touch accuracy', () => {
       isDisciplinedTouch: true,
       scalesWithIntensity: true,
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     // Completion: 0.5 * 12 (base intensity) = 6
     // Perfection: 0.5 * 16 (base control) = 8
     expect(gains.completion).toBe(6);
@@ -1231,9 +1272,9 @@ describe('Disciplined Touch accuracy', () => {
       isDisciplinedTouch: true,
       scalesWithIntensity: true,
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     // Intensity with buff: 12 * 1.4 = 16.8 -> 16 (floored)
     // Completion: 0.5 * 16 = 8
     // Perfection: 0.5 * 16 (base control, no buff) = 8
@@ -1257,9 +1298,9 @@ describe('Disciplined Touch accuracy', () => {
       isDisciplinedTouch: true,
       scalesWithIntensity: true,
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     // Completion: 0.5 * 12 (base intensity, no buff) = 6
     // Control with buff: 16 * 1.4 = 22.4 -> 22 (floored)
     // Perfection: 0.5 * 22 = 11
@@ -1284,9 +1325,9 @@ describe('Disciplined Touch accuracy', () => {
       isDisciplinedTouch: true,
       scalesWithIntensity: true,
     });
-    
+
     const gains = calculateSkillGains(state, skill, config);
-    
+
     // Intensity with buff: 12 * 1.4 = 16.8 -> 16 (floored)
     // Completion: 0.5 * 16 = 8
     // Control with buff: 16 * 1.4 = 22.4 -> 22 (floored)
@@ -1311,9 +1352,9 @@ describe('Disciplined Touch accuracy', () => {
       isDisciplinedTouch: true,
       scalesWithIntensity: true,
     });
-    
+
     const newState = applySkill(state, skill, config);
-    
+
     expect(newState).not.toBeNull();
     // Both buffs should be consumed (set to 0)
     expect(newState!.controlBuffTurns).toBe(0);
@@ -1335,15 +1376,73 @@ describe('Disciplined Touch accuracy', () => {
       isDisciplinedTouch: true,
       scalesWithIntensity: true,
     });
-    
+
     // Good condition (+50% control)
-    const gains = calculateSkillGains(state, skill, config, [{ kind: 'control', multiplier: 0.5 }]);
-    
+    const gains = calculateSkillGains(state, skill, config, [
+      { kind: 'control', multiplier: 0.5 },
+    ]);
+
     // Completion: 0.5 * 12 = 6 (intensity not affected by condition)
     // Control with condition: 16 * 1.5 = 24
     // Perfection: 0.5 * 24 = 12
     expect(gains.completion).toBe(6);
     expect(gains.perfection).toBe(12);
+  });
+
+  it('should apply harmony modifiers to gains', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      intensityBuffTurns: 0,
+      controlBuffTurns: 0,
+      harmonyData: {
+        forgeWorks: { heat: 5 },
+        recommendedTechniqueTypes: [],
+      },
+    });
+    const harmonyConfig = createTestConfig({ craftingType: 'forge' as any });
+    const skill = createTestSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      baseCompletionGain: 0.5,
+      basePerfectionGain: 0.5,
+      isDisciplinedTouch: true,
+      scalesWithIntensity: true,
+    });
+
+    const gains = calculateSkillGains(state, skill, harmonyConfig);
+
+    // Forge heat 5 gives 1.5x control and 1.5x intensity
+    // Completion: 0.5 * floor(12 * 1.5) = 0.5 * 18 = 9
+    // Perfection: 0.5 * floor(16 * 1.5) = 0.5 * 24 = 12
+    expect(gains.completion).toBe(9);
+    expect(gains.perfection).toBe(12);
+  });
+
+  it('should apply mastery control bonus to perfection gains', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      intensityBuffTurns: 0,
+      controlBuffTurns: 0,
+    });
+    const skill = createTestSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      baseCompletionGain: 0.5,
+      basePerfectionGain: 0.5,
+      isDisciplinedTouch: true,
+      scalesWithIntensity: true,
+      mastery: { controlBonus: 0.25 },
+    });
+
+    const gains = calculateSkillGains(state, skill, config);
+
+    // Control with mastery: 16 * 1.25 = 20
+    // Completion: 0.5 * 12 = 6 (intensity unaffected by controlBonus)
+    // Perfection: 0.5 * 20 = 10
+    expect(gains.completion).toBe(6);
+    expect(gains.perfection).toBe(10);
   });
 });
 
@@ -1354,7 +1453,7 @@ describe('canApplySkill edge cases', () => {
       stability: 5, // Below minStability of 10
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 0 });
-    
+
     // Stability is 5 (below minStability=10), but skill costs 0 stability
     // Should be allowed because 5 - 0 = 5 is not checked when stabilityCost is 0
     expect(canApplySkill(state, skill, 10)).toBe(true);
@@ -1366,13 +1465,13 @@ describe('canApplySkill edge cases', () => {
       stability: 3, // Critically low
     });
     // Stabilize skill: 0 stability cost, restores stability
-    const skill = createTestSkill({ 
-      qiCost: 10, 
+    const skill = createTestSkill({
+      qiCost: 10,
       stabilityCost: 0,
       stabilityGain: 20,
       type: 'stabilize',
     });
-    
+
     expect(canApplySkill(state, skill, 10)).toBe(true);
   });
 
@@ -1382,7 +1481,7 @@ describe('canApplySkill edge cases', () => {
       stability: 50,
     });
     const skill = createTestSkill({ qiCost: 10, stabilityCost: 0 });
-    
+
     expect(canApplySkill(state, skill, 10)).toBe(false);
   });
 });
@@ -1395,18 +1494,16 @@ describe('buff per-turn effects', () => {
       name: 'empower',
       canStack: true,
       maxStacks: 10,
-      effects: [
-        { kind: 'completion' as const, amount: { value: 5 } },
-      ],
-      onFusion: [
-        { kind: 'completion' as const, amount: { value: 3 } },
-      ],
+      effects: [{ kind: 'completion' as const, amount: { value: 5 } }],
+      onFusion: [{ kind: 'completion' as const, amount: { value: 3 } }],
     };
     const state = new CraftingState({
       qi: 100,
       stability: 50,
       initialMaxStability: 60,
-      buffs: new Map([['empower', { name: 'empower', stacks: 2, definition: empowerBuff }]]),
+      buffs: new Map([
+        ['empower', { name: 'empower', stacks: 2, definition: empowerBuff }],
+      ]),
     });
     const skill = createTestSkill({
       type: 'fusion',
@@ -1437,7 +1534,9 @@ describe('buff per-turn effects', () => {
       qi: 100,
       stability: 50,
       initialMaxStability: 60,
-      buffs: new Map([['pressure', { name: 'pressure', stacks: 3, definition: pressureBuff }]]),
+      buffs: new Map([
+        ['pressure', { name: 'pressure', stacks: 3, definition: pressureBuff }],
+      ]),
     });
     const skill = createTestSkill({
       type: 'fusion',
@@ -1496,7 +1595,9 @@ describe('buff per-turn effects', () => {
       qi: 100,
       stability: 30,
       initialMaxStability: 60,
-      buffs: new Map([['regen', { name: 'regen', stacks: 1, definition: buff }]]),
+      buffs: new Map([
+        ['regen', { name: 'regen', stacks: 1, definition: buff }],
+      ]),
     });
     const skill = createTestSkill({
       qiCost: 5,
@@ -1534,7 +1635,9 @@ describe('buff per-turn effects', () => {
       qi: 100,
       stability: 50,
       initialMaxStability: 60,
-      buffs: new Map([['generator', { name: 'generator', stacks: 1, definition: generator }]]),
+      buffs: new Map([
+        ['generator', { name: 'generator', stacks: 1, definition: generator }],
+      ]),
     });
     const skill = createTestSkill({ qiCost: 0, stabilityCost: 0 });
 
@@ -1579,14 +1682,22 @@ describe('buff per-turn effects', () => {
       canStack: true,
       maxStacks: 10,
       effects: [
-        { kind: 'completion' as const, amount: { value: 1, stat: 'stacks', upgradeKey: 'buff_tick' } },
+        {
+          kind: 'completion' as const,
+          amount: { value: 1, stat: 'stacks', upgradeKey: 'buff_tick' },
+        },
       ],
     };
     const state = new CraftingState({
       qi: 100,
       stability: 50,
       initialMaxStability: 60,
-      buffs: new Map([['upgraded_tick', { name: 'upgraded_tick', stacks: 2, definition: upgradedBuff }]]),
+      buffs: new Map([
+        [
+          'upgraded_tick',
+          { name: 'upgraded_tick', stacks: 2, definition: upgradedBuff },
+        ],
+      ]),
     });
     const skill = createTestSkill({
       qiCost: 0,
@@ -1597,7 +1708,12 @@ describe('buff per-turn effects', () => {
       scalesWithIntensity: false,
       scalesWithControl: false,
       masteryEntries: [
-        { kind: 'upgrade', upgradeKey: 'buff_tick', change: 2, shouldMultiply: true },
+        {
+          kind: 'upgrade',
+          upgradeKey: 'buff_tick',
+          change: 2,
+          shouldMultiply: true,
+        },
       ] as any,
     });
 

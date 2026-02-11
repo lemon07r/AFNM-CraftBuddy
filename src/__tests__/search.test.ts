@@ -20,7 +20,9 @@ import {
 } from '../optimizer/search';
 
 // Helper to create a basic test config
-function createTestConfig(overrides: Partial<OptimizerConfig> = {}): OptimizerConfig {
+function createTestConfig(
+  overrides: Partial<OptimizerConfig> = {},
+): OptimizerConfig {
   return {
     maxQi: 194,
     maxStability: 60,
@@ -33,7 +35,9 @@ function createTestConfig(overrides: Partial<OptimizerConfig> = {}): OptimizerCo
   };
 }
 
-function createCustomSkill(overrides: Partial<SkillDefinition> = {}): SkillDefinition {
+function createCustomSkill(
+  overrides: Partial<SkillDefinition> = {},
+): SkillDefinition {
   return {
     name: 'Custom Skill',
     key: 'custom_skill',
@@ -99,9 +103,9 @@ describe('greedySearch', () => {
       completion: 100,
       perfection: 100,
     });
-    
+
     const result = greedySearch(state, config, 100, 100);
-    
+
     expect(result.targetsMet).toBe(true);
     expect(result.recommendation).toBeNull();
   });
@@ -113,9 +117,9 @@ describe('greedySearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = greedySearch(state, config, 100, 100);
-    
+
     expect(result.isTerminal).toBe(true);
     expect(result.recommendation).toBeNull();
   });
@@ -128,9 +132,9 @@ describe('greedySearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = greedySearch(state, config, 100, 100);
-    
+
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill).toBeDefined();
     expect(result.recommendation!.expectedGains).toBeDefined();
@@ -179,9 +183,9 @@ describe('greedySearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = greedySearch(state, config, 100, 100);
-    
+
     expect(result.alternativeSkills.length).toBeGreaterThan(0);
   });
 
@@ -193,9 +197,9 @@ describe('greedySearch', () => {
       completion: 50,
       perfection: 100, // Already met
     });
-    
+
     const result = greedySearch(state, config, 100, 100);
-    
+
     expect(result.recommendation).not.toBeNull();
     // Should recommend a fusion skill for completion
     const skill = result.recommendation!.skill;
@@ -210,9 +214,9 @@ describe('greedySearch', () => {
       completion: 100, // Already met
       perfection: 50,
     });
-    
+
     const result = greedySearch(state, config, 100, 100);
-    
+
     expect(result.recommendation).not.toBeNull();
     // Should recommend a refine skill for perfection
     const skill = result.recommendation!.skill;
@@ -243,9 +247,9 @@ describe('greedySearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = greedySearch(state, config, 100, 100);
-    
+
     expect(result.recommendation).not.toBeNull();
     expect(result.isTerminal).toBe(false);
   });
@@ -265,9 +269,9 @@ describe('lookaheadSearch', () => {
       completion: 100,
       perfection: 100,
     });
-    
+
     const result = lookaheadSearch(state, config, 100, 100, 3);
-    
+
     expect(result.targetsMet).toBe(true);
     expect(result.recommendation).toBeNull();
   });
@@ -307,9 +311,9 @@ describe('lookaheadSearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = lookaheadSearch(state, config, 100, 100, 3);
-    
+
     expect(result.isTerminal).toBe(true);
     expect(result.recommendation).toBeNull();
   });
@@ -322,9 +326,9 @@ describe('lookaheadSearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = lookaheadSearch(state, config, 100, 100, 3);
-    
+
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill).toBeDefined();
   });
@@ -337,9 +341,9 @@ describe('lookaheadSearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = lookaheadSearch(state, config, 100, 100, 3);
-    
+
     expect(result.optimalRotation).toBeDefined();
     expect(result.optimalRotation!.length).toBeGreaterThan(0);
     // First skill in rotation should match recommendation
@@ -354,9 +358,9 @@ describe('lookaheadSearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = lookaheadSearch(state, config, 100, 100, 3);
-    
+
     expect(result.expectedFinalState).toBeDefined();
     expect(result.expectedFinalState!.completion).toBeGreaterThan(0);
   });
@@ -369,12 +373,12 @@ describe('lookaheadSearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = lookaheadSearch(state, config, 100, 100, 3);
-    
+
     // Best recommendation should have 100% quality
     expect(result.recommendation!.qualityRating).toBe(100);
-    
+
     // Alternatives should have quality ratings
     if (result.alternativeSkills.length > 0) {
       for (const alt of result.alternativeSkills) {
@@ -418,12 +422,12 @@ describe('lookaheadSearch', () => {
       perfection: 0,
       controlBuffTurns: 2,
     });
-    
+
     const result = lookaheadSearch(state, config, 100, 100, 3);
-    
+
     // Check if any skill has consumesBuff flag
     const allSkills = [result.recommendation!, ...result.alternativeSkills];
-    const disciplinedTouch = allSkills.find(s => s.skill.isDisciplinedTouch);
+    const disciplinedTouch = allSkills.find((s) => s.skill.isDisciplinedTouch);
     if (disciplinedTouch) {
       expect(disciplinedTouch.consumesBuff).toBe(true);
     }
@@ -437,9 +441,9 @@ describe('lookaheadSearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = lookaheadSearch(state, config, 100, 100, 3);
-    
+
     expect(result.recommendation).not.toBeNull();
     // The search should complete without errors
   });
@@ -452,7 +456,7 @@ describe('lookaheadSearch', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     // Test different depths
     for (const depth of [1, 2, 3, 4]) {
       const result = lookaheadSearch(state, config, 100, 100, depth);
@@ -534,9 +538,9 @@ describe('findBestSkill', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = findBestSkill(state, config, 100, 100, true);
-    
+
     expect(result.recommendation).not.toBeNull();
     // Greedy search doesn't provide optimal rotation
     expect(result.optimalRotation).toBeUndefined();
@@ -550,9 +554,9 @@ describe('findBestSkill', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = findBestSkill(state, config, 100, 100, false, 3);
-    
+
     expect(result.recommendation).not.toBeNull();
     // Lookahead search provides optimal rotation
     expect(result.optimalRotation).toBeDefined();
@@ -566,22 +570,49 @@ describe('findBestSkill', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     // Good condition (positive)
-    const goodConfig = { ...config, conditionEffectsData: {
-      neutral: [], positive: [{ kind: 'control' as const, multiplier: 0.5 }],
-      negative: [], veryPositive: [], veryNegative: [],
-    }};
-    const goodResult = findBestSkill(state, goodConfig, 100, 100, false, 3, 'positive');
-    
+    const goodConfig = {
+      ...config,
+      conditionEffectsData: {
+        neutral: [],
+        positive: [{ kind: 'control' as const, multiplier: 0.5 }],
+        negative: [],
+        veryPositive: [],
+        veryNegative: [],
+      },
+    };
+    const goodResult = findBestSkill(
+      state,
+      goodConfig,
+      100,
+      100,
+      false,
+      3,
+      'positive',
+    );
+
     // Bad condition (negative)
-    const badConfig = { ...config, conditionEffectsData: {
-      neutral: [], positive: [],
-      negative: [{ kind: 'control' as const, multiplier: -0.25 }],
-      veryPositive: [], veryNegative: [],
-    }};
-    const badResult = findBestSkill(state, badConfig, 100, 100, false, 3, 'negative');
-    
+    const badConfig = {
+      ...config,
+      conditionEffectsData: {
+        neutral: [],
+        positive: [],
+        negative: [{ kind: 'control' as const, multiplier: -0.25 }],
+        veryPositive: [],
+        veryNegative: [],
+      },
+    };
+    const badResult = findBestSkill(
+      state,
+      badConfig,
+      100,
+      100,
+      false,
+      3,
+      'negative',
+    );
+
     // Both should return valid recommendations
     expect(goodResult.recommendation).not.toBeNull();
     expect(badResult.recommendation).not.toBeNull();
@@ -595,11 +626,9 @@ describe('findBestSkill', () => {
       completion: 0,
       perfection: 0,
     });
-    
-    const result = findBestSkill(
-      state, config, 100, 100, false, 3
-    );
-    
+
+    const result = findBestSkill(state, config, 100, 100, false, 3);
+
     expect(result.recommendation).not.toBeNull();
   });
 });
@@ -615,9 +644,9 @@ describe('search algorithm correctness', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = findBestSkill(state, config, 100, 100, false, 4);
-    
+
     expect(result.recommendation).not.toBeNull();
     // With enough resources and far from targets, buff setup is often optimal
     // The algorithm should find a good path
@@ -632,16 +661,16 @@ describe('search algorithm correctness', () => {
       completion: 90,
       perfection: 90,
     });
-    
+
     const result = findBestSkill(state, config, 100, 100, false, 3);
-    
+
     expect(result.recommendation).not.toBeNull();
     // Close to targets, should prefer skills that directly add progress
     const skill = result.recommendation!.skill;
     expect(
-      skill.baseCompletionGain > 0 || 
-      skill.basePerfectionGain > 0 ||
-      skill.type === 'stabilize' // May need stability first
+      skill.baseCompletionGain > 0 ||
+        skill.basePerfectionGain > 0 ||
+        skill.type === 'stabilize', // May need stability first
     ).toBe(true);
   });
 
@@ -653,9 +682,9 @@ describe('search algorithm correctness', () => {
       completion: 100,
       perfection: 100,
     });
-    
+
     const result = findBestSkill(state, config, 100, 100);
-    
+
     expect(result.targetsMet).toBe(true);
   });
 
@@ -667,9 +696,9 @@ describe('search algorithm correctness', () => {
       completion: 150,
       perfection: 120,
     });
-    
+
     const result = findBestSkill(state, config, 100, 100);
-    
+
     expect(result.targetsMet).toBe(true);
   });
 });
@@ -754,7 +783,11 @@ describe('tutorial regression scenarios', () => {
             perfection,
           });
 
-          const available = getAvailableSkills(state, tutorialConfig, 'neutral');
+          const available = getAvailableSkills(
+            state,
+            tutorialConfig,
+            'neutral',
+          );
           const hasUsefulProgress = available.some((skill) => {
             if (skill.type === 'stabilize') return false;
             const gains = calculateSkillGains(state, skill, tutorialConfig, []);
@@ -780,6 +813,20 @@ describe('tutorial regression scenarios', () => {
         }
       }
     }
+  });
+
+  it('should deprioritize stabilize in greedy search at full stability', () => {
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 50,
+      perfection: 50,
+    });
+
+    const result = greedySearch(state, tutorialConfig, 100, 100, 'neutral');
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).not.toBe('stabilize');
   });
 });
 
@@ -817,7 +864,9 @@ describe('condition timeline modeling', () => {
       perfection: 0,
     });
 
-    const result = lookaheadSearch(state, config, 100, 0, 1, 'negative', ['positive']);
+    const result = lookaheadSearch(state, config, 100, 0, 1, 'negative', [
+      'positive',
+    ]);
 
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.name).toBe('Negative Burst');
@@ -918,7 +967,7 @@ describe('condition timeline modeling', () => {
         enableConditionBranchingAfterForecast: true,
         conditionBranchLimit: 2,
         conditionBranchMinProbability: 0.01,
-      }
+      },
     );
     expect(branchingResult.recommendation).not.toBeNull();
     expect(branchingResult.searchMetrics).toBeDefined();
@@ -934,7 +983,7 @@ describe('condition timeline modeling', () => {
       [],
       {
         enableConditionBranchingAfterForecast: false,
-      }
+      },
     );
     expect(deterministicResult.recommendation).not.toBeNull();
     expect(deterministicResult.searchMetrics).toBeDefined();
@@ -948,10 +997,24 @@ describe('condition timeline modeling', () => {
 
   it('should ignore forecast entries beyond the visible 3-condition queue', () => {
     const firstThree = ['positive', 'negative', 'neutral'];
-    const withExtra = ['positive', 'negative', 'neutral', 'veryPositive', 'veryNegative'];
+    const withExtra = [
+      'positive',
+      'negative',
+      'neutral',
+      'veryPositive',
+      'veryNegative',
+    ];
 
-    const normalizedThree = normalizeForecastConditionQueue('neutral', firstThree, 0);
-    const normalizedExtra = normalizeForecastConditionQueue('neutral', withExtra, 0);
+    const normalizedThree = normalizeForecastConditionQueue(
+      'neutral',
+      firstThree,
+      0,
+    );
+    const normalizedExtra = normalizeForecastConditionQueue(
+      'neutral',
+      withExtra,
+      0,
+    );
 
     expect(normalizedExtra).toEqual(normalizedThree);
     expect(normalizedExtra.length).toBe(VISIBLE_CONDITION_QUEUE_LENGTH);
@@ -961,23 +1024,27 @@ describe('condition timeline modeling', () => {
     const normalized = normalizeForecastConditionQueue(
       'Primed' as any,
       ['Glowing', 'neutral', 'Primed'] as any,
-      0
+      0,
     );
 
     expect(normalized).toEqual(['glowing', 'neutral', 'primed']);
   });
 
   it('should use condition transition provider when available', () => {
-    const transitionProvider = jest.fn((currentCondition: any, nextConditions: any) => {
-      const queue = Array.isArray(nextConditions) ? nextConditions.slice(1) : [];
-      return [
-        {
-          nextCondition: nextConditions[0] ?? currentCondition,
-          nextQueue: [...queue, 'positive'],
-          probability: 1,
-        },
-      ];
-    });
+    const transitionProvider = jest.fn(
+      (currentCondition: any, nextConditions: any) => {
+        const queue = Array.isArray(nextConditions)
+          ? nextConditions.slice(1)
+          : [];
+        return [
+          {
+            nextCondition: nextConditions[0] ?? currentCondition,
+            nextQueue: [...queue, 'positive'],
+            probability: 1,
+          },
+        ];
+      },
+    );
     setConditionTransitionProvider(transitionProvider as any);
 
     const setup = createCustomSkill({
@@ -1008,15 +1075,11 @@ describe('condition timeline modeling', () => {
       skills: [setup, follow],
     });
 
-    const result = lookaheadSearch(
-      state,
-      providerConfig,
-      50,
-      0,
-      2,
+    const result = lookaheadSearch(state, providerConfig, 50, 0, 2, 'neutral', [
       'neutral',
-      ['neutral', 'neutral', 'neutral'],
-    );
+      'neutral',
+      'neutral',
+    ]);
     expect(result.recommendation).not.toBeNull();
     expect(transitionProvider).toHaveBeenCalled();
   });
@@ -1117,7 +1180,15 @@ describe('condition timeline modeling', () => {
       perfection: 0,
     });
 
-    const result = lookaheadSearch(state, sublimeConfig, 100, 100, 2, 'neutral', []);
+    const result = lookaheadSearch(
+      state,
+      sublimeConfig,
+      100,
+      100,
+      2,
+      'neutral',
+      [],
+    );
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.followUpSkill?.name).toBe('Dual Step');
     expect(result.optimalRotation).toEqual(['Dual Step', 'Dual Step']);
@@ -1211,7 +1282,15 @@ describe('condition timeline modeling', () => {
       items: new Map([['fairy_blessing', 1]]),
     });
 
-    const result = lookaheadSearch(stateNearMax, config, 100, 0, 2, 'neutral', []);
+    const result = lookaheadSearch(
+      stateNearMax,
+      config,
+      100,
+      0,
+      2,
+      'neutral',
+      [],
+    );
     expect(result.recommendation).not.toBeNull();
     // Should recommend Fusion, not Fairy Blessing, because qi is near max
     expect(result.recommendation!.skill.name).toBe('Simple Fusion');
@@ -1265,7 +1344,15 @@ describe('condition timeline modeling', () => {
       step: 1,
       items: new Map([['catalyst', 1]]),
     });
-    const resultStep1 = lookaheadSearch(stateStep1, configWithReagent, 100, 0, 2, 'neutral', []);
+    const resultStep1 = lookaheadSearch(
+      stateStep1,
+      configWithReagent,
+      100,
+      0,
+      2,
+      'neutral',
+      [],
+    );
     expect(resultStep1.recommendation).not.toBeNull();
     expect(resultStep1.recommendation!.skill.name).toBe('Fusion');
   });
@@ -1309,10 +1396,21 @@ describe('condition timeline modeling', () => {
       initialMaxStability: 60,
       completion: 0,
       perfection: 0,
-      items: new Map([['pill_a', 2], ['pill_b', 2]]),
+      items: new Map([
+        ['pill_a', 2],
+        ['pill_b', 2],
+      ]),
     });
 
-    const result = lookaheadSearch(state, configOnePill, 100, 0, 2, 'neutral', []);
+    const result = lookaheadSearch(
+      state,
+      configOnePill,
+      100,
+      0,
+      2,
+      'neutral',
+      [],
+    );
     expect(result.recommendation).not.toBeNull();
     // After using one pill, the second should not be available until a technique advances the turn
     expect(result.optimalRotation).toBeDefined();
@@ -1337,11 +1435,11 @@ describe('search performance', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const startTime = Date.now();
     const result = lookaheadSearch(state, config, 100, 100, 3);
     const endTime = Date.now();
-    
+
     expect(result.recommendation).not.toBeNull();
     // Should complete in under 1 second
     expect(endTime - startTime).toBeLessThan(1000);
@@ -1355,11 +1453,11 @@ describe('search performance', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const startTime = Date.now();
     const result = lookaheadSearch(state, config, 100, 100, 4);
     const endTime = Date.now();
-    
+
     expect(result.recommendation).not.toBeNull();
     // Should complete in under 2 seconds
     expect(endTime - startTime).toBeLessThan(2000);
@@ -1373,16 +1471,16 @@ describe('search performance', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     // Run twice - second run should be similar or faster due to similar state patterns
     const startTime1 = Date.now();
     lookaheadSearch(state, config, 100, 100, 3);
     const time1 = Date.now() - startTime1;
-    
+
     const startTime2 = Date.now();
     lookaheadSearch(state, config, 100, 100, 3);
     const time2 = Date.now() - startTime2;
-    
+
     // Both should complete quickly
     expect(time1).toBeLessThan(1000);
     expect(time2).toBeLessThan(1000);
@@ -1394,28 +1492,29 @@ describe('search performance', () => {
       qi: 500,
       stability: 50,
       initialMaxStability: 60,
-      completion: 1500000,  // 1.5 million - already have significant progress
-      perfection: 1200000,  // 1.2 million
+      completion: 1500000, // 1.5 million - already have significant progress
+      perfection: 1200000, // 1.2 million
     });
-    
+
     const startTime = Date.now();
     const result = lookaheadSearch(
-      state, config, 
-      2000000,  // 2 million target
-      1800000,  // 1.8 million target
-      6,        // depth 6 - would be very slow without optimizations
+      state,
+      config,
+      2000000, // 2 million target
+      1800000, // 1.8 million target
+      6, // depth 6 - would be very slow without optimizations
       undefined,
       [],
-      { timeBudgetMs: 200, beamWidth: 6 }  // Use time budget to prevent freezes
+      { timeBudgetMs: 200, beamWidth: 6 }, // Use time budget to prevent freezes
     );
     const endTime = Date.now();
-    
+
     // Should complete within time budget (with some margin)
     expect(endTime - startTime).toBeLessThan(500);
-    
+
     // Should still provide a recommendation
     expect(result.recommendation).not.toBeNull();
-    
+
     // Should have search metrics
     expect(result.searchMetrics).toBeDefined();
     expect(result.searchMetrics!.nodesExplored).toBeGreaterThan(0);
@@ -1429,22 +1528,24 @@ describe('search performance', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     // Very deep search with strict time budget
     const startTime = Date.now();
     const result = lookaheadSearch(
-      state, config, 
-      100000, 100000, 
-      12,  // Very deep - would take forever without budget
+      state,
+      config,
+      100000,
+      100000,
+      12, // Very deep - would take forever without budget
       undefined,
       [],
-      { timeBudgetMs: 50, maxNodes: 10000 }  // Strict budget
+      { timeBudgetMs: 50, maxNodes: 10000 }, // Strict budget
     );
     const endTime = Date.now();
-    
+
     // Should terminate within reasonable time (budget + overhead)
     expect(endTime - startTime).toBeLessThan(500);
-    
+
     // Should still provide best result found so far
     expect(result.recommendation).not.toBeNull();
   });
@@ -1457,9 +1558,9 @@ describe('search performance', () => {
       completion: 0,
       perfection: 0,
     });
-    
+
     const result = lookaheadSearch(state, config, 100, 100, 3);
-    
+
     expect(result.searchMetrics).toBeDefined();
     expect(result.searchMetrics!.nodesExplored).toBeGreaterThan(0);
     expect(result.searchMetrics!.timeTakenMs).toBeGreaterThanOrEqual(0);

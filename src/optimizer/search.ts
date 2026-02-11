@@ -621,20 +621,30 @@ function scoreState(
 
   // Calculate progress need and objective deficit balance.
   const compRemaining =
-    effectiveCompGoal > 0 ? Math.max(0, effectiveCompGoal - state.completion) : 0;
+    effectiveCompGoal > 0
+      ? Math.max(0, effectiveCompGoal - state.completion)
+      : 0;
   const perfRemaining =
-    effectivePerfGoal > 0 ? Math.max(0, effectivePerfGoal - state.perfection) : 0;
+    effectivePerfGoal > 0
+      ? Math.max(0, effectivePerfGoal - state.perfection)
+      : 0;
   const totalRemaining = compRemaining + perfRemaining;
-  const compNeedShare = totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
-  const perfNeedShare = totalRemaining > 0 ? perfRemaining / totalRemaining : 0.5;
+  const compNeedShare =
+    totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
+  const perfNeedShare =
+    totalRemaining > 0 ? perfRemaining / totalRemaining : 0.5;
   const compNeedPct =
-    effectiveCompGoal > 0 ? Math.max(0, Math.min(1, compRemaining / effectiveCompGoal)) : 0;
+    effectiveCompGoal > 0
+      ? Math.max(0, Math.min(1, compRemaining / effectiveCompGoal))
+      : 0;
   const perfNeedPct =
-    effectivePerfGoal > 0 ? Math.max(0, Math.min(1, perfRemaining / effectivePerfGoal)) : 0;
+    effectivePerfGoal > 0
+      ? Math.max(0, Math.min(1, perfRemaining / effectivePerfGoal))
+      : 0;
   const remainingWorkPct = Math.max(
     compNeedPct,
     perfNeedPct,
-    (compNeedPct + perfNeedPct) / 2
+    (compNeedPct + perfNeedPct) / 2,
   );
 
   // Score based on progress toward targets (primary scoring)
@@ -689,7 +699,10 @@ function scoreState(
     if (state.hasIntensityBuff()) {
       // Intensity buff helps with completion - value it more when completion is needed
       score +=
-        state.intensityBuffTurns * 3.5 * (0.5 + compNeedShare) * remainingWorkPct;
+        state.intensityBuffTurns *
+        3.5 *
+        (0.5 + compNeedShare) *
+        remainingWorkPct;
     }
 
     // Small bonus for resource efficiency even when targets not met
@@ -950,6 +963,11 @@ function orderSkillsForSearch(
       priority += 500;
     }
 
+    // Deprioritize stabilize skills when stability is already at max
+    if (skill.type === 'stabilize' && state.stability >= state.maxStability) {
+      priority -= 500;
+    }
+
     // Deprioritize qi-restore skills when qi is already near max
     // This prevents recommending Fairy's Blessing, Unstable Reenergisation, etc. at full qi
     if (qiNearMax) {
@@ -957,8 +975,7 @@ function orderSkillsForSearch(
         skill.restoresQi ||
         (skill.effects || []).some(
           (effect) =>
-            effect?.kind === 'pool' &&
-            (effect.amount?.value ?? 0) > 0,
+            effect?.kind === 'pool' && (effect.amount?.value ?? 0) > 0,
         );
       if (isQiRestoreSkill) {
         // Significant penalty - only use if no other options
@@ -2002,8 +2019,14 @@ export function lookaheadSearch(
     optimalRotation = [bestFirstMove.name, ...path];
 
     // Calculate turns remaining (estimate based on progress needed)
-    const compRemaining = Math.max(0, effectiveCompGoal - finalState.completion);
-    const perfRemaining = Math.max(0, effectivePerfGoal - finalState.perfection);
+    const compRemaining = Math.max(
+      0,
+      effectiveCompGoal - finalState.completion,
+    );
+    const perfRemaining = Math.max(
+      0,
+      effectivePerfGoal - finalState.perfection,
+    );
     const avgGainPerTurn = 15; // Rough estimate
     const turnsRemaining = Math.ceil(
       (compRemaining + perfRemaining) / avgGainPerTurn,

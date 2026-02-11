@@ -108,7 +108,9 @@ export interface SkillDefinition {
  * Normalize condition string to canonical CraftingCondition type.
  * Handles various game/UI representations.
  */
-function normalizeCondition(condition: string | undefined): CraftingCondition | undefined {
+function normalizeCondition(
+  condition: string | undefined,
+): CraftingCondition | undefined {
   if (!condition) return undefined;
   const c = String(condition).toLowerCase();
   // Accept both the canonical enum keys and common label/synonym variants.
@@ -131,7 +133,15 @@ function normalizeCondition(condition: string | undefined): CraftingCondition | 
       return 'veryNegative';
     default:
       // Try exact match for already-canonical values
-      if (['neutral', 'positive', 'negative', 'veryPositive', 'veryNegative'].includes(condition)) {
+      if (
+        [
+          'neutral',
+          'positive',
+          'negative',
+          'veryPositive',
+          'veryNegative',
+        ].includes(condition)
+      ) {
         return condition as CraftingCondition;
       }
       return undefined;
@@ -179,7 +189,7 @@ function hasMasteryUpgrades(upgrades: MasteryUpgradeMap): boolean {
 
 function applyMasteryUpgradesToScaling(
   scaling: Scaling | undefined,
-  upgrades: MasteryUpgradeMap
+  upgrades: MasteryUpgradeMap,
 ): Scaling | undefined {
   if (!scaling || !hasMasteryUpgrades(upgrades)) {
     return scaling;
@@ -250,9 +260,13 @@ function evaluateScalingWithMasteryUpgrades(
   scaling: Scaling | undefined,
   upgrades: MasteryUpgradeMap,
   variables: ScalingVariables,
-  defaultValue: number
+  defaultValue: number,
 ): number {
-  return evaluateScaling(applyMasteryUpgradesToScaling(scaling, upgrades), variables, defaultValue);
+  return evaluateScaling(
+    applyMasteryUpgradesToScaling(scaling, upgrades),
+    variables,
+    defaultValue,
+  );
 }
 
 export interface SkillGains {
@@ -327,7 +341,7 @@ export interface OptimizerConfig {
 /**
  * Default skill definitions based on the Python optimizer config.
  * These can be overridden with actual game data at runtime.
- * 
+ *
  * Note: baseCompletionGain and basePerfectionGain are MULTIPLIERS, not raw values.
  * The actual gain is calculated as: multiplier * stat (intensity or control).
  * For example: Simple Fusion with multiplier 1.0 and intensity 12 gives 1.0 * 12 = 12 completion.
@@ -476,27 +490,30 @@ export interface NativeCanUseActionContext {
 }
 
 export type NativeCanUseActionProvider = (
-  context: NativeCanUseActionContext
+  context: NativeCanUseActionContext,
 ) => boolean | undefined;
 
 let activeNativeCanUseActionProvider: NativeCanUseActionProvider | undefined;
 let warnedNativeCanUseActionFailure = false;
 
 export function setNativeCanUseActionProvider(
-  provider: NativeCanUseActionProvider | undefined
+  provider: NativeCanUseActionProvider | undefined,
 ): void {
   activeNativeCanUseActionProvider = provider;
   warnedNativeCanUseActionFailure = false;
 }
 
 function normalizeBuffName(name: string | undefined): string {
-  return String(name || '').toLowerCase().trim().replace(/\s+/g, '_');
+  return String(name || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_');
 }
 
 function buildNativeAvailabilityVariables(
   state: CraftingState,
   maxToxicity: number,
-  pillsPerRound: number
+  pillsPerRound: number,
 ): Record<string, number> {
   const seededVariables: Record<string, number> = {};
   if (state.nativeVariables) {
@@ -510,11 +527,12 @@ function buildNativeAvailabilityVariables(
   const maxPool = Number.isFinite(seededVariables.maxpool)
     ? Math.max(1, seededVariables.maxpool)
     : Math.max(1, state.qi);
-  const derivedMaxToxicity = maxToxicity > 0
-    ? maxToxicity
-    : Number.isFinite(seededVariables.maxtoxicity)
-      ? Math.max(1, seededVariables.maxtoxicity)
-      : Math.max(1, state.maxToxicity);
+  const derivedMaxToxicity =
+    maxToxicity > 0
+      ? maxToxicity
+      : Number.isFinite(seededVariables.maxtoxicity)
+        ? Math.max(1, seededVariables.maxtoxicity)
+        : Math.max(1, state.maxToxicity);
 
   const variables: Record<string, number> = {
     ...seededVariables,
@@ -545,7 +563,7 @@ function buildNativeAvailabilityVariables(
 }
 
 function runNativeCanUseActionPrecheck(
-  context: Omit<NativeCanUseActionContext, 'variables'>
+  context: Omit<NativeCanUseActionContext, 'variables'>,
 ): boolean | undefined {
   if (!activeNativeCanUseActionProvider) {
     return undefined;
@@ -554,7 +572,7 @@ function runNativeCanUseActionPrecheck(
   const variables = buildNativeAvailabilityVariables(
     context.state,
     context.maxToxicity,
-    context.pillsPerRound
+    context.pillsPerRound,
   );
 
   try {
@@ -566,7 +584,7 @@ function runNativeCanUseActionPrecheck(
     if (!warnedNativeCanUseActionFailure) {
       console.warn(
         '[CraftBuddy] Native canUseAction provider failed, using local fallback:',
-        error
+        error,
       );
       warnedNativeCanUseActionFailure = true;
     }
@@ -588,9 +606,12 @@ function propagateNativeVariablesAfterAction(
     consumedPillsThisTurn: number;
     step: number;
   },
-  nextBuffs: Map<string, { name: string; stacks: number; definition?: BuffDefinition }>,
+  nextBuffs: Map<
+    string,
+    { name: string; stacks: number; definition?: BuffDefinition }
+  >,
   maxToxicity: number,
-  pillsPerRound: number
+  pillsPerRound: number,
 ): Record<string, number> | undefined {
   if (!activeNativeCanUseActionProvider && !state.nativeVariables) {
     return undefined;
@@ -599,7 +620,7 @@ function propagateNativeVariablesAfterAction(
   const variables = buildNativeAvailabilityVariables(
     state,
     maxToxicity,
-    pillsPerRound
+    pillsPerRound,
   );
 
   variables.pool = nextState.qi;
@@ -613,9 +634,8 @@ function propagateNativeVariablesAfterAction(
   variables.consumedPillsThisTurn = nextState.consumedPillsThisTurn;
   variables.pillsPerRound = Math.max(1, Math.floor(pillsPerRound || 1));
   variables.step = nextState.step;
-  variables.maxtoxicity = maxToxicity > 0
-    ? maxToxicity
-    : Math.max(1, state.maxToxicity);
+  variables.maxtoxicity =
+    maxToxicity > 0 ? maxToxicity : Math.max(1, state.maxToxicity);
 
   const keysToRefresh = new Set<string>();
   state.buffs.forEach((tracked, buffKey) => {
@@ -649,7 +669,7 @@ function buildTechniqueScalingVariables(
   control: number,
   intensity: number,
   critChance: number,
-  critMultiplier: number
+  critMultiplier: number,
 ): ScalingVariables {
   const vars: ScalingVariables = {
     control,
@@ -690,16 +710,16 @@ function buildTechniqueScalingVariables(
 function applyBuffStatContributions(
   state: CraftingState,
   vars: ScalingVariables,
-  masteryUpgrades: MasteryUpgradeMap = EMPTY_MASTERY_UPGRADES
+  masteryUpgrades: MasteryUpgradeMap = EMPTY_MASTERY_UPGRADES,
 ): ScalingVariables {
   const buffDefinitions = Array.from(state.buffs.values())
     .map((tracked) => tracked.definition)
     .filter((definition): definition is BuffDefinition => Boolean(definition));
   const hasExplicitControlBuff = buffDefinitions.some(
-    (definition) => definition.stats?.control !== undefined
+    (definition) => definition.stats?.control !== undefined,
   );
   const hasExplicitIntensityBuff = buffDefinitions.some(
-    (definition) => definition.stats?.intensity !== undefined
+    (definition) => definition.stats?.intensity !== undefined,
   );
 
   // Backward-compatible fallback for legacy turn-based control/intensity buffs.
@@ -723,7 +743,9 @@ function applyBuffStatContributions(
     const definition = tracked.definition;
     if (!definition?.stats) return;
     const evalVars: ScalingVariables = { ...vars, stacks: tracked.stacks };
-    const normalizedKey = normalizeBuffName(definition.name || tracked.name || buffKey);
+    const normalizedKey = normalizeBuffName(
+      definition.name || tracked.name || buffKey,
+    );
     if (normalizedKey) {
       evalVars[normalizedKey] = tracked.stacks;
     }
@@ -731,7 +753,12 @@ function applyBuffStatContributions(
 
     for (const [statKey, scaling] of Object.entries(definition.stats)) {
       if (!scaling) continue;
-      const raw = evaluateScalingWithMasteryUpgrades(scaling, masteryUpgrades, evalVars, 0);
+      const raw = evaluateScalingWithMasteryUpgrades(
+        scaling,
+        masteryUpgrades,
+        evalVars,
+        0,
+      );
       switch (statKey) {
         case 'control':
           control += raw;
@@ -749,14 +776,16 @@ function applyBuffStatContributions(
           successChanceBonus += raw;
           break;
         case 'poolCostPercentage':
-          poolCostPercentage = poolCostPercentage === 0
-            ? raw
-            : Math.floor((poolCostPercentage / 100) * (raw / 100) * 100);
+          poolCostPercentage =
+            poolCostPercentage === 0
+              ? raw
+              : Math.floor((poolCostPercentage / 100) * (raw / 100) * 100);
           break;
         case 'stabilityCostPercentage':
-          stabilityCostPercentage = stabilityCostPercentage === 0
-            ? raw
-            : Math.floor((stabilityCostPercentage / 100) * (raw / 100) * 100);
+          stabilityCostPercentage =
+            stabilityCostPercentage === 0
+              ? raw
+              : Math.floor((stabilityCostPercentage / 100) * (raw / 100) * 100);
           break;
       }
     }
@@ -776,7 +805,7 @@ function applyBuffStatContributions(
 
 function applyConditionEffectsToVariables(
   vars: ScalingVariables,
-  conditionEffects: ConditionEffect[]
+  conditionEffects: ConditionEffect[],
 ): ScalingVariables {
   let control = vars.control;
   let intensity = vars.intensity;
@@ -794,7 +823,9 @@ function applyConditionEffectsToVariables(
     } else if (effect.kind === 'pool' && effect.multiplier !== undefined) {
       poolCostPercentage = Math.floor(poolCostPercentage * effect.multiplier);
     } else if (effect.kind === 'stability' && effect.multiplier !== undefined) {
-      stabilityCostPercentage = Math.floor(stabilityCostPercentage * effect.multiplier);
+      stabilityCostPercentage = Math.floor(
+        stabilityCostPercentage * effect.multiplier,
+      );
     }
   }
 
@@ -813,7 +844,7 @@ export function evaluateEffectCondition(
   state: CraftingState,
   variables: ScalingVariables,
   selfStacks: number,
-  currentCondition?: string
+  currentCondition?: string,
 ): ConditionEvaluation {
   if (!condition) {
     return { met: true, probability: 1 };
@@ -822,8 +853,11 @@ export function evaluateEffectCondition(
   switch (condition.kind) {
     case 'buff': {
       const buffKey =
-        condition.buff === 'self' ? 'self' : normalizeBuffName(condition.buff?.name);
-      const count = buffKey === 'self' ? selfStacks : state.getBuffStacks(buffKey);
+        condition.buff === 'self'
+          ? 'self'
+          : normalizeBuffName(condition.buff?.name);
+      const count =
+        buffKey === 'self' ? selfStacks : state.getBuffStacks(buffKey);
       let met = false;
       if (condition.mode === 'more') {
         met = count >= condition.count;
@@ -835,49 +869,55 @@ export function evaluateEffectCondition(
       return { met, probability: met ? 1 : 0 };
     }
     case 'pool': {
-      const poolPct = variables.maxpool > 0 ? (variables.pool / variables.maxpool) * 100 : 0;
-      const met = condition.mode === 'more'
-        ? poolPct >= condition.percentage
-        : poolPct < condition.percentage;
+      const poolPct =
+        variables.maxpool > 0 ? (variables.pool / variables.maxpool) * 100 : 0;
+      const met =
+        condition.mode === 'more'
+          ? poolPct >= condition.percentage
+          : poolPct < condition.percentage;
       return { met, probability: met ? 1 : 0 };
     }
     case 'perfection': {
       const maxPerf = Math.max(1, variables.maxperfection || 1);
       const perfPct = (variables.perfection / maxPerf) * 100;
-      const met = condition.mode === 'more'
-        ? perfPct >= condition.percentage
-        : perfPct < condition.percentage;
+      const met =
+        condition.mode === 'more'
+          ? perfPct >= condition.percentage
+          : perfPct < condition.percentage;
       return { met, probability: met ? 1 : 0 };
     }
     case 'stability': {
       const maxStability = Math.max(1, variables.maxstability || 1);
       const stabilityPct = (variables.stability / maxStability) * 100;
-      const met = condition.mode === 'more'
-        ? stabilityPct >= condition.percentage
-        : stabilityPct < condition.percentage;
+      const met =
+        condition.mode === 'more'
+          ? stabilityPct >= condition.percentage
+          : stabilityPct < condition.percentage;
       return { met, probability: met ? 1 : 0 };
     }
     case 'completion': {
       const maxCompletion = Math.max(1, variables.maxcompletion || 1);
       const completionPct = (variables.completion / maxCompletion) * 100;
-      const met = condition.mode === 'more'
-        ? completionPct >= condition.percentage
-        : completionPct < condition.percentage;
+      const met =
+        condition.mode === 'more'
+          ? completionPct >= condition.percentage
+          : completionPct < condition.percentage;
       return { met, probability: met ? 1 : 0 };
     }
     case 'toxicity': {
       const maxTox = Math.max(1, variables.maxtoxicity || 1);
       const toxicityPct = (variables.toxicity / maxTox) * 100;
-      const met = condition.mode === 'more'
-        ? toxicityPct >= condition.percentage
-        : toxicityPct < condition.percentage;
+      const met =
+        condition.mode === 'more'
+          ? toxicityPct >= condition.percentage
+          : toxicityPct < condition.percentage;
       return { met, probability: met ? 1 : 0 };
     }
     case 'condition': {
       const result = evaluateScaling(
         { value: 1, eqn: condition.condition },
         { ...variables, stacks: selfStacks },
-        0
+        0,
       );
       const met = result > 0;
       // Direct condition-expression checks are deterministic in optimizer simulation.
@@ -898,7 +938,7 @@ export function evaluateEffectCondition(
 function resolveMasteryBonuses(
   state: CraftingState,
   skill: SkillDefinition,
-  variables: ScalingVariables
+  variables: ScalingVariables,
 ): ResolvedMasteryBonuses {
   if (!skill.masteryEntries || skill.masteryEntries.length === 0) {
     return {
@@ -924,23 +964,31 @@ function resolveMasteryBonuses(
       mastery.condition as CraftingTechniqueCondition | undefined,
       state,
       variables,
-      0
+      0,
     );
     if (!conditionResult.met || conditionResult.probability <= 0) continue;
     const factor = conditionResult.probability;
 
     switch (mastery.kind) {
       case 'control':
-        bonuses.controlBonus = (bonuses.controlBonus || 0) + (Number(mastery.percentage || 0) * factor);
+        bonuses.controlBonus =
+          (bonuses.controlBonus || 0) +
+          Number(mastery.percentage || 0) * factor;
         break;
       case 'intensity':
-        bonuses.intensityBonus = (bonuses.intensityBonus || 0) + (Number(mastery.percentage || 0) * factor);
+        bonuses.intensityBonus =
+          (bonuses.intensityBonus || 0) +
+          Number(mastery.percentage || 0) * factor;
         break;
       case 'critchance':
-        bonuses.critChanceBonus = (bonuses.critChanceBonus || 0) + (Number(mastery.percentage || 0) * factor);
+        bonuses.critChanceBonus =
+          (bonuses.critChanceBonus || 0) +
+          Number(mastery.percentage || 0) * factor;
         break;
       case 'critmultiplier':
-        bonuses.critMultiplierBonus = (bonuses.critMultiplierBonus || 0) + (Number(mastery.percentage || 0) * factor);
+        bonuses.critMultiplierBonus =
+          (bonuses.critMultiplierBonus || 0) +
+          Number(mastery.percentage || 0) * factor;
         break;
       case 'upgrade': {
         const upgradeKey = String(mastery.upgradeKey || '').trim();
@@ -975,7 +1023,7 @@ function buildPreMasteryActionVariables(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   harmonyMods: ReturnType<typeof getHarmonyStatModifiers>,
-  masteryUpgrades: MasteryUpgradeMap = EMPTY_MASTERY_UPGRADES
+  masteryUpgrades: MasteryUpgradeMap = EMPTY_MASTERY_UPGRADES,
 ): ScalingVariables {
   const baseVars = buildTechniqueScalingVariables(
     state,
@@ -983,22 +1031,34 @@ function buildPreMasteryActionVariables(
     config.baseControl * (1 + state.completionBonus * 0.1),
     config.baseIntensity,
     state.critChance,
-    state.critMultiplier
+    state.critMultiplier,
   );
-  const withBuffs = applyBuffStatContributions(state, baseVars, masteryUpgrades);
-  const withConditions = applyConditionEffectsToVariables(withBuffs, conditionEffects);
+  const withBuffs = applyBuffStatContributions(
+    state,
+    baseVars,
+    masteryUpgrades,
+  );
+  const withConditions = applyConditionEffectsToVariables(
+    withBuffs,
+    conditionEffects,
+  );
 
   return {
     ...withConditions,
     control: withConditions.control * harmonyMods.controlMultiplier,
     intensity: withConditions.intensity * harmonyMods.intensityMultiplier,
     critchance: withConditions.critchance + harmonyMods.critChanceBonus,
-    successChanceBonus: withConditions.successChanceBonus + harmonyMods.successChanceBonus,
+    successChanceBonus:
+      withConditions.successChanceBonus + harmonyMods.successChanceBonus,
     poolCostPercentage: Math.floor(
-      (withConditions.poolCostPercentage / 100) * (harmonyMods.poolCostPercentage / 100) * 100
+      (withConditions.poolCostPercentage / 100) *
+        (harmonyMods.poolCostPercentage / 100) *
+        100,
     ),
     stabilityCostPercentage: Math.floor(
-      (withConditions.stabilityCostPercentage / 100) * (harmonyMods.stabilityCostPercentage / 100) * 100
+      (withConditions.stabilityCostPercentage / 100) *
+        (harmonyMods.stabilityCostPercentage / 100) *
+        100,
     ),
   };
 }
@@ -1018,7 +1078,7 @@ export function calculateEffectiveActionCosts(
   state: CraftingState,
   skill: SkillDefinition,
   minStability: number,
-  conditionEffects: ConditionEffect[] = []
+  conditionEffects: ConditionEffect[] = [],
 ): EffectiveActionCosts {
   let qiCost = getEffectiveQiCost(skill);
   let stabilityDelta = -getEffectiveStabilityCost(skill);
@@ -1033,7 +1093,9 @@ export function calculateEffectiveActionCosts(
   }
 
   if (stabilityDelta < 0 && state.stabilityCostPercentage !== 100) {
-    stabilityDelta = Math.ceil((stabilityDelta * state.stabilityCostPercentage) / 100);
+    stabilityDelta = Math.ceil(
+      (stabilityDelta * state.stabilityCostPercentage) / 100,
+    );
   }
   for (const effect of conditionEffects) {
     if (effect.kind === 'stability' && effect.multiplier !== undefined) {
@@ -1066,32 +1128,55 @@ export function calculateDisciplinedTouchGains(
   skill: SkillDefinition,
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[] = [],
-  options: SkillGainOptions = {}
+  options: SkillGainOptions = {},
 ): SkillGains {
-  const baseVars = buildTechniqueScalingVariables(
+  const harmonyMods = getHarmonyStatModifiers(
+    state.harmonyData,
+    config.craftingType,
+  );
+  let preMasteryVars = buildPreMasteryActionVariables(
     state,
     config,
-    config.baseControl * (1 + state.completionBonus * 0.1),
-    config.baseIntensity,
-    state.critChance,
-    state.critMultiplier
+    conditionEffects,
+    harmonyMods,
   );
-  const effectiveVars = applyConditionEffectsToVariables(
-    applyBuffStatContributions(state, baseVars),
-    conditionEffects
-  );
+  let resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
+  if (hasMasteryUpgrades(resolvedMastery.upgrades)) {
+    preMasteryVars = buildPreMasteryActionVariables(
+      state,
+      config,
+      conditionEffects,
+      harmonyMods,
+      resolvedMastery.upgrades,
+    );
+    resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
+  }
+
+  const mastery = resolvedMastery.bonuses;
+  const effectiveVars: ScalingVariables = {
+    ...preMasteryVars,
+    control: preMasteryVars.control * (1 + (mastery.controlBonus || 0)),
+    intensity: preMasteryVars.intensity * (1 + (mastery.intensityBonus || 0)),
+    critchance: preMasteryVars.critchance + (mastery.critChanceBonus || 0),
+    critmultiplier:
+      preMasteryVars.critmultiplier + (mastery.critMultiplierBonus || 0),
+  };
 
   // Use skill's multipliers (baseCompletionGain and basePerfectionGain)
   // These are typically 0.5 each for Disciplined Touch
-  const completionGain = safeFloor(safeMultiply(skill.baseCompletionGain, effectiveVars.intensity));
-  const perfectionGain = safeFloor(safeMultiply(skill.basePerfectionGain, effectiveVars.control));
+  const completionGain = safeFloor(
+    safeMultiply(skill.baseCompletionGain, effectiveVars.intensity),
+  );
+  const perfectionGain = safeFloor(
+    safeMultiply(skill.basePerfectionGain, effectiveVars.control),
+  );
 
   // Apply crit (only to positive gains)
   const includeExpectedValue = options.includeExpectedValue ?? true;
   const critMultiplier = includeExpectedValue
     ? calculateExpectedCritMultiplier(
         effectiveVars.critchance,
-        effectiveVars.critmultiplier
+        effectiveVars.critmultiplier,
       )
     : 1;
 
@@ -1122,13 +1207,13 @@ export function calculateSkillGains(
   skill: SkillDefinition,
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[] = [],
-  options: SkillGainOptions = {}
+  options: SkillGainOptions = {},
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
   const clampPredictedProgressGain = (
     gain: number,
     current: number,
-    cap: number | undefined
+    cap: number | undefined,
   ): number => {
     if (cap === undefined || !Number.isFinite(cap) || gain <= 0) {
       return gain;
@@ -1147,25 +1232,36 @@ export function calculateSkillGains(
       skill,
       config,
       conditionEffects,
-      options
+      options,
     );
     return {
       ...disciplined,
       completion: safeFloor(
-        clampPredictedProgressGain(disciplined.completion, state.completion, config.maxCompletion)
+        clampPredictedProgressGain(
+          disciplined.completion,
+          state.completion,
+          config.maxCompletion,
+        ),
       ),
       perfection: safeFloor(
-        clampPredictedProgressGain(disciplined.perfection, state.perfection, config.maxPerfection)
+        clampPredictedProgressGain(
+          disciplined.perfection,
+          state.perfection,
+          config.maxPerfection,
+        ),
       ),
     };
   }
 
-  const harmonyMods = getHarmonyStatModifiers(state.harmonyData, config.craftingType);
+  const harmonyMods = getHarmonyStatModifiers(
+    state.harmonyData,
+    config.craftingType,
+  );
   let preMasteryVars = buildPreMasteryActionVariables(
     state,
     config,
     conditionEffects,
-    harmonyMods
+    harmonyMods,
   );
   let resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
   if (hasMasteryUpgrades(resolvedMastery.upgrades)) {
@@ -1174,7 +1270,7 @@ export function calculateSkillGains(
       config,
       conditionEffects,
       harmonyMods,
-      resolvedMastery.upgrades
+      resolvedMastery.upgrades,
     );
     resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
   }
@@ -1196,14 +1292,14 @@ export function calculateSkillGains(
   const critFactor = includeExpectedValue
     ? calculateExpectedCritMultiplier(
         scalingVars.critchance,
-        scalingVars.critmultiplier
+        scalingVars.critmultiplier,
       )
     : 1;
 
   const baseSuccessChance = skill.successChance ?? 1;
   const totalSuccessChance = Math.min(
     1,
-    Math.max(0, baseSuccessChance + scalingVars.successChanceBonus)
+    Math.max(0, baseSuccessChance + scalingVars.successChanceBonus),
   );
 
   // Expected value = successChance * (gains with crit).
@@ -1219,7 +1315,12 @@ export function calculateSkillGains(
 
     for (const effect of skill.effects) {
       if (!effect) continue;
-      const conditionResult = evaluateEffectCondition(effect.condition, state, scalingVars, 0);
+      const conditionResult = evaluateEffectCondition(
+        effect.condition,
+        state,
+        scalingVars,
+        0,
+      );
       if (!conditionResult.met || conditionResult.probability <= 0) {
         continue;
       }
@@ -1228,8 +1329,12 @@ export function calculateSkillGains(
       switch (effect.kind) {
         case 'completion': {
           let amount =
-            evaluateScalingWithMasteryUpgrades(effect.amount, masteryUpgrades, scalingVars, 0) *
-            conditionFactor;
+            evaluateScalingWithMasteryUpgrades(
+              effect.amount,
+              masteryUpgrades,
+              scalingVars,
+              0,
+            ) * conditionFactor;
           if (amount < 0 && (effect.amount?.value ?? 0) > 0) {
             amount = 0;
           }
@@ -1238,8 +1343,12 @@ export function calculateSkillGains(
         }
         case 'perfection': {
           let amount =
-            evaluateScalingWithMasteryUpgrades(effect.amount, masteryUpgrades, scalingVars, 0) *
-            conditionFactor;
+            evaluateScalingWithMasteryUpgrades(
+              effect.amount,
+              masteryUpgrades,
+              scalingVars,
+              0,
+            ) * conditionFactor;
           if (amount < 0 && (effect.amount?.value ?? 0) > 0) {
             amount = 0;
           }
@@ -1248,29 +1357,51 @@ export function calculateSkillGains(
         }
         case 'stability':
           stabilityGain +=
-            evaluateScalingWithMasteryUpgrades(effect.amount, masteryUpgrades, scalingVars, 0) *
-            conditionFactor;
+            evaluateScalingWithMasteryUpgrades(
+              effect.amount,
+              masteryUpgrades,
+              scalingVars,
+              0,
+            ) * conditionFactor;
           break;
         case 'cleanseToxicity':
           toxicityCleanse +=
-            evaluateScalingWithMasteryUpgrades(effect.amount, masteryUpgrades, scalingVars, 0) *
-            conditionFactor;
+            evaluateScalingWithMasteryUpgrades(
+              effect.amount,
+              masteryUpgrades,
+              scalingVars,
+              0,
+            ) * conditionFactor;
           break;
       }
     }
 
-    const completionWithCrit = completionGain > 0 ? completionGain * critFactor : completionGain;
-    const perfectionWithCrit = perfectionGain > 0 ? perfectionGain * critFactor : perfectionGain;
+    const completionWithCrit =
+      completionGain > 0 ? completionGain * critFactor : completionGain;
+    const perfectionWithCrit =
+      perfectionGain > 0 ? perfectionGain * critFactor : perfectionGain;
 
-    const predictedCompletion = safeFloor(safeMultiply(completionWithCrit, expectedFactor));
-    const predictedPerfection = safeFloor(safeMultiply(perfectionWithCrit, expectedFactor));
+    const predictedCompletion = safeFloor(
+      safeMultiply(completionWithCrit, expectedFactor),
+    );
+    const predictedPerfection = safeFloor(
+      safeMultiply(perfectionWithCrit, expectedFactor),
+    );
 
     return {
       completion: safeFloor(
-        clampPredictedProgressGain(predictedCompletion, state.completion, config.maxCompletion)
+        clampPredictedProgressGain(
+          predictedCompletion,
+          state.completion,
+          config.maxCompletion,
+        ),
       ),
       perfection: safeFloor(
-        clampPredictedProgressGain(predictedPerfection, state.perfection, config.maxPerfection)
+        clampPredictedProgressGain(
+          predictedPerfection,
+          state.perfection,
+          config.maxPerfection,
+        ),
       ),
       stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
       toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),
@@ -1284,9 +1415,15 @@ export function calculateSkillGains(
   let toxicityCleanse = skill.toxicityCleanse || 0;
 
   // Stack-based buff scaling for techniques that consume buffs
-  if (skill.buffCost && !skill.scalesWithControl && !skill.scalesWithIntensity) {
+  if (
+    skill.buffCost &&
+    !skill.scalesWithControl &&
+    !skill.scalesWithIntensity
+  ) {
     const have = state.getBuffStacks(skill.buffCost.buffName);
-    const stacksUsed = skill.buffCost.consumeAll ? have : Math.min(have, skill.buffCost.amount ?? 0);
+    const stacksUsed = skill.buffCost.consumeAll
+      ? have
+      : Math.min(have, skill.buffCost.amount ?? 0);
     if (stacksUsed > 1) {
       completionGain = safeMultiply(completionGain, stacksUsed);
       perfectionGain = safeMultiply(perfectionGain, stacksUsed);
@@ -1296,28 +1433,41 @@ export function calculateSkillGains(
   }
 
   if (skill.scalesWithControl) {
-    perfectionGain = safeFloor(safeMultiply(skill.basePerfectionGain, scalingVars.control));
-    completionGain = skill.baseCompletionGain > 0
-      ? safeFloor(safeMultiply(skill.baseCompletionGain, scalingVars.control))
-      : 0;
+    perfectionGain = safeFloor(
+      safeMultiply(skill.basePerfectionGain, scalingVars.control),
+    );
+    completionGain =
+      skill.baseCompletionGain > 0
+        ? safeFloor(safeMultiply(skill.baseCompletionGain, scalingVars.control))
+        : 0;
   }
   if (skill.scalesWithIntensity && skill.type === 'fusion') {
-    completionGain = safeFloor(safeMultiply(skill.baseCompletionGain, scalingVars.intensity));
+    completionGain = safeFloor(
+      safeMultiply(skill.baseCompletionGain, scalingVars.intensity),
+    );
   }
 
   const predictedCompletion = safeFloor(
-    safeMultiply(safeMultiply(completionGain, critFactor), expectedFactor)
+    safeMultiply(safeMultiply(completionGain, critFactor), expectedFactor),
   );
   const predictedPerfection = safeFloor(
-    safeMultiply(safeMultiply(perfectionGain, critFactor), expectedFactor)
+    safeMultiply(safeMultiply(perfectionGain, critFactor), expectedFactor),
   );
 
   return {
     completion: safeFloor(
-      clampPredictedProgressGain(predictedCompletion, state.completion, config.maxCompletion)
+      clampPredictedProgressGain(
+        predictedCompletion,
+        state.completion,
+        config.maxCompletion,
+      ),
     ),
     perfection: safeFloor(
-      clampPredictedProgressGain(predictedPerfection, state.perfection, config.maxPerfection)
+      clampPredictedProgressGain(
+        predictedPerfection,
+        state.perfection,
+        config.maxPerfection,
+      ),
     ),
     stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
     toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),
@@ -1331,7 +1481,7 @@ export function calculateSkillGains(
  */
 export function checkConditionRequirement(
   requirement: string,
-  current: string
+  current: string,
 ): boolean {
   const req = normalizeCondition(requirement);
   const cur = normalizeCondition(current);
@@ -1377,7 +1527,7 @@ export function canApplySkill(
   maxToxicity: number = 0,
   currentCondition?: string,
   conditionEffects: ConditionEffect[] = [],
-  pillsPerRound: number = 1
+  pillsPerRound: number = 1,
 ): boolean {
   const isItemAction = skill.actionKind === 'item';
 
@@ -1398,7 +1548,10 @@ export function canApplySkill(
     // positive requirement: positive or veryPositive works
     // negative requirement: negative or veryNegative works
     // veryNegative requirement: only veryNegative works
-    const conditionMet = checkConditionRequirement(skill.conditionRequirement, currentCondition);
+    const conditionMet = checkConditionRequirement(
+      skill.conditionRequirement,
+      currentCondition,
+    );
     if (!conditionMet) {
       return false;
     }
@@ -1415,7 +1568,9 @@ export function canApplySkill(
   // Check buff costs (consumed on use)
   if (!isItemAction && skill.buffCost) {
     const have = state.getBuffStacks(skill.buffCost.buffName);
-    const required = skill.buffCost.consumeAll ? 1 : (skill.buffCost.amount ?? 0);
+    const required = skill.buffCost.consumeAll
+      ? 1
+      : (skill.buffCost.amount ?? 0);
     if (required > 0 && have < required) {
       return false;
     }
@@ -1438,7 +1593,12 @@ export function canApplySkill(
     }
   }
 
-  const effectiveCosts = calculateEffectiveActionCosts(state, skill, minStability, conditionEffects);
+  const effectiveCosts = calculateEffectiveActionCosts(
+    state,
+    skill,
+    minStability,
+    conditionEffects,
+  );
 
   // Check qi requirement
   if (state.qi < effectiveCosts.qiCost) {
@@ -1496,20 +1656,22 @@ export function applySkill(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[] = [],
   targetCompletion: number = 0,
-  currentCondition?: string
+  currentCondition?: string,
 ): CraftingState | null {
   const maxToxicity = config.maxToxicity || 0;
 
   // Validate skill can be applied
-  if (!canApplySkill(
-    state,
-    skill,
-    config.minStability,
-    maxToxicity,
-    currentCondition,
-    conditionEffects,
-    config.pillsPerRound || 1
-  )) {
+  if (
+    !canApplySkill(
+      state,
+      skill,
+      config.minStability,
+      maxToxicity,
+      currentCondition,
+      conditionEffects,
+      config.pillsPerRound || 1,
+    )
+  ) {
     return null;
   }
 
@@ -1523,7 +1685,12 @@ export function applySkill(
   // Calculate gains BEFORE applying buffs from this skill
   const gains = calculateSkillGains(state, skill, config, conditionEffects);
 
-  const effectiveCosts = calculateEffectiveActionCosts(state, skill, config.minStability, conditionEffects);
+  const effectiveCosts = calculateEffectiveActionCosts(
+    state,
+    skill,
+    config.minStability,
+    conditionEffects,
+  );
   const effectiveQiCost = effectiveCosts.qiCost;
   const effectiveStabilityCost = effectiveCosts.stabilityCost;
 
@@ -1553,7 +1720,10 @@ export function applySkill(
   }
 
   // Cap penalty at initial max stability
-  newStabilityPenalty = Math.min(newStabilityPenalty, state.initialMaxStability);
+  newStabilityPenalty = Math.min(
+    newStabilityPenalty,
+    state.initialMaxStability,
+  );
 
   // Calculate the new max stability
   let newMaxStability = state.initialMaxStability - newStabilityPenalty;
@@ -1564,7 +1734,7 @@ export function applySkill(
     // Positive changes decrease the penalty (restore max stability)
     newStabilityPenalty = Math.min(
       state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - skill.maxStabilityChange)
+      Math.max(0, newStabilityPenalty - skill.maxStabilityChange),
     );
     newMaxStability = state.initialMaxStability - newStabilityPenalty;
   }
@@ -1593,8 +1763,14 @@ export function applySkill(
   }
 
   // Decrement existing buff durations
-  let newControlBuffTurns = consumesTurn && state.controlBuffTurns > 0 ? state.controlBuffTurns - 1 : state.controlBuffTurns;
-  let newIntensityBuffTurns = consumesTurn && state.intensityBuffTurns > 0 ? state.intensityBuffTurns - 1 : state.intensityBuffTurns;
+  let newControlBuffTurns =
+    consumesTurn && state.controlBuffTurns > 0
+      ? state.controlBuffTurns - 1
+      : state.controlBuffTurns;
+  let newIntensityBuffTurns =
+    consumesTurn && state.intensityBuffTurns > 0
+      ? state.intensityBuffTurns - 1
+      : state.intensityBuffTurns;
 
   // Disciplined Touch consumes all active buffs after using them for gains
   if (skill.isDisciplinedTouch) {
@@ -1660,7 +1836,9 @@ export function applySkill(
     const buff = state.getBuff(skill.buffCost.buffName);
     if (buff) {
       const have = buff.stacks;
-      const consume = skill.buffCost.consumeAll ? have : Math.min(have, skill.buffCost.amount ?? 0);
+      const consume = skill.buffCost.consumeAll
+        ? have
+        : Math.min(have, skill.buffCost.amount ?? 0);
       const remaining = Math.max(0, have - consume);
       if (remaining > 0) {
         newBuffs.set(skill.buffCost.buffName, { ...buff, stacks: remaining });
@@ -1678,7 +1856,10 @@ export function applySkill(
   let buffToxicityDelta = 0;
   let buffMaxStabilityDelta = 0;
 
-  const upsertBuffFromDefinition = (definition: BuffDefinition | undefined, stacksDelta: number): void => {
+  const upsertBuffFromDefinition = (
+    definition: BuffDefinition | undefined,
+    stacksDelta: number,
+  ): void => {
     if (!definition || !Number.isFinite(stacksDelta)) return;
     const delta = Math.floor(stacksDelta);
     if (delta === 0) return;
@@ -1687,7 +1868,8 @@ export function applySkill(
     if (!buffKey) return;
 
     const existing = newBuffs.get(buffKey);
-    const canStack = definition.canStack ?? existing?.definition?.canStack ?? true;
+    const canStack =
+      definition.canStack ?? existing?.definition?.canStack ?? true;
     const maxStacks = definition.maxStacks ?? existing?.definition?.maxStacks;
 
     if (existing) {
@@ -1723,7 +1905,10 @@ export function applySkill(
     }
   };
 
-  const adjustExistingBuffStacks = (buffKey: string, stacksDelta: number): void => {
+  const adjustExistingBuffStacks = (
+    buffKey: string,
+    stacksDelta: number,
+  ): void => {
     const existing = newBuffs.get(buffKey);
     if (!existing || !Number.isFinite(stacksDelta)) return;
 
@@ -1742,23 +1927,34 @@ export function applySkill(
     }
   };
 
-  const harmonyMods = getHarmonyStatModifiers(state.harmonyData, config.craftingType);
+  const harmonyMods = getHarmonyStatModifiers(
+    state.harmonyData,
+    config.craftingType,
+  );
   let preMasteryActionVars = buildPreMasteryActionVariables(
     state,
     config,
     conditionEffects,
-    harmonyMods
+    harmonyMods,
   );
-  let resolvedActionMastery = resolveMasteryBonuses(state, skill, preMasteryActionVars);
+  let resolvedActionMastery = resolveMasteryBonuses(
+    state,
+    skill,
+    preMasteryActionVars,
+  );
   if (hasMasteryUpgrades(resolvedActionMastery.upgrades)) {
     preMasteryActionVars = buildPreMasteryActionVariables(
       state,
       config,
       conditionEffects,
       harmonyMods,
-      resolvedActionMastery.upgrades
+      resolvedActionMastery.upgrades,
     );
-    resolvedActionMastery = resolveMasteryBonuses(state, skill, preMasteryActionVars);
+    resolvedActionMastery = resolveMasteryBonuses(
+      state,
+      skill,
+      preMasteryActionVars,
+    );
   }
 
   const mastery = resolvedActionMastery.bonuses;
@@ -1774,14 +1970,22 @@ export function applySkill(
 
   const actionSuccessChance = isItemAction
     ? 1
-    : Math.max(0, Math.min(1, (skill.successChance ?? 1) + actionVars.successChanceBonus));
+    : Math.max(
+        0,
+        Math.min(1, (skill.successChance ?? 1) + actionVars.successChanceBonus),
+      );
 
   let techniquePoolDelta = 0;
   let techniqueMaxStabilityDelta = 0;
   if (skill.effects && skill.effects.length > 0) {
     for (const effect of skill.effects) {
       if (!effect) continue;
-      const conditionResult = evaluateEffectCondition(effect.condition, state, actionVars, 0);
+      const conditionResult = evaluateEffectCondition(
+        effect.condition,
+        state,
+        actionVars,
+        0,
+      );
       if (!conditionResult.met || conditionResult.probability <= 0) continue;
       const factor = actionSuccessChance * conditionResult.probability;
       if (factor <= 0) continue;
@@ -1793,7 +1997,7 @@ export function applySkill(
               effect.amount,
               actionMasteryUpgrades,
               actionVars,
-              0
+              0,
             ) * factor;
           break;
         case 'maxStability':
@@ -1802,7 +2006,7 @@ export function applySkill(
               effect.amount,
               actionMasteryUpgrades,
               actionVars,
-              0
+              0,
             ) * factor;
           break;
         case 'createBuff': {
@@ -1811,7 +2015,7 @@ export function applySkill(
               effect.stacks,
               actionMasteryUpgrades,
               actionVars,
-              1
+              1,
             ) * factor;
           upsertBuffFromDefinition(effect.buff, stacksToAdd);
           break;
@@ -1824,7 +2028,7 @@ export function applySkill(
               effect.stacks,
               actionMasteryUpgrades,
               actionVars,
-              1
+              1,
             ) * factor;
           if (stacksToConsume > 0) {
             adjustExistingBuffStacks(buffKey, -Math.floor(stacksToConsume));
@@ -1839,13 +2043,13 @@ export function applySkill(
     effect: BuffEffect,
     ownerBuffKey: string,
     ownerBuff: { name: string; stacks: number; definition?: BuffDefinition },
-    scalingVars: ScalingVariables
+    scalingVars: ScalingVariables,
   ): void => {
     const conditionResult = evaluateEffectCondition(
       effect.condition,
       state,
       scalingVars,
-      ownerBuff.stacks
+      ownerBuff.stacks,
     );
     if (!conditionResult.met || conditionResult.probability <= 0) {
       return;
@@ -1856,7 +2060,7 @@ export function applySkill(
         effect.amount,
         actionMasteryUpgrades,
         scalingVars,
-        0
+        0,
       ) * conditionFactor;
     switch (effect.kind) {
       case 'completion':
@@ -1886,7 +2090,7 @@ export function applySkill(
             effect.stacks,
             actionMasteryUpgrades,
             scalingVars,
-            1
+            1,
           ) * conditionFactor;
         upsertBuffFromDefinition(effect.buff, stacksToAdd);
         break;
@@ -1897,7 +2101,7 @@ export function applySkill(
             effect.stacks,
             actionMasteryUpgrades,
             scalingVars,
-            1
+            1,
           ) * conditionFactor;
         if (stackChange !== 0) {
           adjustExistingBuffStacks(ownerBuffKey, stackChange);
@@ -1928,11 +2132,15 @@ export function applySkill(
       }
       // Execute action-type-specific effects
       const actionEffects: BuffEffect[] | undefined =
-        skill.type === 'fusion' ? buff.definition.onFusion :
-        skill.type === 'refine' ? buff.definition.onRefine :
-        skill.type === 'stabilize' ? buff.definition.onStabilize :
-        skill.type === 'support' ? buff.definition.onSupport :
-        undefined;
+        skill.type === 'fusion'
+          ? buff.definition.onFusion
+          : skill.type === 'refine'
+            ? buff.definition.onRefine
+            : skill.type === 'stabilize'
+              ? buff.definition.onStabilize
+              : skill.type === 'support'
+                ? buff.definition.onSupport
+                : undefined;
       if (actionEffects) {
         for (const effect of actionEffects) {
           executeBuffEffect(effect, buffKey, buff, scalingVars);
@@ -1942,15 +2150,27 @@ export function applySkill(
   }
 
   // Calculate new completion/perfection (including buff per-turn contributions)
-  let newCompletion = safeAdd(state.completion, gains.completion + buffCompletion);
-  let newPerfection = safeAdd(state.perfection, gains.perfection + buffPerfection);
+  let newCompletion = safeAdd(
+    state.completion,
+    gains.completion + buffCompletion,
+  );
+  let newPerfection = safeAdd(
+    state.perfection,
+    gains.perfection + buffPerfection,
+  );
   newQi = clampQi(newQi + techniquePoolDelta);
 
   // Clamp to optional hard craft caps when available.
-  if (config.maxCompletion !== undefined && Number.isFinite(config.maxCompletion)) {
+  if (
+    config.maxCompletion !== undefined &&
+    Number.isFinite(config.maxCompletion)
+  ) {
     newCompletion = Math.min(newCompletion, config.maxCompletion);
   }
-  if (config.maxPerfection !== undefined && Number.isFinite(config.maxPerfection)) {
+  if (
+    config.maxPerfection !== undefined &&
+    Number.isFinite(config.maxPerfection)
+  ) {
     newPerfection = Math.min(newPerfection, config.maxPerfection);
   }
 
@@ -1965,7 +2185,7 @@ export function applySkill(
   if (techniqueMaxStabilityDelta !== 0) {
     newStabilityPenalty = Math.min(
       state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - techniqueMaxStabilityDelta)
+      Math.max(0, newStabilityPenalty - techniqueMaxStabilityDelta),
     );
     const newMax = state.initialMaxStability - newStabilityPenalty;
     if (newStability > newMax) newStability = newMax;
@@ -1978,7 +2198,7 @@ export function applySkill(
   if (buffMaxStabilityDelta !== 0) {
     newStabilityPenalty = Math.min(
       state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - buffMaxStabilityDelta)
+      Math.max(0, newStabilityPenalty - buffMaxStabilityDelta),
     );
     const newMax = state.initialMaxStability - newStabilityPenalty;
     if (newStability > newMax) newStability = newMax;
@@ -1987,10 +2207,23 @@ export function applySkill(
   // Process harmony effects for sublime crafts (runs in processTurn after technique)
   let newHarmony = state.harmony;
   let newHarmonyData = state.harmonyData;
-  if (consumesTurn && !isItemAction && config.isSublimeCraft && config.craftingType && state.harmonyData) {
-    const harmonyResult = processHarmonyEffect(state.harmonyData, config.craftingType, skill.type);
+  if (
+    consumesTurn &&
+    !isItemAction &&
+    config.isSublimeCraft &&
+    config.craftingType &&
+    state.harmonyData
+  ) {
+    const harmonyResult = processHarmonyEffect(
+      state.harmonyData,
+      config.craftingType,
+      skill.type,
+    );
     newHarmonyData = harmonyResult.harmonyData;
-    newHarmony = Math.max(-100, Math.min(100, state.harmony + harmonyResult.harmonyDelta));
+    newHarmony = Math.max(
+      -100,
+      Math.min(100, state.harmony + harmonyResult.harmonyDelta),
+    );
 
     // Apply direct state changes from harmony (e.g., Inscription penalty, Resonance stability loss)
     if (harmonyResult.stabilityDelta !== 0) {
@@ -2001,7 +2234,10 @@ export function applySkill(
     }
     if (harmonyResult.stabilityPenaltyDelta !== 0) {
       newStabilityPenalty += harmonyResult.stabilityPenaltyDelta;
-      newStabilityPenalty = Math.min(newStabilityPenalty, state.initialMaxStability);
+      newStabilityPenalty = Math.min(
+        newStabilityPenalty,
+        state.initialMaxStability,
+      );
       // Reclamp stability after penalty increase
       const newMax = state.initialMaxStability - newStabilityPenalty;
       if (newStability > newMax) newStability = newMax;
@@ -2027,7 +2263,7 @@ export function applySkill(
     },
     newBuffs,
     maxToxicity,
-    config.pillsPerRound || 1
+    config.pillsPerRound || 1,
   );
 
   return state.copy({
@@ -2061,12 +2297,18 @@ export function applySkill(
 export function getAvailableSkills(
   state: CraftingState,
   config: OptimizerConfig,
-  currentCondition?: CraftingCondition | string
+  currentCondition?: CraftingCondition | string,
 ): SkillDefinition[] {
   const maxToxicity = config.maxToxicity || 0;
-  const normalizedCondition = typeof currentCondition === 'string' ? normalizeCondition(currentCondition) : currentCondition;
-  const conditionEffects = getConditionEffectsForConfig(config, normalizedCondition);
-  return config.skills.filter(skill =>
+  const normalizedCondition =
+    typeof currentCondition === 'string'
+      ? normalizeCondition(currentCondition)
+      : currentCondition;
+  const conditionEffects = getConditionEffectsForConfig(
+    config,
+    normalizedCondition,
+  );
+  return config.skills.filter((skill) =>
     canApplySkill(
       state,
       skill,
@@ -2074,8 +2316,8 @@ export function getAvailableSkills(
       maxToxicity,
       normalizedCondition,
       conditionEffects,
-      config.pillsPerRound || 1
-    )
+      config.pillsPerRound || 1,
+    ),
   );
 }
 
@@ -2085,7 +2327,7 @@ export function getAvailableSkills(
 export function isTerminalState(
   state: CraftingState,
   config: OptimizerConfig,
-  currentCondition?: CraftingCondition | string
+  currentCondition?: CraftingCondition | string,
 ): boolean {
   return getAvailableSkills(state, config, currentCondition).length === 0;
 }
@@ -2096,7 +2338,7 @@ export function isTerminalState(
  */
 export function getConditionEffectsForConfig(
   config: OptimizerConfig,
-  condition: CraftingCondition | string | undefined
+  condition: CraftingCondition | string | undefined,
 ): ConditionEffect[] {
   if (!condition) {
     return [];
@@ -2132,12 +2374,17 @@ export interface SkillBlockedReason {
 export function getBlockedSkillReasons(
   state: CraftingState,
   config: OptimizerConfig,
-  currentCondition?: string
+  currentCondition?: string,
 ): SkillBlockedReason[] {
   const reasons: SkillBlockedReason[] = [];
   const maxToxicity = config.maxToxicity || 0;
-  const normalizedCondition = currentCondition ? normalizeCondition(currentCondition) : undefined;
-  const conditionEffects = getConditionEffectsForConfig(config, normalizedCondition);
+  const normalizedCondition = currentCondition
+    ? normalizeCondition(currentCondition)
+    : undefined;
+  const conditionEffects = getConditionEffectsForConfig(
+    config,
+    normalizedCondition,
+  );
 
   for (const skill of config.skills) {
     const isItemAction = skill.actionKind === 'item';
@@ -2164,7 +2411,10 @@ export function getBlockedSkillReasons(
 
     // Check condition requirement
     if (!isItemAction && skill.conditionRequirement && currentCondition) {
-      const conditionMet = checkConditionRequirement(skill.conditionRequirement, currentCondition);
+      const conditionMet = checkConditionRequirement(
+        skill.conditionRequirement,
+        currentCondition,
+      );
       if (!conditionMet) {
         reasons.push({
           skillName: skill.name,
@@ -2211,7 +2461,7 @@ export function getBlockedSkillReasons(
       state,
       skill,
       config.minStability,
-      conditionEffects
+      conditionEffects,
     );
 
     // Check qi requirement
