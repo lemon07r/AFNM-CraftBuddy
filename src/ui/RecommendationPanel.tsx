@@ -65,7 +65,6 @@ import {
   fadeInUp,
   transitions,
   versionBadgeReveal,
-  holographicSweep,
 } from './animations';
 
 // ============================================================================
@@ -210,7 +209,7 @@ const CommunityLinks = memo(function CommunityLinks({
           ? '0 6px 14px rgba(0, 0, 0, 0.28)'
           : '0 4px 10px rgba(0, 0, 0, 0.18)',
         transition:
-          'border-radius 0.26s cubic-bezier(0.4, 0, 0.2, 1), padding 0.26s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.26s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease',
+          'border-radius 0.38s cubic-bezier(0.4, 0, 0.2, 1), padding 0.38s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.38s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease',
       }}
     >
       {COMMUNITY_LINKS.map((link) => (
@@ -276,25 +275,12 @@ const PanelVersionBadge = memo(function PanelVersionBadge({
         textShadow: visible
           ? '0 0 8px rgba(255, 223, 140, 0.25)'
           : '0 0 0 rgba(255, 223, 140, 0)',
-        transition:
-          'opacity 0.14s ease, transform 0.14s ease, filter 0.14s ease, text-shadow 0.18s ease',
+        transition: visible
+          ? 'opacity 0.38s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.38s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.38s cubic-bezier(0.2, 0.8, 0.2, 1), text-shadow 0.46s ease'
+          : 'opacity 0.12s ease, transform 0.12s ease, filter 0.12s ease, text-shadow 0.14s ease',
         animation: visible
-          ? `${versionBadgeReveal} 0.58s cubic-bezier(0.25, 0.9, 0.3, 1) both`
+          ? `${versionBadgeReveal} 0.74s cubic-bezier(0.25, 0.9, 0.3, 1) both`
           : 'none',
-        '&::after': {
-          content: '""',
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          background:
-            'linear-gradient(110deg, transparent 22%, rgba(152, 218, 255, 0.2) 42%, rgba(255, 236, 166, 0.45) 50%, rgba(152, 218, 255, 0.2) 58%, transparent 78%)',
-          mixBlendMode: 'screen',
-          opacity: visible ? 1 : 0,
-          transform: 'translateX(-130%)',
-          animation: visible
-            ? `${holographicSweep} 0.72s cubic-bezier(0.3, 0, 0.2, 1) 0.06s 1 both`
-            : 'none',
-        },
       }}
     >
       {versionLabel}

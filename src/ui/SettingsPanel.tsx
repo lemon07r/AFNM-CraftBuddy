@@ -365,7 +365,7 @@ export const SettingsPanel = memo(function SettingsPanel({
             top: -8,
             right: 28,
             zIndex: 9,
-            transform: isOpen ? 'translate(-6px, 8px)' : 'translate(0, 0)',
+            transform: isOpen ? 'translate(-6px, 12px)' : 'translate(0, 0)',
             transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
