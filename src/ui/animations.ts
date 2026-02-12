@@ -83,6 +83,43 @@ export const shimmer = keyframes`
   }
 `;
 
+// Holographic sweep for accent overlays
+export const holographicSweep = keyframes`
+  0% {
+    opacity: 0;
+    transform: translateX(-130%);
+  }
+  20% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(130%);
+  }
+`;
+
+// Dramatic version label reveal with glow settle
+export const versionBadgeReveal = keyframes`
+  0% {
+    opacity: 0;
+    transform: translateY(7px) scale(0.9);
+    filter: blur(4px);
+    text-shadow: none;
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-1px) scale(1.04);
+    filter: blur(0.5px);
+    text-shadow: 0 0 12px rgba(255, 223, 140, 0.45);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+    text-shadow: 0 0 7px rgba(255, 223, 140, 0.28);
+  }
+`;
+
 // Loading shimmer for skeleton cards - GPU-accelerated horizontal sweep
 export const loadingShimmer = keyframes`
   0% {

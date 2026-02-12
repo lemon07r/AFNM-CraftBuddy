@@ -27,7 +27,11 @@ import {
 } from '../settings';
 import { colors, gradients, shadows } from './theme';
 import { GradientDivider, FlexRow } from './components';
-import { transitions } from './animations';
+import {
+  transitions,
+  versionBadgeReveal,
+  holographicSweep,
+} from './animations';
 
 interface SettingsPanelProps {
   onSettingsChange?: (settings: CraftBuddySettings) => void;
@@ -358,10 +362,11 @@ export const SettingsPanel = memo(function SettingsPanel({
         <Box
           sx={{
             position: 'absolute',
-            top: isOpen ? 24 : -8,
-            right: isOpen ? -8 : 28,
+            top: -8,
+            right: 28,
             zIndex: 9,
-            transition: transitions.smooth,
+            transform: isOpen ? 'translate(-6px, 8px)' : 'translate(0, 0)',
+            transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
           {leadingControls}
@@ -585,18 +590,41 @@ export const SettingsPanel = memo(function SettingsPanel({
                 position: 'absolute',
                 right: 10,
                 bottom: 8,
+                display: 'inline-block',
+                overflow: 'hidden',
+                isolation: 'isolate',
                 fontSize: '0.66rem',
-                color: colors.textDisabled,
+                color: 'rgba(222, 205, 168, 0.96)',
                 letterSpacing: '0.04em',
                 lineHeight: 1,
                 pointerEvents: 'none',
-                opacity: showVersion ? 0.85 : 0,
+                opacity: showVersion ? 0.94 : 0,
                 transform: showVersion
-                  ? 'translateY(0)'
-                  : 'translateY(2px)',
-                transition: showVersion
-                  ? 'opacity 0.34s ease, transform 0.34s ease'
-                  : 'opacity 0.12s ease, transform 0.12s ease',
+                  ? 'translateY(0) scale(1)'
+                  : 'translateY(5px) scale(0.9)',
+                filter: showVersion ? 'blur(0)' : 'blur(3px)',
+                textShadow: showVersion
+                  ? '0 0 10px rgba(255, 223, 140, 0.36)'
+                  : '0 0 0 rgba(255, 223, 140, 0)',
+                transition:
+                  'opacity 0.12s ease, transform 0.12s ease, filter 0.12s ease, text-shadow 0.14s ease',
+                animation: showVersion
+                  ? `${versionBadgeReveal} 0.62s cubic-bezier(0.25, 0.9, 0.3, 1) both`
+                  : 'none',
+                '&::after': {
+                  content: '""',
+                  position: 'absolute',
+                  inset: 0,
+                  pointerEvents: 'none',
+                  background:
+                    'linear-gradient(110deg, transparent 22%, rgba(152, 218, 255, 0.25) 42%, rgba(255, 236, 166, 0.48) 50%, rgba(152, 218, 255, 0.24) 58%, transparent 78%)',
+                  mixBlendMode: 'screen',
+                  opacity: showVersion ? 1 : 0,
+                  transform: 'translateX(-130%)',
+                  animation: showVersion
+                    ? `${holographicSweep} 0.78s cubic-bezier(0.3, 0, 0.2, 1) 0.08s 1 both`
+                    : 'none',
+                },
               }}
             >
               {versionLabel}

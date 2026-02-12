@@ -61,7 +61,12 @@ import {
   LoadingHeader,
   RecalculateButton,
 } from './components';
-import { pulseGlow, fadeInUp, transitions } from './animations';
+import {
+  fadeInUp,
+  transitions,
+  versionBadgeReveal,
+  holographicSweep,
+} from './animations';
 
 // ============================================================================
 // Utility Functions
@@ -185,24 +190,27 @@ interface RecommendationPanelProps {
 }
 
 const CommunityLinks = memo(function CommunityLinks({
-  stacked = false,
+  isOpen = false,
 }: {
-  stacked?: boolean;
+  isOpen?: boolean;
 }) {
   return (
     <Box
       sx={{
         display: 'inline-flex',
-        flexDirection: stacked ? 'column' : 'row',
+        flexDirection: 'row',
         alignItems: 'center',
         gap: 0.5,
-        px: stacked ? 0.45 : 0.75,
+        px: isOpen ? 0.62 : 0.75,
         py: 0.4,
-        borderRadius: stacked ? 1.5 : 999,
+        borderRadius: isOpen ? 1.5 : 999,
         backgroundColor: 'rgba(22, 26, 35, 0.78)',
-        border: `1px solid ${colors.borderSubtle}`,
-        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.18)',
-        transition: transitions.smooth,
+        border: `1px solid ${isOpen ? colors.borderMedium : colors.borderSubtle}`,
+        boxShadow: isOpen
+          ? '0 6px 14px rgba(0, 0, 0, 0.28)'
+          : '0 4px 10px rgba(0, 0, 0, 0.18)',
+        transition:
+          'border-radius 0.26s cubic-bezier(0.4, 0, 0.2, 1), padding 0.26s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.26s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease',
       }}
     >
       {COMMUNITY_LINKS.map((link) => (
@@ -252,16 +260,41 @@ const PanelVersionBadge = memo(function PanelVersionBadge({
         position: 'absolute',
         right: 10,
         bottom: 8,
+        display: 'inline-block',
+        overflow: 'hidden',
+        isolation: 'isolate',
         fontSize: '0.66rem',
-        color: colors.textDisabled,
+        color: 'rgba(222, 205, 168, 0.94)',
         letterSpacing: '0.04em',
         lineHeight: 1,
         pointerEvents: 'none',
-        opacity: visible ? 0.85 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(2px)',
-        transition: visible
-          ? 'opacity 0.32s ease, transform 0.32s ease'
-          : 'opacity 0.12s ease, transform 0.12s ease',
+        opacity: visible ? 0.92 : 0,
+        transform: visible
+          ? 'translateY(0) scale(1)'
+          : 'translateY(5px) scale(0.9)',
+        filter: visible ? 'blur(0)' : 'blur(3px)',
+        textShadow: visible
+          ? '0 0 8px rgba(255, 223, 140, 0.25)'
+          : '0 0 0 rgba(255, 223, 140, 0)',
+        transition:
+          'opacity 0.14s ease, transform 0.14s ease, filter 0.14s ease, text-shadow 0.18s ease',
+        animation: visible
+          ? `${versionBadgeReveal} 0.58s cubic-bezier(0.25, 0.9, 0.3, 1) both`
+          : 'none',
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          background:
+            'linear-gradient(110deg, transparent 22%, rgba(152, 218, 255, 0.2) 42%, rgba(255, 236, 166, 0.45) 50%, rgba(152, 218, 255, 0.2) 58%, transparent 78%)',
+          mixBlendMode: 'screen',
+          opacity: visible ? 1 : 0,
+          transform: 'translateX(-130%)',
+          animation: visible
+            ? `${holographicSweep} 0.72s cubic-bezier(0.3, 0, 0.2, 1) 0.06s 1 both`
+            : 'none',
+        },
       }}
     >
       {versionLabel}
@@ -984,7 +1017,7 @@ export function RecommendationPanel({
         onOpenChange={setIsSettingsOpen}
         version={version}
         leadingControls={
-          !compactMode ? <CommunityLinks stacked={isSettingsOpen} /> : undefined
+          !compactMode ? <CommunityLinks isOpen={isSettingsOpen} /> : undefined
         }
       />
 
