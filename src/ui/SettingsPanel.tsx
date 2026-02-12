@@ -60,7 +60,7 @@ const SEARCH_PRESETS: SearchPreset[] = [
   {
     id: 'fast',
     label: 'Fast',
-    description: 'Recommended default profile',
+    description: 'Lower latency with strong accuracy',
     values: {
       lookaheadDepth: 24,
       searchTimeBudgetMs: 300,
@@ -71,7 +71,7 @@ const SEARCH_PRESETS: SearchPreset[] = [
   {
     id: 'high_accuracy',
     label: 'High Accuracy',
-    description: 'Higher compute, strongest planning',
+    description: 'Recommended default for best planning quality',
     values: {
       lookaheadDepth: 28,
       searchTimeBudgetMs: 500,

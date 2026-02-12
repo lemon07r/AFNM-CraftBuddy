@@ -6,7 +6,7 @@
  */
 
 import React, { memo, useMemo } from 'react';
-import { Box, Typography, Chip } from '@mui/material';
+import { Box, Typography, Chip, IconButton, Tooltip } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
@@ -18,6 +18,9 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   ElectricBolt as ElectricBoltIcon,
   TrendingUp as TrendingUpIcon,
+  GitHub as GitHubIcon,
+  ForumRounded as DiscordIcon,
+  SportsEsports as SteamIcon,
 } from '@mui/icons-material';
 import {
   SearchResult,
@@ -114,6 +117,34 @@ const CONDITION_NAMES: Record<CraftingConditionType, string> = {
   veryNegative: 'Terrible',
 };
 
+interface CommunityLink {
+  id: string;
+  label: string;
+  href: string;
+  icon: React.ReactNode;
+}
+
+const COMMUNITY_LINKS: CommunityLink[] = [
+  {
+    id: 'discord',
+    label: 'Join Discord',
+    href: 'https://discord.gg/gnyjqwxzC7',
+    icon: <DiscordIcon sx={{ fontSize: 15 }} />,
+  },
+  {
+    id: 'github',
+    label: 'Open GitHub',
+    href: 'https://github.com/lemon07r/AFNM-CraftBuddy',
+    icon: <GitHubIcon sx={{ fontSize: 15 }} />,
+  },
+  {
+    id: 'steam',
+    label: 'Open Steam Workshop',
+    href: 'https://steamcommunity.com/sharedfiles/filedetails/?id=3661729323',
+    icon: <SteamIcon sx={{ fontSize: 15 }} />,
+  },
+];
+
 // Helper to get buff name from BuffType enum
 function getBuffName(buffType: number): string | undefined {
   if (buffType === 1) return 'Control';
@@ -152,6 +183,53 @@ interface RecommendationPanelProps {
   /** Callback to trigger recalculation with new settings */
   onRecalculate?: () => void;
 }
+
+const CommunityLinks = memo(function CommunityLinks() {
+  return (
+    <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end' }}>
+      <Box
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 0.5,
+          px: 0.75,
+          py: 0.4,
+          borderRadius: 999,
+          backgroundColor: 'rgba(22, 26, 35, 0.78)',
+          border: `1px solid ${colors.borderSubtle}`,
+          boxShadow: '0 4px 10px rgba(0, 0, 0, 0.18)',
+        }}
+      >
+        {COMMUNITY_LINKS.map((link) => (
+          <Tooltip key={link.id} title={link.label} enterDelay={200}>
+            <IconButton
+              component="a"
+              href={link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="small"
+              aria-label={link.label}
+              sx={{
+                width: 26,
+                height: 26,
+                color: colors.textMuted,
+                border: '1px solid transparent',
+                transition: transitions.smooth,
+                '&:hover': {
+                  color: colors.gold,
+                  borderColor: colors.borderMedium,
+                  backgroundColor: 'rgba(222, 184, 135, 0.1)',
+                },
+              }}
+            >
+              {link.icon}
+            </IconButton>
+          </Tooltip>
+        ))}
+      </Box>
+    </Box>
+  );
+});
 
 // ============================================================================
 // Sub-Components
@@ -938,6 +1016,8 @@ export function RecommendationPanel({
           ]}
         />
       )}
+
+      {!compactMode && <CommunityLinks />}
     </PanelContainer>
   );
 }

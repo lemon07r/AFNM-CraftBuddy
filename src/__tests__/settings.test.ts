@@ -18,9 +18,13 @@ describe('settings search budget', () => {
     warnSpy.mockRestore();
   });
 
-  it('keeps default time budget at 300ms', () => {
-    expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(300);
-    expect(getSearchConfig().timeBudgetMs).toBe(300);
+  it('keeps high-accuracy defaults for search budgets', () => {
+    expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(500);
+    expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(200000);
+    expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(8);
+    expect(getSearchConfig().timeBudgetMs).toBe(500);
+    expect(getSearchConfig().maxNodes).toBe(200000);
+    expect(getSearchConfig().beamWidth).toBe(8);
   });
 
   it('clamps search time budget to 100-10000ms', () => {

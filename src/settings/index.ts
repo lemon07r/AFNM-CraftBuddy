@@ -6,7 +6,7 @@
  */
 
 export interface CraftBuddySettings {
-  /** Lookahead search depth (1-96, default: 24) */
+  /** Lookahead search depth (1-96, default: 28) */
   lookaheadDepth: number;
   /** Whether to show the panel in compact mode */
   compactMode: boolean;
@@ -24,11 +24,11 @@ export interface CraftBuddySettings {
   showOptimalRotation: boolean;
 
   // Performance settings for late-game optimization
-  /** Maximum time budget for search in milliseconds (100-10000, default: 300) */
+  /** Maximum time budget for search in milliseconds (100-10000, default: 500) */
   searchTimeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (1000-250000, default: 100000) */
+  /** Maximum nodes to explore before stopping (1000-250000, default: 200000) */
   searchMaxNodes: number;
-  /** Beam width - max branches to explore at each level (3-15, default: 7) */
+  /** Beam width - max branches to explore at each level (3-15, default: 8) */
   searchBeamWidth: number;
 }
 
@@ -37,7 +37,7 @@ const STORAGE_KEY = 'craftbuddy_settings';
 const DEFAULT_SETTINGS: CraftBuddySettings = {
   // Accuracy-first default profile tuned for late-game recommendations.
   // Turn-based gameplay can tolerate modestly longer searches.
-  lookaheadDepth: 24,
+  lookaheadDepth: 28,
   compactMode: false,
   panelVisible: true,
   maxAlternatives: 2,
@@ -47,9 +47,9 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showOptimalRotation: true,
   // Defaults tuned toward oracle-like recommendations while keeping response
   // time reasonable for a turn-based game.
-  searchTimeBudgetMs: 300,
-  searchMaxNodes: 100000,
-  searchBeamWidth: 7,
+  searchTimeBudgetMs: 500,
+  searchMaxNodes: 200000,
+  searchBeamWidth: 8,
 };
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
