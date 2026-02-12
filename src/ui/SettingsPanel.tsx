@@ -33,6 +33,8 @@ interface SettingsPanelProps {
   onSettingsChange?: (settings: CraftBuddySettings) => void;
   /** Called when a search-affecting setting changes (lookahead, time budget, nodes, beam width) */
   onSearchSettingsChange?: (settings: CraftBuddySettings) => void;
+  /** Called when settings panel open state changes */
+  onOpenChange?: (isOpen: boolean) => void;
   /** Optional version string shown in the bottom-right of the settings panel */
   version?: string;
   /** Optional controls to render to the left of the settings button */
@@ -225,6 +227,7 @@ const ToggleSetting = memo(function ToggleSetting({
 export const SettingsPanel = memo(function SettingsPanel({
   onSettingsChange,
   onSearchSettingsChange,
+  onOpenChange,
   version,
   leadingControls,
 }: SettingsPanelProps) {
@@ -320,13 +323,24 @@ export const SettingsPanel = memo(function SettingsPanel({
   );
 
   const handleToggle = useCallback(() => {
-    setIsOpen((prev) => !prev);
-  }, []);
+    setIsOpen((prev) => {
+      const next = !prev;
+      onOpenChange?.(next);
+      return next;
+    });
+  }, [onOpenChange]);
+
+  useEffect(() => {
+    return () => {
+      onOpenChange?.(false);
+    };
+  }, [onOpenChange]);
 
   useEffect(() => {
     let fadeInTimer: ReturnType<typeof setTimeout> | undefined;
     if (isOpen) {
-      fadeInTimer = setTimeout(() => setShowVersion(true), 160);
+      setShowVersion(false);
+      fadeInTimer = setTimeout(() => setShowVersion(true), 320);
     } else {
       setShowVersion(false);
     }
@@ -344,10 +358,9 @@ export const SettingsPanel = memo(function SettingsPanel({
         <Box
           sx={{
             position: 'absolute',
-            top: -8,
-            right: 28,
+            top: isOpen ? 24 : -8,
+            right: isOpen ? -8 : 28,
             zIndex: 9,
-            transform: isOpen ? 'translate(-4px, 4px)' : 'translate(0, 0)',
             transition: transitions.smooth,
           }}
         >
@@ -372,7 +385,6 @@ export const SettingsPanel = memo(function SettingsPanel({
             color: colors.gold,
             borderColor: colors.borderMedium,
           },
-          transform: isOpen ? 'translate(-4px, 4px)' : 'translate(0, 0)',
           zIndex: 10,
           width: 28,
           height: 28,
@@ -583,7 +595,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                   ? 'translateY(0)'
                   : 'translateY(2px)',
                 transition: showVersion
-                  ? 'opacity 0.2s ease, transform 0.2s ease'
+                  ? 'opacity 0.34s ease, transform 0.34s ease'
                   : 'opacity 0.12s ease, transform 0.12s ease',
               }}
             >

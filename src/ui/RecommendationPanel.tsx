@@ -5,7 +5,7 @@
  * and reasoning. Uses themed components for consistent styling.
  */
 
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { Box, Typography, Chip, IconButton, Tooltip } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -184,19 +184,25 @@ interface RecommendationPanelProps {
   version?: string;
 }
 
-const CommunityLinks = memo(function CommunityLinks() {
+const CommunityLinks = memo(function CommunityLinks({
+  stacked = false,
+}: {
+  stacked?: boolean;
+}) {
   return (
     <Box
       sx={{
         display: 'inline-flex',
+        flexDirection: stacked ? 'column' : 'row',
         alignItems: 'center',
         gap: 0.5,
-        px: 0.75,
+        px: stacked ? 0.45 : 0.75,
         py: 0.4,
-        borderRadius: 999,
+        borderRadius: stacked ? 1.5 : 999,
         backgroundColor: 'rgba(22, 26, 35, 0.78)',
         border: `1px solid ${colors.borderSubtle}`,
         boxShadow: '0 4px 10px rgba(0, 0, 0, 0.18)',
+        transition: transitions.smooth,
       }}
     >
       {COMMUNITY_LINKS.map((link) => (
@@ -231,8 +237,10 @@ const CommunityLinks = memo(function CommunityLinks() {
 
 const PanelVersionBadge = memo(function PanelVersionBadge({
   version,
+  visible = true,
 }: {
   version?: string;
+  visible?: boolean;
 }) {
   if (!version) return null;
   const versionLabel = version.startsWith('v') ? version : `v${version}`;
@@ -249,6 +257,11 @@ const PanelVersionBadge = memo(function PanelVersionBadge({
         letterSpacing: '0.04em',
         lineHeight: 1,
         pointerEvents: 'none',
+        opacity: visible ? 0.85 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(2px)',
+        transition: visible
+          ? 'opacity 0.32s ease, transform 0.32s ease'
+          : 'opacity 0.12s ease, transform 0.12s ease',
       }}
     >
       {versionLabel}
@@ -881,6 +894,8 @@ export function RecommendationPanel({
   onRecalculate,
   version,
 }: RecommendationPanelProps) {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   // Use settings or defaults
   const compactMode = settings?.compactMode ?? false;
   const showOptimalRotation = settings?.showOptimalRotation ?? true;
@@ -900,7 +915,7 @@ export function RecommendationPanel({
       <PanelContainer compact={compactMode}>
         <LoadingHeader compact={compactMode} />
         <LoadingSkeletonCard />
-        <PanelVersionBadge version={version} />
+        <PanelVersionBadge version={version} visible={!isSettingsOpen} />
       </PanelContainer>
     );
   }
@@ -927,7 +942,7 @@ export function RecommendationPanel({
         >
           You can finish crafting now!
         </Typography>
-        <PanelVersionBadge version={version} />
+        <PanelVersionBadge version={version} visible={!isSettingsOpen} />
       </PanelContainer>
     );
   }
@@ -954,7 +969,7 @@ export function RecommendationPanel({
         >
           Consider finishing the craft or check your Qi/Stability.
         </Typography>
-        <PanelVersionBadge version={version} />
+        <PanelVersionBadge version={version} visible={!isSettingsOpen} />
       </PanelContainer>
     );
   }
@@ -966,8 +981,11 @@ export function RecommendationPanel({
       <SettingsPanel
         onSettingsChange={onSettingsChange}
         onSearchSettingsChange={onSearchSettingsChange}
+        onOpenChange={setIsSettingsOpen}
         version={version}
-        leadingControls={!compactMode ? <CommunityLinks /> : undefined}
+        leadingControls={
+          !compactMode ? <CommunityLinks stacked={isSettingsOpen} /> : undefined
+        }
       />
 
       {/* Recalculate button when search settings changed */}
@@ -1048,7 +1066,7 @@ export function RecommendationPanel({
         />
       )}
 
-      <PanelVersionBadge version={version} />
+      <PanelVersionBadge version={version} visible={!isSettingsOpen} />
     </PanelContainer>
   );
 }
