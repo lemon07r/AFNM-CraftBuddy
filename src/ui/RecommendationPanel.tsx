@@ -18,10 +18,8 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   ElectricBolt as ElectricBoltIcon,
   TrendingUp as TrendingUpIcon,
-  GitHub as GitHubIcon,
-  ForumRounded as DiscordIcon,
-  SportsEsports as SteamIcon,
 } from '@mui/icons-material';
+import { FaDiscord, FaGithub, FaSteam } from 'react-icons/fa';
 import {
   SearchResult,
   SkillRecommendation,
@@ -129,19 +127,19 @@ const COMMUNITY_LINKS: CommunityLink[] = [
     id: 'discord',
     label: 'Join Discord',
     href: 'https://discord.gg/gnyjqwxzC7',
-    icon: <DiscordIcon sx={{ fontSize: 15 }} />,
+    icon: <FaDiscord size={14} />,
   },
   {
     id: 'github',
     label: 'Open GitHub',
     href: 'https://github.com/lemon07r/AFNM-CraftBuddy',
-    icon: <GitHubIcon sx={{ fontSize: 15 }} />,
+    icon: <FaGithub size={14} />,
   },
   {
     id: 'steam',
     label: 'Open Steam Workshop',
     href: 'https://steamcommunity.com/sharedfiles/filedetails/?id=3661729323',
-    icon: <SteamIcon sx={{ fontSize: 15 }} />,
+    icon: <FaSteam size={14} />,
   },
 ];
 

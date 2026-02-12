@@ -18,7 +18,7 @@ describe('settings search budget', () => {
     warnSpy.mockRestore();
   });
 
-  it('keeps high-accuracy defaults for search budgets', () => {
+  it('keeps balanced defaults for search budgets', () => {
     expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(500);
     expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(200000);
     expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(8);

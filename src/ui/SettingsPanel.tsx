@@ -69,14 +69,25 @@ const SEARCH_PRESETS: SearchPreset[] = [
     },
   },
   {
-    id: 'high_accuracy',
-    label: 'High Accuracy',
-    description: 'Recommended default for best planning quality',
+    id: 'balanced',
+    label: 'Balanced',
+    description: 'Recommended default profile',
     values: {
       lookaheadDepth: 28,
       searchTimeBudgetMs: 500,
       searchMaxNodes: 200000,
       searchBeamWidth: 8,
+    },
+  },
+  {
+    id: 'high_accuracy',
+    label: 'High Accuracy',
+    description: 'True high-accuracy mode (slower, best late-game choices)',
+    values: {
+      lookaheadDepth: 36,
+      searchTimeBudgetMs: 1000,
+      searchMaxNodes: 250000,
+      searchBeamWidth: 10,
     },
   },
 ];

@@ -35,7 +35,7 @@ export interface CraftBuddySettings {
 const STORAGE_KEY = 'craftbuddy_settings';
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
-  // Accuracy-first default profile tuned for late-game recommendations.
+  // Balanced default profile tuned for strong quality + responsiveness.
   // Turn-based gameplay can tolerate modestly longer searches.
   lookaheadDepth: 28,
   compactMode: false,
@@ -45,8 +45,8 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
-  // Defaults tuned toward oracle-like recommendations while keeping response
-  // time reasonable for a turn-based game.
+  // Balanced defaults tuned for high-quality recommendations while keeping
+  // response time reasonable for a turn-based game.
   searchTimeBudgetMs: 500,
   searchMaxNodes: 200000,
   searchBeamWidth: 8,
