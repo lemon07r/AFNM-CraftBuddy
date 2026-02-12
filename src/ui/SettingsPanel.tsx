@@ -5,7 +5,7 @@
  * Uses themed components for consistent styling.
  */
 
-import React, { useState, memo, useCallback } from 'react';
+import React, { useState, memo, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -33,6 +33,10 @@ interface SettingsPanelProps {
   onSettingsChange?: (settings: CraftBuddySettings) => void;
   /** Called when a search-affecting setting changes (lookahead, time budget, nodes, beam width) */
   onSearchSettingsChange?: (settings: CraftBuddySettings) => void;
+  /** Optional version string shown in the bottom-right of the settings panel */
+  version?: string;
+  /** Optional controls to render to the left of the settings button */
+  leadingControls?: React.ReactNode;
 }
 
 interface SearchPreset {
@@ -221,7 +225,14 @@ const ToggleSetting = memo(function ToggleSetting({
 export const SettingsPanel = memo(function SettingsPanel({
   onSettingsChange,
   onSearchSettingsChange,
+  version,
+  leadingControls,
 }: SettingsPanelProps) {
+  const versionLabel = version
+    ? version.startsWith('v')
+      ? version
+      : `v${version}`
+    : null;
   const formatSeconds = useCallback(
     (milliseconds: number): string => `${(milliseconds / 1000).toFixed(1)}s`,
     [],
@@ -232,6 +243,7 @@ export const SettingsPanel = memo(function SettingsPanel({
   );
 
   const [isOpen, setIsOpen] = useState(false);
+  const [showVersion, setShowVersion] = useState(false);
   const [settings, setSettings] = useState<CraftBuddySettings>(getSettings());
   const [draftSettings, setDraftSettings] =
     useState<CraftBuddySettings>(settings);
@@ -311,8 +323,38 @@ export const SettingsPanel = memo(function SettingsPanel({
     setIsOpen((prev) => !prev);
   }, []);
 
+  useEffect(() => {
+    let fadeInTimer: ReturnType<typeof setTimeout> | undefined;
+    if (isOpen) {
+      fadeInTimer = setTimeout(() => setShowVersion(true), 160);
+    } else {
+      setShowVersion(false);
+    }
+
+    return () => {
+      if (fadeInTimer) {
+        clearTimeout(fadeInTimer);
+      }
+    };
+  }, [isOpen]);
+
   return (
     <Box sx={{ position: 'relative' }}>
+      {leadingControls && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: -8,
+            right: 28,
+            zIndex: 9,
+            transform: isOpen ? 'translate(-4px, 4px)' : 'translate(0, 0)',
+            transition: transitions.smooth,
+          }}
+        >
+          {leadingControls}
+        </Box>
+      )}
+
       {/* Settings toggle button */}
       <IconButton
         onClick={handleToggle}
@@ -330,6 +372,7 @@ export const SettingsPanel = memo(function SettingsPanel({
             color: colors.gold,
             borderColor: colors.borderMedium,
           },
+          transform: isOpen ? 'translate(-4px, 4px)' : 'translate(0, 0)',
           zIndex: 10,
           width: 28,
           height: 28,
@@ -349,6 +392,8 @@ export const SettingsPanel = memo(function SettingsPanel({
           sx={{
             p: 2,
             mb: 1,
+            pb: 2.75,
+            position: 'relative',
             backgroundImage: gradients.panelBackground,
             border: `1px solid ${colors.borderMedium}`,
             borderRadius: 2,
@@ -520,6 +565,31 @@ export const SettingsPanel = memo(function SettingsPanel({
               );
             })}
           </FlexRow>
+
+          {versionLabel && (
+            <Typography
+              variant="caption"
+              sx={{
+                position: 'absolute',
+                right: 10,
+                bottom: 8,
+                fontSize: '0.66rem',
+                color: colors.textDisabled,
+                letterSpacing: '0.04em',
+                lineHeight: 1,
+                pointerEvents: 'none',
+                opacity: showVersion ? 0.85 : 0,
+                transform: showVersion
+                  ? 'translateY(0)'
+                  : 'translateY(2px)',
+                transition: showVersion
+                  ? 'opacity 0.2s ease, transform 0.2s ease'
+                  : 'opacity 0.12s ease, transform 0.12s ease',
+              }}
+            >
+              {versionLabel}
+            </Typography>
+          )}
         </Paper>
       </Collapse>
     </Box>

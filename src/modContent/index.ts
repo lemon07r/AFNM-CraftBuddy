@@ -1969,6 +1969,7 @@ function renderOverlay(): void {
     isCalculating,
     settingsStale: areSearchSettingsStale(),
     onRecalculate: handleRecalculate,
+    version: MOD_METADATA.version,
   });
 
   // Wrap panel with ThemeProvider for styled components

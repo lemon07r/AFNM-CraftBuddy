@@ -180,52 +180,79 @@ interface RecommendationPanelProps {
   settingsStale?: boolean;
   /** Callback to trigger recalculation with new settings */
   onRecalculate?: () => void;
+  /** Mod version shown in panel footer */
+  version?: string;
 }
 
 const CommunityLinks = memo(function CommunityLinks() {
   return (
-    <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end' }}>
-      <Box
-        sx={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 0.5,
-          px: 0.75,
-          py: 0.4,
-          borderRadius: 999,
-          backgroundColor: 'rgba(22, 26, 35, 0.78)',
-          border: `1px solid ${colors.borderSubtle}`,
-          boxShadow: '0 4px 10px rgba(0, 0, 0, 0.18)',
-        }}
-      >
-        {COMMUNITY_LINKS.map((link) => (
-          <Tooltip key={link.id} title={link.label} enterDelay={200}>
-            <IconButton
-              component="a"
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              size="small"
-              aria-label={link.label}
-              sx={{
-                width: 26,
-                height: 26,
-                color: colors.textMuted,
-                border: '1px solid transparent',
-                transition: transitions.smooth,
-                '&:hover': {
-                  color: colors.gold,
-                  borderColor: colors.borderMedium,
-                  backgroundColor: 'rgba(222, 184, 135, 0.1)',
-                },
-              }}
-            >
-              {link.icon}
-            </IconButton>
-          </Tooltip>
-        ))}
-      </Box>
+    <Box
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 0.5,
+        px: 0.75,
+        py: 0.4,
+        borderRadius: 999,
+        backgroundColor: 'rgba(22, 26, 35, 0.78)',
+        border: `1px solid ${colors.borderSubtle}`,
+        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.18)',
+      }}
+    >
+      {COMMUNITY_LINKS.map((link) => (
+        <Tooltip key={link.id} title={link.label} enterDelay={200}>
+          <IconButton
+            component="a"
+            href={link.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="small"
+            aria-label={link.label}
+            sx={{
+              width: 26,
+              height: 26,
+              color: colors.textMuted,
+              border: '1px solid transparent',
+              transition: transitions.smooth,
+              '&:hover': {
+                color: colors.gold,
+                borderColor: colors.borderMedium,
+                backgroundColor: 'rgba(222, 184, 135, 0.1)',
+              },
+            }}
+          >
+            {link.icon}
+          </IconButton>
+        </Tooltip>
+      ))}
     </Box>
+  );
+});
+
+const PanelVersionBadge = memo(function PanelVersionBadge({
+  version,
+}: {
+  version?: string;
+}) {
+  if (!version) return null;
+  const versionLabel = version.startsWith('v') ? version : `v${version}`;
+
+  return (
+    <Typography
+      variant="caption"
+      sx={{
+        position: 'absolute',
+        right: 10,
+        bottom: 8,
+        fontSize: '0.66rem',
+        color: colors.textDisabled,
+        letterSpacing: '0.04em',
+        lineHeight: 1,
+        pointerEvents: 'none',
+      }}
+    >
+      {versionLabel}
+    </Typography>
   );
 });
 
@@ -852,6 +879,7 @@ export function RecommendationPanel({
   isCalculating = false,
   settingsStale = false,
   onRecalculate,
+  version,
 }: RecommendationPanelProps) {
   // Use settings or defaults
   const compactMode = settings?.compactMode ?? false;
@@ -872,6 +900,7 @@ export function RecommendationPanel({
       <PanelContainer compact={compactMode}>
         <LoadingHeader compact={compactMode} />
         <LoadingSkeletonCard />
+        <PanelVersionBadge version={version} />
       </PanelContainer>
     );
   }
@@ -898,6 +927,7 @@ export function RecommendationPanel({
         >
           You can finish crafting now!
         </Typography>
+        <PanelVersionBadge version={version} />
       </PanelContainer>
     );
   }
@@ -924,6 +954,7 @@ export function RecommendationPanel({
         >
           Consider finishing the craft or check your Qi/Stability.
         </Typography>
+        <PanelVersionBadge version={version} />
       </PanelContainer>
     );
   }
@@ -935,6 +966,8 @@ export function RecommendationPanel({
       <SettingsPanel
         onSettingsChange={onSettingsChange}
         onSearchSettingsChange={onSearchSettingsChange}
+        version={version}
+        leadingControls={!compactMode ? <CommunityLinks /> : undefined}
       />
 
       {/* Recalculate button when search settings changed */}
@@ -1015,7 +1048,7 @@ export function RecommendationPanel({
         />
       )}
 
-      {!compactMode && <CommunityLinks />}
+      <PanelVersionBadge version={version} />
     </PanelContainer>
   );
 }
