@@ -23,7 +23,6 @@ import {
   CraftBuddySettings,
   getSettings,
   saveSettings,
-  resetSettings,
   DEFAULT_SETTINGS,
 } from '../settings';
 import { colors, gradients, shadows } from './theme';
@@ -35,6 +34,52 @@ interface SettingsPanelProps {
   /** Called when a search-affecting setting changes (lookahead, time budget, nodes, beam width) */
   onSearchSettingsChange?: (settings: CraftBuddySettings) => void;
 }
+
+interface SearchPreset {
+  id: string;
+  label: string;
+  description: string;
+  values: Pick<
+    CraftBuddySettings,
+    'lookaheadDepth' | 'searchTimeBudgetMs' | 'searchMaxNodes' | 'searchBeamWidth'
+  >;
+}
+
+const SEARCH_PRESETS: SearchPreset[] = [
+  {
+    id: 'instant',
+    label: 'Instant',
+    description: 'Lower latency, good accuracy',
+    values: {
+      lookaheadDepth: 16,
+      searchTimeBudgetMs: 200,
+      searchMaxNodes: 85000,
+      searchBeamWidth: 6,
+    },
+  },
+  {
+    id: 'fast',
+    label: 'Fast',
+    description: 'Recommended default profile',
+    values: {
+      lookaheadDepth: 24,
+      searchTimeBudgetMs: 300,
+      searchMaxNodes: 100000,
+      searchBeamWidth: 7,
+    },
+  },
+  {
+    id: 'high_accuracy',
+    label: 'High Accuracy',
+    description: 'Higher compute, strongest planning',
+    values: {
+      lookaheadDepth: 28,
+      searchTimeBudgetMs: 500,
+      searchMaxNodes: 200000,
+      searchBeamWidth: 8,
+    },
+  },
+];
 
 /**
  * Section header for settings groups.
@@ -72,6 +117,7 @@ const SliderSetting = memo(function SliderSetting({
   marks,
   hint,
   tip,
+  valueFormatter,
   onChange,
   onCommit,
 }: {
@@ -84,15 +130,20 @@ const SliderSetting = memo(function SliderSetting({
   marks?: boolean;
   hint?: string;
   tip?: string;
+  valueFormatter?: (value: number) => string;
   onChange: (value: number) => void;
   onCommit: (value: number) => void;
 }) {
+  const formattedValue = valueFormatter
+    ? valueFormatter(draftValue)
+    : String(draftValue);
+
   return (
     <Box sx={{ mb: 2 }}>
       <Typography variant="body2" sx={{ color: colors.textSecondary, mb: 0.5 }}>
         {label}:{' '}
         <Box component="span" sx={{ color: colors.gold }}>
-          {draftValue}
+          {formattedValue}
         </Box>
       </Typography>
       <Slider
@@ -160,6 +211,15 @@ export const SettingsPanel = memo(function SettingsPanel({
   onSettingsChange,
   onSearchSettingsChange,
 }: SettingsPanelProps) {
+  const formatSeconds = useCallback(
+    (milliseconds: number): string => `${(milliseconds / 1000).toFixed(1)}s`,
+    [],
+  );
+  const formatNodesThousands = useCallback(
+    (nodes: number): string => `${Math.round(nodes / 1000)}k`,
+    [],
+  );
+
   const [isOpen, setIsOpen] = useState(false);
   const [settings, setSettings] = useState<CraftBuddySettings>(getSettings());
   const [draftSettings, setDraftSettings] =
@@ -216,12 +276,25 @@ export const SettingsPanel = memo(function SettingsPanel({
     [settings, handleSettingChange, onSearchSettingsChange],
   );
 
-  const handleReset = useCallback(() => {
-    const newSettings = resetSettings();
-    setSettings(newSettings);
-    setDraftSettings(newSettings);
-    onSettingsChange?.(newSettings);
-  }, [onSettingsChange]);
+  const handleApplyPreset = useCallback(
+    (preset: SearchPreset) => {
+      const newSettings = saveSettings(preset.values);
+      setSettings(newSettings);
+      setDraftSettings(newSettings);
+      onSettingsChange?.(newSettings);
+      onSearchSettingsChange?.(newSettings);
+    },
+    [onSettingsChange, onSearchSettingsChange],
+  );
+
+  const isPresetActive = useCallback(
+    (preset: SearchPreset): boolean =>
+      settings.lookaheadDepth === preset.values.lookaheadDepth &&
+      settings.searchTimeBudgetMs === preset.values.searchTimeBudgetMs &&
+      settings.searchMaxNodes === preset.values.searchMaxNodes &&
+      settings.searchBeamWidth === preset.values.searchBeamWidth,
+    [settings],
+  );
 
   const handleToggle = useCallback(() => {
     setIsOpen((prev) => !prev);
@@ -301,12 +374,13 @@ export const SettingsPanel = memo(function SettingsPanel({
             label="Search Time Budget"
             value={settings.searchTimeBudgetMs}
             draftValue={draftSettings.searchTimeBudgetMs}
-            min={10}
+            min={100}
             max={10000}
-            step={50}
-            hint={`Default: ${DEFAULT_SETTINGS.searchTimeBudgetMs}ms. Higher values improve quality but can stall UI updates.`}
+            step={100}
+            hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}. Higher values improve quality but can stall UI updates.`}
+            valueFormatter={formatSeconds}
             tip={
-              draftSettings.searchTimeBudgetMs > 1500
+              draftSettings.searchTimeBudgetMs > 3000
                 ? 'Warning: High time budgets can pause the crafting UI while searching.'
                 : undefined
             }
@@ -319,8 +393,10 @@ export const SettingsPanel = memo(function SettingsPanel({
             value={settings.searchMaxNodes}
             draftValue={draftSettings.searchMaxNodes}
             min={1000}
-            max={100000}
+            max={250000}
             step={1000}
+            hint={`Default: ${formatNodesThousands(DEFAULT_SETTINGS.searchMaxNodes)} nodes. Larger values improve accuracy but take longer.`}
+            valueFormatter={formatNodesThousands}
             onChange={(v) => handleSliderDraftChange('searchMaxNodes', v)}
             onCommit={(v) => handleSliderCommit('searchMaxNodes', v)}
           />
@@ -396,23 +472,43 @@ export const SettingsPanel = memo(function SettingsPanel({
 
           <GradientDivider />
 
-          {/* Reset Button */}
-          <Button
-            onClick={handleReset}
-            size="small"
-            variant="outlined"
-            sx={{
-              color: colors.error,
-              borderColor: `${colors.error}60`,
-              transition: transitions.smooth,
-              '&:hover': {
-                borderColor: colors.error,
-                backgroundColor: `${colors.error}15`,
-              },
-            }}
+          {/* Search Presets */}
+          <SettingsSectionHeader>Search Presets</SettingsSectionHeader>
+          <Typography
+            variant="caption"
+            sx={{ color: colors.textDisabled, display: 'block', mb: 1 }}
           >
-            Reset to Defaults
-          </Button>
+            Apply a tuned search profile.
+          </Typography>
+          <FlexRow gap={1} sx={{ flexWrap: 'wrap' }}>
+            {SEARCH_PRESETS.map((preset) => {
+              const active = isPresetActive(preset);
+              return (
+                <Button
+                  key={preset.id}
+                  size="small"
+                  variant={active ? 'contained' : 'outlined'}
+                  onClick={() => handleApplyPreset(preset)}
+                  title={preset.description}
+                  sx={{
+                    minWidth: 0,
+                    color: active ? '#141414' : colors.textSecondary,
+                    backgroundColor: active ? colors.gold : 'transparent',
+                    borderColor: active ? colors.gold : `${colors.borderMedium}`,
+                    transition: transitions.smooth,
+                    '&:hover': {
+                      borderColor: colors.gold,
+                      backgroundColor: active
+                        ? colors.goldDark
+                        : 'rgba(222, 184, 135, 0.12)',
+                    },
+                  }}
+                >
+                  {preset.label}
+                </Button>
+              );
+            })}
+          </FlexRow>
         </Paper>
       </Collapse>
     </Box>

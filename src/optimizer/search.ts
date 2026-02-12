@@ -92,11 +92,11 @@ export interface SearchResult {
  * Search configuration for performance tuning
  */
 export interface SearchConfig {
-  /** Maximum time budget in milliseconds (default: 200ms) */
+  /** Maximum time budget in milliseconds (default: 300ms) */
   timeBudgetMs: number;
   /** Maximum nodes to explore before stopping (default: 100000) */
   maxNodes: number;
-  /** Beam width - max branches to explore at each level (default: 6) */
+  /** Beam width - max branches to explore at each level (default: 7) */
   beamWidth: number;
   /** Whether to use alpha-beta pruning (default: true) */
   useAlphaBeta: boolean;
@@ -135,9 +135,9 @@ export const VISIBLE_CONDITION_QUEUE_LENGTH = 3;
 
 /** Default search configuration tuned via benchmark for accuracy + responsiveness */
 const DEFAULT_SEARCH_CONFIG: SearchConfig = {
-  timeBudgetMs: 175,
-  maxNodes: 85000,
-  beamWidth: 6,
+  timeBudgetMs: 300,
+  maxNodes: 100000,
+  beamWidth: 7,
   useAlphaBeta: true,
   progressBucketSize: 100,
   useIterativeDeepening: true,

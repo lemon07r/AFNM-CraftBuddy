@@ -6,7 +6,7 @@
  */
 
 export interface CraftBuddySettings {
-  /** Lookahead search depth (1-96, default: 16) */
+  /** Lookahead search depth (1-96, default: 24) */
   lookaheadDepth: number;
   /** Whether to show the panel in compact mode */
   compactMode: boolean;
@@ -24,20 +24,20 @@ export interface CraftBuddySettings {
   showOptimalRotation: boolean;
 
   // Performance settings for late-game optimization
-  /** Maximum time budget for search in milliseconds (10-10000, default: 175) */
+  /** Maximum time budget for search in milliseconds (100-10000, default: 300) */
   searchTimeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (1000-100000, default: 85000) */
+  /** Maximum nodes to explore before stopping (1000-250000, default: 100000) */
   searchMaxNodes: number;
-  /** Beam width - max branches to explore at each level (3-15, default: 6) */
+  /** Beam width - max branches to explore at each level (3-15, default: 7) */
   searchBeamWidth: number;
 }
 
 const STORAGE_KEY = 'craftbuddy_settings';
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
-  // Benchmark-optimized default: depth 16 provides headroom while time budget
-  // (175ms) is the practical limiter, typically reaching 5-6 effective depth.
-  lookaheadDepth: 16,
+  // Accuracy-first default profile tuned for late-game recommendations.
+  // Turn-based gameplay can tolerate modestly longer searches.
+  lookaheadDepth: 24,
   compactMode: false,
   panelVisible: true,
   maxAlternatives: 2,
@@ -45,14 +45,63 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
-  // Performance defaults tuned via benchmark for accuracy + responsiveness.
-  // Time budget of 175ms balances search depth with snappy UI response.
-  searchTimeBudgetMs: 175,
-  searchMaxNodes: 85000,
-  searchBeamWidth: 6,
+  // Defaults tuned toward oracle-like recommendations while keeping response
+  // time reasonable for a turn-based game.
+  searchTimeBudgetMs: 300,
+  searchMaxNodes: 100000,
+  searchBeamWidth: 7,
 };
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
+
+function clampInteger(
+  value: number,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(numeric)));
+}
+
+function normalizeSettings(
+  settings: CraftBuddySettings,
+): CraftBuddySettings {
+  return {
+    ...settings,
+    lookaheadDepth: clampInteger(
+      settings.lookaheadDepth,
+      1,
+      96,
+      DEFAULT_SETTINGS.lookaheadDepth,
+    ),
+    searchTimeBudgetMs: clampInteger(
+      settings.searchTimeBudgetMs,
+      100,
+      10000,
+      DEFAULT_SETTINGS.searchTimeBudgetMs,
+    ),
+    searchMaxNodes: clampInteger(
+      settings.searchMaxNodes,
+      1000,
+      250000,
+      DEFAULT_SETTINGS.searchMaxNodes,
+    ),
+    searchBeamWidth: clampInteger(
+      settings.searchBeamWidth,
+      3,
+      15,
+      DEFAULT_SETTINGS.searchBeamWidth,
+    ),
+    maxAlternatives: clampInteger(
+      settings.maxAlternatives,
+      0,
+      5,
+      DEFAULT_SETTINGS.maxAlternatives,
+    ),
+  };
+}
 
 /**
  * Load settings from localStorage
@@ -63,7 +112,7 @@ export function loadSettings(): CraftBuddySettings {
     if (stored) {
       const parsed = JSON.parse(stored);
       // Merge with defaults to handle new settings added in updates
-      currentSettings = { ...DEFAULT_SETTINGS, ...parsed };
+      currentSettings = normalizeSettings({ ...DEFAULT_SETTINGS, ...parsed });
     }
   } catch (e) {
     console.warn('[CraftBuddy] Failed to load settings:', e);
@@ -78,7 +127,7 @@ export function loadSettings(): CraftBuddySettings {
 export function saveSettings(
   settings: Partial<CraftBuddySettings>,
 ): CraftBuddySettings {
-  currentSettings = { ...currentSettings, ...settings };
+  currentSettings = normalizeSettings({ ...currentSettings, ...settings });
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(currentSettings));
     console.log('[CraftBuddy] Settings saved:', currentSettings);
@@ -136,19 +185,19 @@ export function setLookaheadDepth(depth: number): number {
 }
 
 /**
- * Set search time budget (clamped to 10-10000ms)
+ * Set search time budget (clamped to 100-10000ms)
  */
 export function setSearchTimeBudget(ms: number): number {
-  currentSettings.searchTimeBudgetMs = Math.max(10, Math.min(10000, ms));
+  currentSettings.searchTimeBudgetMs = Math.max(100, Math.min(10000, ms));
   saveSettings(currentSettings);
   return currentSettings.searchTimeBudgetMs;
 }
 
 /**
- * Set search max nodes (clamped to 1000-100000)
+ * Set search max nodes (clamped to 1000-250000)
  */
 export function setSearchMaxNodes(nodes: number): number {
-  currentSettings.searchMaxNodes = Math.max(1000, Math.min(100000, nodes));
+  currentSettings.searchMaxNodes = Math.max(1000, Math.min(250000, nodes));
   saveSettings(currentSettings);
   return currentSettings.searchMaxNodes;
 }
