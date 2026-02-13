@@ -692,6 +692,163 @@ describe('lookaheadSearch', () => {
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.name).toBe('Simple Refine');
   });
+
+  it('should block wasteful stabilize when a target-advancing skill is available', () => {
+    const forcefulStabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      type: 'stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      stabilityGain: 40,
+      preventsMaxStabilityDecay: true,
+    });
+    const costlyFusion = createCustomSkill({
+      name: 'Costly Fusion',
+      key: 'costly_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 20,
+      baseCompletionGain: 0.5,
+      scalesWithIntensity: true,
+    });
+    const harmoniousFusion = createCustomSkill({
+      name: 'Harmonious Fusion',
+      key: 'harmonious_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 4,
+      scalesWithIntensity: true,
+      conditionRequirement: 'positive',
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [forcefulStabilize, costlyFusion, harmoniousFusion],
+      conditionEffectsData: {
+        neutral: [],
+        positive: [{ kind: 'intensity' as const, multiplier: 1 }],
+        negative: [],
+        veryPositive: [],
+        veryNegative: [],
+      },
+    });
+
+    // Repro: at 40/58 stability, lookahead can overvalue forceful stabilize
+    // to "wait" for positive condition despite an available progress move.
+    const state = new CraftingState({
+      qi: 177,
+      stability: 40,
+      initialMaxStability: 60,
+      stabilityPenalty: 2, // 40/58
+      completion: 45,
+      perfection: 60,
+    });
+
+    for (const depth of [3, 4, 5]) {
+      const result = lookaheadSearch(
+        state,
+        config,
+        60,
+        60,
+        depth,
+        'neutral',
+        ['positive', 'neutral', 'neutral'],
+      );
+      expect(result.recommendation).not.toBeNull();
+      expect(result.recommendation!.skill.name).toBe('Costly Fusion');
+    }
+  });
+
+  it('should block pure qi-restore stalls when a progress skill can advance targets', () => {
+    const qiPill = createCustomSkill({
+      name: 'Use Qi Pill',
+      key: 'item_qi_pill',
+      actionKind: 'item',
+      itemName: 'qi_pill',
+      consumesTurn: false,
+      type: 'support',
+      restoresQi: true,
+      qiRestore: 60,
+      effects: [
+        {
+          kind: 'pool',
+          amount: { value: 60 },
+        } as any,
+      ],
+    });
+    const slowFusion = createCustomSkill({
+      name: 'Slow Fusion',
+      key: 'slow_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 20,
+      baseCompletionGain: 0.2,
+      scalesWithIntensity: true,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      maxQi: 200,
+      skills: [qiPill, slowFusion],
+      pillsPerRound: 1,
+    });
+    const state = new CraftingState({
+      qi: 20,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      items: new Map([['qi_pill', 1]]),
+    });
+
+    for (const depth of [2, 3, 4]) {
+      const result = lookaheadSearch(
+        state,
+        config,
+        100,
+        0,
+        depth,
+        'neutral',
+        [],
+      );
+      expect(result.recommendation).not.toBeNull();
+      expect(result.recommendation!.skill.name).toBe('Slow Fusion');
+    }
+
+    const greedyResult = greedySearch(state, config, 100, 0, 'neutral');
+    expect(greedyResult.recommendation).not.toBeNull();
+    expect(greedyResult.recommendation!.skill.name).toBe('Slow Fusion');
+  });
+
+  it('should keep stabilize available when no progress skill can advance unmet targets', () => {
+    const forcefulStabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      type: 'stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      stabilityGain: 40,
+      preventsMaxStabilityDecay: true,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [forcefulStabilize],
+    });
+    const state = new CraftingState({
+      qi: 154,
+      stability: 40,
+      initialMaxStability: 58,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 4, 'neutral', []);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Forceful Stabilize');
+  });
 });
 
 describe('findBestSkill', () => {

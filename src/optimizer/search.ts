@@ -21,6 +21,7 @@ import {
   applySkill,
   getAvailableSkills,
   calculateSkillGains,
+  getEffectiveQiCost,
   isTerminalState,
   getBlockedSkillReasons,
   getConditionEffectsForConfig,
@@ -830,6 +831,186 @@ function calculateRecommendationGains(
   };
 }
 
+function hasUnmetTarget(
+  state: CraftingState,
+  completionGoal: number,
+  perfectionGoal: number,
+): { needsCompletion: boolean; needsPerfection: boolean } {
+  return {
+    needsCompletion:
+      Number.isFinite(completionGoal) &&
+      completionGoal > 0 &&
+      state.completion < completionGoal,
+    needsPerfection:
+      Number.isFinite(perfectionGoal) &&
+      perfectionGoal > 0 &&
+      state.perfection < perfectionGoal,
+  };
+}
+
+function advancesUnmetTargets(
+  state: CraftingState,
+  gains: GainPreview,
+  completionGoal: number,
+  perfectionGoal: number,
+): boolean {
+  const { needsCompletion, needsPerfection } = hasUnmetTarget(
+    state,
+    completionGoal,
+    perfectionGoal,
+  );
+  return (
+    (needsCompletion && gains.completion > 0) ||
+    (needsPerfection && gains.perfection > 0)
+  );
+}
+
+function restoresQi(skill: SkillDefinition): boolean {
+  return (
+    skill.restoresQi === true ||
+    (skill.qiRestore ?? 0) > 0 ||
+    (skill.effects || []).some(
+      (effect) => effect?.kind === 'pool' && (effect.amount?.value ?? 0) > 0,
+    )
+  );
+}
+
+function hasMeaningfulNonQiEffects(skill: SkillDefinition): boolean {
+  if (skill.buffDuration > 0 || skill.buffType !== BuffType.NONE) {
+    return true;
+  }
+  return (skill.effects || []).some((effect) => {
+    const kind = effect?.kind;
+    return (
+      kind === 'completion' ||
+      kind === 'perfection' ||
+      kind === 'stability' ||
+      kind === 'maxStability' ||
+      kind === 'createBuff' ||
+      kind === 'cleanseToxicity'
+    );
+  });
+}
+
+function isWastefulStabilize(
+  state: CraftingState,
+  skill: SkillDefinition,
+  immediateGains: GainPreview,
+): boolean {
+  if (skill.type !== 'stabilize') {
+    return false;
+  }
+
+  // Keep emergency stabilization available when runway is genuinely low.
+  if (state.stability <= 25) {
+    return false;
+  }
+
+  const maxRecoverable = Math.max(0, state.maxStability - state.stability);
+  const nominalGain = Math.max(
+    1,
+    skill.stabilityGain || Math.max(0, immediateGains.stability),
+  );
+  const effectiveGain = Math.max(
+    0,
+    Math.min(Math.max(0, immediateGains.stability), maxRecoverable),
+  );
+  const wasteRatio = Math.max(0, 1 - effectiveGain / nominalGain);
+  const qiPerEffectiveStability =
+    effectiveGain > 0 ? getEffectiveQiCost(skill) / effectiveGain : Infinity;
+
+  return wasteRatio >= 0.35 || (wasteRatio >= 0.2 && qiPerEffectiveStability >= 2);
+}
+
+function isPureQiRecoveryStallAction(
+  skill: SkillDefinition,
+  immediateGains: GainPreview,
+): boolean {
+  if (!restoresQi(skill)) {
+    return false;
+  }
+
+  const hasDirectProgress =
+    immediateGains.completion > 0 || immediateGains.perfection > 0;
+  const hasStabilityImpact = immediateGains.stability > 0;
+  if (hasDirectProgress || hasStabilityImpact) {
+    return false;
+  }
+
+  return !hasMeaningfulNonQiEffects(skill);
+}
+
+function filterCounterproductiveStallActions(
+  state: CraftingState,
+  skills: SkillDefinition[],
+  config: OptimizerConfig,
+  conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
+  completionGoal: number,
+  perfectionGoal: number,
+): SkillDefinition[] {
+  if (skills.length <= 1) {
+    return skills;
+  }
+
+  const { needsCompletion, needsPerfection } = hasUnmetTarget(
+    state,
+    completionGoal,
+    perfectionGoal,
+  );
+  if (!needsCompletion && !needsPerfection) {
+    return skills;
+  }
+
+  const candidates = skills.map((skill) => ({
+    skill,
+    immediateGains: calculateSkillGains(state, skill, config, conditionEffects, {
+      includeExpectedValue: false,
+    }),
+  }));
+
+  const hasTargetAdvancingProgressOption = candidates.some((candidate) =>
+    advancesUnmetTargets(
+      state,
+      candidate.immediateGains,
+      completionGoal,
+      perfectionGoal,
+    ),
+  );
+
+  if (!hasTargetAdvancingProgressOption) {
+    return skills;
+  }
+
+  const filtered = candidates
+    .filter((candidate) => {
+      if (
+        advancesUnmetTargets(
+          state,
+          candidate.immediateGains,
+          completionGoal,
+          perfectionGoal,
+        )
+      ) {
+        return true;
+      }
+
+      if (isWastefulStabilize(state, candidate.skill, candidate.immediateGains)) {
+        return false;
+      }
+
+      if (
+        isPureQiRecoveryStallAction(candidate.skill, candidate.immediateGains)
+      ) {
+        return false;
+      }
+
+      return true;
+    })
+    .map((candidate) => candidate.skill);
+
+  return filtered.length > 0 ? filtered : skills;
+}
+
 function diversifyRecommendations(
   scored: SkillRecommendation[],
 ): SkillRecommendation[] {
@@ -1140,9 +1321,17 @@ export function greedySearch(
     config,
     normalizedCurrentCondition,
   );
+  const filteredSkills = filterCounterproductiveStallActions(
+    state,
+    availableSkills,
+    config,
+    conditionEffects,
+    modeCompGoal,
+    modePerfGoal,
+  );
   const scoredSkills: SkillRecommendation[] = [];
 
-  for (const skill of availableSkills) {
+  for (const skill of filteredSkills) {
     const newState = applySkill(
       state,
       skill,
@@ -1420,14 +1609,28 @@ export function lookaheadSearch(
       return cache.get(cacheKey)!;
     }
 
+    // Get condition effects for this depth.
+    const conditionEffectsAtDepth = getConditionEffectsForConfig(
+      config,
+      currentConditionAtDepth,
+    );
+
     const availableSkills = getAvailableSkills(
       currentState,
       config,
       currentConditionAtDepth,
     );
+    const filteredSkills = filterCounterproductiveStallActions(
+      currentState,
+      availableSkills,
+      config,
+      conditionEffectsAtDepth,
+      modeCompGoal,
+      modePerfGoal,
+    );
     // Apply move ordering to search promising skills first
     const orderedSkills = orderSkillsForSearch(
-      availableSkills,
+      filteredSkills,
       currentState,
       config,
       orderingCompGoal,
@@ -1449,12 +1652,6 @@ export function lookaheadSearch(
       isTraining,
       config.maxCompletion,
       config.maxPerfection,
-    );
-
-    // Get condition effects for this depth
-    const conditionEffectsAtDepth = getConditionEffectsForConfig(
-      config,
-      currentConditionAtDepth,
     );
 
     for (const skill of beamSkills) {
@@ -1619,10 +1816,22 @@ export function lookaheadSearch(
       }
 
       const globalDepth = startDepthIndex + currentDepth;
+      const conditionEffectsAtDepth = getConditionEffectsForConfig(
+        config,
+        conditionAtDepth,
+      );
       const skills = getAvailableSkills(currentState, config, conditionAtDepth);
+      const filteredSkills = filterCounterproductiveStallActions(
+        currentState,
+        skills,
+        config,
+        conditionEffectsAtDepth,
+        modeCompGoal,
+        modePerfGoal,
+      );
       // Apply move ordering for faster path finding
       const orderedSkills = orderSkillsForSearch(
-        skills,
+        filteredSkills,
         currentState,
         config,
         orderingCompGoal,
@@ -1633,12 +1842,6 @@ export function lookaheadSearch(
       let bestNextState: CraftingState | null = null;
       let bestNextCondition: CraftingConditionType | null = null;
       let bestNextConditionQueue: CraftingConditionType[] | null = null;
-
-      // Get condition effects for this depth
-      const conditionEffectsAtDepth = getConditionEffectsForConfig(
-        config,
-        conditionAtDepth,
-      );
 
       for (const skill of orderedSkills) {
         const nextState = applySkill(
@@ -1698,13 +1901,25 @@ export function lookaheadSearch(
    */
   function evaluateFirstMoves(depthToSearch: number): SkillRecommendation[] {
     activeDepth = depthToSearch;
+    const currentConditionEffects = getConditionEffectsForConfig(
+      config,
+      normalizedCurrentCondition,
+    );
     const availableSkills = getAvailableSkills(
       state,
       config,
       normalizedCurrentCondition,
     );
-    const orderedSkills = orderSkillsForSearch(
+    const filteredSkills = filterCounterproductiveStallActions(
+      state,
       availableSkills,
+      config,
+      currentConditionEffects,
+      modeCompGoal,
+      modePerfGoal,
+    );
+    const orderedSkills = orderSkillsForSearch(
+      filteredSkills,
       state,
       config,
       orderingCompGoal,
@@ -1733,8 +1948,21 @@ export function lookaheadSearch(
       );
       if (followUpSkills.length === 0) return undefined;
 
-      const orderedFollowUpSkills = orderSkillsForSearch(
+      const followUpConditionEffects = getConditionEffectsForConfig(
+        config,
+        conditionAtDepth,
+      );
+      const filteredFollowUpSkills = filterCounterproductiveStallActions(
+        stateAfterSkill,
         followUpSkills,
+        config,
+        followUpConditionEffects,
+        modeCompGoal,
+        modePerfGoal,
+      );
+
+      const orderedFollowUpSkills = orderSkillsForSearch(
+        filteredFollowUpSkills,
         stateAfterSkill,
         config,
         orderingCompGoal,
@@ -1753,11 +1981,6 @@ export function lookaheadSearch(
         perfection: 0,
         stability: 0,
       };
-
-      const followUpConditionEffects = getConditionEffectsForConfig(
-        config,
-        conditionAtDepth,
-      );
 
       for (const followUp of orderedFollowUpSkills) {
         const nextState = applySkill(
@@ -1813,11 +2036,6 @@ export function lookaheadSearch(
         immediateGains: bestFollowUpImmediateGains,
       };
     }
-
-    const currentConditionEffects = getConditionEffectsForConfig(
-      config,
-      normalizedCurrentCondition,
-    );
 
     // First pass: evaluate ALL first-level skills with basic scoring
     // This ensures we always have alternatives even if deep search times out
