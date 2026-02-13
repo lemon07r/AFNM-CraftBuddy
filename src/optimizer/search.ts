@@ -19,9 +19,9 @@ import {
   SkillDefinition,
   OptimizerConfig,
   applySkill,
+  calculateEffectiveActionCosts,
   getAvailableSkills,
   calculateSkillGains,
-  getEffectiveQiCost,
   isTerminalState,
   getBlockedSkillReasons,
   getConditionEffectsForConfig,
@@ -848,21 +848,102 @@ function hasUnmetTarget(
   };
 }
 
-function advancesUnmetTargets(
+interface ActionCandidateContext {
+  skill: SkillDefinition;
+  immediateGains: GainPreview;
+  effectiveCosts: ReturnType<typeof calculateEffectiveActionCosts>;
+  consumesTurn: boolean;
+  turnStabilitySpend: number;
+  advancesTargetsNow: boolean;
+  isImmediateFinisher: boolean;
+}
+
+interface StallActionContext {
+  candidates: ActionCandidateContext[];
+  hasTargetAdvancingProgressOption: boolean;
+  hasImmediateFinisher: boolean;
+  criticalStability: number;
+}
+
+function computeDynamicCriticalStability(
+  candidates: ActionCandidateContext[],
+  minStability: number,
+): number {
+  const minimumFallback = Math.max(
+    1,
+    Math.floor(Math.max(0, minStability || 0)) + 1,
+  );
+  const advancingTurnSpends = candidates
+    .filter((candidate) => candidate.advancesTargetsNow && candidate.consumesTurn)
+    .map((candidate) => candidate.turnStabilitySpend)
+    .filter((spend) => Number.isFinite(spend) && spend > 0);
+
+  if (advancingTurnSpends.length === 0) {
+    return minimumFallback;
+  }
+
+  const minSpend = Math.min(...advancingTurnSpends);
+  return Math.max(minimumFallback, Math.ceil(minSpend));
+}
+
+function buildStallActionContext(
   state: CraftingState,
-  gains: GainPreview,
+  skills: SkillDefinition[],
+  config: OptimizerConfig,
+  conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
   completionGoal: number,
   perfectionGoal: number,
-): boolean {
-  const { needsCompletion, needsPerfection } = hasUnmetTarget(
-    state,
-    completionGoal,
-    perfectionGoal,
+): StallActionContext {
+  const needs = hasUnmetTarget(state, completionGoal, perfectionGoal);
+
+  const candidates: ActionCandidateContext[] = skills.map((skill) => {
+    const immediateGains = calculateSkillGains(state, skill, config, conditionEffects, {
+      includeExpectedValue: false,
+    });
+    const effectiveCosts = calculateEffectiveActionCosts(
+      state,
+      skill,
+      config.minStability,
+      conditionEffects,
+    );
+    const consumesTurn = actionConsumesTurn(skill);
+    const turnStabilitySpend = Math.max(0, effectiveCosts.stabilityCost);
+    const advancesTargetsNow =
+      (needs.needsCompletion && immediateGains.completion > 0) ||
+      (needs.needsPerfection && immediateGains.perfection > 0);
+    const completionAfter = state.completion + immediateGains.completion;
+    const perfectionAfter = state.perfection + immediateGains.perfection;
+    const isImmediateFinisher =
+      (!needs.needsCompletion || completionAfter >= completionGoal) &&
+      (!needs.needsPerfection || perfectionAfter >= perfectionGoal);
+
+    return {
+      skill,
+      immediateGains,
+      effectiveCosts,
+      consumesTurn,
+      turnStabilitySpend,
+      advancesTargetsNow,
+      isImmediateFinisher,
+    };
+  });
+
+  const hasTargetAdvancingProgressOption = candidates.some(
+    (candidate) => candidate.advancesTargetsNow,
   );
-  return (
-    (needsCompletion && gains.completion > 0) ||
-    (needsPerfection && gains.perfection > 0)
+  const hasImmediateFinisher = candidates.some(
+    (candidate) => candidate.advancesTargetsNow && candidate.isImmediateFinisher,
   );
+
+  return {
+    candidates,
+    hasTargetAdvancingProgressOption,
+    hasImmediateFinisher,
+    criticalStability: computeDynamicCriticalStability(
+      candidates,
+      config.minStability,
+    ),
+  };
 }
 
 function restoresQi(skill: SkillDefinition): boolean {
@@ -894,15 +975,17 @@ function hasMeaningfulNonQiEffects(skill: SkillDefinition): boolean {
 
 function isWastefulStabilize(
   state: CraftingState,
-  skill: SkillDefinition,
-  immediateGains: GainPreview,
+  candidate: ActionCandidateContext,
+  criticalStability: number,
+  hasImmediateFinisher: boolean,
 ): boolean {
+  const { skill, immediateGains, effectiveCosts } = candidate;
   if (skill.type !== 'stabilize') {
     return false;
   }
 
-  // Keep emergency stabilization available when runway is genuinely low.
-  if (state.stability <= 25) {
+  // Dynamic emergency floor derived from currently available progress actions.
+  if (state.stability <= criticalStability) {
     return false;
   }
 
@@ -917,15 +1000,24 @@ function isWastefulStabilize(
   );
   const wasteRatio = Math.max(0, 1 - effectiveGain / nominalGain);
   const qiPerEffectiveStability =
-    effectiveGain > 0 ? getEffectiveQiCost(skill) / effectiveGain : Infinity;
+    effectiveGain > 0 ? effectiveCosts.qiCost / effectiveGain : Infinity;
 
-  return wasteRatio >= 0.35 || (wasteRatio >= 0.2 && qiPerEffectiveStability >= 2);
+  if (hasImmediateFinisher && qiPerEffectiveStability >= 1.8) {
+    return true;
+  }
+
+  // Consider both clamp waste and absolute qi efficiency.
+  return (
+    wasteRatio >= 0.35 ||
+    (wasteRatio >= 0.2 && qiPerEffectiveStability >= 2) ||
+    qiPerEffectiveStability >= 2.2
+  );
 }
 
 function isPureQiRecoveryStallAction(
-  skill: SkillDefinition,
-  immediateGains: GainPreview,
+  candidate: ActionCandidateContext,
 ): boolean {
+  const { skill, immediateGains } = candidate;
   if (!restoresQi(skill)) {
     return false;
   }
@@ -961,46 +1053,36 @@ function filterCounterproductiveStallActions(
     return skills;
   }
 
-  const candidates = skills.map((skill) => ({
-    skill,
-    immediateGains: calculateSkillGains(state, skill, config, conditionEffects, {
-      includeExpectedValue: false,
-    }),
-  }));
-
-  const hasTargetAdvancingProgressOption = candidates.some((candidate) =>
-    advancesUnmetTargets(
-      state,
-      candidate.immediateGains,
-      completionGoal,
-      perfectionGoal,
-    ),
+  const context = buildStallActionContext(
+    state,
+    skills,
+    config,
+    conditionEffects,
+    completionGoal,
+    perfectionGoal,
   );
-
-  if (!hasTargetAdvancingProgressOption) {
+  if (!context.hasTargetAdvancingProgressOption) {
     return skills;
   }
 
-  const filtered = candidates
+  const filtered = context.candidates
     .filter((candidate) => {
-      if (
-        advancesUnmetTargets(
-          state,
-          candidate.immediateGains,
-          completionGoal,
-          perfectionGoal,
-        )
-      ) {
+      if (candidate.advancesTargetsNow) {
         return true;
       }
 
-      if (isWastefulStabilize(state, candidate.skill, candidate.immediateGains)) {
+      if (
+        isWastefulStabilize(
+          state,
+          candidate,
+          context.criticalStability,
+          context.hasImmediateFinisher,
+        )
+      ) {
         return false;
       }
 
-      if (
-        isPureQiRecoveryStallAction(candidate.skill, candidate.immediateGains)
-      ) {
+      if (isPureQiRecoveryStallAction(candidate)) {
         return false;
       }
 

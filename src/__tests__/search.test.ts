@@ -849,6 +849,110 @@ describe('lookaheadSearch', () => {
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.name).toBe('Forceful Stabilize');
   });
+
+  it('should allow stabilize when dynamic critical stability indicates immediate runway risk', () => {
+    const forcefulStabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      type: 'stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      stabilityGain: 40,
+      preventsMaxStabilityDecay: true,
+    });
+    const costlyFusion = createCustomSkill({
+      name: 'Costly Fusion',
+      key: 'costly_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 20,
+      baseCompletionGain: 0.5,
+      scalesWithIntensity: true,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [forcefulStabilize, costlyFusion],
+    });
+    const state = new CraftingState({
+      qi: 177,
+      stability: 18,
+      initialMaxStability: 60,
+      stabilityPenalty: 2,
+      completion: 45,
+      perfection: 60,
+    });
+
+    for (const depth of [2, 3, 4, 5]) {
+      const result = lookaheadSearch(state, config, 60, 60, depth);
+      expect(result.recommendation).not.toBeNull();
+      expect(result.recommendation!.skill.name).toBe('Forceful Stabilize');
+    }
+  });
+
+  it('should avoid forceful stabilize at 20/56 when a direct finisher is available', () => {
+    const forcefulStabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      type: 'stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      stabilityGain: 40,
+      preventsMaxStabilityDecay: true,
+    });
+    const simpleRefine = createCustomSkill({
+      name: 'Simple Refine',
+      key: 'simple_refine',
+      type: 'refine',
+      qiCost: 18,
+      stabilityCost: 10,
+      basePerfectionGain: 1,
+      scalesWithControl: true,
+    });
+    const disciplinedTouch = createCustomSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      type: 'refine',
+      qiCost: 10,
+      stabilityCost: 0,
+      basePerfectionGain: 1,
+      scalesWithControl: true,
+      isDisciplinedTouch: true,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      baseControl: 16,
+      skills: [forcefulStabilize, simpleRefine, disciplinedTouch],
+    });
+    const state = new CraftingState({
+      qi: 157,
+      stability: 20,
+      initialMaxStability: 60,
+      stabilityPenalty: 4, // 20/56
+      completion: 80,
+      perfection: 79,
+    });
+
+    for (const depth of [3, 4, 5]) {
+      const result = lookaheadSearch(
+        state,
+        config,
+        80,
+        80,
+        depth,
+        'neutral',
+        ['neutral', 'positive', 'neutral'],
+      );
+      expect(result.recommendation).not.toBeNull();
+      expect(result.recommendation!.skill.name).not.toBe('Forceful Stabilize');
+      expect(
+        ['Simple Refine', 'Disciplined Touch'].includes(
+          result.recommendation!.skill.name,
+        ),
+      ).toBe(true);
+    }
+  });
 });
 
 describe('findBestSkill', () => {
