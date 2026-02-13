@@ -705,9 +705,10 @@ function scoreState(
         remainingWorkPct;
     }
 
-    // Small bonus for resource efficiency even when targets not met
-    // This helps break ties between similar states
-    score += state.qi * 0.01;
+    // Bonus for resource efficiency even when targets not met
+    // Qi is valuable for future progress skills - weight it enough to penalize
+    // expensive skills that provide little effective benefit (e.g., stabilize at high stability)
+    score += state.qi * 0.05;
     score += state.stability * (0.01 + remainingWorkPct * 0.01);
   }
 
@@ -772,6 +773,7 @@ function scoreState(
 
   // Additional runway penalty: avoid lines that are unlikely to have enough
   // stability-bearing turns left to finish remaining deficits.
+  // Capped to prevent it from dominating over progress gains and qi efficiency.
   const estimatedTurnsRemaining =
     remainingWorkPct > 0
       ? Math.ceil(remainingWorkPct * (isSublimeCraft ? 14 : 10))
@@ -779,7 +781,8 @@ function scoreState(
   const estimatedRunwayTurns = Math.floor(Math.max(0, state.stability) / 10);
   if (estimatedTurnsRemaining > estimatedRunwayTurns) {
     const gap = estimatedTurnsRemaining - estimatedRunwayTurns;
-    score -= gap * (trainingMode ? 1.5 : 3);
+    const maxRunwayPenalty = trainingMode ? 6 : 12;
+    score -= Math.min(gap * (trainingMode ? 1.5 : 3), maxRunwayPenalty);
   }
 
   // Small penalty for high toxicity in alchemy crafting
@@ -963,9 +966,23 @@ function orderSkillsForSearch(
       priority += 500;
     }
 
-    // Deprioritize stabilize skills when stability is already at max
-    if (skill.type === 'stabilize' && state.stability >= state.maxStability) {
-      priority -= 500;
+    // Deprioritize stabilize skills when stability is already at or near max
+    if (skill.type === 'stabilize') {
+      if (state.stability >= state.maxStability) {
+        priority -= 500;
+      } else {
+        // Penalize stabilize when most of the gain would be wasted (clamped by maxStability)
+        const effectiveGain = Math.min(
+          skill.stabilityGain || 0,
+          state.maxStability - state.stability,
+        );
+        const nominalGain = skill.stabilityGain || 1;
+        const wasteRatio = 1 - effectiveGain / nominalGain; // 0 = no waste, 1 = all wasted
+        if (wasteRatio > 0.3) {
+          // More than 30% of stability gain would be wasted
+          priority -= Math.round(wasteRatio * 400);
+        }
+      }
     }
 
     // Deprioritize qi-restore skills when qi is already near max

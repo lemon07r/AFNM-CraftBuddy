@@ -486,6 +486,173 @@ describe('lookaheadSearch', () => {
     expect(result.searchMetrics!.depthReached).toBeLessThanOrEqual(6);
   });
 
+  it('should avoid recommending stabilize at high stability when most gain would be wasted', () => {
+    const refine = createCustomSkill({
+      name: 'Simple Refine',
+      key: 'simple_refine',
+      type: 'refine',
+      qiCost: 18,
+      stabilityCost: 10,
+      basePerfectionGain: 1,
+      scalesWithControl: true,
+    });
+    const forcefulStabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      type: 'stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      stabilityGain: 40,
+      preventsMaxStabilityDecay: true,
+    });
+
+    const focusedConfig = createTestConfig({
+      minStability: 0,
+      baseControl: 16,
+      skills: [refine, forcefulStabilize],
+    });
+
+    // At 40/58 stability, stabilize would restore only 18 effective stability
+    // for 88 qi - extremely wasteful compared to using refine
+    const state = new CraftingState({
+      qi: 154,
+      stability: 40,
+      initialMaxStability: 58,
+      completion: 211,
+      perfection: 44,
+      completionBonus: 2,
+    });
+
+    // Both greedy and lookahead should avoid wasteful stabilize
+    const greedyResult = greedySearch(state, focusedConfig, 50, 100);
+    expect(greedyResult.recommendation).not.toBeNull();
+    expect(greedyResult.recommendation!.skill.name).toBe('Simple Refine');
+
+    for (const depth of [3, 4, 5]) {
+      const result = lookaheadSearch(state, focusedConfig, 50, 100, depth);
+      expect(result.recommendation).not.toBeNull();
+      expect(result.recommendation!.skill.name).toBe('Simple Refine');
+    }
+  });
+
+  it('should avoid recommending stabilize at high stability with full skill set', () => {
+    // Use default skills which include Stabilize (10 qi, 20 stability)
+    const config = createTestConfig({
+      minStability: 0,
+    });
+
+    // At 40/58 stability, stabilize wastes most of its gain (only 18 effective)
+    const state = new CraftingState({
+      qi: 154,
+      stability: 40,
+      initialMaxStability: 58,
+      completion: 20,
+      perfection: 10,
+    });
+
+    for (const depth of [3, 4, 5]) {
+      const result = lookaheadSearch(state, config, 50, 100, depth);
+      expect(result.recommendation).not.toBeNull();
+      expect(result.recommendation!.skill.type).not.toBe('stabilize');
+    }
+
+    const greedyResult = greedySearch(state, config, 50, 100);
+    expect(greedyResult.recommendation).not.toBeNull();
+    expect(greedyResult.recommendation!.skill.type).not.toBe('stabilize');
+  });
+
+  it('should not recommend expensive stabilize when stability is near max', () => {
+    // Forceful Stabilize: 88 qi for 40 stability gain, but at 40/58 only 18 is effective
+    // This is the user's exact scenario - 88 qi for 18 effective stability is terrible value
+    const forcefulStabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      type: 'stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      stabilityGain: 40,
+      preventsMaxStabilityDecay: true,
+    });
+    const simpleRefine = createCustomSkill({
+      name: 'Simple Refine',
+      key: 'simple_refine',
+      type: 'refine',
+      qiCost: 18,
+      stabilityCost: 10,
+      basePerfectionGain: 1,
+      scalesWithControl: true,
+    });
+    const simpleFusion = createCustomSkill({
+      name: 'Simple Fusion',
+      key: 'simple_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 1,
+      scalesWithIntensity: true,
+    });
+    const cyclingRefine = createCustomSkill({
+      name: 'Cycling Refine',
+      key: 'cycling_refine',
+      type: 'refine',
+      qiCost: 10,
+      stabilityCost: 10,
+      basePerfectionGain: 0.75,
+      scalesWithControl: true,
+      buffType: BuffType.INTENSITY,
+      buffDuration: 2,
+      buffMultiplier: 1.4,
+    });
+    const cyclingFusion = createCustomSkill({
+      name: 'Cycling Fusion',
+      key: 'cycling_fusion',
+      type: 'fusion',
+      qiCost: 10,
+      stabilityCost: 10,
+      baseCompletionGain: 0.75,
+      scalesWithIntensity: true,
+      buffType: BuffType.CONTROL,
+      buffDuration: 2,
+      buffMultiplier: 1.4,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [
+        simpleFusion,
+        simpleRefine,
+        forcefulStabilize,
+        cyclingRefine,
+        cyclingFusion,
+      ],
+    });
+
+    // User's exact scenario: 40/58 stability, 154 qi
+    const state = new CraftingState({
+      qi: 154,
+      stability: 40,
+      initialMaxStability: 58,
+      completion: 211,
+      perfection: 44,
+      completionBonus: 2,
+    });
+
+    for (const depth of [3, 4, 5, 6]) {
+      const result = lookaheadSearch(state, config, 50, 100, depth);
+      expect(result.recommendation).not.toBeNull();
+      // Should NOT recommend Forceful Stabilize at 40/58 stability
+      expect(result.recommendation!.skill.name).not.toBe(
+        'Forceful Stabilize',
+      );
+    }
+
+    const greedyResult = greedySearch(state, config, 50, 100);
+    expect(greedyResult.recommendation).not.toBeNull();
+    expect(greedyResult.recommendation!.skill.name).not.toBe(
+      'Forceful Stabilize',
+    );
+  });
+
   it('should avoid recommending stabilize at full stability when direct perfection is stronger', () => {
     const refine = createCustomSkill({
       name: 'Simple Refine',
