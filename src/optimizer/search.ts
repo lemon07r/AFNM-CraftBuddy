@@ -149,6 +149,9 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   conditionBranchMinProbability: 0.15,
 };
 
+const TERMINAL_UNMET_SCORE_FLOOR = -1_000_000;
+const TERMINAL_UNMET_SCORE_TIEBREAK_WINDOW = 100_000;
+
 /**
  * Calculate adaptive beam width based on remaining depth.
  * For deep searches (high realm), we narrow the beam to stay performant.
@@ -533,6 +536,57 @@ function goalsMet(
     (!hasCompletionGoal || state.completion >= completionGoal) &&
     (!hasPerfectionGoal || state.perfection >= perfectionGoal)
   );
+}
+
+function hasAnyActiveGoal(completionGoal: number, perfectionGoal: number): boolean {
+  return (
+    (Number.isFinite(completionGoal) && completionGoal > 0) ||
+    (Number.isFinite(perfectionGoal) && perfectionGoal > 0)
+  );
+}
+
+interface TerminalStateClassification {
+  isTerminal: boolean;
+  isTerminalUnmet: boolean;
+}
+
+function classifyTerminalState(
+  state: CraftingState,
+  config: OptimizerConfig,
+  condition: CraftingConditionType,
+  completionGoal: number,
+  perfectionGoal: number,
+): TerminalStateClassification {
+  const isTerminal = isTerminalState(state, config, condition);
+  const isTerminalUnmet =
+    isTerminal &&
+    hasAnyActiveGoal(completionGoal, perfectionGoal) &&
+    !goalsMet(state, completionGoal, perfectionGoal);
+  return { isTerminal, isTerminalUnmet };
+}
+
+function filterUnfinishedTerminalCandidates<
+  T extends TerminalStateClassification,
+>(candidates: T[]): T[] {
+  if (candidates.length <= 1) {
+    return candidates;
+  }
+
+  const hasSurvivableCandidate = candidates.some((candidate) => !candidate.isTerminal);
+  if (!hasSurvivableCandidate) {
+    return candidates;
+  }
+
+  const filtered = candidates.filter((candidate) => !candidate.isTerminalUnmet);
+  return filtered.length > 0 ? filtered : candidates;
+}
+
+function applyTerminalUnmetPenalty(baseScore: number): number {
+  const tieBreak = Math.max(
+    -TERMINAL_UNMET_SCORE_TIEBREAK_WINDOW,
+    Math.min(TERMINAL_UNMET_SCORE_TIEBREAK_WINDOW, baseScore),
+  );
+  return TERMINAL_UNMET_SCORE_FLOOR + tieBreak;
 }
 
 /**
@@ -1411,7 +1465,10 @@ export function greedySearch(
     modeCompGoal,
     modePerfGoal,
   );
-  const scoredSkills: SkillRecommendation[] = [];
+  const evaluatedMoves: Array<
+    SkillRecommendation &
+      TerminalStateClassification
+  > = [];
 
   for (const skill of filteredSkills) {
     const newState = applySkill(
@@ -1440,6 +1497,13 @@ export function greedySearch(
       config.maxCompletion,
       config.maxPerfection,
     );
+    const terminalState = classifyTerminalState(
+      newState,
+      config,
+      normalizedCurrentCondition,
+      modeCompGoal,
+      modePerfGoal,
+    );
     const reasoning = generateReasoning(
       skill,
       state,
@@ -1448,14 +1512,19 @@ export function greedySearch(
       targetPerfection,
     );
 
-    scoredSkills.push({
+    evaluatedMoves.push({
       skill,
       expectedGains,
       immediateGains,
       score,
       reasoning,
+      ...terminalState,
     });
   }
+
+  const scoredSkills: SkillRecommendation[] = filterUnfinishedTerminalCandidates(
+    evaluatedMoves,
+  ).map(({ isTerminal, isTerminalUnmet, ...rec }) => rec);
 
   // Sort by score descending
   scoredSkills.sort((a, b) => b.score - a.score);
@@ -1559,6 +1628,29 @@ export function lookaheadSearch(
     effectivePerfGoal > 0 ? effectivePerfGoal : targetPerfection;
   const targetsMetForCurrentMode = (candidate: CraftingState): boolean =>
     goalsMet(candidate, modeCompGoal, modePerfGoal);
+  const scoreStateWithTerminalPenalty = (
+    candidate: CraftingState,
+    conditionAtDepth: CraftingConditionType,
+  ): number => {
+    const baseScore = scoreState(
+      candidate,
+      targetCompletion,
+      targetPerfection,
+      isSublime,
+      targetMult,
+      isTraining,
+      config.maxCompletion,
+      config.maxPerfection,
+    );
+    const { isTerminalUnmet } = classifyTerminalState(
+      candidate,
+      config,
+      conditionAtDepth,
+      modeCompGoal,
+      modePerfGoal,
+    );
+    return isTerminalUnmet ? applyTerminalUnmetPenalty(baseScore) : baseScore;
+  };
 
   // Check if targets already met
   if (targetsMetForCurrentMode(state)) {
@@ -1633,33 +1725,21 @@ export function lookaheadSearch(
 
     // Check budget constraints
     if (checkBudget()) {
-      return scoreState(
+      return scoreStateWithTerminalPenalty(
         currentState,
-        targetCompletion,
-        targetPerfection,
-        isSublime,
-        targetMult,
-        isTraining,
-        config.maxCompletion,
-        config.maxPerfection,
+        currentConditionAtDepth,
       );
     }
 
+    const stateIsTerminal = isTerminalState(
+      currentState,
+      config,
+      currentConditionAtDepth,
+    );
+
     // Base case: depth exhausted or terminal
-    if (
-      remainingDepth === 0 ||
-      isTerminalState(currentState, config, currentConditionAtDepth)
-    ) {
-      return scoreState(
-        currentState,
-        targetCompletion,
-        targetPerfection,
-        isSublime,
-        targetMult,
-        isTraining,
-        config.maxCompletion,
-        config.maxPerfection,
-      );
+    if (remainingDepth === 0 || stateIsTerminal) {
+      return scoreStateWithTerminalPenalty(currentState, currentConditionAtDepth);
     }
 
     // Check if active goals are met - early termination with score.
@@ -2007,7 +2087,10 @@ export function lookaheadSearch(
       orderingCompGoal,
       orderingPerfGoal,
     );
-    const scored: SkillRecommendation[] = [];
+    const evaluatedFirstMoves: Array<
+      SkillRecommendation &
+        TerminalStateClassification
+    > = [];
 
     function findFollowUpSkill(
       stateAfterSkill: CraftingState,
@@ -2090,16 +2173,7 @@ export function lookaheadSearch(
               nextConditionQueueAtDepth,
               followUp,
             )
-          : scoreState(
-              nextState,
-              targetCompletion,
-              targetPerfection,
-              config.isSublimeCraft || false,
-              config.targetMultiplier || 2.0,
-              isTraining,
-              config.maxCompletion,
-              config.maxPerfection,
-            );
+          : scoreStateWithTerminalPenalty(nextState, conditionAtDepth);
 
         if (followUpScore > bestFollowUpScore) {
           bestFollowUpScore = followUpScore;
@@ -2145,20 +2219,27 @@ export function lookaheadSearch(
         targetCompletion,
         targetPerfection,
       );
-
-      // Use immediate score as baseline (no deep search yet)
-      const immediateScore = scoreState(
+      const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
         newState,
-        targetCompletion,
-        targetPerfection,
-        config.isSublimeCraft || false,
-        config.targetMultiplier || 2.0,
-        isTraining,
-        config.maxCompletion,
-        config.maxPerfection,
+        normalizedCurrentCondition,
+        initialConditionQueue,
+        skill,
+      );
+      const terminalState = classifyTerminalState(
+        newState,
+        config,
+        firstMoveConditionState.nextCondition,
+        modeCompGoal,
+        modePerfGoal,
       );
 
-      scored.push({
+      // Use immediate score as baseline (no deep search yet)
+      const immediateScore = scoreStateWithTerminalPenalty(
+        newState,
+        firstMoveConditionState.nextCondition,
+      );
+
+      evaluatedFirstMoves.push({
         skill,
         expectedGains,
         immediateGains,
@@ -2166,8 +2247,13 @@ export function lookaheadSearch(
         reasoning,
         consumesBuff: skill.isDisciplinedTouch === true,
         followUpSkill: undefined, // Will be filled in second pass if budget allows
+        ...terminalState,
       });
     }
+
+    const scored: SkillRecommendation[] = filterUnfinishedTerminalCandidates(
+      evaluatedFirstMoves,
+    ).map(({ isTerminal, isTerminalUnmet, ...rec }) => rec);
 
     // Second pass: enhance scores with deep lookahead if budget allows
     // Process skills in order of their immediate score (best first)

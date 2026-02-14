@@ -1258,6 +1258,128 @@ describe('tutorial regression scenarios', () => {
   });
 });
 
+describe('survivability-first recommendation gate', () => {
+  const energizedFusion = createCustomSkill({
+    name: 'Energised Fusion',
+    key: 'energised_fusion',
+    type: 'fusion',
+    qiCost: 0,
+    stabilityCost: 10,
+    baseCompletionGain: 1,
+    scalesWithIntensity: true,
+  });
+  const simpleRefine = createCustomSkill({
+    name: 'Simple Refine',
+    key: 'simple_refine',
+    type: 'refine',
+    qiCost: 18,
+    stabilityCost: 10,
+    basePerfectionGain: 1,
+    scalesWithControl: true,
+  });
+  const forcefulStabilize = createCustomSkill({
+    name: 'Forceful Stabilize',
+    key: 'forceful_stabilize',
+    type: 'stabilize',
+    qiCost: 88,
+    stabilityCost: 0,
+    stabilityGain: 40,
+    preventsMaxStabilityDecay: true,
+  });
+
+  const baseState = () =>
+    new CraftingState({
+      qi: 131,
+      stability: 10,
+      initialMaxStability: 60,
+      stabilityPenalty: 5, // 10/55
+      completion: 79,
+      perfection: 63,
+    });
+
+  const baseConfig = createTestConfig({
+    minStability: 0,
+    baseIntensity: 51,
+    baseControl: 23,
+    skills: [energizedFusion, simpleRefine, forcefulStabilize],
+  });
+
+  it('should prefer forceful stabilize over craft-ending fusion in lookahead search', () => {
+    for (const depth of [2, 3, 4, 5]) {
+      const result = lookaheadSearch(
+        baseState(),
+        baseConfig,
+        130,
+        130,
+        depth,
+        'negative',
+        [],
+      );
+      expect(result.recommendation).not.toBeNull();
+      expect(result.recommendation!.skill.name).toBe('Forceful Stabilize');
+    }
+  });
+
+  it('should prefer forceful stabilize over craft-ending fusion in greedy search', () => {
+    const result = greedySearch(baseState(), baseConfig, 130, 130, 'negative');
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Forceful Stabilize');
+  });
+
+  it('should block unfinished ending moves when a non-stabilize survivable move exists', () => {
+    const safeRefine = createCustomSkill({
+      name: 'Safe Refine',
+      key: 'safe_refine',
+      type: 'refine',
+      qiCost: 10,
+      stabilityCost: 5,
+      basePerfectionGain: 0.5,
+      scalesWithControl: true,
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 51,
+      baseControl: 23,
+      skills: [energizedFusion, safeRefine],
+    });
+
+    const result = lookaheadSearch(baseState(), config, 130, 130, 4);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).not.toBe('Energised Fusion');
+  });
+
+  it('should still keep a craft-ending finisher eligible when it meets active goals', () => {
+    const result = lookaheadSearch(baseState(), baseConfig, 130, 63, 4);
+    expect(result.recommendation).not.toBeNull();
+    const recommendedNames = [
+      result.recommendation!.skill.name,
+      ...result.alternativeSkills.map((rec) => rec.skill.name),
+    ];
+    expect(recommendedNames).toContain('Energised Fusion');
+  });
+
+  it('should keep best-salvage recommendation when all actions end the craft', () => {
+    const allEndingConfig = createTestConfig({
+      minStability: 0,
+      baseIntensity: 51,
+      baseControl: 23,
+      skills: [energizedFusion, simpleRefine],
+    });
+
+    const lookaheadResult = lookaheadSearch(baseState(), allEndingConfig, 130, 130, 4);
+    expect(lookaheadResult.recommendation).not.toBeNull();
+    expect(['Energised Fusion', 'Simple Refine']).toContain(
+      lookaheadResult.recommendation!.skill.name,
+    );
+
+    const greedyResult = greedySearch(baseState(), allEndingConfig, 130, 130);
+    expect(greedyResult.recommendation).not.toBeNull();
+    expect(['Energised Fusion', 'Simple Refine']).toContain(
+      greedyResult.recommendation!.skill.name,
+    );
+  });
+});
+
 describe('condition timeline modeling', () => {
   afterEach(() => {
     setConditionTransitionProvider(undefined);
