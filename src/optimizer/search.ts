@@ -151,6 +151,7 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
 
 const TERMINAL_UNMET_SCORE_FLOOR = -1_000_000;
 const TERMINAL_UNMET_SCORE_TIEBREAK_WINDOW = 100_000;
+const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
 
 /**
  * Calculate adaptive beam width based on remaining depth.
@@ -1147,28 +1148,34 @@ function filterCounterproductiveStallActions(
   return filtered.length > 0 ? filtered : skills;
 }
 
-function diversifyRecommendations(
+function rankRecommendations(
   scored: SkillRecommendation[],
 ): SkillRecommendation[] {
-  if (scored.length <= 2) {
+  if (scored.length <= 1) {
     return scored;
   }
 
-  const result: SkillRecommendation[] = [];
-  const remaining = [...scored];
-  const usedTypes = new Set<string>();
+  const sorted = [...scored].sort((a, b) => b.score - a.score);
+  if (sorted.length <= 2) {
+    return sorted;
+  }
 
-  const best = remaining.shift();
-  if (!best) return [];
-  result.push(best);
-  usedTypes.add(best.skill.type);
+  const result: SkillRecommendation[] = [sorted[0]];
+  const remaining = sorted.slice(1);
+  const usedTypes = new Set<string>([sorted[0].skill.type]);
 
   while (remaining.length > 0) {
-    const diverseIndex = remaining.findIndex(
-      (candidate) => !usedTypes.has(candidate.skill.type),
+    const topScore = remaining[0].score;
+    const tieGroupEnd = remaining.findIndex(
+      (candidate) =>
+        topScore - candidate.score > DIVERSITY_TIEBREAK_SCORE_WINDOW,
     );
-    const nextIndex = diverseIndex >= 0 ? diverseIndex : 0;
-    const [next] = remaining.splice(nextIndex, 1);
+    const tieGroupLength = tieGroupEnd === -1 ? remaining.length : tieGroupEnd;
+    const diverseIndex = remaining
+      .slice(0, tieGroupLength)
+      .findIndex((candidate) => !usedTypes.has(candidate.skill.type));
+    const pickIndex = diverseIndex >= 0 ? diverseIndex : 0;
+    const [next] = remaining.splice(pickIndex, 1);
     result.push(next);
     usedTypes.add(next.skill.type);
   }
@@ -1526,9 +1533,7 @@ export function greedySearch(
     evaluatedMoves,
   ).map(({ isTerminal, isTerminalUnmet, ...rec }) => rec);
 
-  // Sort by score descending
-  scoredSkills.sort((a, b) => b.score - a.score);
-  const rankedSkills = diversifyRecommendations(scoredSkills);
+  const rankedSkills = rankRecommendations(scoredSkills);
 
   if (rankedSkills.length === 0) {
     return {
@@ -2313,6 +2318,35 @@ export function lookaheadSearch(
     }
 
     scored.sort((a, b) => b.score - a.score);
+
+    const topRecommendation = scored[0];
+    if (topRecommendation && !topRecommendation.followUpSkill) {
+      const stateAfterTopRecommendation = applySkill(
+        state,
+        topRecommendation.skill,
+        config,
+        currentConditionEffects,
+        targetCompletion,
+        normalizedCurrentCondition,
+      );
+      if (stateAfterTopRecommendation !== null) {
+        const topConditionState = getMostLikelyConditionStateAfterSkill(
+          stateAfterTopRecommendation,
+          normalizedCurrentCondition,
+          initialConditionQueue,
+          topRecommendation.skill,
+        );
+        const canUseDeepTopFollowUp = !checkBudget();
+        topRecommendation.followUpSkill = findFollowUpSkill(
+          stateAfterTopRecommendation,
+          1,
+          topConditionState.nextCondition,
+          topConditionState.nextQueue,
+          canUseDeepTopFollowUp,
+        );
+      }
+    }
+
     return scored;
   }
 
@@ -2446,7 +2480,7 @@ export function lookaheadSearch(
 
   // Record final metrics
   metrics.timeTakenMs = Date.now() - startTime;
-  const rankedSkills = diversifyRecommendations(scoredSkills);
+  const rankedSkills = rankRecommendations(scoredSkills);
 
   return {
     recommendation: rankedSkills[0],

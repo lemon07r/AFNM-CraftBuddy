@@ -143,6 +143,7 @@ let currentSettings: CraftBuddySettings = loadSettings();
 
 // Calculation state tracking for loading indicator
 let isCalculating = false;
+let recommendationSearchEpoch = 0;
 
 // Track search-affecting settings for stale detection
 interface LastSearchSettings {
@@ -1803,6 +1804,9 @@ function updateRecommendation(
     | string
     | undefined;
   const forecastedConditionTypes = nextConditions as unknown as string[];
+  const targetCompletionAtSearchStart = targetCompletion;
+  const targetPerfectionAtSearchStart = targetPerfection;
+  const maxStabilityAtSearchStart = currentMaxStability;
 
   const lookaheadDepth = currentSettings.lookaheadDepth;
   const searchConfig = getSearchConfig();
@@ -1814,6 +1818,8 @@ function updateRecommendation(
     return;
   }
 
+  const searchEpoch = ++recommendationSearchEpoch;
+
   // Set calculating state and render immediately to show loading indicator
   isCalculating = true;
   renderOverlay();
@@ -1821,21 +1827,30 @@ function updateRecommendation(
   // Use setTimeout to allow UI to update before blocking on search
   // This ensures the loading indicator is visible during calculation
   setTimeout(() => {
+    if (searchEpoch !== recommendationSearchEpoch) {
+      return;
+    }
+
     try {
-      currentRecommendation = findBestSkill(
+      const recommendation = findBestSkill(
         state,
         config,
-        targetCompletion,
-        targetPerfection,
+        targetCompletionAtSearchStart,
+        targetPerfectionAtSearchStart,
         false,
         lookaheadDepth,
         currentConditionType,
         forecastedConditionTypes,
         searchConfig,
       );
+      if (searchEpoch !== recommendationSearchEpoch) {
+        return;
+      }
+
+      currentRecommendation = recommendation;
 
       debugLog(
-        `[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${currentMaxStability}, Completion=${completion}/${targetCompletion}, Perfection=${perfection}/${targetPerfection}`,
+        `[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${maxStabilityAtSearchStart}, Completion=${completion}/${targetCompletionAtSearchStart}, Perfection=${perfection}/${targetPerfectionAtSearchStart}`,
       );
       if (currentRecommendation?.recommendation) {
         debugLog(
@@ -1852,8 +1867,15 @@ function updateRecommendation(
       }
     } catch (e) {
       console.error('[CraftBuddy] Failed to calculate recommendation:', e);
+      if (searchEpoch !== recommendationSearchEpoch) {
+        return;
+      }
       currentRecommendation = null;
     } finally {
+      if (searchEpoch !== recommendationSearchEpoch) {
+        return;
+      }
+
       // Always clear calculating flag even if search throws.
       isCalculating = false;
       snapshotSearchSettings();
@@ -2002,6 +2024,7 @@ function showOverlay(): void {
  * Clear state that should only exist during an active crafting session.
  */
 function clearActiveCraftingRuntimeState(): void {
+  recommendationSearchEpoch++;
   lastEntity = null;
   lastProgressState = null;
   currentRecommendation = null;

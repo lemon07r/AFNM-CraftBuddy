@@ -1380,6 +1380,204 @@ describe('survivability-first recommendation gate', () => {
   });
 });
 
+describe('recommendation ranking policy', () => {
+  it('should keep higher-score alternatives ahead of lower-score alternatives', () => {
+    const topFusion = createCustomSkill({
+      name: 'Top Fusion',
+      key: 'top_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 3,
+      scalesWithIntensity: true,
+    });
+    const midFusion = createCustomSkill({
+      name: 'Mid Fusion',
+      key: 'mid_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 2,
+      scalesWithIntensity: true,
+    });
+    const weakRefine = createCustomSkill({
+      name: 'Weak Refine',
+      key: 'weak_refine',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 0.2,
+      scalesWithControl: true,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [topFusion, midFusion, weakRefine],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = greedySearch(state, config, 100, 0, 'neutral');
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Top Fusion');
+    expect(result.alternativeSkills).toHaveLength(2);
+    expect(result.alternativeSkills[0].skill.name).toBe('Mid Fusion');
+    expect(result.alternativeSkills[1].skill.name).toBe('Weak Refine');
+  });
+
+  it('should use diversity as a tie-break when alternatives are near-equal', () => {
+    const topFusion = createCustomSkill({
+      name: 'Top Fusion',
+      key: 'top_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 1.8,
+      basePerfectionGain: 1.8,
+      scalesWithIntensity: true,
+      scalesWithControl: true,
+    });
+    const fusionAlt = createCustomSkill({
+      name: 'Fusion Alt',
+      key: 'fusion_alt',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 1.0,
+      scalesWithIntensity: true,
+    });
+    const refineAlt = createCustomSkill({
+      name: 'Refine Alt',
+      key: 'refine_alt',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 1.0,
+      scalesWithControl: true,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 16,
+      baseControl: 16,
+      skills: [topFusion, fusionAlt, refineAlt],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = greedySearch(state, config, 100, 100, 'neutral');
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Top Fusion');
+    expect(result.alternativeSkills).toHaveLength(2);
+    expect(
+      Math.abs(result.alternativeSkills[0].score - result.alternativeSkills[1].score),
+    ).toBeLessThanOrEqual(1);
+    expect(result.alternativeSkills[0].skill.type).toBe('refine');
+    expect(result.alternativeSkills[1].skill.type).toBe('fusion');
+  });
+});
+
+describe('top follow-up consistency', () => {
+  it('should provide a top follow-up when a legal next step exists under tight budget', () => {
+    const immediateA = createCustomSkill({
+      name: 'Immediate A',
+      key: 'immediate_a',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 0.8,
+      scalesWithControl: true,
+    });
+    const immediateB = createCustomSkill({
+      name: 'Immediate B',
+      key: 'immediate_b',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 0.7,
+      scalesWithControl: true,
+    });
+    const immediateC = createCustomSkill({
+      name: 'Immediate C',
+      key: 'immediate_c',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 0.6,
+      scalesWithControl: true,
+    });
+    const setup = createCustomSkill({
+      name: 'Setup',
+      key: 'setup',
+      type: 'support',
+      qiCost: 0,
+      stabilityCost: 10,
+      effects: [
+        {
+          kind: 'createBuff',
+          buff: { name: 'charge' },
+          stacks: { value: 1 },
+        },
+      ],
+    });
+    const payoff = createCustomSkill({
+      name: 'Payoff',
+      key: 'payoff',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 8,
+      scalesWithControl: true,
+      buffRequirement: { buffName: 'charge', amount: 1 },
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      baseControl: 16,
+      baseIntensity: 16,
+      skills: [immediateA, immediateB, immediateC, setup, payoff],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      0,
+      100,
+      3,
+      'neutral',
+      [],
+      {
+        maxNodes: 206,
+        beamWidth: 6,
+      },
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Setup');
+    expect(result.recommendation!.followUpSkill).toBeDefined();
+    expect(result.recommendation!.followUpSkill!.name).toBe('Payoff');
+  });
+});
+
 describe('condition timeline modeling', () => {
   afterEach(() => {
     setConditionTransitionProvider(undefined);
