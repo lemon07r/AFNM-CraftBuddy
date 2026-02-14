@@ -712,6 +712,7 @@ const FinalStateSection = memo(function FinalStateSection({
     completion: number;
     perfection: number;
     stability: number;
+    maxStability?: number;
     turnsRemaining: number;
   };
   targetCompletion: number;
@@ -752,7 +753,9 @@ const FinalStateSection = memo(function FinalStateSection({
           Perf: {formatProgress(state.perfection, targetPerfection)}
         </Typography>
         <Typography variant="body2" sx={{ color: colors.stability }}>
-          Stab: {formatGain(state.stability)}
+          Stab: {state.maxStability != null && state.maxStability > 0
+            ? formatProgress(state.stability, state.maxStability)
+            : formatGain(state.stability)}
         </Typography>
       </FlexRow>
 

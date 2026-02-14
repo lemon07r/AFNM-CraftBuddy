@@ -76,6 +76,7 @@ export interface SearchResult {
     completion: number;
     perfection: number;
     stability: number;
+    maxStability: number;
     qi: number;
     turnsRemaining: number;
   };
@@ -748,15 +749,21 @@ function scoreState(
     // Buffs are valuable because they amplify future skill gains
     // The value of buffs decreases as we get closer to targets (less future turns to use them)
     if (state.hasControlBuff()) {
-      // Control buff helps with perfection - value it more when perfection is needed
+      // Control buff helps with perfection - value scales with buff multiplier
+      // A 1.4x buff on ~20 gain/turn ≈ 8 extra progress per buffed turn
+      const controlBuffBoost = (state.controlBuffMultiplier - 1) * 25;
       score +=
-        state.controlBuffTurns * 3.5 * (0.5 + perfNeedShare) * remainingWorkPct;
+        state.controlBuffTurns *
+        controlBuffBoost *
+        (0.5 + perfNeedShare) *
+        remainingWorkPct;
     }
     if (state.hasIntensityBuff()) {
-      // Intensity buff helps with completion - value it more when completion is needed
+      // Intensity buff helps with completion - value scales with buff multiplier
+      const intensityBuffBoost = (state.intensityBuffMultiplier - 1) * 25;
       score +=
         state.intensityBuffTurns *
-        3.5 *
+        intensityBuffBoost *
         (0.5 + compNeedShare) *
         remainingWorkPct;
     }
@@ -2473,6 +2480,7 @@ export function lookaheadSearch(
       completion: finalState.completion,
       perfection: finalState.perfection,
       stability: finalState.stability,
+      maxStability: finalState.maxStability,
       qi: finalState.qi,
       turnsRemaining: turnsRemaining > 0 ? turnsRemaining : 0,
     };

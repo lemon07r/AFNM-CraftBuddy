@@ -1527,7 +1527,7 @@ describe('top follow-up consistency', () => {
       effects: [
         {
           kind: 'createBuff',
-          buff: { name: 'charge' },
+          buff: { name: 'charge', canStack: true, effects: [] },
           stacks: { value: 1 },
         },
       ],
