@@ -827,11 +827,21 @@ function scoreState(
   const stabilityThreshold = trainingMode
     ? 8 + remainingWorkPct * 8
     : 14 + remainingWorkPct * 26;
-  const stabilityPenaltyWeight = trainingMode ? 4 : 12;
+  const stabilityPenaltyWeight = trainingMode ? 8 : 45;
   if (state.stability < stabilityThreshold) {
     const stabilityRisk =
       (stabilityThreshold - state.stability) / stabilityThreshold; // 0 to 1
     score -= stabilityRisk * stabilityRisk * stabilityPenaltyWeight;
+  }
+
+  // Hard cliff penalty: if stability is at or below 0, the craft is dead.
+  // Also penalize states where stability is so low that no progress action
+  // could be taken without ending the craft (stability <= ~10).
+  if (state.stability <= 0) {
+    score -= 200;
+  } else if (state.stability <= 10) {
+    // Near-death: strong penalty proportional to how close to 0
+    score -= (10 - state.stability) * 8;
   }
 
   // Additional runway penalty: avoid lines that are unlikely to have enough
@@ -844,8 +854,8 @@ function scoreState(
   const estimatedRunwayTurns = Math.floor(Math.max(0, state.stability) / 10);
   if (estimatedTurnsRemaining > estimatedRunwayTurns) {
     const gap = estimatedTurnsRemaining - estimatedRunwayTurns;
-    const maxRunwayPenalty = trainingMode ? 6 : 12;
-    score -= Math.min(gap * (trainingMode ? 1.5 : 3), maxRunwayPenalty);
+    const maxRunwayPenalty = trainingMode ? 10 : 40;
+    score -= Math.min(gap * (trainingMode ? 2 : 5), maxRunwayPenalty);
   }
 
   // Small penalty for high toxicity in alchemy crafting
@@ -1040,9 +1050,15 @@ function isWastefulStabilize(
   candidate: ActionCandidateContext,
   criticalStability: number,
   hasImmediateFinisher: boolean,
+  allProgressWouldEndCraft: boolean = false,
 ): boolean {
   const { skill, immediateGains, effectiveCosts } = candidate;
   if (skill.type !== 'stabilize') {
+    return false;
+  }
+
+  // Never wasteful when all progress skills would end the craft — stabilize is the only survival option.
+  if (allProgressWouldEndCraft) {
     return false;
   }
 
@@ -1127,6 +1143,16 @@ function filterCounterproductiveStallActions(
     return skills;
   }
 
+  // Check if ALL progress skills that advance targets would end the craft
+  // (i.e., post-stability would be at or below minStability).
+  // When true, stabilize must never be filtered out — it's the only survival option.
+  const allProgressWouldEndCraft = context.candidates
+    .filter((c) => c.advancesTargetsNow && c.consumesTurn)
+    .every((c) => {
+      const postStability = state.stability - c.turnStabilitySpend;
+      return postStability <= (config.minStability || 0);
+    });
+
   const filtered = context.candidates
     .filter((candidate) => {
       if (candidate.advancesTargetsNow) {
@@ -1139,6 +1165,7 @@ function filterCounterproductiveStallActions(
           candidate,
           context.criticalStability,
           context.hasImmediateFinisher,
+          allProgressWouldEndCraft,
         )
       ) {
         return false;

@@ -2315,3 +2315,174 @@ describe('search performance', () => {
     expect(result.searchMetrics!.depthReached).toBe(3);
   });
 });
+
+describe('Regression: core optimizer bugs', () => {
+  // Bug (a): Tutorial scenario — positive condition on perfectable recipe should
+  // prefer Simple Refine (scales with control, boosted by condition) over Simple Fusion.
+  it('should recommend Simple Refine on positive condition for perfectable recipe', () => {
+    const simpleFusion = createCustomSkill({
+      name: 'Simple Fusion',
+      key: 'simple_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 1,
+      scalesWithIntensity: true,
+    });
+    const simpleRefine = createCustomSkill({
+      name: 'Simple Refine',
+      key: 'simple_refine',
+      type: 'refine',
+      qiCost: 18,
+      stabilityCost: 10,
+      basePerfectionGain: 1,
+      scalesWithControl: true,
+    });
+    const forcefulStabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      type: 'stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      stabilityGain: 40,
+      preventsMaxStabilityDecay: true,
+    });
+
+    // Perfectable recipe: positive condition boosts control (+50%)
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [simpleFusion, simpleRefine, forcefulStabilize],
+      conditionEffectType: 'perfectable' as any,
+    });
+
+    // Both completion and perfection needed equally, plenty of resources
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    // On positive condition, control is boosted so Simple Refine gives more perfection.
+    // The optimizer should prefer Refine to capitalize on the condition bonus.
+    const greedyResult = greedySearch(state, config, 50, 50, 'positive');
+    expect(greedyResult.recommendation).not.toBeNull();
+    expect(greedyResult.recommendation!.skill.name).toBe('Simple Refine');
+
+    const lookaheadResult = lookaheadSearch(state, config, 50, 50, 3, 'positive');
+    expect(lookaheadResult.recommendation).not.toBeNull();
+    expect(lookaheadResult.recommendation!.skill.name).toBe('Simple Refine');
+  });
+
+  // Bug (b): Stability critically low — stabilize should be recommended when all
+  // progress skills would reduce stability to or below minStability (ending the craft).
+  it('should recommend stabilize when all progress skills would end the craft', () => {
+    const simpleFusion = createCustomSkill({
+      name: 'Simple Fusion',
+      key: 'simple_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 1,
+      scalesWithIntensity: true,
+    });
+    const simpleRefine = createCustomSkill({
+      name: 'Simple Refine',
+      key: 'simple_refine',
+      type: 'refine',
+      qiCost: 18,
+      stabilityCost: 10,
+      basePerfectionGain: 1,
+      scalesWithControl: true,
+    });
+    const forcefulStabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      type: 'stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      stabilityGain: 40,
+      preventsMaxStabilityDecay: true,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [simpleFusion, simpleRefine, forcefulStabilize],
+    });
+
+    // Stability is 10 — using any progress skill costs 10 stability, leaving 0 (= minStability).
+    // This would end the craft. Stabilize should be recommended instead.
+    const state = new CraftingState({
+      qi: 194,
+      stability: 10,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const greedyResult = greedySearch(state, config, 50, 50);
+    expect(greedyResult.recommendation).not.toBeNull();
+    expect(greedyResult.recommendation!.skill.type).toBe('stabilize');
+
+    const lookaheadResult = lookaheadSearch(state, config, 50, 50, 3);
+    expect(lookaheadResult.recommendation).not.toBeNull();
+    expect(lookaheadResult.recommendation!.skill.type).toBe('stabilize');
+  });
+
+  // Bug (c): filterCounterproductiveStallActions should not filter out stabilize
+  // when all non-stabilize skills would end the craft.
+  it('should not filter stabilize when it is the only survival option', () => {
+    const simpleFusion = createCustomSkill({
+      name: 'Simple Fusion',
+      key: 'simple_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 15,
+      baseCompletionGain: 1,
+      scalesWithIntensity: true,
+    });
+    const expensiveRefine = createCustomSkill({
+      name: 'Expensive Refine',
+      key: 'expensive_refine',
+      type: 'refine',
+      qiCost: 18,
+      stabilityCost: 15,
+      basePerfectionGain: 1,
+      scalesWithControl: true,
+    });
+    const stabilize = createCustomSkill({
+      name: 'Stabilize',
+      key: 'stabilize',
+      type: 'stabilize',
+      qiCost: 50,
+      stabilityCost: 0,
+      stabilityGain: 30,
+      preventsMaxStabilityDecay: true,
+    });
+
+    const config = createTestConfig({
+      minStability: 5,
+      skills: [simpleFusion, expensiveRefine, stabilize],
+    });
+
+    // Stability is 15 — using any progress skill (cost 15) leaves stability at 0,
+    // which is below minStability (5). Only stabilize keeps the craft alive.
+    const state = new CraftingState({
+      qi: 194,
+      stability: 15,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    // Both greedy and lookahead should recommend stabilize
+    const greedyResult = greedySearch(state, config, 50, 50);
+    expect(greedyResult.recommendation).not.toBeNull();
+    expect(greedyResult.recommendation!.skill.type).toBe('stabilize');
+
+    const lookaheadResult = lookaheadSearch(state, config, 50, 50, 3);
+    expect(lookaheadResult.recommendation).not.toBeNull();
+    expect(lookaheadResult.recommendation!.skill.type).toBe('stabilize');
+  });
+});
