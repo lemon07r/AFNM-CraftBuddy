@@ -1111,16 +1111,28 @@ function isPureQiRecoveryStallAction(
   return !hasMeaningfulNonQiEffects(skill);
 }
 
-function filterCounterproductiveStallActions(
+/**
+ * Compute soft ordering penalties for counterproductive stall actions.
+ *
+ * Instead of hard-filtering skills out of the search tree (which is
+ * irreversible and can remove the optimal move), this returns a penalty
+ * map that `orderSkillsForSearch` folds into its priority scoring.
+ * Penalised skills sink to the bottom of the move ordering and are
+ * likely pruned by beam width — but they remain available if the beam
+ * is wide enough or if no better option exists.
+ */
+function computeStallPenalties(
   state: CraftingState,
   skills: SkillDefinition[],
   config: OptimizerConfig,
   conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
   completionGoal: number,
   perfectionGoal: number,
-): SkillDefinition[] {
+): Map<string, number> {
+  const penalties = new Map<string, number>();
+
   if (skills.length <= 1) {
-    return skills;
+    return penalties;
   }
 
   const { needsCompletion, needsPerfection } = hasUnmetTarget(
@@ -1129,7 +1141,7 @@ function filterCounterproductiveStallActions(
     perfectionGoal,
   );
   if (!needsCompletion && !needsPerfection) {
-    return skills;
+    return penalties;
   }
 
   const context = buildStallActionContext(
@@ -1141,12 +1153,12 @@ function filterCounterproductiveStallActions(
     perfectionGoal,
   );
   if (!context.hasTargetAdvancingProgressOption) {
-    return skills;
+    return penalties;
   }
 
   // Check if ALL progress skills that advance targets would end the craft
   // (i.e., post-stability would be at or below minStability).
-  // When true, stabilize must never be filtered out — it's the only survival option.
+  // When true, stabilize must never be penalised — it's the only survival option.
   const allProgressWouldEndCraft = context.candidates
     .filter((c) => c.advancesTargetsNow && c.consumesTurn)
     .every((c) => {
@@ -1154,33 +1166,34 @@ function filterCounterproductiveStallActions(
       return postStability <= (config.minStability || 0);
     });
 
-  const filtered = context.candidates
-    .filter((candidate) => {
-      if (candidate.advancesTargetsNow) {
-        return true;
-      }
+  // Large penalty that pushes skills below all normal priority scores
+  // but doesn't make them -Infinity (so they're still reachable).
+  const STALL_PENALTY = -2000;
 
-      if (
-        isWastefulStabilize(
-          state,
-          candidate,
-          context.criticalStability,
-          context.hasImmediateFinisher,
-          allProgressWouldEndCraft,
-        )
-      ) {
-        return false;
-      }
+  for (const candidate of context.candidates) {
+    if (candidate.advancesTargetsNow) {
+      continue;
+    }
 
-      if (isPureQiRecoveryStallAction(candidate)) {
-        return false;
-      }
+    if (
+      isWastefulStabilize(
+        state,
+        candidate,
+        context.criticalStability,
+        context.hasImmediateFinisher,
+        allProgressWouldEndCraft,
+      )
+    ) {
+      penalties.set(candidate.skill.key, STALL_PENALTY);
+      continue;
+    }
 
-      return true;
-    })
-    .map((candidate) => candidate.skill);
+    if (isPureQiRecoveryStallAction(candidate)) {
+      penalties.set(candidate.skill.key, STALL_PENALTY);
+    }
+  }
 
-  return filtered.length > 0 ? filtered : skills;
+  return penalties;
 }
 
 function rankRecommendations(
@@ -1305,6 +1318,7 @@ function orderSkillsForSearch(
   targetCompletion: number,
   targetPerfection: number,
   conditionEffects: ReturnType<typeof getConditionEffectsForConfig> = [],
+  stallPenalties: Map<string, number> = new Map(),
 ): SkillDefinition[] {
   const needsCompletion = state.completion < targetCompletion;
   const needsPerfection = state.perfection < targetPerfection;
@@ -1422,6 +1436,12 @@ function orderSkillsForSearch(
       priority += 100;
     }
 
+    // Apply stall-action penalties (soft replacement for hard filtering).
+    const stallPenalty = stallPenalties.get(skill.key);
+    if (stallPenalty !== undefined) {
+      priority += stallPenalty;
+    }
+
     return { skill, priority };
   });
 
@@ -1503,7 +1523,7 @@ export function greedySearch(
     config,
     normalizedCurrentCondition,
   );
-  const filteredSkills = filterCounterproductiveStallActions(
+  const stallPenalties = computeStallPenalties(
     state,
     availableSkills,
     config,
@@ -1515,7 +1535,7 @@ export function greedySearch(
     SkillRecommendation & TerminalStateClassification
   > = [];
 
-  for (const skill of filteredSkills) {
+  for (const skill of availableSkills) {
     const newState = applySkill(
       state,
       skill,
@@ -1532,16 +1552,17 @@ export function greedySearch(
       config,
       conditionEffects,
     );
-    const score = scoreState(
-      newState,
-      targetCompletion,
-      targetPerfection,
-      isSublime,
-      targetMult,
-      isTraining,
-      config.maxCompletion,
-      config.maxPerfection,
-    );
+    const score =
+      scoreState(
+        newState,
+        targetCompletion,
+        targetPerfection,
+        isSublime,
+        targetMult,
+        isTraining,
+        config.maxCompletion,
+        config.maxPerfection,
+      ) + (stallPenalties.get(skill.key) ?? 0);
     const terminalState = classifyTerminalState(
       newState,
       config,
@@ -1829,7 +1850,7 @@ export function lookaheadSearch(
       config,
       currentConditionAtDepth,
     );
-    const filteredSkills = filterCounterproductiveStallActions(
+    const stallPenaltiesAtDepth = computeStallPenalties(
       currentState,
       availableSkills,
       config,
@@ -1839,12 +1860,13 @@ export function lookaheadSearch(
     );
     // Apply move ordering to search promising skills first
     const orderedSkills = orderSkillsForSearch(
-      filteredSkills,
+      availableSkills,
       currentState,
       config,
       orderingCompGoal,
       orderingPerfGoal,
       conditionEffectsAtDepth,
+      stallPenaltiesAtDepth,
     );
 
     // Apply adaptive beam search: use narrower beam for deep searches
@@ -2031,7 +2053,7 @@ export function lookaheadSearch(
         conditionAtDepth,
       );
       const skills = getAvailableSkills(currentState, config, conditionAtDepth);
-      const filteredSkills = filterCounterproductiveStallActions(
+      const stallPenaltiesAtDepth = computeStallPenalties(
         currentState,
         skills,
         config,
@@ -2041,12 +2063,13 @@ export function lookaheadSearch(
       );
       // Apply move ordering for faster path finding
       const orderedSkills = orderSkillsForSearch(
-        filteredSkills,
+        skills,
         currentState,
         config,
         orderingCompGoal,
         orderingPerfGoal,
         conditionEffectsAtDepth,
+        stallPenaltiesAtDepth,
       );
       let bestSkill: SkillDefinition | null = null;
       let bestScore = -Infinity;
@@ -2121,7 +2144,7 @@ export function lookaheadSearch(
       config,
       normalizedCurrentCondition,
     );
-    const filteredSkills = filterCounterproductiveStallActions(
+    const firstMoveStallPenalties = computeStallPenalties(
       state,
       availableSkills,
       config,
@@ -2130,12 +2153,13 @@ export function lookaheadSearch(
       modePerfGoal,
     );
     const orderedSkills = orderSkillsForSearch(
-      filteredSkills,
+      availableSkills,
       state,
       config,
       orderingCompGoal,
       orderingPerfGoal,
       currentConditionEffects,
+      firstMoveStallPenalties,
     );
     const evaluatedFirstMoves: Array<
       SkillRecommendation & TerminalStateClassification
@@ -2166,7 +2190,7 @@ export function lookaheadSearch(
         config,
         conditionAtDepth,
       );
-      const filteredFollowUpSkills = filterCounterproductiveStallActions(
+      const followUpStallPenalties = computeStallPenalties(
         stateAfterSkill,
         followUpSkills,
         config,
@@ -2176,12 +2200,13 @@ export function lookaheadSearch(
       );
 
       const orderedFollowUpSkills = orderSkillsForSearch(
-        filteredFollowUpSkills,
+        followUpSkills,
         stateAfterSkill,
         config,
         orderingCompGoal,
         orderingPerfGoal,
         followUpConditionEffects,
+        followUpStallPenalties,
       );
 
       let bestFollowUp: SkillDefinition | null = null;
@@ -2284,10 +2309,11 @@ export function lookaheadSearch(
       );
 
       // Use immediate score as baseline (no deep search yet)
-      const immediateScore = scoreStateWithTerminalPenalty(
-        newState,
-        firstMoveConditionState.nextCondition,
-      );
+      const immediateScore =
+        scoreStateWithTerminalPenalty(
+          newState,
+          firstMoveConditionState.nextCondition,
+        ) + (firstMoveStallPenalties.get(skill.key) ?? 0);
 
       evaluatedFirstMoves.push({
         skill,
@@ -2332,15 +2358,17 @@ export function lookaheadSearch(
 
       const hasBudgetForDeepSearch = !checkBudget();
       if (hasBudgetForDeepSearch) {
-        // Deep evaluation
-        rec.score = evaluateFutureScoreAfterSkill(
-          newState,
-          Math.max(0, depthToSearch - 1),
-          1,
-          normalizedCurrentCondition,
-          initialConditionQueue,
-          rec.skill,
-        );
+        // Deep evaluation — apply stall penalty so that deprioritised
+        // actions don't outrank progress skills purely via tree score.
+        rec.score =
+          evaluateFutureScoreAfterSkill(
+            newState,
+            Math.max(0, depthToSearch - 1),
+            1,
+            normalizedCurrentCondition,
+            initialConditionQueue,
+            rec.skill,
+          ) + (firstMoveStallPenalties.get(rec.skill.key) ?? 0);
       }
 
       // Always try to provide a follow-up suggestion for top-ranked skills.

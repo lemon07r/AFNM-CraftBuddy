@@ -1,6 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
+
 - `src/mod.ts` is the entry point for mod metadata and bootstrapping.
 - `src/modContent/` contains game integration and runtime wiring.
 - `src/optimizer/` holds core crafting logic (`state.ts`, `skills.ts`, `search.ts`, `harmony.ts`).
@@ -13,6 +14,7 @@
 - Generated outputs (`dist/`, `builds/`, `coverage/`) are build artifacts and are gitignored.
 
 ## Build, Test, and Development Commands
+
 - `bun install`: install dependencies.
 - `bun run build`: run webpack production build and package the mod zip to `builds/`.
 - `bun run test`: run all Jest tests once.
@@ -23,6 +25,7 @@
 - `bun run jest src/__tests__/search.test.ts`: run a focused test file.
 
 ## Documentation Workflow
+
 - Start technical onboarding at `docs/project/START_HERE_FOR_AGENTS.md`.
 - Treat `docs/project/*` as implementation source of truth, then verify against code/tests.
 - Use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` before opening any other reference docs.
@@ -30,19 +33,46 @@
 - If you change docs, run `bun run docs:inventory` and `bun run docs:check` before committing.
 
 ## Coding Style & Naming Conventions
+
 - Use TypeScript (`strict` mode) and React TSX.
 - Formatting is controlled by `.prettierrc`: 2 spaces, single quotes, trailing commas, LF endings, no tabs.
 - Use `PascalCase` for React components (`SettingsPanel.tsx`), `camelCase` for utility/module files (`largeNumbers.ts`), and `*.test.ts` for tests.
 - Keep optimizer/game-state logic pure where possible; keep side effects inside integration modules in `src/modContent/`.
 
 ## Testing Guidelines
+
 - Framework: Jest + `ts-jest` with `testEnvironment: 'node'`.
 - Add tests in `src/__tests__/` and mirror feature names (`skills.test.ts`, `state.test.ts`, etc.).
 - For changes in `src/optimizer/`, include cases for target completion, stability/Qi limits, and condition or buff interactions.
 - Run `bun run test` before pushing; use coverage checks for larger refactors.
 
 ## Commit & Pull Request Guidelines
+
 - Follow established commit prefixes: `feat:`, `fix:`, `docs:`, `perf:`, `chore(release):`.
 - Keep commits scoped to one logical change and use imperative summaries.
 - PRs should include a clear change summary, linked issue (if available), test evidence (commands run), and screenshots for UI updates in `src/ui/`.
 - Explicitly call out gameplay-impacting changes (search scoring, harmony behavior, config defaults).
+
+## Optimizer Design Principles
+
+These principles exist because past agents introduced compounding heuristic patches that made the optimizer produce poor recommendations. Follow these rules when modifying anything in `src/optimizer/search.ts`.
+
+### Scoring (`scoreState`)
+
+- **Proportional, not magic numbers.** Bonuses and penalties must scale with the craft's target magnitude (e.g., `totalTargetMagnitude * 2`) — never use hardcoded constants like `+200`, `+300`, `*45`, `*8`.
+- **Layered architecture.** The scorer has numbered layers (progress → target-met bonus → buffs → resources → overshoot → survivability → toxicity/harmony). New terms belong in an existing layer or a clearly documented new one.
+- **No stability penalties when targets are met.** If `baseTargetsMet` is true the craft is done — survivability penalties must not apply.
+- **Step efficiency.** Penalise `state.step` so shorter paths beat longer ones when both reach the same goal.
+- **Tiny resource tiebreakers when targets are met.** Use `*0.001` (not `*0.05`) so leftover qi/stability never justifies an extra turn.
+
+### Move Ordering & Filtering
+
+- **No hard filters.** Never remove a skill from the search tree before evaluation. Use `computeStallPenalties()` → soft penalties folded into `orderSkillsForSearch()` instead. Skills with penalties sink in the beam but remain reachable if nothing else is viable.
+- **Condition-aware ordering.** `orderSkillsForSearch()` must use `calculateSkillGains()` with the current condition effects — never raw `baseCompletionGain`/`basePerfectionGain`.
+- **Stall penalties apply at recommendation level.** In greedy search and the lookahead first-move evaluation, stall penalties are added to `scoreState` results. Inside the recursive tree search, only ordering is affected.
+
+### Testing
+
+- **End-to-end simulation tests** (`craftSimulation.test.ts`) simulate full multi-turn crafts. Any scoring or ordering change must pass these.
+- **Regression tests** at the bottom of `search.test.ts` cover specific past bugs (stabilize filtering, condition exploitation, stall blocking).
+- Run `bun run test` before every commit. All 336+ tests must pass.

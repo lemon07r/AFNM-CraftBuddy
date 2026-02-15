@@ -641,9 +641,7 @@ describe('lookaheadSearch', () => {
       const result = lookaheadSearch(state, config, 50, 100, depth);
       expect(result.recommendation).not.toBeNull();
       // Should NOT recommend Forceful Stabilize at 40/58 stability
-      expect(result.recommendation!.skill.name).not.toBe(
-        'Forceful Stabilize',
-      );
+      expect(result.recommendation!.skill.name).not.toBe('Forceful Stabilize');
     }
 
     const greedyResult = greedySearch(state, config, 50, 100);
@@ -747,15 +745,11 @@ describe('lookaheadSearch', () => {
     });
 
     for (const depth of [3, 4, 5]) {
-      const result = lookaheadSearch(
-        state,
-        config,
-        60,
-        60,
-        depth,
+      const result = lookaheadSearch(state, config, 60, 60, depth, 'neutral', [
+        'positive',
         'neutral',
-        ['positive', 'neutral', 'neutral'],
-      );
+        'neutral',
+      ]);
       expect(result.recommendation).not.toBeNull();
       expect(result.recommendation!.skill.name).toBe('Costly Fusion');
     }
@@ -935,15 +929,11 @@ describe('lookaheadSearch', () => {
     });
 
     for (const depth of [3, 4, 5]) {
-      const result = lookaheadSearch(
-        state,
-        config,
-        80,
-        80,
-        depth,
+      const result = lookaheadSearch(state, config, 80, 80, depth, 'neutral', [
         'neutral',
-        ['neutral', 'positive', 'neutral'],
-      );
+        'positive',
+        'neutral',
+      ]);
       expect(result.recommendation).not.toBeNull();
       expect(result.recommendation!.skill.name).not.toBe('Forceful Stabilize');
       expect(
@@ -1366,7 +1356,13 @@ describe('survivability-first recommendation gate', () => {
       skills: [energizedFusion, simpleRefine],
     });
 
-    const lookaheadResult = lookaheadSearch(baseState(), allEndingConfig, 130, 130, 4);
+    const lookaheadResult = lookaheadSearch(
+      baseState(),
+      allEndingConfig,
+      130,
+      130,
+      4,
+    );
     expect(lookaheadResult.recommendation).not.toBeNull();
     expect(['Energised Fusion', 'Simple Refine']).toContain(
       lookaheadResult.recommendation!.skill.name,
@@ -1482,7 +1478,9 @@ describe('recommendation ranking policy', () => {
     expect(result.recommendation!.skill.name).toBe('Top Fusion');
     expect(result.alternativeSkills).toHaveLength(2);
     expect(
-      Math.abs(result.alternativeSkills[0].score - result.alternativeSkills[1].score),
+      Math.abs(
+        result.alternativeSkills[0].score - result.alternativeSkills[1].score,
+      ),
     ).toBeLessThanOrEqual(1);
     expect(result.alternativeSkills[0].skill.type).toBe('refine');
     expect(result.alternativeSkills[1].skill.type).toBe('fusion');
@@ -1557,19 +1555,10 @@ describe('top follow-up consistency', () => {
       perfection: 0,
     });
 
-    const result = lookaheadSearch(
-      state,
-      config,
-      0,
-      100,
-      3,
-      'neutral',
-      [],
-      {
-        maxNodes: 206,
-        beamWidth: 6,
-      },
-    );
+    const result = lookaheadSearch(state, config, 0, 100, 3, 'neutral', [], {
+      maxNodes: 206,
+      beamWidth: 6,
+    });
 
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.name).toBe('Setup');
@@ -2370,7 +2359,14 @@ describe('Regression: core optimizer bugs', () => {
     expect(greedyResult.recommendation).not.toBeNull();
     expect(greedyResult.recommendation!.skill.name).toBe('Simple Refine');
 
-    const lookaheadResult = lookaheadSearch(state, config, 50, 50, 3, 'positive');
+    const lookaheadResult = lookaheadSearch(
+      state,
+      config,
+      50,
+      50,
+      3,
+      'positive',
+    );
     expect(lookaheadResult.recommendation).not.toBeNull();
     expect(lookaheadResult.recommendation!.skill.name).toBe('Simple Refine');
   });
@@ -2430,7 +2426,7 @@ describe('Regression: core optimizer bugs', () => {
     expect(lookaheadResult.recommendation!.skill.type).toBe('stabilize');
   });
 
-  // Bug (c): filterCounterproductiveStallActions should not filter out stabilize
+  // Bug (c): stall penalties should not deprioritise stabilize
   // when all non-stabilize skills would end the craft.
   it('should not filter stabilize when it is the only survival option', () => {
     const simpleFusion = createCustomSkill({
