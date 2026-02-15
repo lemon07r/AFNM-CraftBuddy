@@ -511,7 +511,16 @@ function getProgressCacheComponent(
   }
 
   if (value < goal) {
-    return String(bucketProgress(value, bucketSize));
+    // Use finer buckets when close to the goal to avoid merging states
+    // that are meaningfully different (e.g., 1 skill away from finishing
+    // vs. 2 skills away).
+    const distanceToGoal = goal - value;
+    const nearGoalThreshold = Math.min(200, goal * 0.1);
+    const effectiveBucket =
+      distanceToGoal <= nearGoalThreshold
+        ? Math.max(1, Math.floor(bucketSize / 10))
+        : bucketSize;
+    return String(bucketProgress(value, effectiveBucket));
   }
 
   // Distinguish post-target overshoot to avoid collapsing materially different
