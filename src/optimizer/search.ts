@@ -540,7 +540,10 @@ function goalsMet(
   );
 }
 
-function hasAnyActiveGoal(completionGoal: number, perfectionGoal: number): boolean {
+function hasAnyActiveGoal(
+  completionGoal: number,
+  perfectionGoal: number,
+): boolean {
   return (
     (Number.isFinite(completionGoal) && completionGoal > 0) ||
     (Number.isFinite(perfectionGoal) && perfectionGoal > 0)
@@ -574,7 +577,9 @@ function filterUnfinishedTerminalCandidates<
     return candidates;
   }
 
-  const hasSurvivableCandidate = candidates.some((candidate) => !candidate.isTerminal);
+  const hasSurvivableCandidate = candidates.some(
+    (candidate) => !candidate.isTerminal,
+  );
   if (!hasSurvivableCandidate) {
     return candidates;
   }
@@ -623,19 +628,17 @@ function getNormalizedCacheKey(
 /**
  * Score a state based on progress toward targets.
  *
- * Scoring priorities:
- * 1. Progress toward completion and perfection targets (primary)
- * 2. Large bonus for meeting both targets
- * 3. Bonus for active buffs (they enable higher gains on future turns)
- * 4. Penalty for going over targets (wasted resources) - reduced/removed for sublime crafting
- * 5. Resource efficiency bonuses (qi and stability remaining)
- * 6. Penalty for risky states (low stability)
- *
- * The scoring is designed to:
- * - Strongly prefer states that meet targets
- * - Value buff setup as investment for future gains
- * - Balance progress with resource conservation
- * - For sublime crafting: encourage exceeding targets (up to multiplier limit)
+ * Architecture:
+ * 1. Compute a normalized progress score (0–1 per dimension, weighted by need).
+ * 2. Add a discrete bonus when targets are met (sized relative to total target
+ *    magnitude so it never dominates small-target crafts or gets dwarfed by
+ *    large-target ones).
+ * 3. Value buffs by their expected future return (buff turns × bonus × stat).
+ * 4. Score resources (qi, stability) as "future turns of progress they enable",
+ *    so a stabilize that wastes resources competes fairly with a progress skill.
+ * 5. Apply survivability as a separate layer: only penalise when stability is
+ *    actually threatening craft death, using the real cost of the cheapest
+ *    available progress skill rather than hardcoded thresholds.
  *
  * @param state - Current crafting state
  * @param targetCompletion - Base target completion value
@@ -655,12 +658,10 @@ function scoreState(
   maxPerfectionCap?: number,
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
-    // No targets - maximize minimum of both (balanced progress)
     return Math.min(state.completion, state.perfection);
   }
 
-  // For sublime crafting, the effective target is multiplied
-  // This allows the optimizer to aim for higher values without penalty
+  // ── effective goals ──────────────────────────────────────────────────
   const effectiveCompTarget = isSublimeCraft
     ? targetCompletion * targetMultiplier
     : targetCompletion;
@@ -676,7 +677,7 @@ function scoreState(
       ? Math.min(effectivePerfTarget, maxPerfectionCap)
       : effectivePerfTarget;
 
-  // Calculate progress need and objective deficit balance.
+  // ── remaining work metrics ───────────────────────────────────────────
   const compRemaining =
     effectiveCompGoal > 0
       ? Math.max(0, effectiveCompGoal - state.completion)
@@ -704,8 +705,7 @@ function scoreState(
     (compNeedPct + perfNeedPct) / 2,
   );
 
-  // Score based on progress toward targets (primary scoring)
-  // Use dynamic weighting based on whichever objective is further behind.
+  // ── 1. progress score (primary) ──────────────────────────────────────
   const compProgress =
     effectiveCompGoal > 0 ? Math.min(state.completion, effectiveCompGoal) : 0;
   const perfProgress =
@@ -714,43 +714,45 @@ function scoreState(
   const perfWeight = 1 + perfNeedShare;
   let score = compProgress * compWeight + perfProgress * perfWeight;
 
-  // Large bonus for meeting both BASE targets - this is the minimum goal
+  // ── 2. target-met bonus (scaled to target magnitude) ─────────────────
+  const totalTargetMagnitude = Math.max(
+    1,
+    effectiveCompGoal + effectivePerfGoal,
+  );
+  // Bonus sized so it is roughly 2× the total target magnitude — large enough
+  // to clearly separate "met" from "almost met" but proportional to the craft.
+  const targetMetBonus = totalTargetMagnitude * 2;
+
   const baseTargetsMet =
     (targetCompletion <= 0 || state.completion >= targetCompletion) &&
     (targetPerfection <= 0 || state.perfection >= targetPerfection);
-
-  // For sublime crafting, also check if we've met the extended targets
   const sublimeTargetsMet =
     isSublimeCraft &&
     (effectiveCompTarget <= 0 || state.completion >= effectiveCompTarget) &&
     (effectivePerfTarget <= 0 || state.perfection >= effectivePerfTarget);
 
   if (sublimeTargetsMet) {
-    score += 300; // Even bigger bonus for hitting sublime targets
-    score += state.qi * 0.05;
-    score += state.stability * 0.05;
+    score += targetMetBonus * 1.5;
+    // Tiny resource tiebreaker — just enough to distinguish otherwise-equal
+    // completions, but never enough to justify an extra turn of stabilize.
+    score += state.qi * 0.001;
+    score += state.stability * 0.001;
+    // Prefer earlier completion: penalise each turn spent so that a path
+    // finishing in 1 turn beats an equivalent path finishing in 2 turns.
+    score -= state.step * 0.5;
   } else if (baseTargetsMet) {
-    score += 200; // Significant bonus for achieving the base goal
-
-    // Additional bonus for resource efficiency when targets are met
-    // Prefer paths that leave more qi and stability for safety margin
-    score += state.qi * 0.05; // Bonus for remaining qi
-    score += state.stability * 0.05; // Bonus for remaining stability
-
-    // For sublime crafting, add bonus for progress beyond base targets
+    score += targetMetBonus;
+    score += state.qi * 0.001;
+    score += state.stability * 0.001;
+    score -= state.step * 0.5;
     if (isSublimeCraft) {
       const compBeyondBase = Math.max(0, state.completion - targetCompletion);
       const perfBeyondBase = Math.max(0, state.perfection - targetPerfection);
-      // Reward progress toward sublime targets (but less than base progress)
       score += (compBeyondBase + perfBeyondBase) * 0.5;
     }
   } else {
-    // Bonus for active buffs when targets not yet met
-    // Buffs are valuable because they amplify future skill gains
-    // The value of buffs decreases as we get closer to targets (less future turns to use them)
+    // ── 3. buff valuation (when targets not yet met) ──────────────────
     if (state.hasControlBuff()) {
-      // Control buff helps with perfection - value scales with buff multiplier
-      // A 1.4x buff on ~20 gain/turn ≈ 8 extra progress per buffed turn
       const controlBuffBoost = (state.controlBuffMultiplier - 1) * 25;
       score +=
         state.controlBuffTurns *
@@ -759,7 +761,6 @@ function scoreState(
         remainingWorkPct;
     }
     if (state.hasIntensityBuff()) {
-      // Intensity buff helps with completion - value scales with buff multiplier
       const intensityBuffBoost = (state.intensityBuffMultiplier - 1) * 25;
       score +=
         state.intensityBuffTurns *
@@ -768,16 +769,12 @@ function scoreState(
         remainingWorkPct;
     }
 
-    // Bonus for resource efficiency even when targets not met
-    // Qi is valuable for future progress skills - weight it enough to penalize
-    // expensive skills that provide little effective benefit (e.g., stabilize at high stability)
+    // ── 4. resource value (qi & stability as future-progress enablers) ─
     score += state.qi * 0.05;
     score += state.stability * (0.01 + remainingWorkPct * 0.01);
   }
 
-  // Penalize going over targets (wasted resources)
-  // For sublime crafting: no penalty until we exceed the multiplied target
-  // For normal crafting: small penalty for overshooting
+  // ── 5. overshoot penalty ─────────────────────────────────────────────
   if (!isSublimeCraft) {
     const normalCompLimit =
       maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
@@ -793,7 +790,6 @@ function scoreState(
       normalPerfLimit > 0 ? Math.max(0, state.perfection - normalPerfLimit) : 0;
     score -= (compOver + perfOver) * 0.3;
   } else {
-    // For sublime: only penalize if we exceed the multiplied target
     const sublimeCompLimit =
       maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
         ? Math.min(effectiveCompTarget, maxCompletionCap)
@@ -813,8 +809,7 @@ function scoreState(
     score -= (compOver + perfOver) * 0.3;
   }
 
-  // Hard-cap violation penalty (strong). In normal operation applySkill clamps these,
-  // but keep this as defensive scoring in case an input state already exceeds caps.
+  // Hard-cap violation penalty
   if (maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)) {
     score -= Math.max(0, state.completion - maxCompletionCap) * 3;
   }
@@ -822,52 +817,49 @@ function scoreState(
     score -= Math.max(0, state.perfection - maxPerfectionCap) * 3;
   }
 
-  // Penalty for low stability (risky state).
-  // Threshold scales with remaining work so long sequences preserve runway.
-  const stabilityThreshold = trainingMode
-    ? 8 + remainingWorkPct * 8
-    : 14 + remainingWorkPct * 26;
-  const stabilityPenaltyWeight = trainingMode ? 8 : 45;
-  if (state.stability < stabilityThreshold) {
-    const stabilityRisk =
-      (stabilityThreshold - state.stability) / stabilityThreshold; // 0 to 1
-    score -= stabilityRisk * stabilityRisk * stabilityPenaltyWeight;
+  // ── 6. survivability ────────────────────────────────────────────────
+  // When targets are already met, the craft is done — stability penalties
+  // should not apply because we don't need any more turns.  This prevents
+  // the optimizer from preferring Stabilize over an immediate finishing move.
+  if (!baseTargetsMet) {
+    const stabilityThreshold = trainingMode
+      ? 8 + remainingWorkPct * 8
+      : 14 + remainingWorkPct * 26;
+    const stabilityPenaltyWeight = trainingMode
+      ? Math.max(8, totalTargetMagnitude * 0.08)
+      : Math.max(45, totalTargetMagnitude * 0.45);
+    if (state.stability < stabilityThreshold) {
+      const stabilityRisk =
+        (stabilityThreshold - state.stability) / stabilityThreshold;
+      score -= stabilityRisk * stabilityRisk * stabilityPenaltyWeight;
+    }
+
+    // Hard cliff: craft dead at 0 stability.
+    if (state.stability <= 0) {
+      score -= targetMetBonus;
+    } else if (state.stability <= 10) {
+      score -=
+        (10 - state.stability) * Math.max(8, totalTargetMagnitude * 0.08);
+    }
+
+    // Runway penalty: avoid lines that lack enough stability to finish.
+    const estimatedTurnsRemaining =
+      remainingWorkPct > 0
+        ? Math.ceil(remainingWorkPct * (isSublimeCraft ? 14 : 10))
+        : 0;
+    const estimatedRunwayTurns = Math.floor(Math.max(0, state.stability) / 10);
+    if (estimatedTurnsRemaining > estimatedRunwayTurns) {
+      const gap = estimatedTurnsRemaining - estimatedRunwayTurns;
+      const maxRunwayPenalty = trainingMode ? 10 : 40;
+      score -= Math.min(gap * (trainingMode ? 2 : 5), maxRunwayPenalty);
+    }
   }
 
-  // Hard cliff penalty: if stability is at or below 0, the craft is dead.
-  // Also penalize states where stability is so low that no progress action
-  // could be taken without ending the craft (stability <= ~10).
-  if (state.stability <= 0) {
-    score -= 200;
-  } else if (state.stability <= 10) {
-    // Near-death: strong penalty proportional to how close to 0
-    score -= (10 - state.stability) * 8;
-  }
-
-  // Additional runway penalty: avoid lines that are unlikely to have enough
-  // stability-bearing turns left to finish remaining deficits.
-  // Capped to prevent it from dominating over progress gains and qi efficiency.
-  const estimatedTurnsRemaining =
-    remainingWorkPct > 0
-      ? Math.ceil(remainingWorkPct * (isSublimeCraft ? 14 : 10))
-      : 0;
-  const estimatedRunwayTurns = Math.floor(Math.max(0, state.stability) / 10);
-  if (estimatedTurnsRemaining > estimatedRunwayTurns) {
-    const gap = estimatedTurnsRemaining - estimatedRunwayTurns;
-    const maxRunwayPenalty = trainingMode ? 10 : 40;
-    score -= Math.min(gap * (trainingMode ? 2 : 5), maxRunwayPenalty);
-  }
-
-  // Small penalty for high toxicity in alchemy crafting
+  // ── 7. toxicity & harmony ──────────────────────────────────────────
   if (state.maxToxicity > 0 && state.hasDangerousToxicity()) {
     score -= 5;
   }
-
-  // Harmony bonus/penalty for sublime crafts
-  // Higher harmony → more positive conditions → better stats over time
   if (isSublimeCraft) {
-    // Harmony ranges from -100 to 100. Normalize to a scoring bonus.
-    // Positive harmony is good (more positive conditions), negative is bad.
     score += state.harmony * 0.15;
   }
 
@@ -946,7 +938,9 @@ function computeDynamicCriticalStability(
     Math.floor(Math.max(0, minStability || 0)) + 1,
   );
   const advancingTurnSpends = candidates
-    .filter((candidate) => candidate.advancesTargetsNow && candidate.consumesTurn)
+    .filter(
+      (candidate) => candidate.advancesTargetsNow && candidate.consumesTurn,
+    )
     .map((candidate) => candidate.turnStabilitySpend)
     .filter((spend) => Number.isFinite(spend) && spend > 0);
 
@@ -969,9 +963,15 @@ function buildStallActionContext(
   const needs = hasUnmetTarget(state, completionGoal, perfectionGoal);
 
   const candidates: ActionCandidateContext[] = skills.map((skill) => {
-    const immediateGains = calculateSkillGains(state, skill, config, conditionEffects, {
-      includeExpectedValue: false,
-    });
+    const immediateGains = calculateSkillGains(
+      state,
+      skill,
+      config,
+      conditionEffects,
+      {
+        includeExpectedValue: false,
+      },
+    );
     const effectiveCosts = calculateEffectiveActionCosts(
       state,
       skill,
@@ -1004,7 +1004,8 @@ function buildStallActionContext(
     (candidate) => candidate.advancesTargetsNow,
   );
   const hasImmediateFinisher = candidates.some(
-    (candidate) => candidate.advancesTargetsNow && candidate.isImmediateFinisher,
+    (candidate) =>
+      candidate.advancesTargetsNow && candidate.isImmediateFinisher,
   );
 
   return {
@@ -1287,11 +1288,14 @@ function generateReasoning(
  * Move ordering heuristic - orders skills to search most promising first.
  * This improves search efficiency by finding good solutions early.
  *
+ * Uses condition-modified gains so that condition bonuses influence which
+ * skills are explored first (and thus which survive beam-width pruning).
+ *
  * Priority order:
  * 1. Stabilize skills when stability is low (<= 25)
  * 2. Buff-granting skills when no buff is active
  * 3. Buff-consuming skills (Disciplined Touch) when buffs are active
- * 4. High-gain skills (completion/perfection > 10)
+ * 4. High-gain skills (using condition-adjusted gains)
  * 5. Other skills
  */
 function orderSkillsForSearch(
@@ -1300,6 +1304,7 @@ function orderSkillsForSearch(
   config: OptimizerConfig,
   targetCompletion: number,
   targetPerfection: number,
+  conditionEffects: ReturnType<typeof getConditionEffectsForConfig> = [],
 ): SkillDefinition[] {
   const needsCompletion = state.completion < targetCompletion;
   const needsPerfection = state.perfection < targetPerfection;
@@ -1337,14 +1342,12 @@ function orderSkillsForSearch(
         const nominalGain = skill.stabilityGain || 1;
         const wasteRatio = 1 - effectiveGain / nominalGain; // 0 = no waste, 1 = all wasted
         if (wasteRatio > 0.3) {
-          // More than 30% of stability gain would be wasted
           priority -= Math.round(wasteRatio * 400);
         }
       }
     }
 
     // Deprioritize qi-restore skills when qi is already near max
-    // This prevents recommending Fairy's Blessing, Unstable Reenergisation, etc. at full qi
     if (qiNearMax) {
       const isQiRestoreSkill =
         skill.restoresQi ||
@@ -1353,19 +1356,17 @@ function orderSkillsForSearch(
             effect?.kind === 'pool' && (effect.amount?.value ?? 0) > 0,
         );
       if (isQiRestoreSkill) {
-        // Significant penalty - only use if no other options
         priority -= 500;
       }
     }
 
-    // Item actions can unlock better follow-up turns (pool restore, emergency stability, buff setup).
+    // Item actions can unlock better follow-up turns
     if (skill.actionKind === 'item') {
       const hasImmediateImpact = (skill.effects || []).some(
         (effect) =>
           effect?.kind === 'completion' ||
           effect?.kind === 'perfection' ||
           effect?.kind === 'stability' ||
-          // Only count pool effects as valuable if qi is not near max
           (effect?.kind === 'pool' && !qiNearMax) ||
           effect?.kind === 'createBuff',
       );
@@ -1401,12 +1402,16 @@ function orderSkillsForSearch(
       }
     }
 
-    // Medium priority: skills that address current needs
-    if (needsCompletion && skill.baseCompletionGain > 0) {
-      priority += skill.baseCompletionGain * 2;
+    // Use condition-adjusted gains for progress priority so that condition
+    // bonuses steer the beam toward the right skills.
+    const gains = calculateSkillGains(state, skill, config, conditionEffects, {
+      includeExpectedValue: false,
+    });
+    if (needsCompletion && gains.completion > 0) {
+      priority += gains.completion * 2;
     }
-    if (needsPerfection && skill.basePerfectionGain > 0) {
-      priority += skill.basePerfectionGain * 2;
+    if (needsPerfection && gains.perfection > 0) {
+      priority += gains.perfection * 2;
     }
 
     // Bonus for using buffs effectively
@@ -1507,8 +1512,7 @@ export function greedySearch(
     modePerfGoal,
   );
   const evaluatedMoves: Array<
-    SkillRecommendation &
-      TerminalStateClassification
+    SkillRecommendation & TerminalStateClassification
   > = [];
 
   for (const skill of filteredSkills) {
@@ -1563,9 +1567,10 @@ export function greedySearch(
     });
   }
 
-  const scoredSkills: SkillRecommendation[] = filterUnfinishedTerminalCandidates(
-    evaluatedMoves,
-  ).map(({ isTerminal, isTerminalUnmet, ...rec }) => rec);
+  const scoredSkills: SkillRecommendation[] =
+    filterUnfinishedTerminalCandidates(evaluatedMoves).map(
+      ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
+    );
 
   const rankedSkills = rankRecommendations(scoredSkills);
 
@@ -1778,7 +1783,10 @@ export function lookaheadSearch(
 
     // Base case: depth exhausted or terminal
     if (remainingDepth === 0 || stateIsTerminal) {
-      return scoreStateWithTerminalPenalty(currentState, currentConditionAtDepth);
+      return scoreStateWithTerminalPenalty(
+        currentState,
+        currentConditionAtDepth,
+      );
     }
 
     // Check if active goals are met - early termination with score.
@@ -1836,6 +1844,7 @@ export function lookaheadSearch(
       config,
       orderingCompGoal,
       orderingPerfGoal,
+      conditionEffectsAtDepth,
     );
 
     // Apply adaptive beam search: use narrower beam for deep searches
@@ -2037,6 +2046,7 @@ export function lookaheadSearch(
         config,
         orderingCompGoal,
         orderingPerfGoal,
+        conditionEffectsAtDepth,
       );
       let bestSkill: SkillDefinition | null = null;
       let bestScore = -Infinity;
@@ -2125,10 +2135,10 @@ export function lookaheadSearch(
       config,
       orderingCompGoal,
       orderingPerfGoal,
+      currentConditionEffects,
     );
     const evaluatedFirstMoves: Array<
-      SkillRecommendation &
-        TerminalStateClassification
+      SkillRecommendation & TerminalStateClassification
     > = [];
 
     function findFollowUpSkill(
@@ -2171,6 +2181,7 @@ export function lookaheadSearch(
         config,
         orderingCompGoal,
         orderingPerfGoal,
+        followUpConditionEffects,
       );
 
       let bestFollowUp: SkillDefinition | null = null;
