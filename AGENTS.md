@@ -46,6 +46,12 @@
 - For changes in `src/optimizer/`, include cases for target completion, stability/Qi limits, and condition or buff interactions.
 - Run `bun run test` before pushing; use coverage checks for larger refactors.
 
+### Simulation tests vs. unit tests
+
+- **`craftSimulation.test.ts`** uses `simulateCraft()` to run full multi-turn crafts end-to-end. Use these when testing behavior that spans multiple turns (e.g., "does the optimizer use buffs before payoff skills?", "does it exploit positive conditions?", "does it stabilize instead of dying?").
+- **`search.test.ts`** unit tests cover single-turn scoring, ordering, and per-skill recommendation behavior. Use these for isolated concerns (e.g., "does scoreState penalize overshoot?", "does ordering prioritize buff-consuming skills?").
+- Any change to scoring or move ordering in `search.ts` must pass **both** the simulation tests and the regression tests at the bottom of `search.test.ts`.
+
 ## Commit & Pull Request Guidelines
 
 - Follow established commit prefixes: `feat:`, `fix:`, `docs:`, `perf:`, `chore(release):`.
@@ -71,8 +77,97 @@ These principles exist because past agents introduced compounding heuristic patc
 - **Condition-aware ordering.** `orderSkillsForSearch()` must use `calculateSkillGains()` with the current condition effects — never raw `baseCompletionGain`/`basePerfectionGain`.
 - **Stall penalties apply at recommendation level.** In greedy search and the lookahead first-move evaluation, stall penalties are added to `scoreState` results. Inside the recursive tree search, only ordering is affected.
 
+### Anti-patterns (DO NOT repeat)
+
+These are real mistakes from past optimizer work. Each one degraded recommendation quality and took significant effort to diagnose and fix.
+
+**1. Hardcoded bonus/penalty constants**
+
+```typescript
+// BAD — magic number that works for one craft size but breaks others
+if (baseTargetsMet) score += 200;
+if (state.stability < 20) score -= 45;
+if (state.stability <= 0) score -= 200;
+
+// GOOD — scales with the craft's actual target magnitude
+const targetMetBonus = totalTargetMagnitude * 2;
+if (baseTargetsMet) score += targetMetBonus;
+const penaltyWeight = Math.max(45, totalTargetMagnitude * 0.45);
+if (state.stability < threshold) score -= risk * risk * penaltyWeight;
+```
+
+**2. Hard-filtering skills out of the search tree**
+
+```typescript
+// BAD — permanently removes a skill before the tree can evaluate it
+const filtered = skills.filter(s => !isWastefulStabilize(s));
+return filtered; // if the heuristic is wrong, the optimal move is gone
+
+// GOOD — soft penalty that sinks the skill in ordering but keeps it reachable
+const penalties = computeStallPenalties(state, skills, ...);
+// penalties are folded into orderSkillsForSearch() priority scores
+```
+
+**3. Ignoring condition effects in move ordering**
+
+```typescript
+// BAD — uses raw base gains, ignoring that conditions double/halve them
+priority += skill.baseCompletionGain * 2;
+
+// GOOD — uses actual condition-modified gains
+const gains = calculateSkillGains(state, skill, config, conditionEffects, ...);
+priority += gains.completion * 2;
+```
+
+**4. Applying stability penalties when targets are already met**
+
+```typescript
+// BAD — penalises a state where comp=50/50, perf=50/50, stability=0
+// This makes the optimizer prefer Stabilize over an immediate finish
+if (state.stability <= 0) score -= 200; // always applied
+
+// GOOD — skip survivability when the craft is done
+if (!baseTargetsMet) {
+  if (state.stability <= 0) score -= targetMetBonus;
+}
+```
+
+**5. Adding one-off `if` branches for specific scenarios**
+
+```typescript
+// BAD — patching a symptom without understanding the root cause
+if (
+  state.completion > 40 &&
+  state.perfection < 10 &&
+  condition === 'positive'
+) {
+  score += 50; // "fix" for one specific craft scenario
+}
+
+// GOOD — write a simulation test that reproduces the scenario, then fix
+// the underlying scoring/ordering layer so it handles the class of cases
+```
+
+### When to add a new scoring term
+
+1. **First**, write a `craftSimulation.test.ts` test that reproduces the bad behavior. If you cannot write a test that fails, you probably do not need a new term.
+2. **Check if an existing layer already handles the concern.** If so, adjust its parameters — do not add a duplicate.
+3. **New terms must scale proportionally** with the craft's target magnitude. No hardcoded constants.
+4. **New terms must not interact unpredictably** with existing layers. If adding a term requires adjusting 3 other terms to compensate, the design is wrong.
+
+### How to safely change the optimizer
+
+Follow this workflow for any change to `search.ts` scoring or ordering:
+
+1. Read `docs/project/OPTIMIZER_DESIGN.md` and this section of `AGENTS.md`.
+2. Write a failing simulation test in `craftSimulation.test.ts` that reproduces the problem.
+3. Implement the fix in the correct scoring layer — do not add a new layer unless clearly justified.
+4. Run `bun run test` — **all tests must pass**.
+5. Run `bun run build` — must compile without errors.
+6. If the change affects scoring or ordering, verify the existing simulation tests still pass. If any regress, investigate whether the regression reveals a real problem or a test that needs updating.
+
 ### Testing
 
 - **End-to-end simulation tests** (`craftSimulation.test.ts`) simulate full multi-turn crafts. Any scoring or ordering change must pass these.
 - **Regression tests** at the bottom of `search.test.ts` cover specific past bugs (stabilize filtering, condition exploitation, stall blocking).
-- Run `bun run test` before every commit. All 336+ tests must pass.
+- Run `bun run test` before every commit. All tests must pass.
