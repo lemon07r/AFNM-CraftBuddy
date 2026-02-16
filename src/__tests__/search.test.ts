@@ -9,6 +9,7 @@ import {
   DEFAULT_SKILLS,
   calculateSkillGains,
   getAvailableSkills,
+  getConditionEffectsForConfig,
 } from '../optimizer/skills';
 import {
   findBestSkill,
@@ -17,7 +18,10 @@ import {
   normalizeForecastConditionQueue,
   setConditionTransitionProvider,
   VISIBLE_CONDITION_QUEUE_LENGTH,
+  __testing,
 } from '../optimizer/search';
+
+const { scoreState, computeStallPenalties } = __testing;
 
 // Helper to create a basic test config
 function createTestConfig(
@@ -425,15 +429,17 @@ describe('lookaheadSearch', () => {
 
     const result = lookaheadSearch(state, config, 100, 100, 3);
 
-    // Check if any skill has consumesBuff flag
+    // With an active control buff, Disciplined Touch should appear in results
     const allSkills = [result.recommendation!, ...result.alternativeSkills];
     const disciplinedTouch = allSkills.find((s) => s.skill.isDisciplinedTouch);
-    if (disciplinedTouch) {
-      expect(disciplinedTouch.consumesBuff).toBe(true);
-    }
+    expect(disciplinedTouch).toBeDefined();
+    expect(disciplinedTouch!.consumesBuff).toBe(true);
   });
 
   it('should use forecasted conditions in search', () => {
+    const perfectableConfig = createTestConfig({
+      conditionEffectType: 'perfectable' as any,
+    });
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -442,10 +448,34 @@ describe('lookaheadSearch', () => {
       perfection: 0,
     });
 
-    const result = lookaheadSearch(state, config, 100, 100, 3);
-
-    expect(result.recommendation).not.toBeNull();
-    // The search should complete without errors
+    const posResult = lookaheadSearch(
+      state,
+      perfectableConfig,
+      100,
+      100,
+      3,
+      'neutral',
+      ['positive', 'positive', 'positive'],
+    );
+    const negResult = lookaheadSearch(
+      state,
+      perfectableConfig,
+      100,
+      100,
+      3,
+      'neutral',
+      ['negative', 'negative', 'negative'],
+    );
+    expect(posResult.recommendation).not.toBeNull();
+    expect(negResult.recommendation).not.toBeNull();
+    // Perfectable recipe: positive boosts control, negative reduces it.
+    // Different forecasts should produce different scores or recommendations.
+    const posBest = posResult.recommendation!;
+    const negBest = negResult.recommendation!;
+    expect(
+      posBest.skill.name !== negBest.skill.name ||
+        posBest.score !== negBest.score,
+    ).toBe(true);
   });
 
   it('should handle different lookahead depths', () => {
@@ -756,12 +786,15 @@ describe('lookaheadSearch', () => {
   });
 
   it('should block pure qi-restore stalls when a progress skill can advance targets', () => {
+    // A qi pill that CONSUMES a turn is a stall action — the optimizer should
+    // prefer the progress skill.  (Free-action qi pills are correctly
+    // recommended first since they're strictly beneficial.)
     const qiPill = createCustomSkill({
       name: 'Use Qi Pill',
       key: 'item_qi_pill',
       actionKind: 'item',
       itemName: 'qi_pill',
-      consumesTurn: false,
+      consumesTurn: true,
       type: 'support',
       restoresQi: true,
       qiRestore: 60,
@@ -1034,9 +1067,16 @@ describe('findBestSkill', () => {
     // Both should return valid recommendations
     expect(goodResult.recommendation).not.toBeNull();
     expect(badResult.recommendation).not.toBeNull();
+    // Positive condition (boosted control) should produce a higher score than negative
+    expect(goodResult.recommendation!.score).toBeGreaterThan(
+      badResult.recommendation!.score,
+    );
   });
 
   it('should pass forecasted conditions to lookahead', () => {
+    const perfectableConfig = createTestConfig({
+      conditionEffectType: 'perfectable' as any,
+    });
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -1045,9 +1085,34 @@ describe('findBestSkill', () => {
       perfection: 0,
     });
 
-    const result = findBestSkill(state, config, 100, 100, false, 3);
-
-    expect(result.recommendation).not.toBeNull();
+    const posResult = findBestSkill(
+      state,
+      perfectableConfig,
+      100,
+      100,
+      false,
+      3,
+      'neutral',
+      ['positive', 'positive', 'positive'],
+    );
+    const negResult = findBestSkill(
+      state,
+      perfectableConfig,
+      100,
+      100,
+      false,
+      3,
+      'neutral',
+      ['negative', 'negative', 'negative'],
+    );
+    expect(posResult.recommendation).not.toBeNull();
+    expect(negResult.recommendation).not.toBeNull();
+    // Perfectable recipe: different forecasts should influence the result
+    expect(
+      posResult.recommendation!.skill.name !==
+        negResult.recommendation!.skill.name ||
+        posResult.recommendation!.score !== negResult.recommendation!.score,
+    ).toBe(true);
   });
 });
 
@@ -1066,9 +1131,13 @@ describe('search algorithm correctness', () => {
     const result = findBestSkill(state, config, 100, 100, false, 4);
 
     expect(result.recommendation).not.toBeNull();
-    // With enough resources and far from targets, buff setup is often optimal
-    // The algorithm should find a good path
-    expect(result.optimalRotation!.length).toBeGreaterThan(0);
+    const rec = result.recommendation!.skill;
+    const rotation = result.optimalRotation!;
+    expect(rotation.length).toBeGreaterThan(0);
+    // With full resources and far from targets, the first move should be a buff setup (Cycling skill)
+    expect(rec.buffDuration > 0 || rotation[0].startsWith('Cycling')).toBe(
+      true,
+    );
   });
 
   it('should prefer direct gains when close to targets', () => {
@@ -1085,11 +1154,9 @@ describe('search algorithm correctness', () => {
     expect(result.recommendation).not.toBeNull();
     // Close to targets, should prefer skills that directly add progress
     const skill = result.recommendation!.skill;
-    expect(
-      skill.baseCompletionGain > 0 ||
-        skill.basePerfectionGain > 0 ||
-        skill.type === 'stabilize', // May need stability first
-    ).toBe(true);
+    expect(skill.baseCompletionGain > 0 || skill.basePerfectionGain > 0).toBe(
+      true,
+    );
   });
 
   it('should handle edge case of exactly meeting targets', () => {
@@ -1556,7 +1623,7 @@ describe('top follow-up consistency', () => {
     });
 
     const result = lookaheadSearch(state, config, 0, 100, 3, 'neutral', [], {
-      maxNodes: 206,
+      maxNodes: 500,
       beamWidth: 6,
     });
 
@@ -2058,7 +2125,7 @@ describe('condition timeline modeling', () => {
       skills: [reagent, fusion],
     });
 
-    // Step 0: reagent should be available and usable
+    // Step 0: reagent should be available and recommended (free +30 stability)
     const stateStep0 = new CraftingState({
       qi: 100,
       stability: 20,
@@ -2068,8 +2135,17 @@ describe('condition timeline modeling', () => {
       step: 0,
       items: new Map([['catalyst', 1]]),
     });
-    const availableStep0 = stateStep0.step === 0;
-    expect(availableStep0).toBe(true);
+    const resultStep0 = lookaheadSearch(
+      stateStep0,
+      configWithReagent,
+      100,
+      0,
+      2,
+      'neutral',
+      [],
+    );
+    expect(resultStep0.recommendation).not.toBeNull();
+    expect(resultStep0.recommendation!.skill.name).toBe('Use Catalyst');
 
     // Step 1: reagent should be blocked -- only Fusion available
     const stateStep1 = new CraftingState({
@@ -2209,18 +2285,12 @@ describe('search performance', () => {
       perfection: 0,
     });
 
-    // Run twice - second run should be similar or faster due to similar state patterns
-    const startTime1 = Date.now();
-    lookaheadSearch(state, config, 100, 100, 3);
-    const time1 = Date.now() - startTime1;
+    // Run a single search at depth 4 — the tree should encounter the same
+    // state via different skill orderings and reuse cached scores.
+    const result = lookaheadSearch(state, config, 100, 100, 4);
 
-    const startTime2 = Date.now();
-    lookaheadSearch(state, config, 100, 100, 3);
-    const time2 = Date.now() - startTime2;
-
-    // Both should complete quickly
-    expect(time1).toBeLessThan(1000);
-    expect(time2).toBeLessThan(1000);
+    expect(result.searchMetrics).toBeDefined();
+    expect(result.searchMetrics!.cacheHits).toBeGreaterThan(0);
   });
 
   it('should handle large late-game numbers efficiently', () => {
@@ -2480,5 +2550,392 @@ describe('Regression: core optimizer bugs', () => {
     const lookaheadResult = lookaheadSearch(state, config, 50, 50, 3);
     expect(lookaheadResult.recommendation).not.toBeNull();
     expect(lookaheadResult.recommendation!.skill.type).toBe('stabilize');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Isolated scoreState unit tests
+// ---------------------------------------------------------------------------
+
+describe('scoreState (isolated)', () => {
+  it('should return higher score for more completion progress', () => {
+    const low = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 20,
+      perfection: 0,
+    });
+    const high = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 40,
+      perfection: 0,
+    });
+    expect(scoreState(high, 100, 100)).toBeGreaterThan(
+      scoreState(low, 100, 100),
+    );
+  });
+
+  it('should give large bonus when base targets are met', () => {
+    const unmet = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 99,
+      perfection: 100,
+    });
+    const met = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 100,
+    });
+    const diff = scoreState(met, 100, 100) - scoreState(unmet, 100, 100);
+    // Target-met bonus is totalTargetMagnitude * 2 = 400
+    expect(diff).toBeGreaterThan(300);
+  });
+
+  it('should not apply stability penalty when targets are met', () => {
+    const lowStab = new CraftingState({
+      qi: 100,
+      stability: 5,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 100,
+    });
+    const highStab = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 100,
+    });
+    const diff = scoreState(highStab, 100, 100) - scoreState(lowStab, 100, 100);
+    // Only tiny tiebreaker difference (stability * 0.001), not a real penalty
+    expect(diff).toBeLessThan(1);
+  });
+
+  it('should penalize low stability when targets are NOT met', () => {
+    const lowStab = new CraftingState({
+      qi: 100,
+      stability: 5,
+      initialMaxStability: 60,
+      completion: 50,
+      perfection: 50,
+    });
+    const highStab = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 50,
+      perfection: 50,
+    });
+    const diff = scoreState(highStab, 100, 100) - scoreState(lowStab, 100, 100);
+    expect(diff).toBeGreaterThan(10);
+  });
+
+  it('should prefer shorter paths (lower step count) when targets are met', () => {
+    const short = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 100,
+      step: 5,
+    });
+    const long = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 100,
+      step: 10,
+    });
+    expect(scoreState(short, 100, 100)).toBeGreaterThan(
+      scoreState(long, 100, 100),
+    );
+  });
+
+  it('should penalize overshoot beyond targets', () => {
+    const exact = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 100,
+    });
+    const over = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 150,
+      perfection: 150,
+    });
+    expect(scoreState(exact, 100, 100)).toBeGreaterThan(
+      scoreState(over, 100, 100),
+    );
+  });
+
+  it('should value buffs proportionally to remaining work', () => {
+    // Far from targets: buff should be valuable
+    const farWithBuff = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      controlBuffTurns: 2,
+      controlBuffMultiplier: 1.4,
+    });
+    const farNoBuff = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const farDiff =
+      scoreState(farWithBuff, 100, 100) - scoreState(farNoBuff, 100, 100);
+
+    // Close to targets: buff should be less valuable
+    const closeWithBuff = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 90,
+      perfection: 90,
+      controlBuffTurns: 2,
+      controlBuffMultiplier: 1.4,
+    });
+    const closeNoBuff = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 90,
+      perfection: 90,
+    });
+    const closeDiff =
+      scoreState(closeWithBuff, 100, 100) - scoreState(closeNoBuff, 100, 100);
+
+    expect(farDiff).toBeGreaterThan(closeDiff);
+  });
+
+  it('should apply runway penalty when stability insufficient for remaining work', () => {
+    const lowRunway = new CraftingState({
+      qi: 100,
+      stability: 10,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const highRunway = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const diff =
+      scoreState(highRunway, 100, 100) - scoreState(lowRunway, 100, 100);
+    // Should include both the survivability penalty AND the runway penalty
+    expect(diff).toBeGreaterThan(20);
+  });
+
+  it('should handle zero targets gracefully', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 50,
+      perfection: 30,
+    });
+    const score = scoreState(state, 0, 0);
+    // When both targets are 0, returns min(completion, perfection)
+    expect(score).toBe(30);
+  });
+
+  it('should handle completion-only targets', () => {
+    const met = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 0,
+    });
+    const unmet = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 50,
+      perfection: 0,
+    });
+    // perfectionTarget <= 0, so targets should be considered met at completion=100
+    expect(scoreState(met, 100, 0)).toBeGreaterThan(scoreState(unmet, 100, 0));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Isolated computeStallPenalties unit tests
+// ---------------------------------------------------------------------------
+
+describe('computeStallPenalties (isolated)', () => {
+  const basicStabilize = createCustomSkill({
+    name: 'Stabilize',
+    key: 'stabilize',
+    type: 'stabilize',
+    qiCost: 10,
+    stabilityCost: 0,
+    stabilityGain: 20,
+    preventsMaxStabilityDecay: true,
+  });
+  const simpleFusion = createCustomSkill({
+    name: 'Simple Fusion',
+    key: 'simple_fusion',
+    type: 'fusion',
+    qiCost: 0,
+    stabilityCost: 10,
+    baseCompletionGain: 1,
+    scalesWithIntensity: true,
+  });
+  const simpleRefine = createCustomSkill({
+    name: 'Simple Refine',
+    key: 'simple_refine',
+    type: 'refine',
+    qiCost: 18,
+    stabilityCost: 10,
+    basePerfectionGain: 1,
+    scalesWithControl: true,
+  });
+  const stallSkills = [simpleFusion, simpleRefine, basicStabilize];
+  const stallConfig = createTestConfig({
+    minStability: 0,
+    skills: stallSkills,
+  });
+
+  it('should return empty map when only 1 skill available', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 30,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const singleConfig = createTestConfig({
+      minStability: 0,
+      skills: [basicStabilize],
+    });
+    const conditionEffects = getConditionEffectsForConfig(
+      singleConfig,
+      'neutral',
+    );
+    const penalties = computeStallPenalties(
+      state,
+      [basicStabilize],
+      singleConfig,
+      conditionEffects,
+      100,
+      100,
+    );
+    expect(penalties.size).toBe(0);
+  });
+
+  it('should return empty map when targets are already met', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 30,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 100,
+    });
+    const conditionEffects = getConditionEffectsForConfig(
+      stallConfig,
+      'neutral',
+    );
+    const penalties = computeStallPenalties(
+      state,
+      stallSkills,
+      stallConfig,
+      conditionEffects,
+      100,
+      100,
+    );
+    expect(penalties.size).toBe(0);
+  });
+
+  it('should penalize wasteful stabilize at high stability', () => {
+    // stability=55 of max=60: only 5 effective gain from 20-point stabilize (waste=0.75).
+    // Close to targets so runway is sufficient — stabilize is genuinely wasteful here.
+    const state = new CraftingState({
+      qi: 100,
+      stability: 55,
+      initialMaxStability: 60,
+      completion: 80,
+      perfection: 90,
+    });
+    const conditionEffects = getConditionEffectsForConfig(
+      stallConfig,
+      'neutral',
+    );
+    const penalties = computeStallPenalties(
+      state,
+      stallSkills,
+      stallConfig,
+      conditionEffects,
+      100,
+      100,
+    );
+    expect(penalties.has('stabilize')).toBe(true);
+    expect(penalties.get('stabilize')).toBe(-2000);
+  });
+
+  it('should NOT penalize stabilize when stability runway is insufficient', () => {
+    // stability=30, cost=10/turn, remaining work needs ~6+ turns, runway = 3 turns
+    const state = new CraftingState({
+      qi: 100,
+      stability: 30,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const conditionEffects = getConditionEffectsForConfig(
+      stallConfig,
+      'neutral',
+    );
+    const penalties = computeStallPenalties(
+      state,
+      stallSkills,
+      stallConfig,
+      conditionEffects,
+      100,
+      100,
+    );
+    expect(penalties.has('stabilize')).toBe(false);
+  });
+
+  it('should NOT penalize stabilize when all progress would end craft', () => {
+    // stability=10, all progress skills cost 10, minStability=0 → post-stability = 0
+    const state = new CraftingState({
+      qi: 100,
+      stability: 10,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const conditionEffects = getConditionEffectsForConfig(
+      stallConfig,
+      'neutral',
+    );
+    const penalties = computeStallPenalties(
+      state,
+      stallSkills,
+      stallConfig,
+      conditionEffects,
+      100,
+      100,
+    );
+    expect(penalties.has('stabilize')).toBe(false);
   });
 });

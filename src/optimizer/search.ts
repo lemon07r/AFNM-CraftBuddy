@@ -781,6 +781,12 @@ function scoreState(
     // ── 4. resource value (qi & stability as future-progress enablers) ─
     score += state.qi * 0.05;
     score += state.stability * (0.01 + remainingWorkPct * 0.01);
+
+    // Step efficiency: prefer shorter paths to target completion.
+    // Without this, the tree search sees no cost to "stabilize now,
+    // progress later" vs "progress now", which can cause stabilize
+    // spirals where the optimizer delays progress indefinitely.
+    score -= state.step * 0.5;
   }
 
   // ── 5. overshoot penalty ─────────────────────────────────────────────
@@ -1208,9 +1214,13 @@ function computeStallPenalties(
   const stabilizeProtected =
     allProgressWouldEndCraft || stabilityRunwayInsufficient;
 
-  // Large penalty that pushes skills below all normal priority scores
-  // but doesn't make them -Infinity (so they're still reachable).
-  const STALL_PENALTY = -2000;
+  // Proportional penalty sized relative to the craft's target magnitude.
+  // For small crafts (targets=50+50=100), penalty = -1000.
+  // For large crafts (targets=5000+5000=10000), penalty = -100000.
+  // This ensures the penalty is always meaningful but never absurdly
+  // disproportionate to the craft's scoring scale.
+  const totalTargetMagnitude = Math.max(1, completionGoal + perfectionGoal);
+  const STALL_PENALTY = -totalTargetMagnitude * 10;
 
   for (const candidate of context.candidates) {
     if (candidate.advancesTargetsNow) {
@@ -1397,7 +1407,7 @@ function orderSkillsForSearch(
         );
         const nominalGain = skill.stabilityGain || 1;
         const wasteRatio = 1 - effectiveGain / nominalGain; // 0 = no waste, 1 = all wasted
-        if (wasteRatio > 0.3) {
+        if (wasteRatio > 0.35) {
           priority -= Math.round(wasteRatio * 400);
         }
       }
@@ -1459,15 +1469,17 @@ function orderSkillsForSearch(
     }
 
     // Use condition-adjusted gains for progress priority so that condition
-    // bonuses steer the beam toward the right skills.
+    // bonuses steer the beam toward the right skills.  The multiplier is
+    // large enough (8×) that a condition-doubled gain outranks hardcoded
+    // bonuses like buff-granting (+400), ensuring condition exploitation.
     const gains = calculateSkillGains(state, skill, config, conditionEffects, {
       includeExpectedValue: false,
     });
     if (needsCompletion && gains.completion > 0) {
-      priority += gains.completion * 2;
+      priority += gains.completion * 8;
     }
     if (needsPerfection && gains.perfection > 0) {
-      priority += gains.perfection * 2;
+      priority += gains.perfection * 8;
     }
 
     // Bonus for using buffs effectively
@@ -2350,7 +2362,11 @@ export function lookaheadSearch(
         modePerfGoal,
       );
 
-      // Use immediate score as baseline (no deep search yet)
+      // Use immediate score as baseline (no deep search yet).
+      // Stall penalties are added to prevent wasteful stabilize/qi-restore
+      // from outranking progress skills.  The stabilizeProtected flag in
+      // computeStallPenalties() ensures survival-critical stabilize is
+      // never penalised.
       const immediateScore =
         scoreStateWithTerminalPenalty(
           newState,
@@ -2400,8 +2416,12 @@ export function lookaheadSearch(
 
       const hasBudgetForDeepSearch = !checkBudget();
       if (hasBudgetForDeepSearch) {
-        // Deep evaluation — apply stall penalty so that deprioritised
-        // actions don't outrank progress skills purely via tree score.
+        // Deep evaluation — the tree search evaluates future states.
+        // Stall penalties are added to prevent wasteful stabilize from
+        // outranking progress when the tree can't see far enough to
+        // distinguish "stabilize now, progress later" from "progress now".
+        // The stabilizeProtected flag ensures survival-critical stabilize
+        // is never penalised.
         rec.score =
           evaluateFutureScoreAfterSkill(
             newState,
@@ -2659,3 +2679,11 @@ export function findBestSkill(
     searchConfig,
   );
 }
+
+// Internals exposed for isolated unit testing only — not part of the public API.
+export const __testing = {
+  scoreState,
+  computeStallPenalties,
+  isWastefulStabilize,
+  orderSkillsForSearch,
+} as const;

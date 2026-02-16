@@ -235,7 +235,7 @@ function simulateCraft(
       depth,
       condition,
       forecast,
-      { timeBudgetMs: 2000, maxNodes: 200000 },
+      { timeBudgetMs: 500, maxNodes: 200000 },
     );
 
     if (!result.recommendation) {
@@ -344,6 +344,8 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
     const sim = simulateCraft(state, config, 100, 100, neutralOnly, 30);
     expect(sim.targetsMet).toBe(true);
     expect(sim.craftDied).toBe(false);
+    // Efficiency bound: ~9 fusion + ~7 refine + ~3-4 stabilize = ~19-20 turns
+    expect(sim.turnsUsed).toBeLessThanOrEqual(22);
   });
 
   it('should never recommend stabilize at full stability', () => {
@@ -379,7 +381,13 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
     const sim = simulateCraft(state, config, 100, 100, neutralOnly, 30);
 
     // In a long craft the optimizer must use stabilize at some point.
-    expect(sim.history).toContain('Stabilize');
+    const stabilizeTurns = sim.log.filter((t) => t.skillChosen === 'Stabilize');
+    expect(stabilizeTurns.length).toBeGreaterThanOrEqual(1);
+    // Verify stabilize was used at a time when it was actually needed
+    const stabilizeWhenLow = stabilizeTurns.filter(
+      (t) => t.stateBefore.stability <= 30,
+    );
+    expect(stabilizeWhenLow.length).toBeGreaterThanOrEqual(1);
     expect(sim.craftDied).toBe(false);
   });
 });
@@ -418,8 +426,16 @@ describe('craft simulation — beginner skills, condition exploitation', () => {
       const refineCount = positiveTurnsWithPerfNeed.filter(
         (t) => t.skillChosen === 'Simple Refine',
       ).length;
-      // At least one positive turn with unmet perfection should use refine.
-      expect(refineCount).toBeGreaterThanOrEqual(1);
+      const refineRate = refineCount / positiveTurnsWithPerfNeed.length;
+      // On a perfectable recipe, positive conditions boost control by 50%.
+      // The optimizer should exploit this when perfection needs work AND
+      // the boosted gain doesn't overshoot the target.  The optimizer
+      // correctly prefers Refine on early positive turns (large perfection
+      // gap) but may switch to Fusion/Stabilize when completion is further
+      // behind or stability is low.  Rate of ~33% is correct for this
+      // scenario because only 1 of 3 positive turns has both sufficient
+      // stability and a large enough perfection gap.
+      expect(refineRate).toBeGreaterThanOrEqual(0.25);
     }
   });
 
@@ -472,8 +488,36 @@ describe('craft simulation — full skill set, buff utilization', () => {
     expect(sim.targetsMet).toBe(true);
 
     // The optimizer should use Cycling skills (buff setup) at some point.
-    const usesCycling = sim.history.some((name) => name.startsWith('Cycling'));
-    expect(usesCycling).toBe(true);
+    const cyclingIndices = sim.history.reduce((acc, name, i) => {
+      if (name.startsWith('Cycling')) acc.push(i);
+      return acc;
+    }, [] as number[]);
+    expect(cyclingIndices.length).toBeGreaterThan(0);
+
+    // Verify at least one Cycling skill is followed by a payoff within its 2-turn buff window.
+    // Cycling Fusion grants CONTROL buff → payoff: control-scaling (Simple Refine, Disciplined Touch)
+    // Cycling Refine grants INTENSITY buff → payoff: intensity-scaling (Simple Fusion, Energised Fusion, Disciplined Touch)
+    let hasPayoff = false;
+    for (const ci of cyclingIndices) {
+      const cyclingName = sim.history[ci];
+      const grantsIntensity = cyclingName === 'Cycling Refine';
+      for (let j = ci + 1; j <= Math.min(ci + 2, sim.history.length - 1); j++) {
+        const followUp = sim.history[j];
+        if (
+          grantsIntensity &&
+          (followUp.includes('Fusion') || followUp === 'Disciplined Touch')
+        ) {
+          hasPayoff = true;
+        }
+        if (
+          !grantsIntensity &&
+          (followUp.includes('Refine') || followUp === 'Disciplined Touch')
+        ) {
+          hasPayoff = true;
+        }
+      }
+    }
+    expect(hasPayoff).toBe(true);
   });
 
   it('should complete efficiently (fewer turns than beginner-only)', () => {
@@ -676,6 +720,36 @@ describe('craft simulation — mid-craft stability management', () => {
     // Must have stabilized multiple times to survive
     const stabilizeCount = sim.history.filter((s) => s === 'Stabilize').length;
     expect(stabilizeCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('craft simulation — stall penalty must not override tree search', () => {
+  it('should stabilize when waste ratio is high but craft needs survival runway', () => {
+    // Scenario: stability 42 / maxStability 55, Stabilize gains +20.
+    // Effective gain = min(20, 55-42) = 13, waste ratio = 1 - 13/20 = 0.35.
+    // isWastefulStabilize() would trigger at wasteRatio >= 0.35, but the
+    // stabilizeProtected flag prevents it because the craft needs more
+    // turns to finish than the stability runway allows.
+    const state = new CraftingState({
+      qi: 194,
+      stability: 42,
+      initialMaxStability: 55,
+      stabilityPenalty: 3,
+      completion: 30,
+      perfection: 25,
+    });
+
+    const sim = simulateCraft(
+      state,
+      beginnerConfig(),
+      60,
+      60,
+      ['neutral'],
+      25,
+      6,
+    );
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
   });
 });
 
