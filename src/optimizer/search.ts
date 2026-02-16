@@ -1165,15 +1165,48 @@ function computeStallPenalties(
     return penalties;
   }
 
-  // Check if ALL progress skills that advance targets would end the craft
-  // (i.e., post-stability would be at or below minStability).
-  // When true, stabilize must never be penalised — it's the only survival option.
+  // Check if the craft lacks enough stability runway to finish.
+  // When true, stabilize must never be penalised — it's needed for survival.
+  //
+  // Two conditions protect stabilize from stall penalties:
+  //   1. allProgressWouldEndCraft: every progress skill would immediately
+  //      reduce stability to 0 (single-turn survival check).
+  //   2. stabilityRunwayInsufficient: the estimated turns of stability
+  //      remaining is less than the estimated turns of work remaining
+  //      (multi-turn survival check).  This catches the case where
+  //      stability is above the critical threshold but insufficient to
+  //      finish the craft without stabilization.
   const allProgressWouldEndCraft = context.candidates
     .filter((c) => c.advancesTargetsNow && c.consumesTurn)
     .every((c) => {
       const postStability = state.stability - c.turnStabilitySpend;
       return postStability <= (config.minStability || 0);
     });
+
+  const remainingComp = Math.max(0, completionGoal - state.completion);
+  const remainingPerf = Math.max(0, perfectionGoal - state.perfection);
+  const totalRemaining = remainingComp + remainingPerf;
+  const avgGainPerTurn = Math.max(
+    1,
+    config.baseIntensity || 12,
+    config.baseControl || 16,
+  );
+  const estimatedTurnsToFinish = Math.ceil(totalRemaining / avgGainPerTurn);
+  const avgStabCost = context.candidates
+    .filter((c) => c.advancesTargetsNow && c.consumesTurn)
+    .reduce((sum, c) => sum + c.turnStabilitySpend, 0);
+  const advancingCount = context.candidates.filter(
+    (c) => c.advancesTargetsNow && c.consumesTurn,
+  ).length;
+  const avgCostPerTurn = advancingCount > 0 ? avgStabCost / advancingCount : 10;
+  const estimatedRunwayTurns =
+    avgCostPerTurn > 0
+      ? Math.floor(state.stability / avgCostPerTurn)
+      : Infinity;
+  const stabilityRunwayInsufficient =
+    estimatedTurnsToFinish > estimatedRunwayTurns;
+  const stabilizeProtected =
+    allProgressWouldEndCraft || stabilityRunwayInsufficient;
 
   // Large penalty that pushes skills below all normal priority scores
   // but doesn't make them -Infinity (so they're still reachable).
@@ -1190,7 +1223,7 @@ function computeStallPenalties(
         candidate,
         context.criticalStability,
         context.hasImmediateFinisher,
-        allProgressWouldEndCraft,
+        stabilizeProtected,
       )
     ) {
       penalties.set(candidate.skill.key, STALL_PENALTY);

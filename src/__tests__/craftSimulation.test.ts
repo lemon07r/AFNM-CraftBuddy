@@ -98,6 +98,16 @@ const STABILIZE = createCustomSkill({
   preventsMaxStabilityDecay: true,
 });
 
+const FORCEFUL_STABILIZE = createCustomSkill({
+  name: 'Forceful Stabilize',
+  key: 'forceful_stabilize',
+  type: 'stabilize',
+  qiCost: 88,
+  stabilityCost: 0,
+  stabilityGain: 40,
+  preventsMaxStabilityDecay: true,
+});
+
 const BEGINNER_SKILLS = [SIMPLE_FUSION, SIMPLE_REFINE, STABILIZE];
 
 function beginnerConfig(
@@ -543,6 +553,129 @@ describe('craft simulation — survivability', () => {
     // Should finish immediately with fusion, not waste a turn stabilizing.
     expect(sim.history[0]).toBe('Simple Fusion');
     expect(sim.turnsUsed).toBe(1);
+  });
+});
+
+describe('craft simulation — mid-craft stability management', () => {
+  const config = beginnerConfig();
+
+  it('should stabilize when stability cannot survive enough turns to finish (generous budget)', () => {
+    const state = new CraftingState({
+      qi: 194,
+      stability: 30,
+      initialMaxStability: 55,
+      stabilityPenalty: 5,
+      completion: 20,
+      perfection: 10,
+    });
+
+    const sim = simulateCraft(state, config, 60, 60, ['neutral'], 25, 6);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+
+    const firstFiveMoves = sim.history.slice(0, 5);
+    expect(firstFiveMoves).toContain('Stabilize');
+  });
+
+  it('should stabilize with realistic search budget (500ms, depth 28)', () => {
+    const state = new CraftingState({
+      qi: 194,
+      stability: 30,
+      initialMaxStability: 55,
+      stabilityPenalty: 5,
+      completion: 20,
+      perfection: 10,
+    });
+
+    const sim = simulateCraft(state, config, 60, 60, ['neutral'], 25, 28);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+  });
+
+  it('should use Forceful Stabilize when it is the only stabilize option', () => {
+    // Forceful Stabilize: 88 qi, +40 stability. High qi cost means the
+    // optimizer must plan qi budget carefully. The craft must not die.
+    const forcefulSkills = [SIMPLE_FUSION, SIMPLE_REFINE, FORCEFUL_STABILIZE];
+    const forcefulConfig = createTestConfig({
+      skills: forcefulSkills,
+      conditionEffectType: 'perfectable' as any,
+      maxQi: 300, // Enough qi budget for multiple stabilizes
+    });
+
+    const state = new CraftingState({
+      qi: 300,
+      stability: 30,
+      initialMaxStability: 55,
+      stabilityPenalty: 5,
+      completion: 20,
+      perfection: 10,
+    });
+
+    const sim = simulateCraft(
+      state,
+      forcefulConfig,
+      60,
+      60,
+      ['neutral'],
+      25,
+      6,
+    );
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+
+    expect(sim.history).toContain('Forceful Stabilize');
+  });
+
+  it('should not die when Forceful Stabilize is the only way to survive (low stability)', () => {
+    // Stability 20 with cost 10 = only 2 turns before death.
+    // Forceful Stabilize is expensive (88 qi) and wastes half its gain,
+    // but it's the only survival option.
+    const forcefulSkills = [SIMPLE_FUSION, SIMPLE_REFINE, FORCEFUL_STABILIZE];
+    const forcefulConfig = createTestConfig({
+      skills: forcefulSkills,
+      conditionEffectType: 'perfectable' as any,
+      maxQi: 300,
+    });
+
+    const state = new CraftingState({
+      qi: 300,
+      stability: 20,
+      initialMaxStability: 50,
+      stabilityPenalty: 10,
+      completion: 20,
+      perfection: 10,
+    });
+
+    const sim = simulateCraft(
+      state,
+      forcefulConfig,
+      60,
+      60,
+      ['neutral'],
+      25,
+      6,
+    );
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+  });
+
+  it('should interleave stabilize with progress in a long craft', () => {
+    // Start fresh with just enough stability for ~3 progress turns
+    const state = new CraftingState({
+      qi: 194,
+      stability: 30,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const sim = simulateCraft(state, config, 60, 60, ['neutral'], 30, 6);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+
+    // Must have stabilized multiple times to survive
+    const stabilizeCount = sim.history.filter((s) => s === 'Stabilize').length;
+    expect(stabilizeCount).toBeGreaterThanOrEqual(2);
   });
 });
 
