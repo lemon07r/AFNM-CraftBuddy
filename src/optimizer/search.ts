@@ -154,6 +154,190 @@ const TERMINAL_UNMET_SCORE_FLOOR = -1_000_000;
 const TERMINAL_UNMET_SCORE_TIEBREAK_WINDOW = 100_000;
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
 
+// ── Scoring weights ─────────────────────────────────────────────────────────
+// Each constant documents its magnitude relative to other scoring layers.
+// All penalties/bonuses that depend on craft size use totalTargetMagnitude
+// as the base, so they scale proportionally to any craft.
+const SCORING = {
+  // Target-met bonus = totalTargetMagnitude × this.  2× is large enough
+  // to clearly separate "met" from "almost met" without dwarfing progress.
+  TARGET_MET_MULTIPLIER: 2,
+  // Sublime targets-met gets an extra 1.5× on top of the base bonus,
+  // rewarding the harder achievement of exceeding doubled targets.
+  SUBLIME_MET_EXTRA: 1.5,
+  // Intentionally tiny: tiebreaker only — never large enough to justify
+  // spending an extra turn to preserve qi/stability.
+  RESOURCE_TIEBREAKER: 0.001,
+  // Per-step cost: gives the tree search a signal that shorter paths are
+  // better, preventing stabilize spirals.  0.5 is small relative to
+  // per-turn progress (typically 12–24 points) but enough to break ties.
+  STEP_PENALTY: 0.5,
+  // Beyond-base bonus weight in sublime mode.  0.5× progress value
+  // so the optimizer pursues sublime targets but doesn't overvalue them
+  // relative to reaching base targets first.
+  SUBLIME_BEYOND_BASE_WEIGHT: 0.5,
+  // Buff valuation: converts (multiplier − 1) into a score contribution
+  // per remaining buff turn.  At default 1.4× buff, this yields
+  // 0.4 × 25 = 10 points per turn, comparable to one turn of progress.
+  BUFF_VALUE_PER_MULTIPLIER_POINT: 25,
+  // Base floor for buff need-share weighting.  Ensures buffs retain
+  // some value even when the corresponding target is nearly met.
+  BUFF_NEED_FLOOR: 0.5,
+  // Qi value when targets not yet met: qi enables future progress actions.
+  // 0.05 per qi ≈ 10 points at full qi (194), meaningful but secondary.
+  QI_RESOURCE_WEIGHT: 0.05,
+  // Base stability value when targets not yet met.  Stability enables
+  // future turns, so its value scales with remaining work.
+  STABILITY_BASE_WEIGHT: 0.01,
+  STABILITY_WORK_WEIGHT: 0.01,
+  // Overshoot penalty: discourages exceeding targets.  0.3× means
+  // 10 points of overshoot costs 3 score — enough to steer the
+  // optimizer but not so large it avoids finishing a nearly-met target.
+  OVERSHOOT_PENALTY_WEIGHT: 0.3,
+  // Hard-cap violation is 3× overshoot weight — strong deterrent against
+  // exceeding the recipe's absolute maximum.
+  HARD_CAP_PENALTY_WEIGHT: 3,
+  // Normal-mode stability threshold: the stability level below which
+  // a quadratic penalty applies.  Expressed as turns of runway needed
+  // (2 turns base + scaling with remaining work up to ~4 turns total),
+  // multiplied by the actual average stability cost per turn.
+  STABILITY_THRESHOLD_TURNS_BASE: 1.4,
+  STABILITY_THRESHOLD_TURNS_SCALE: 2.6,
+  // Training-mode stability threshold: more aggressive (less penalty)
+  // because training crafts have lower stakes.
+  STABILITY_THRESHOLD_TURNS_BASE_TRAINING: 0.8,
+  STABILITY_THRESHOLD_TURNS_SCALE_TRAINING: 0.8,
+  // Stability penalty weight as a fraction of totalTargetMagnitude.
+  // Quadratic penalty = risk² × (totalTargetMagnitude × this fraction).
+  STABILITY_PENALTY_FRACTION: 0.45,
+  STABILITY_PENALTY_FRACTION_TRAINING: 0.08,
+  // Minimum stability penalty weight floors — prevents the penalty from
+  // becoming negligible on very small crafts.
+  STABILITY_PENALTY_FLOOR: 45,
+  STABILITY_PENALTY_FLOOR_TRAINING: 8,
+  // Near-death linear penalty: below this many stability points,
+  // an additional linear penalty ramps up urgency.
+  NEAR_DEATH_STABILITY: 10,
+  // Runway penalty: per-turn-gap weight and cap.  Penalizes states
+  // where estimated turns to finish exceeds stability runway.
+  RUNWAY_GAP_WEIGHT: 5,
+  RUNWAY_GAP_WEIGHT_TRAINING: 2,
+  RUNWAY_MAX_PENALTY: 40,
+  RUNWAY_MAX_PENALTY_TRAINING: 10,
+  // Toxicity penalty as a fraction of totalTargetMagnitude.
+  // Proportional so it scales correctly for small and large crafts.
+  TOXICITY_PENALTY_FRACTION: 0.025,
+  // Harmony bonus weight in sublime mode.  Small incentive to maintain
+  // positive harmony for the harmony sub-system benefits.
+  HARMONY_BONUS_WEIGHT: 0.15,
+} as const;
+
+// ── Move ordering priorities ────────────────────────────────────────────────
+// Priority values form a ladder — relative order matters, absolute values
+// are arbitrary.  The key relationships:
+//   STABILIZE_CRITICAL > BUFF_CONSUMER > BUFF_GRANT ≈ gains×GAIN_MULTIPLIER
+//   > ITEM_IMPACT > BUFF_SCALING > 0
+const ORDERING = {
+  // Survival: explore stabilize first when stability is critically low.
+  STABILIZE_CRITICAL: 1000,
+  // Buff-consuming skills (Disciplined Touch) with active buffs are
+  // high-value plays that use a limited resource.
+  BUFF_CONSUMER: 500,
+  // Stabilize at max stability is wasteful — sink it in ordering.
+  STABILIZE_AT_MAX: -500,
+  // Qi restore near max — qi would be wasted.
+  QI_RESTORE_AT_MAX: -500,
+  // Buff-granting when the buff is needed and not already active.
+  BUFF_GRANT: 400,
+  // Items with immediate game-state impact (completion, perfection,
+  // stability, buffs, or qi when not near max).
+  ITEM_IMPACT: 320,
+  // Items with low toxicity headroom — risky to use.
+  ITEM_LOW_HEADROOM: -200,
+  // Gain multiplier: condition-adjusted gain × this.  At gain=50,
+  // priority = 400, competing with BUFF_GRANT.  This ensures
+  // condition-doubled gains outrank static bonuses.
+  GAIN_MULTIPLIER: 8,
+  // Small bonus for skills that scale with an active buff.
+  BUFF_SCALING: 100,
+  // Stability threshold for "low stability" ordering boost.
+  // Derived from: ~2.5 turns × 10 stability/turn = 25.
+  LOW_STABILITY_THRESHOLD: 25,
+  // Qi near max threshold (fraction of maxQi).
+  QI_NEAR_MAX_FRACTION: 0.9,
+  // Toxicity headroom multiplier for the low-headroom check.
+  TOXICITY_HEADROOM_MULTIPLIER: 2,
+  // Stabilize waste ratio threshold for ordering demotion.
+  STABILIZE_WASTE_THRESHOLD: 0.35,
+  // Waste-proportional ordering penalty scale factor.
+  STABILIZE_WASTE_SCALE: 400,
+} as const;
+
+// ── Waste detection thresholds (isWastefulStabilize) ────────────────────────
+// These determine when stabilize is considered wasteful enough to penalize.
+// A "waste ratio" of 0.35 means 35% of the stability gain would be clamped.
+const WASTE = {
+  // With an immediate finisher available, a lower qi-efficiency threshold
+  // triggers waste detection — finishing is clearly better.
+  FINISHER_QI_PER_STABILITY: 1.8,
+  // High waste ratio: most of the stability gain is clamped by maxStability.
+  HIGH_WASTE_RATIO: 0.35,
+  // Medium waste ratio combined with poor qi efficiency.
+  MEDIUM_WASTE_RATIO: 0.2,
+  MEDIUM_QI_PER_STABILITY: 2,
+  // Standalone qi inefficiency: paying too much qi per effective stability.
+  HIGH_QI_PER_STABILITY: 2.2,
+} as const;
+
+// ── Stall penalty ───────────────────────────────────────────────────────────
+// Proportional to totalTargetMagnitude so it scales with craft size.
+// For targets=100+100, penalty = -2000.  Large enough to sink wasteful
+// actions below any legitimate progress skill.
+const STALL_PENALTY_MULTIPLIER = 10;
+
+// ── Scoring context ─────────────────────────────────────────────────────────
+// Carries precomputed craft-specific values into scoreState() so that
+// survivability estimates use actual skill data instead of hardcoded guesses.
+interface ScoringContext {
+  /** Average stability cost per progress turn, from available skills. */
+  avgStabilityCostPerTurn: number;
+  /** Average gain per progress turn (max of intensity, control stats). */
+  avgGainPerTurn: number;
+}
+
+/** Default scoring context used when callers don't provide one. */
+const DEFAULT_SCORING_CONTEXT: ScoringContext = {
+  avgStabilityCostPerTurn: 10,
+  avgGainPerTurn: 16,
+};
+
+/**
+ * Build a ScoringContext from actual config values.
+ * Callers that have access to OptimizerConfig should use this instead of
+ * relying on DEFAULT_SCORING_CONTEXT.
+ */
+function buildScoringContext(config: OptimizerConfig): ScoringContext {
+  const intensity = config.baseIntensity || 12;
+  const control = config.baseControl || 16;
+  const avgGainPerTurn = Math.max(1, intensity, control);
+
+  // Compute average stability cost from the config's skill list.
+  // Only consider turn-consuming skills that produce completion or perfection.
+  const skills = config.skills || [];
+  let totalStabCost = 0;
+  let count = 0;
+  for (const skill of skills) {
+    if (skill.type === 'stabilize' || skill.type === 'support') continue;
+    if (skill.stabilityCost > 0) {
+      totalStabCost += skill.stabilityCost;
+      count++;
+    }
+  }
+  const avgStabilityCostPerTurn = count > 0 ? totalStabCost / count : 10;
+
+  return { avgStabilityCostPerTurn, avgGainPerTurn };
+}
+
 /**
  * Calculate adaptive beam width based on remaining depth.
  * For deep searches (high realm), we narrow the beam to stay performant.
@@ -665,6 +849,7 @@ function scoreState(
   trainingMode: boolean = false,
   maxCompletionCap?: number,
   maxPerfectionCap?: number,
+  ctx: ScoringContext = DEFAULT_SCORING_CONTEXT,
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
     return Math.min(state.completion, state.perfection);
@@ -728,9 +913,7 @@ function scoreState(
     1,
     effectiveCompGoal + effectivePerfGoal,
   );
-  // Bonus sized so it is roughly 2× the total target magnitude — large enough
-  // to clearly separate "met" from "almost met" but proportional to the craft.
-  const targetMetBonus = totalTargetMagnitude * 2;
+  const targetMetBonus = totalTargetMagnitude * SCORING.TARGET_MET_MULTIPLIER;
 
   const baseTargetsMet =
     (targetCompletion <= 0 || state.completion >= targetCompletion) &&
@@ -741,52 +924,56 @@ function scoreState(
     (effectivePerfTarget <= 0 || state.perfection >= effectivePerfTarget);
 
   if (sublimeTargetsMet) {
-    score += targetMetBonus * 1.5;
-    // Tiny resource tiebreaker — just enough to distinguish otherwise-equal
-    // completions, but never enough to justify an extra turn of stabilize.
-    score += state.qi * 0.001;
-    score += state.stability * 0.001;
-    // Prefer earlier completion: penalise each turn spent so that a path
-    // finishing in 1 turn beats an equivalent path finishing in 2 turns.
-    score -= state.step * 0.5;
+    score += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
+    score += state.qi * SCORING.RESOURCE_TIEBREAKER;
+    score += state.stability * SCORING.RESOURCE_TIEBREAKER;
+    score -= state.step * SCORING.STEP_PENALTY;
   } else if (baseTargetsMet) {
     score += targetMetBonus;
-    score += state.qi * 0.001;
-    score += state.stability * 0.001;
-    score -= state.step * 0.5;
+    score += state.qi * SCORING.RESOURCE_TIEBREAKER;
+    score += state.stability * SCORING.RESOURCE_TIEBREAKER;
+    score -= state.step * SCORING.STEP_PENALTY;
     if (isSublimeCraft) {
       const compBeyondBase = Math.max(0, state.completion - targetCompletion);
       const perfBeyondBase = Math.max(0, state.perfection - targetPerfection);
-      score += (compBeyondBase + perfBeyondBase) * 0.5;
+      score +=
+        (compBeyondBase + perfBeyondBase) * SCORING.SUBLIME_BEYOND_BASE_WEIGHT;
     }
   } else {
     // ── 3. buff valuation (when targets not yet met) ──────────────────
     if (state.hasControlBuff()) {
-      const controlBuffBoost = (state.controlBuffMultiplier - 1) * 25;
+      const controlBuffBoost =
+        (state.controlBuffMultiplier - 1) *
+        SCORING.BUFF_VALUE_PER_MULTIPLIER_POINT;
       score +=
         state.controlBuffTurns *
         controlBuffBoost *
-        (0.5 + perfNeedShare) *
+        (SCORING.BUFF_NEED_FLOOR + perfNeedShare) *
         remainingWorkPct;
     }
     if (state.hasIntensityBuff()) {
-      const intensityBuffBoost = (state.intensityBuffMultiplier - 1) * 25;
+      const intensityBuffBoost =
+        (state.intensityBuffMultiplier - 1) *
+        SCORING.BUFF_VALUE_PER_MULTIPLIER_POINT;
       score +=
         state.intensityBuffTurns *
         intensityBuffBoost *
-        (0.5 + compNeedShare) *
+        (SCORING.BUFF_NEED_FLOOR + compNeedShare) *
         remainingWorkPct;
     }
 
     // ── 4. resource value (qi & stability as future-progress enablers) ─
-    score += state.qi * 0.05;
-    score += state.stability * (0.01 + remainingWorkPct * 0.01);
+    score += state.qi * SCORING.QI_RESOURCE_WEIGHT;
+    score +=
+      state.stability *
+      (SCORING.STABILITY_BASE_WEIGHT +
+        remainingWorkPct * SCORING.STABILITY_WORK_WEIGHT);
 
     // Step efficiency: prefer shorter paths to target completion.
     // Without this, the tree search sees no cost to "stabilize now,
     // progress later" vs "progress now", which can cause stabilize
     // spirals where the optimizer delays progress indefinitely.
-    score -= state.step * 0.5;
+    score -= state.step * SCORING.STEP_PENALTY;
   }
 
   // ── 5. overshoot penalty ─────────────────────────────────────────────
@@ -803,7 +990,7 @@ function scoreState(
       normalCompLimit > 0 ? Math.max(0, state.completion - normalCompLimit) : 0;
     const perfOver =
       normalPerfLimit > 0 ? Math.max(0, state.perfection - normalPerfLimit) : 0;
-    score -= (compOver + perfOver) * 0.3;
+    score -= (compOver + perfOver) * SCORING.OVERSHOOT_PENALTY_WEIGHT;
   } else {
     const sublimeCompLimit =
       maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
@@ -821,15 +1008,19 @@ function scoreState(
       sublimePerfLimit > 0
         ? Math.max(0, state.perfection - sublimePerfLimit)
         : 0;
-    score -= (compOver + perfOver) * 0.3;
+    score -= (compOver + perfOver) * SCORING.OVERSHOOT_PENALTY_WEIGHT;
   }
 
   // Hard-cap violation penalty
   if (maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)) {
-    score -= Math.max(0, state.completion - maxCompletionCap) * 3;
+    score -=
+      Math.max(0, state.completion - maxCompletionCap) *
+      SCORING.HARD_CAP_PENALTY_WEIGHT;
   }
   if (maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)) {
-    score -= Math.max(0, state.perfection - maxPerfectionCap) * 3;
+    score -=
+      Math.max(0, state.perfection - maxPerfectionCap) *
+      SCORING.HARD_CAP_PENALTY_WEIGHT;
   }
 
   // ── 6. survivability ────────────────────────────────────────────────
@@ -837,12 +1028,30 @@ function scoreState(
   // should not apply because we don't need any more turns.  This prevents
   // the optimizer from preferring Stabilize over an immediate finishing move.
   if (!baseTargetsMet) {
-    const stabilityThreshold = trainingMode
-      ? 8 + remainingWorkPct * 8
-      : 14 + remainingWorkPct * 26;
-    const stabilityPenaltyWeight = trainingMode
-      ? Math.max(8, totalTargetMagnitude * 0.08)
-      : Math.max(45, totalTargetMagnitude * 0.45);
+    // Stability threshold derived from actual avg stability cost per turn.
+    // At full remaining work: threshold ≈ (base + scale) × avgCost turns of runway.
+    // At zero remaining work: threshold ≈ base × avgCost.
+    const thresholdBase = trainingMode
+      ? SCORING.STABILITY_THRESHOLD_TURNS_BASE_TRAINING
+      : SCORING.STABILITY_THRESHOLD_TURNS_BASE;
+    const thresholdScale = trainingMode
+      ? SCORING.STABILITY_THRESHOLD_TURNS_SCALE_TRAINING
+      : SCORING.STABILITY_THRESHOLD_TURNS_SCALE;
+    const stabilityThreshold =
+      (thresholdBase + remainingWorkPct * thresholdScale) *
+      ctx.avgStabilityCostPerTurn;
+
+    const penaltyFraction = trainingMode
+      ? SCORING.STABILITY_PENALTY_FRACTION_TRAINING
+      : SCORING.STABILITY_PENALTY_FRACTION;
+    const penaltyFloor = trainingMode
+      ? SCORING.STABILITY_PENALTY_FLOOR_TRAINING
+      : SCORING.STABILITY_PENALTY_FLOOR;
+    const stabilityPenaltyWeight = Math.max(
+      penaltyFloor,
+      totalTargetMagnitude * penaltyFraction,
+    );
+
     if (state.stability < stabilityThreshold) {
       const stabilityRisk =
         (stabilityThreshold - state.stability) / stabilityThreshold;
@@ -852,30 +1061,41 @@ function scoreState(
     // Hard cliff: craft dead at 0 stability.
     if (state.stability <= 0) {
       score -= targetMetBonus;
-    } else if (state.stability <= 10) {
+    } else if (state.stability <= SCORING.NEAR_DEATH_STABILITY) {
       score -=
-        (10 - state.stability) * Math.max(8, totalTargetMagnitude * 0.08);
+        (SCORING.NEAR_DEATH_STABILITY - state.stability) *
+        Math.max(
+          SCORING.STABILITY_PENALTY_FLOOR_TRAINING,
+          totalTargetMagnitude * SCORING.STABILITY_PENALTY_FRACTION_TRAINING,
+        );
     }
 
-    // Runway penalty: avoid lines that lack enough stability to finish.
+    // Runway penalty: penalize states where estimated turns to finish
+    // exceeds stability runway.  Uses actual gain rate and stability cost.
     const estimatedTurnsRemaining =
-      remainingWorkPct > 0
-        ? Math.ceil(remainingWorkPct * (isSublimeCraft ? 14 : 10))
-        : 0;
-    const estimatedRunwayTurns = Math.floor(Math.max(0, state.stability) / 10);
+      totalRemaining > 0 ? Math.ceil(totalRemaining / ctx.avgGainPerTurn) : 0;
+    const estimatedRunwayTurns =
+      ctx.avgStabilityCostPerTurn > 0
+        ? Math.floor(Math.max(0, state.stability) / ctx.avgStabilityCostPerTurn)
+        : Infinity;
     if (estimatedTurnsRemaining > estimatedRunwayTurns) {
       const gap = estimatedTurnsRemaining - estimatedRunwayTurns;
-      const maxRunwayPenalty = trainingMode ? 10 : 40;
-      score -= Math.min(gap * (trainingMode ? 2 : 5), maxRunwayPenalty);
+      const gapWeight = trainingMode
+        ? SCORING.RUNWAY_GAP_WEIGHT_TRAINING
+        : SCORING.RUNWAY_GAP_WEIGHT;
+      const maxPenalty = trainingMode
+        ? SCORING.RUNWAY_MAX_PENALTY_TRAINING
+        : SCORING.RUNWAY_MAX_PENALTY;
+      score -= Math.min(gap * gapWeight, maxPenalty);
     }
   }
 
   // ── 7. toxicity & harmony ──────────────────────────────────────────
   if (state.maxToxicity > 0 && state.hasDangerousToxicity()) {
-    score -= 5;
+    score -= totalTargetMagnitude * SCORING.TOXICITY_PENALTY_FRACTION;
   }
   if (isSublimeCraft) {
-    score += state.harmony * 0.15;
+    score += state.harmony * SCORING.HARMONY_BONUS_WEIGHT;
   }
 
   return score;
@@ -1096,15 +1316,19 @@ function isWastefulStabilize(
   const qiPerEffectiveStability =
     effectiveGain > 0 ? effectiveCosts.qiCost / effectiveGain : Infinity;
 
-  if (hasImmediateFinisher && qiPerEffectiveStability >= 1.8) {
+  if (
+    hasImmediateFinisher &&
+    qiPerEffectiveStability >= WASTE.FINISHER_QI_PER_STABILITY
+  ) {
     return true;
   }
 
   // Consider both clamp waste and absolute qi efficiency.
   return (
-    wasteRatio >= 0.35 ||
-    (wasteRatio >= 0.2 && qiPerEffectiveStability >= 2) ||
-    qiPerEffectiveStability >= 2.2
+    wasteRatio >= WASTE.HIGH_WASTE_RATIO ||
+    (wasteRatio >= WASTE.MEDIUM_WASTE_RATIO &&
+      qiPerEffectiveStability >= WASTE.MEDIUM_QI_PER_STABILITY) ||
+    qiPerEffectiveStability >= WASTE.HIGH_QI_PER_STABILITY
   );
 }
 
@@ -1220,7 +1444,7 @@ function computeStallPenalties(
   // This ensures the penalty is always meaningful but never absurdly
   // disproportionate to the craft's scoring scale.
   const totalTargetMagnitude = Math.max(1, completionGoal + perfectionGoal);
-  const STALL_PENALTY = -totalTargetMagnitude * 10;
+  const STALL_PENALTY = -totalTargetMagnitude * STALL_PENALTY_MULTIPLIER;
 
   for (const candidate of context.candidates) {
     if (candidate.advancesTargetsNow) {
@@ -1376,10 +1600,12 @@ function orderSkillsForSearch(
   const needsPerfection = state.perfection < targetPerfection;
   const hasControlBuff = state.hasControlBuff();
   const hasIntensityBuff = state.hasIntensityBuff();
-  const lowStability = state.stability <= 25;
+  const lowStability = state.stability <= ORDERING.LOW_STABILITY_THRESHOLD;
 
-  // Check if qi is at or near max (within 10% of max)
-  const qiNearMax = config.maxQi > 0 && state.qi >= config.maxQi * 0.9;
+  // Check if qi is at or near max
+  const qiNearMax =
+    config.maxQi > 0 &&
+    state.qi >= config.maxQi * ORDERING.QI_NEAR_MAX_FRACTION;
 
   // Score each skill for ordering (higher = search first)
   const scored = skills.map((skill) => {
@@ -1387,18 +1613,18 @@ function orderSkillsForSearch(
 
     // Highest priority: stabilize when low
     if (lowStability && skill.type === 'stabilize') {
-      priority += 1000;
+      priority += ORDERING.STABILIZE_CRITICAL;
     }
 
     // High priority: buff-consuming skills when buffs active
     if (skill.isDisciplinedTouch && (hasControlBuff || hasIntensityBuff)) {
-      priority += 500;
+      priority += ORDERING.BUFF_CONSUMER;
     }
 
     // Deprioritize stabilize skills when stability is already at or near max
     if (skill.type === 'stabilize') {
       if (state.stability >= state.maxStability) {
-        priority -= 500;
+        priority += ORDERING.STABILIZE_AT_MAX;
       } else {
         // Penalize stabilize when most of the gain would be wasted (clamped by maxStability)
         const effectiveGain = Math.min(
@@ -1407,8 +1633,8 @@ function orderSkillsForSearch(
         );
         const nominalGain = skill.stabilityGain || 1;
         const wasteRatio = 1 - effectiveGain / nominalGain; // 0 = no waste, 1 = all wasted
-        if (wasteRatio > 0.35) {
-          priority -= Math.round(wasteRatio * 400);
+        if (wasteRatio > ORDERING.STABILIZE_WASTE_THRESHOLD) {
+          priority -= Math.round(wasteRatio * ORDERING.STABILIZE_WASTE_SCALE);
         }
       }
     }
@@ -1422,7 +1648,7 @@ function orderSkillsForSearch(
             effect?.kind === 'pool' && (effect.amount?.value ?? 0) > 0,
         );
       if (isQiRestoreSkill) {
-        priority -= 500;
+        priority += ORDERING.QI_RESTORE_AT_MAX;
       }
     }
 
@@ -1437,15 +1663,18 @@ function orderSkillsForSearch(
           effect?.kind === 'createBuff',
       );
       if (hasImmediateImpact) {
-        priority += 320;
+        priority += ORDERING.ITEM_IMPACT;
       }
       if (skill.toxicityCost && state.maxToxicity > 0) {
         const toxicityHeadroom = Math.max(
           0,
           state.maxToxicity - state.toxicity,
         );
-        if (toxicityHeadroom <= skill.toxicityCost * 2) {
-          priority -= 200;
+        if (
+          toxicityHeadroom <=
+          skill.toxicityCost * ORDERING.TOXICITY_HEADROOM_MULTIPLIER
+        ) {
+          priority += ORDERING.ITEM_LOW_HEADROOM;
         }
       }
     }
@@ -1457,37 +1686,37 @@ function orderSkillsForSearch(
         !hasControlBuff &&
         needsPerfection
       ) {
-        priority += 400;
+        priority += ORDERING.BUFF_GRANT;
       }
       if (
         skill.buffType === BuffType.INTENSITY &&
         !hasIntensityBuff &&
         needsCompletion
       ) {
-        priority += 400;
+        priority += ORDERING.BUFF_GRANT;
       }
     }
 
     // Use condition-adjusted gains for progress priority so that condition
     // bonuses steer the beam toward the right skills.  The multiplier is
-    // large enough (8×) that a condition-doubled gain outranks hardcoded
-    // bonuses like buff-granting (+400), ensuring condition exploitation.
+    // large enough that a condition-doubled gain outranks hardcoded
+    // bonuses like buff-granting, ensuring condition exploitation.
     const gains = calculateSkillGains(state, skill, config, conditionEffects, {
       includeExpectedValue: false,
     });
     if (needsCompletion && gains.completion > 0) {
-      priority += gains.completion * 8;
+      priority += gains.completion * ORDERING.GAIN_MULTIPLIER;
     }
     if (needsPerfection && gains.perfection > 0) {
-      priority += gains.perfection * 8;
+      priority += gains.perfection * ORDERING.GAIN_MULTIPLIER;
     }
 
     // Bonus for using buffs effectively
     if (hasControlBuff && skill.scalesWithControl) {
-      priority += 100;
+      priority += ORDERING.BUFF_SCALING;
     }
     if (hasIntensityBuff && skill.scalesWithIntensity) {
-      priority += 100;
+      priority += ORDERING.BUFF_SCALING;
     }
 
     // Apply stall-action penalties (soft replacement for hard filtering).
@@ -1522,6 +1751,7 @@ export function greedySearch(
   const isSublime = config.isSublimeCraft || false;
   const targetMult = config.targetMultiplier || 2.0;
   const isTraining = config.trainingMode || false;
+  const scoringCtx = buildScoringContext(config);
   const effectiveCompTarget = isSublime
     ? targetCompletion * targetMult
     : targetCompletion;
@@ -1616,6 +1846,7 @@ export function greedySearch(
         isTraining,
         config.maxCompletion,
         config.maxPerfection,
+        scoringCtx,
       ) + (stallPenalties.get(skill.key) ?? 0);
     const terminalState = classifyTerminalState(
       newState,
@@ -1725,6 +1956,7 @@ export function lookaheadSearch(
   const isSublime = config.isSublimeCraft || false;
   const targetMult = config.targetMultiplier || 2.0;
   const isTraining = config.trainingMode || false;
+  const scoringCtx = buildScoringContext(config);
   const effectiveCompTarget = isSublime
     ? targetCompletion * targetMult
     : targetCompletion;
@@ -1760,6 +1992,7 @@ export function lookaheadSearch(
       isTraining,
       config.maxCompletion,
       config.maxPerfection,
+      scoringCtx,
     );
     const { isTerminalUnmet } = classifyTerminalState(
       candidate,
@@ -1875,6 +2108,7 @@ export function lookaheadSearch(
         isTraining,
         config.maxCompletion,
         config.maxPerfection,
+        scoringCtx,
       );
     }
 
@@ -1938,6 +2172,7 @@ export function lookaheadSearch(
       isTraining,
       config.maxCompletion,
       config.maxPerfection,
+      scoringCtx,
     );
 
     for (const skill of beamSkills) {
@@ -2599,7 +2834,7 @@ export function lookaheadSearch(
       0,
       effectivePerfGoal - finalState.perfection,
     );
-    const avgGainPerTurn = 15; // Rough estimate
+    const avgGainPerTurn = scoringCtx.avgGainPerTurn;
     const turnsRemaining = Math.ceil(
       (compRemaining + perfRemaining) / avgGainPerTurn,
     );
@@ -2686,4 +2921,7 @@ export const __testing = {
   computeStallPenalties,
   isWastefulStabilize,
   orderSkillsForSearch,
+  buildScoringContext,
+  SCORING,
+  STALL_PENALTY_MULTIPLIER,
 } as const;

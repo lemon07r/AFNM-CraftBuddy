@@ -725,8 +725,9 @@ describe('craft simulation — mid-craft stability management', () => {
 
 describe('craft simulation — stall penalty must not override tree search', () => {
   it('should stabilize when waste ratio is high but craft needs survival runway', () => {
-    // Scenario: stability 42 / maxStability 55, Stabilize gains +20.
-    // Effective gain = min(20, 55-42) = 13, waste ratio = 1 - 13/20 = 0.35.
+    // Scenario: stability 42, initialMaxStability 55, stabilityPenalty 3
+    // → maxStability = 55 - 3 = 52.  Stabilize gains +20.
+    // Effective gain = min(20, 52-42) = 10, waste ratio = 1 - 10/20 = 0.50.
     // isWastefulStabilize() would trigger at wasteRatio >= 0.35, but the
     // stabilizeProtected flag prevents it because the craft needs more
     // turns to finish than the stability runway allows.

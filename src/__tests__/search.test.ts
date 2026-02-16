@@ -21,7 +21,8 @@ import {
   __testing,
 } from '../optimizer/search';
 
-const { scoreState, computeStallPenalties } = __testing;
+const { scoreState, computeStallPenalties, SCORING, STALL_PENALTY_MULTIPLIER } =
+  __testing;
 
 // Helper to create a basic test config
 function createTestConfig(
@@ -96,6 +97,49 @@ function createTutorialConfig(
     ...overrides,
   });
 }
+
+// ── Shared skill definitions ────────────────────────────────────────────────
+// Reusable skill constants matching game data (DEFAULT_SKILLS in skills.ts).
+// Tests that need custom variants should still use createCustomSkill().
+const SIMPLE_FUSION = createCustomSkill({
+  name: 'Simple Fusion',
+  key: 'simple_fusion',
+  type: 'fusion',
+  qiCost: 0,
+  stabilityCost: 10,
+  baseCompletionGain: 1,
+  scalesWithIntensity: true,
+});
+const SIMPLE_REFINE = createCustomSkill({
+  name: 'Simple Refine',
+  key: 'simple_refine',
+  type: 'refine',
+  qiCost: 18,
+  stabilityCost: 10,
+  basePerfectionGain: 1,
+  scalesWithControl: true,
+});
+const STABILIZE = createCustomSkill({
+  name: 'Stabilize',
+  key: 'stabilize',
+  type: 'stabilize',
+  qiCost: 10,
+  stabilityCost: 0,
+  stabilityGain: 20,
+  preventsMaxStabilityDecay: true,
+});
+// Forceful Stabilize: 88 qi for +40 stability.  High cost makes it
+// wasteful when stability is near max, but essential when it's the
+// only stabilize option.  Values from user-reported game data.
+const FORCEFUL_STABILIZE = createCustomSkill({
+  name: 'Forceful Stabilize',
+  key: 'forceful_stabilize',
+  type: 'stabilize',
+  qiCost: 88,
+  stabilityCost: 0,
+  stabilityGain: 40,
+  preventsMaxStabilityDecay: true,
+});
 
 describe('greedySearch', () => {
   const config = createTestConfig();
@@ -517,29 +561,10 @@ describe('lookaheadSearch', () => {
   });
 
   it('should avoid recommending stabilize at high stability when most gain would be wasted', () => {
-    const refine = createCustomSkill({
-      name: 'Simple Refine',
-      key: 'simple_refine',
-      type: 'refine',
-      qiCost: 18,
-      stabilityCost: 10,
-      basePerfectionGain: 1,
-      scalesWithControl: true,
-    });
-    const forcefulStabilize = createCustomSkill({
-      name: 'Forceful Stabilize',
-      key: 'forceful_stabilize',
-      type: 'stabilize',
-      qiCost: 88,
-      stabilityCost: 0,
-      stabilityGain: 40,
-      preventsMaxStabilityDecay: true,
-    });
-
     const focusedConfig = createTestConfig({
       minStability: 0,
       baseControl: 16,
-      skills: [refine, forcefulStabilize],
+      skills: [SIMPLE_REFINE, FORCEFUL_STABILIZE],
     });
 
     // At 40/58 stability, stabilize would restore only 18 effective stability
@@ -594,33 +619,6 @@ describe('lookaheadSearch', () => {
   it('should not recommend expensive stabilize when stability is near max', () => {
     // Forceful Stabilize: 88 qi for 40 stability gain, but at 40/58 only 18 is effective
     // This is the user's exact scenario - 88 qi for 18 effective stability is terrible value
-    const forcefulStabilize = createCustomSkill({
-      name: 'Forceful Stabilize',
-      key: 'forceful_stabilize',
-      type: 'stabilize',
-      qiCost: 88,
-      stabilityCost: 0,
-      stabilityGain: 40,
-      preventsMaxStabilityDecay: true,
-    });
-    const simpleRefine = createCustomSkill({
-      name: 'Simple Refine',
-      key: 'simple_refine',
-      type: 'refine',
-      qiCost: 18,
-      stabilityCost: 10,
-      basePerfectionGain: 1,
-      scalesWithControl: true,
-    });
-    const simpleFusion = createCustomSkill({
-      name: 'Simple Fusion',
-      key: 'simple_fusion',
-      type: 'fusion',
-      qiCost: 0,
-      stabilityCost: 10,
-      baseCompletionGain: 1,
-      scalesWithIntensity: true,
-    });
     const cyclingRefine = createCustomSkill({
       name: 'Cycling Refine',
       key: 'cycling_refine',
@@ -649,9 +647,9 @@ describe('lookaheadSearch', () => {
     const config = createTestConfig({
       minStability: 0,
       skills: [
-        simpleFusion,
-        simpleRefine,
-        forcefulStabilize,
+        SIMPLE_FUSION,
+        SIMPLE_REFINE,
+        FORCEFUL_STABILIZE,
         cyclingRefine,
         cyclingFusion,
       ],
@@ -682,29 +680,10 @@ describe('lookaheadSearch', () => {
   });
 
   it('should avoid recommending stabilize at full stability when direct perfection is stronger', () => {
-    const refine = createCustomSkill({
-      name: 'Simple Refine',
-      key: 'simple_refine',
-      type: 'refine',
-      qiCost: 18,
-      stabilityCost: 10,
-      basePerfectionGain: 1,
-      scalesWithControl: true,
-    });
-    const forcefulStabilize = createCustomSkill({
-      name: 'Forceful Stabilize',
-      key: 'forceful_stabilize',
-      type: 'stabilize',
-      qiCost: 88,
-      stabilityCost: 0,
-      stabilityGain: 40,
-      preventsMaxStabilityDecay: true,
-    });
-
     const focusedConfig = createTestConfig({
       minStability: 0,
       baseControl: 16,
-      skills: [refine, forcefulStabilize],
+      skills: [SIMPLE_REFINE, FORCEFUL_STABILIZE],
     });
 
     const state = new CraftingState({
@@ -722,15 +701,6 @@ describe('lookaheadSearch', () => {
   });
 
   it('should block wasteful stabilize when a target-advancing skill is available', () => {
-    const forcefulStabilize = createCustomSkill({
-      name: 'Forceful Stabilize',
-      key: 'forceful_stabilize',
-      type: 'stabilize',
-      qiCost: 88,
-      stabilityCost: 0,
-      stabilityGain: 40,
-      preventsMaxStabilityDecay: true,
-    });
     const costlyFusion = createCustomSkill({
       name: 'Costly Fusion',
       key: 'costly_fusion',
@@ -753,7 +723,7 @@ describe('lookaheadSearch', () => {
 
     const config = createTestConfig({
       minStability: 0,
-      skills: [forcefulStabilize, costlyFusion, harmoniousFusion],
+      skills: [FORCEFUL_STABILIZE, costlyFusion, harmoniousFusion],
       conditionEffectsData: {
         neutral: [],
         positive: [{ kind: 'intensity' as const, multiplier: 1 }],
@@ -850,19 +820,9 @@ describe('lookaheadSearch', () => {
   });
 
   it('should keep stabilize available when no progress skill can advance unmet targets', () => {
-    const forcefulStabilize = createCustomSkill({
-      name: 'Forceful Stabilize',
-      key: 'forceful_stabilize',
-      type: 'stabilize',
-      qiCost: 88,
-      stabilityCost: 0,
-      stabilityGain: 40,
-      preventsMaxStabilityDecay: true,
-    });
-
     const config = createTestConfig({
       minStability: 0,
-      skills: [forcefulStabilize],
+      skills: [FORCEFUL_STABILIZE],
     });
     const state = new CraftingState({
       qi: 154,
@@ -878,15 +838,6 @@ describe('lookaheadSearch', () => {
   });
 
   it('should allow stabilize when dynamic critical stability indicates immediate runway risk', () => {
-    const forcefulStabilize = createCustomSkill({
-      name: 'Forceful Stabilize',
-      key: 'forceful_stabilize',
-      type: 'stabilize',
-      qiCost: 88,
-      stabilityCost: 0,
-      stabilityGain: 40,
-      preventsMaxStabilityDecay: true,
-    });
     const costlyFusion = createCustomSkill({
       name: 'Costly Fusion',
       key: 'costly_fusion',
@@ -899,7 +850,7 @@ describe('lookaheadSearch', () => {
 
     const config = createTestConfig({
       minStability: 0,
-      skills: [forcefulStabilize, costlyFusion],
+      skills: [FORCEFUL_STABILIZE, costlyFusion],
     });
     const state = new CraftingState({
       qi: 177,
@@ -918,24 +869,6 @@ describe('lookaheadSearch', () => {
   });
 
   it('should avoid forceful stabilize at 20/56 when a direct finisher is available', () => {
-    const forcefulStabilize = createCustomSkill({
-      name: 'Forceful Stabilize',
-      key: 'forceful_stabilize',
-      type: 'stabilize',
-      qiCost: 88,
-      stabilityCost: 0,
-      stabilityGain: 40,
-      preventsMaxStabilityDecay: true,
-    });
-    const simpleRefine = createCustomSkill({
-      name: 'Simple Refine',
-      key: 'simple_refine',
-      type: 'refine',
-      qiCost: 18,
-      stabilityCost: 10,
-      basePerfectionGain: 1,
-      scalesWithControl: true,
-    });
     const disciplinedTouch = createCustomSkill({
       name: 'Disciplined Touch',
       key: 'disciplined_touch',
@@ -950,7 +883,7 @@ describe('lookaheadSearch', () => {
     const config = createTestConfig({
       minStability: 0,
       baseControl: 16,
-      skills: [forcefulStabilize, simpleRefine, disciplinedTouch],
+      skills: [FORCEFUL_STABILIZE, SIMPLE_REFINE, disciplinedTouch],
     });
     const state = new CraftingState({
       qi: 157,
@@ -1325,24 +1258,6 @@ describe('survivability-first recommendation gate', () => {
     baseCompletionGain: 1,
     scalesWithIntensity: true,
   });
-  const simpleRefine = createCustomSkill({
-    name: 'Simple Refine',
-    key: 'simple_refine',
-    type: 'refine',
-    qiCost: 18,
-    stabilityCost: 10,
-    basePerfectionGain: 1,
-    scalesWithControl: true,
-  });
-  const forcefulStabilize = createCustomSkill({
-    name: 'Forceful Stabilize',
-    key: 'forceful_stabilize',
-    type: 'stabilize',
-    qiCost: 88,
-    stabilityCost: 0,
-    stabilityGain: 40,
-    preventsMaxStabilityDecay: true,
-  });
 
   const baseState = () =>
     new CraftingState({
@@ -1358,7 +1273,7 @@ describe('survivability-first recommendation gate', () => {
     minStability: 0,
     baseIntensity: 51,
     baseControl: 23,
-    skills: [energizedFusion, simpleRefine, forcefulStabilize],
+    skills: [energizedFusion, SIMPLE_REFINE, FORCEFUL_STABILIZE],
   });
 
   it('should prefer forceful stabilize over craft-ending fusion in lookahead search', () => {
@@ -1420,7 +1335,7 @@ describe('survivability-first recommendation gate', () => {
       minStability: 0,
       baseIntensity: 51,
       baseControl: 23,
-      skills: [energizedFusion, simpleRefine],
+      skills: [energizedFusion, SIMPLE_REFINE],
     });
 
     const lookaheadResult = lookaheadSearch(
@@ -2379,38 +2294,10 @@ describe('Regression: core optimizer bugs', () => {
   // Bug (a): Tutorial scenario — positive condition on perfectable recipe should
   // prefer Simple Refine (scales with control, boosted by condition) over Simple Fusion.
   it('should recommend Simple Refine on positive condition for perfectable recipe', () => {
-    const simpleFusion = createCustomSkill({
-      name: 'Simple Fusion',
-      key: 'simple_fusion',
-      type: 'fusion',
-      qiCost: 0,
-      stabilityCost: 10,
-      baseCompletionGain: 1,
-      scalesWithIntensity: true,
-    });
-    const simpleRefine = createCustomSkill({
-      name: 'Simple Refine',
-      key: 'simple_refine',
-      type: 'refine',
-      qiCost: 18,
-      stabilityCost: 10,
-      basePerfectionGain: 1,
-      scalesWithControl: true,
-    });
-    const forcefulStabilize = createCustomSkill({
-      name: 'Forceful Stabilize',
-      key: 'forceful_stabilize',
-      type: 'stabilize',
-      qiCost: 88,
-      stabilityCost: 0,
-      stabilityGain: 40,
-      preventsMaxStabilityDecay: true,
-    });
-
     // Perfectable recipe: positive condition boosts control (+50%)
     const config = createTestConfig({
       minStability: 0,
-      skills: [simpleFusion, simpleRefine, forcefulStabilize],
+      skills: [SIMPLE_FUSION, SIMPLE_REFINE, FORCEFUL_STABILIZE],
       conditionEffectType: 'perfectable' as any,
     });
 
@@ -2444,37 +2331,9 @@ describe('Regression: core optimizer bugs', () => {
   // Bug (b): Stability critically low — stabilize should be recommended when all
   // progress skills would reduce stability to or below minStability (ending the craft).
   it('should recommend stabilize when all progress skills would end the craft', () => {
-    const simpleFusion = createCustomSkill({
-      name: 'Simple Fusion',
-      key: 'simple_fusion',
-      type: 'fusion',
-      qiCost: 0,
-      stabilityCost: 10,
-      baseCompletionGain: 1,
-      scalesWithIntensity: true,
-    });
-    const simpleRefine = createCustomSkill({
-      name: 'Simple Refine',
-      key: 'simple_refine',
-      type: 'refine',
-      qiCost: 18,
-      stabilityCost: 10,
-      basePerfectionGain: 1,
-      scalesWithControl: true,
-    });
-    const forcefulStabilize = createCustomSkill({
-      name: 'Forceful Stabilize',
-      key: 'forceful_stabilize',
-      type: 'stabilize',
-      qiCost: 88,
-      stabilityCost: 0,
-      stabilityGain: 40,
-      preventsMaxStabilityDecay: true,
-    });
-
     const config = createTestConfig({
       minStability: 0,
-      skills: [simpleFusion, simpleRefine, forcefulStabilize],
+      skills: [SIMPLE_FUSION, SIMPLE_REFINE, FORCEFUL_STABILIZE],
     });
 
     // Stability is 10 — using any progress skill costs 10 stability, leaving 0 (= minStability).
@@ -2594,8 +2453,11 @@ describe('scoreState (isolated)', () => {
       perfection: 100,
     });
     const diff = scoreState(met, 100, 100) - scoreState(unmet, 100, 100);
-    // Target-met bonus is totalTargetMagnitude * 2 = 400
-    expect(diff).toBeGreaterThan(300);
+    // Target-met bonus = totalTargetMagnitude × SCORING.TARGET_MET_MULTIPLIER
+    // = 200 × 2 = 400.  Diff is ~400 minus the small progress-score delta
+    // from the 1-point completion gap, so conservatively > 75% of 400.
+    const expectedBonus = 200 * SCORING.TARGET_MET_MULTIPLIER;
+    expect(diff).toBeGreaterThan(expectedBonus * 0.75);
   });
 
   it('should not apply stability penalty when targets are met', () => {
@@ -2634,7 +2496,10 @@ describe('scoreState (isolated)', () => {
       perfection: 50,
     });
     const diff = scoreState(highStab, 100, 100) - scoreState(lowStab, 100, 100);
-    expect(diff).toBeGreaterThan(10);
+    // With targets (100,100) and default scoring context (avgStabCost=10):
+    // lowStab(5): survivability penalty ~60 + near-death ~80 + runway ~35 = ~175
+    // highStab(50): runway ~10 only.  Diff should be well above 100.
+    expect(diff).toBeGreaterThan(100);
   });
 
   it('should prefer shorter paths (lower step count) when targets are met', () => {
@@ -2740,8 +2605,9 @@ describe('scoreState (isolated)', () => {
     });
     const diff =
       scoreState(highRunway, 100, 100) - scoreState(lowRunway, 100, 100);
-    // Should include both the survivability penalty AND the runway penalty
-    expect(diff).toBeGreaterThan(20);
+    // lowRunway(10): survivability ~51 + runway penalty 40 ≈ 91 total
+    // highRunway(50): runway penalty 40 only.  Diff ≈ 51 from survivability.
+    expect(diff).toBeGreaterThan(35);
   });
 
   it('should handle zero targets gracefully', () => {
@@ -2782,34 +2648,7 @@ describe('scoreState (isolated)', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeStallPenalties (isolated)', () => {
-  const basicStabilize = createCustomSkill({
-    name: 'Stabilize',
-    key: 'stabilize',
-    type: 'stabilize',
-    qiCost: 10,
-    stabilityCost: 0,
-    stabilityGain: 20,
-    preventsMaxStabilityDecay: true,
-  });
-  const simpleFusion = createCustomSkill({
-    name: 'Simple Fusion',
-    key: 'simple_fusion',
-    type: 'fusion',
-    qiCost: 0,
-    stabilityCost: 10,
-    baseCompletionGain: 1,
-    scalesWithIntensity: true,
-  });
-  const simpleRefine = createCustomSkill({
-    name: 'Simple Refine',
-    key: 'simple_refine',
-    type: 'refine',
-    qiCost: 18,
-    stabilityCost: 10,
-    basePerfectionGain: 1,
-    scalesWithControl: true,
-  });
-  const stallSkills = [simpleFusion, simpleRefine, basicStabilize];
+  const stallSkills = [SIMPLE_FUSION, SIMPLE_REFINE, STABILIZE];
   const stallConfig = createTestConfig({
     minStability: 0,
     skills: stallSkills,
@@ -2825,7 +2664,7 @@ describe('computeStallPenalties (isolated)', () => {
     });
     const singleConfig = createTestConfig({
       minStability: 0,
-      skills: [basicStabilize],
+      skills: [STABILIZE],
     });
     const conditionEffects = getConditionEffectsForConfig(
       singleConfig,
@@ -2833,7 +2672,7 @@ describe('computeStallPenalties (isolated)', () => {
     );
     const penalties = computeStallPenalties(
       state,
-      [basicStabilize],
+      [STABILIZE],
       singleConfig,
       conditionEffects,
       100,
@@ -2888,11 +2727,16 @@ describe('computeStallPenalties (isolated)', () => {
       100,
     );
     expect(penalties.has('stabilize')).toBe(true);
-    expect(penalties.get('stabilize')).toBe(-2000);
+    // Stall penalty = -(completionGoal + perfectionGoal) × STALL_PENALTY_MULTIPLIER
+    // = -(100 + 100) × 10 = -2000
+    const expectedPenalty = -(100 + 100) * STALL_PENALTY_MULTIPLIER;
+    expect(penalties.get('stabilize')).toBe(expectedPenalty);
   });
 
   it('should NOT penalize stabilize when stability runway is insufficient', () => {
-    // stability=30, cost=10/turn, remaining work needs ~6+ turns, runway = 3 turns
+    // stability=30, cost=10/turn, totalRemaining=200, avgGain=max(1,12,16)=16.
+    // estimatedTurnsToFinish = ceil(200/16) = 13, runway = floor(30/10) = 3.
+    // Since 13 > 3, stabilityRunwayInsufficient = true → stabilizeProtected.
     const state = new CraftingState({
       qi: 100,
       stability: 30,
