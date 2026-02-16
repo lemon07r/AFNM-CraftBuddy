@@ -2,19 +2,25 @@ const path = require('path');
 const package = require('./package.json');
 const webpack = require('webpack');
 
+const isProduction =
+  process.env.NODE_ENV === 'production' ||
+  (process.argv.includes('--mode') &&
+    process.argv[process.argv.indexOf('--mode') + 1] === 'production') ||
+  process.argv.includes('production');
+
 module.exports = {
   mode: 'development',
-  devtool: 'source-map',
+  devtool: isProduction ? false : 'source-map',
   entry: './src/mod.ts',
   externals: {
-    'react': 'React',
+    react: 'React',
     'react-dom': 'ReactDOM',
     'react-dom/client': 'ReactDOM',
     '@mui/material': 'MaterialUI',
-    "@mui/icons-material": "MaterialUIIcons",
+    '@mui/icons-material': 'MaterialUIIcons',
   },
   optimization: {
-    minimize: false,
+    minimize: isProduction,
   },
   module: {
     rules: [
@@ -24,9 +30,9 @@ module.exports = {
           loader: 'ts-loader',
           options: {
             compilerOptions: {
-              sourceMap: true,
+              sourceMap: !isProduction,
               inlineSourceMap: false,
-              removeComments: false,
+              removeComments: isProduction,
             },
           },
         },

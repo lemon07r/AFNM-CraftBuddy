@@ -7,6 +7,7 @@
   },
   "main": "dist/mod.js",
   "scripts": {
+    "prebuild": "rm -rf dist/afnm-craftbuddy",
     "build": "bun run webpack --mode production",
     "postbuild": "bun scripts/zip-dist.js",
     "test": "bun run jest",
