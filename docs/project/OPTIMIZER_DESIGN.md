@@ -29,7 +29,8 @@ related_files:
 
 ## Search characteristics
 
-- memoization on normalized state keys (with adaptive bucket sizing near targets)
+- Transposition table: `Map<string, { score, bestMove }>` on normalized state keys (with adaptive bucket sizing near targets)
+- `findOptimalPath()` reconstructs the tree search's actual chosen path by walking the transposition table's `bestMove` entries, with greedy evaluation fallback for cache misses
 - beam-limited exploration
 - adaptive beam width at deeper layers
 - iterative deepening option
@@ -55,7 +56,7 @@ related_files:
 3. **Buff valuation** — expected future return from active buffs (only when targets not yet met)
 4. **Resource value** — qi and stability as future-progress enablers (only when targets not yet met)
 5. **Overshoot penalty** — penalise going beyond effective caps
-6. **Survivability** — stability risk penalties using grounded estimates from `ScoringContext` (skipped entirely when targets are met)
+6. **Survivability** — stability risk penalties using grounded estimates from `ScoringContext` (skipped entirely when targets are met). Includes: quadratic threshold penalty, death penalty (`totalTargetMagnitude × SCORING.DEATH_PENALTY_MULTIPLIER`), near-death linear penalty, and proportional uncapped runway gap penalty (`gap × totalTargetMagnitude × SCORING.RUNWAY_GAP_FRACTION`)
 7. **Toxicity & harmony** — proportional toxicity penalty (`totalTargetMagnitude × SCORING.TOXICITY_PENALTY_FRACTION`) + sublime harmony signal
 
 ### Move ordering

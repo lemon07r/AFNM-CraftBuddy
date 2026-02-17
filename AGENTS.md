@@ -70,6 +70,12 @@ These principles exist because past agents introduced compounding heuristic patc
 - **No stability penalties when targets are met.** If `baseTargetsMet` is true the craft is done — survivability penalties must not apply.
 - **Step efficiency.** Penalise `state.step` so shorter paths beat longer ones when both reach the same goal.
 - **Tiny resource tiebreakers when targets are met.** Use `*0.001` (not `*0.05`) so leftover qi/stability never justifies an extra turn.
+- **Death must be worse than any progress path.** The death penalty (`SCORING.DEATH_PENALTY_MULTIPLIER`) must exceed `TARGET_MET_MULTIPLIER` so that dying at stability=0 always scores worse than surviving with less progress. The runway penalty is proportional and uncapped (`gap × totalTargetMagnitude × SCORING.RUNWAY_GAP_FRACTION`) — never cap runway penalties, as a craft that will certainly die must score proportionally worse.
+
+### Rotation display (`findOptimalPath`)
+
+- **Uses transposition table best-move entries.** The search cache stores `{ score, bestMove }` at each node. `findOptimalPath()` reconstructs the tree search's actual chosen path by looking up the cached `bestMove` at each state, with greedy evaluation fallback for cache misses.
+- **Never greedily re-decide.** Past versions of `findOptimalPath()` re-evaluated all skills at each step of the rotation, which diverged from the tree search's decisions (especially at shallow remaining depth). The transposition table approach ensures the rotation matches what the tree search actually computed.
 
 ### Move Ordering & Filtering
 
@@ -198,6 +204,29 @@ Signs you are creating heuristic soup:
 - Your fix works for the reported scenario but you can't explain why it won't break other scenarios
 - The same concern (e.g., "should I stabilize?") is evaluated in 3+ different places with different logic
 
+**8. Greedy rotation reconstruction diverging from tree search**
+
+```typescript
+// BAD — findOptimalPath() re-evaluates all skills at each step,
+// picking the locally best one.  At later steps, remaining search depth
+// is shallow, so scoreState() can't see upcoming death states.
+// Result: rotation shows 5 progress skills when stability can only
+// survive 3 — because each step looked good in isolation.
+for (const skill of orderedSkills) {
+  const score = evaluateFutureScoreAfterSkill(nextState, maxDepth - step - 1, ...);
+  if (score > bestScore) { bestSkill = skill; }  // greedy, no backtracking
+}
+
+// GOOD — use transposition table bestMove entries to reconstruct
+// the tree search's actual chosen path.  The tree search already
+// evaluated all future consequences; the rotation should show what
+// the tree actually decided, not a greedy re-decision.
+const cached = cache.get(cacheKey);
+if (cached?.bestMove) {
+  chosenSkill = skills.find(s => s.key === cached.bestMove);
+}
+```
+
 ### When to add a new scoring term
 
 1. **First**, write a `craftSimulation.test.ts` test that reproduces the bad behavior. If you cannot write a test that fails, you probably do not need a new term.
@@ -210,9 +239,11 @@ Signs you are creating heuristic soup:
 The stall penalty system in `computeStallPenalties()` must **never** penalize stabilize when the craft needs it to survive. The `stabilizeProtected` flag gates this:
 
 - `allProgressWouldEndCraft`: single-turn check — every progress skill would drop stability to 0.
-- `stabilityRunwayInsufficient`: multi-turn check — estimated turns to finish exceeds estimated turns of stability remaining.
+- `stabilityRunwayInsufficient`: multi-turn check — estimated turns to finish exceeds estimated turns of stability remaining. **Only applies when `canStabilizeHelpRunway` is true** (i.e., stability < maxStability, so stabilize would actually gain stability).
 
-When either is true, `isWastefulStabilize()` returns false and no stall penalty is applied. **Never bypass or weaken these protections.**
+When `stabilizeProtected` is true, `isWastefulStabilize()` returns false and no stall penalty is applied. **Never bypass or weaken these protections.**
+
+**Critical invariant**: `stabilityRunwayInsufficient` must be gated on whether stabilize can actually help. If stability is already at maxStability (due to maxStability decay), stabilize gains 0 stability and cannot improve the runway. Protecting it in this case causes a stabilize death spiral — the optimizer recommends stabilize repeatedly (wasting qi and turns) because the runway check keeps protecting it, but each stabilize does nothing to improve the situation.
 
 The stall penalty (`-totalTargetMagnitude × STALL_PENALTY_MULTIPLIER`, e.g. −2000 for targets=200) is applied to the first-move score in `evaluateFirstMoves()`, which means it can override the tree search's verdict. This is acceptable when stabilize is genuinely wasteful (stability near max, craft almost done). It is catastrophic when stabilize is needed for survival — the stall penalty can make stabilize score lower than progress even though the tree search correctly sees that progress leads to death.
 

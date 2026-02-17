@@ -218,12 +218,18 @@ const SCORING = {
   // Near-death linear penalty: below this many stability points,
   // an additional linear penalty ramps up urgency.
   NEAR_DEATH_STABILITY: 10,
-  // Runway penalty: per-turn-gap weight and cap.  Penalizes states
-  // where estimated turns to finish exceeds stability runway.
-  RUNWAY_GAP_WEIGHT: 5,
-  RUNWAY_GAP_WEIGHT_TRAINING: 2,
-  RUNWAY_MAX_PENALTY: 40,
-  RUNWAY_MAX_PENALTY_TRAINING: 10,
+  // Death penalty multiplier: when stability=0, the craft is dead.
+  // Penalty = totalTargetMagnitude × this.  Must be larger than
+  // TARGET_MET_MULTIPLIER so that dying is never worth the progress gained
+  // on the way to death.  3× means: negate the target-met bonus (2×) plus
+  // erase the progress score itself.
+  DEATH_PENALTY_MULTIPLIER: 3,
+  // Runway penalty: per-turn-gap fraction of totalTargetMagnitude.
+  // Penalizes states where estimated turns to finish exceeds stability
+  // runway.  No cap — the penalty scales with the severity of the shortfall.
+  // 0.1× means each turn of shortfall costs 10% of totalTargetMagnitude.
+  RUNWAY_GAP_FRACTION: 0.1,
+  RUNWAY_GAP_FRACTION_TRAINING: 0.04,
   // Toxicity penalty as a fraction of totalTargetMagnitude.
   // Proportional so it scales correctly for small and large crafts.
   TOXICITY_PENALTY_FRACTION: 0.025,
@@ -1060,18 +1066,16 @@ function scoreState(
 
     // Hard cliff: craft dead at 0 stability.
     if (state.stability <= 0) {
-      score -= targetMetBonus;
+      score -= totalTargetMagnitude * SCORING.DEATH_PENALTY_MULTIPLIER;
     } else if (state.stability <= SCORING.NEAR_DEATH_STABILITY) {
       score -=
         (SCORING.NEAR_DEATH_STABILITY - state.stability) *
-        Math.max(
-          SCORING.STABILITY_PENALTY_FLOOR_TRAINING,
-          totalTargetMagnitude * SCORING.STABILITY_PENALTY_FRACTION_TRAINING,
-        );
+        stabilityPenaltyWeight;
     }
 
     // Runway penalty: penalize states where estimated turns to finish
-    // exceeds stability runway.  Uses actual gain rate and stability cost.
+    // exceeds stability runway.  Proportional and uncapped — the penalty
+    // scales with the severity of the shortfall.
     const estimatedTurnsRemaining =
       totalRemaining > 0 ? Math.ceil(totalRemaining / ctx.avgGainPerTurn) : 0;
     const estimatedRunwayTurns =
@@ -1080,13 +1084,10 @@ function scoreState(
         : Infinity;
     if (estimatedTurnsRemaining > estimatedRunwayTurns) {
       const gap = estimatedTurnsRemaining - estimatedRunwayTurns;
-      const gapWeight = trainingMode
-        ? SCORING.RUNWAY_GAP_WEIGHT_TRAINING
-        : SCORING.RUNWAY_GAP_WEIGHT;
-      const maxPenalty = trainingMode
-        ? SCORING.RUNWAY_MAX_PENALTY_TRAINING
-        : SCORING.RUNWAY_MAX_PENALTY;
-      score -= Math.min(gap * gapWeight, maxPenalty);
+      const gapFraction = trainingMode
+        ? SCORING.RUNWAY_GAP_FRACTION_TRAINING
+        : SCORING.RUNWAY_GAP_FRACTION;
+      score -= gap * totalTargetMagnitude * gapFraction;
     }
   }
 
@@ -1435,8 +1436,20 @@ function computeStallPenalties(
       : Infinity;
   const stabilityRunwayInsufficient =
     estimatedTurnsToFinish > estimatedRunwayTurns;
+
+  // Runway protection only applies when stabilize can actually improve the
+  // runway.  If stability is already at maxStability (effectiveGain = 0),
+  // stabilize burns qi without gaining any runway — it should not be
+  // protected.  The single-turn survival check (allProgressWouldEndCraft)
+  // still protects independently.
+  const maxRecoverableStability = Math.max(
+    0,
+    state.maxStability - state.stability,
+  );
+  const canStabilizeHelpRunway = maxRecoverableStability > 0;
   const stabilizeProtected =
-    allProgressWouldEndCraft || stabilityRunwayInsufficient;
+    allProgressWouldEndCraft ||
+    (stabilityRunwayInsufficient && canStabilizeHelpRunway);
 
   // Proportional penalty sized relative to the craft's target magnitude.
   // For small crafts (targets=50+50=100), penalty = -1000.
@@ -2026,8 +2039,10 @@ export function lookaheadSearch(
     };
   }
 
-  // Memoization cache: cacheKey -> best score achievable from that state
-  const cache = new Map<string, number>();
+  // Transposition table: cacheKey -> best score and best move found.
+  // Storing bestMove enables findOptimalPath() to reconstruct the tree
+  // search's actual chosen path instead of greedily re-deciding at each step.
+  const cache = new Map<string, { score: number; bestMove: string }>();
 
   // Flag to signal early termination due to time/node budget
   let shouldTerminate = false;
@@ -2124,7 +2139,7 @@ export function lookaheadSearch(
     );
     if (cache.has(cacheKey)) {
       metrics.cacheHits++;
-      return cache.get(cacheKey)!;
+      return cache.get(cacheKey)!.score;
     }
 
     // Get condition effects for this depth.
@@ -2174,6 +2189,7 @@ export function lookaheadSearch(
       config.maxPerfection,
       scoringCtx,
     );
+    let bestMoveKey = ''; // tracks which skill achieved bestScore
 
     for (const skill of beamSkills) {
       const newState = applySkill(
@@ -2219,6 +2235,7 @@ export function lookaheadSearch(
       }
       if (score > bestScore) {
         bestScore = score;
+        bestMoveKey = skill.key;
       }
 
       // Alpha-beta pruning: if we found a score better than what the parent
@@ -2229,7 +2246,7 @@ export function lookaheadSearch(
       }
     }
 
-    cache.set(cacheKey, bestScore);
+    cache.set(cacheKey, { score: bestScore, bestMove: bestMoveKey });
     return bestScore;
   }
 
@@ -2313,6 +2330,10 @@ export function lookaheadSearch(
    * @param startState - State to start from
    * @param maxDepth - Maximum depth to search
    * @param startDepthIndex - The depth index to start from (for condition lookups)
+   *
+   * Uses the transposition table's bestMove entries to reconstruct the tree
+   * search's actual chosen path.  Falls back to greedy evaluation for any
+   * step where the cache does not contain a best-move entry.
    */
   function findOptimalPath(
     startState: CraftingState,
@@ -2331,7 +2352,6 @@ export function lookaheadSearch(
       currentDepth < maxDepth &&
       !isTerminalState(currentState, config, conditionAtDepth)
     ) {
-      // Check if active goals are met
       if (targetsMetForCurrentMode(currentState)) {
         break;
       }
@@ -2342,78 +2362,87 @@ export function lookaheadSearch(
         conditionAtDepth,
       );
       const skills = getAvailableSkills(currentState, config, conditionAtDepth);
-      const stallPenaltiesAtDepth = computeStallPenalties(
-        currentState,
-        skills,
-        config,
-        conditionEffectsAtDepth,
-        modeCompGoal,
-        modePerfGoal,
-      );
-      // Apply move ordering for faster path finding
-      const orderedSkills = orderSkillsForSearch(
-        skills,
-        currentState,
-        config,
-        orderingCompGoal,
-        orderingPerfGoal,
-        conditionEffectsAtDepth,
-        stallPenaltiesAtDepth,
-      );
-      let bestSkill: SkillDefinition | null = null;
-      let bestScore = -Infinity;
-      let bestNextState: CraftingState | null = null;
-      let bestNextCondition: CraftingConditionType | null = null;
-      let bestNextConditionQueue: CraftingConditionType[] | null = null;
+      if (skills.length === 0) break;
 
-      for (const skill of orderedSkills) {
-        const nextState = applySkill(
-          currentState,
-          skill,
-          config,
-          conditionEffectsAtDepth,
-          targetCompletion,
-          conditionAtDepth,
-        );
-        if (nextState === null) continue;
+      // Try to use the transposition table's recorded best move.
+      const remainingDepth = maxDepth - currentDepth;
+      const cacheKey = getNormalizedCacheKey(
+        currentState,
+        effectiveCompGoal,
+        effectivePerfGoal,
+        remainingDepth,
+        conditionAtDepth,
+        conditionQueueAtDepth,
+        cfg.progressBucketSize,
+      );
+      const cached = cache.get(cacheKey);
+      let chosenSkill: SkillDefinition | null = null;
+      let chosenNextState: CraftingState | null = null;
 
-        const score = evaluateFutureScoreAfterSkill(
-          nextState,
-          maxDepth - currentDepth - 1,
-          globalDepth + 1,
-          conditionAtDepth,
-          conditionQueueAtDepth,
-          skill,
-        );
-        const nextConditionState = getMostLikelyConditionStateAfterSkill(
-          nextState,
-          conditionAtDepth,
-          conditionQueueAtDepth,
-          skill,
-        );
-        if (score > bestScore) {
-          bestScore = score;
-          bestSkill = skill;
-          bestNextState = nextState;
-          bestNextCondition = nextConditionState.nextCondition;
-          bestNextConditionQueue = nextConditionState.nextQueue;
+      if (cached && cached.bestMove) {
+        const cachedSkill = skills.find((s) => s.key === cached.bestMove);
+        if (cachedSkill) {
+          const nextState = applySkill(
+            currentState,
+            cachedSkill,
+            config,
+            conditionEffectsAtDepth,
+            targetCompletion,
+            conditionAtDepth,
+          );
+          if (nextState !== null) {
+            chosenSkill = cachedSkill;
+            chosenNextState = nextState;
+          }
         }
       }
 
-      if (
-        bestSkill &&
-        bestNextState &&
-        bestNextCondition &&
-        bestNextConditionQueue
-      ) {
-        path.push(bestSkill.name);
-        currentState = bestNextState;
-        conditionAtDepth = bestNextCondition;
-        conditionQueueAtDepth = bestNextConditionQueue;
-        currentDepth++;
-      } else {
+      // Fallback: greedy evaluation when cache miss or cached skill unavailable.
+      if (!chosenSkill || !chosenNextState) {
+        let bestScore = -Infinity;
+        for (const skill of skills) {
+          const nextState = applySkill(
+            currentState,
+            skill,
+            config,
+            conditionEffectsAtDepth,
+            targetCompletion,
+            conditionAtDepth,
+          );
+          if (nextState === null) continue;
+
+          const score = evaluateFutureScoreAfterSkill(
+            nextState,
+            Math.max(0, remainingDepth - 1),
+            globalDepth + 1,
+            conditionAtDepth,
+            conditionQueueAtDepth,
+            skill,
+          );
+          if (score > bestScore) {
+            bestScore = score;
+            chosenSkill = skill;
+            chosenNextState = nextState;
+          }
+        }
+      }
+
+      if (!chosenSkill || !chosenNextState) {
         break;
       }
+
+      const nextConditionState = getMostLikelyConditionStateAfterSkill(
+        chosenNextState,
+        conditionAtDepth,
+        conditionQueueAtDepth,
+        chosenSkill,
+      );
+
+      path.push(chosenSkill.name);
+      currentState = chosenNextState;
+      conditionAtDepth = nextConditionState.nextCondition;
+      conditionQueueAtDepth = nextConditionState.nextQueue;
+      currentDepth++;
     }
 
     return { path, finalState: currentState };

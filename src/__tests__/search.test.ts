@@ -2496,9 +2496,9 @@ describe('scoreState (isolated)', () => {
       perfection: 50,
     });
     const diff = scoreState(highStab, 100, 100) - scoreState(lowStab, 100, 100);
-    // With targets (100,100) and default scoring context (avgStabCost=10):
-    // lowStab(5): survivability penalty ~60 + near-death ~80 + runway ~35 = ~175
-    // highStab(50): runway ~10 only.  Diff should be well above 100.
+    // With targets (100,100), totalTargetMagnitude=200, avgStabCost=10, avgGain=16:
+    // lowStab(5): quadratic ~60 + near-death 5×90=450 + runway 7×200×0.1=140 ≈ 650
+    // highStab(50): runway 2×200×0.1=40 only.  Diff ≈ 610.
     expect(diff).toBeGreaterThan(100);
   });
 
@@ -2605,8 +2605,8 @@ describe('scoreState (isolated)', () => {
     });
     const diff =
       scoreState(highRunway, 100, 100) - scoreState(lowRunway, 100, 100);
-    // lowRunway(10): survivability ~51 + runway penalty 40 ≈ 91 total
-    // highRunway(50): runway penalty 40 only.  Diff ≈ 51 from survivability.
+    // lowRunway(10): quadratic ~51 + runway 12×200×0.1=240 ≈ 291 total
+    // highRunway(50): runway 8×200×0.1=160 only.  Diff ≈ 131.
     expect(diff).toBeGreaterThan(35);
   });
 

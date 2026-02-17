@@ -799,3 +799,462 @@ describe('craft simulation — mixed conditions over many turns', () => {
     expect(sim.craftDied).toBe(false);
   });
 });
+
+describe('craft simulation — rotation must not suggest stability death', () => {
+  it('should not suggest a rotation that leads to stability death (screenshot scenario)', () => {
+    // Exact scenario from user screenshot: Healing Pill (1), perfectable recipe.
+    // Comp 20/60, Perf 10/60, Stability 30/57 (decayed from 60), Qi 162/180.
+    // With only 30 stability and 10 cost per progress skill, the craft can
+    // survive at most 3 progress skills before dying.  The optimizer must
+    // interleave stabilize rather than suggesting 5+ progress skills in a row.
+    const skills = [
+      SIMPLE_FUSION,
+      SIMPLE_REFINE,
+      STABILIZE,
+      FORCEFUL_STABILIZE,
+    ];
+    const config = createTestConfig({
+      skills,
+      conditionEffectType: 'perfectable' as any,
+      maxQi: 180,
+    });
+
+    const state = new CraftingState({
+      qi: 162,
+      stability: 30,
+      initialMaxStability: 60,
+      stabilityPenalty: 3, // maxStability = 60 - 3 = 57
+      completion: 20,
+      perfection: 10,
+    });
+
+    // Conditions from screenshot: current=Balanced(neutral), next: Good, Excellent, Normal
+    const conditions: CraftingConditionType[] = [
+      'neutral',
+      'positive',
+      'veryPositive',
+      'neutral',
+    ];
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      60,
+      60,
+      28, // default lookahead depth
+      'neutral',
+      ['positive', 'veryPositive', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 200000 },
+    );
+
+    // The rotation must not be all-progress — it should include stabilize.
+    const rotation = result.optimalRotation ?? [];
+    expect(rotation.length).toBeGreaterThan(0);
+
+    // Verify the rotation doesn't lead to stability death by simulating it.
+    let simStability = 30;
+    let simMaxStability = 57;
+    let diedInRotation = false;
+    for (let i = 0; i < rotation.length; i++) {
+      const skillName = rotation[i];
+      const skill = skills.find((s) => s.name === skillName);
+      if (!skill) continue;
+
+      // Stabilize skills don't decay maxStability
+      if (!skill.preventsMaxStabilityDecay) {
+        simMaxStability = Math.max(0, simMaxStability - 1);
+      }
+
+      simStability =
+        simStability - skill.stabilityCost + (skill.stabilityGain || 0);
+      simStability = Math.min(simStability, simMaxStability);
+      simStability = Math.max(0, simStability);
+
+      if (simStability <= 0 && i < rotation.length - 1) {
+        diedInRotation = true;
+        break;
+      }
+    }
+
+    expect(diedInRotation).toBe(false);
+
+    // Also verify the full simulation doesn't die
+    const sim = simulateCraft(state, config, 60, 60, conditions, 25, 28);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+  });
+
+  it('should include stabilize in first few moves when stability runway is critically short', () => {
+    // Stability 30, needs ~6 turns to finish (90 remaining / 16 avg gain).
+    // Runway = 30 / 10 = 3 turns.  Must stabilize within first 3 moves.
+    const config = beginnerConfig();
+    const state = new CraftingState({
+      qi: 194,
+      stability: 30,
+      initialMaxStability: 57,
+      stabilityPenalty: 3,
+      completion: 20,
+      perfection: 10,
+    });
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      60,
+      60,
+      28,
+      'neutral',
+      ['neutral', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 200000 },
+    );
+
+    const rotation = result.optimalRotation ?? [];
+    expect(rotation.length).toBeGreaterThan(0);
+
+    // Stabilize must appear within the first 3 moves (the runway limit)
+    const firstThree = rotation.slice(0, 3);
+    expect(firstThree).toContain('Stabilize');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Training mode
+// ---------------------------------------------------------------------------
+
+describe('craft simulation — training mode', () => {
+  const neutralOnly: CraftingConditionType[] = ['neutral'];
+
+  it('should complete a basic training craft (comp=50, perf=50)', () => {
+    // Training mode uses weaker survivability penalties but should still
+    // guide a simple craft to completion without dying.
+    const config = beginnerConfig({ trainingMode: true });
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const sim = simulateCraft(state, config, 50, 50, neutralOnly, 25);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+  });
+
+  it('should tolerate lower stability than normal mode', () => {
+    // At stability=15, normal mode should stabilize first (runway is only
+    // 1.5 turns for 10-cost skills, not enough for the remaining work).
+    // Training mode has a lower stability threshold so it may push progress.
+    // The key invariant: training mode must NOT die.
+    const normalConfig = beginnerConfig();
+    const trainingConfig = beginnerConfig({ trainingMode: true });
+    const makeState = () =>
+      new CraftingState({
+        qi: 194,
+        stability: 15,
+        initialMaxStability: 60,
+        completion: 30,
+        perfection: 30,
+      });
+
+    const normalSim = simulateCraft(
+      makeState(),
+      normalConfig,
+      50,
+      50,
+      neutralOnly,
+      25,
+    );
+    const trainingSim = simulateCraft(
+      makeState(),
+      trainingConfig,
+      50,
+      50,
+      neutralOnly,
+      25,
+    );
+
+    // Both must survive and complete.
+    expect(normalSim.craftDied).toBe(false);
+    expect(normalSim.targetsMet).toBe(true);
+    expect(trainingSim.craftDied).toBe(false);
+    expect(trainingSim.targetsMet).toBe(true);
+
+    // Training mode should use fewer or equal stabilize actions (more risk
+    // tolerant).  If it uses more, the weaker penalties aren't working.
+    const normalStabilizes = normalSim.history.filter(
+      (s) => s === 'Stabilize',
+    ).length;
+    const trainingStabilizes = trainingSim.history.filter(
+      (s) => s === 'Stabilize',
+    ).length;
+    expect(trainingStabilizes).toBeLessThanOrEqual(normalStabilizes);
+  });
+
+  it('should still stabilize when stability is critical even in training mode', () => {
+    // Even with weaker penalties, training mode must not suicide when
+    // stability is at the cost of a single progress skill and there is
+    // substantial work remaining.
+    const config = beginnerConfig({ trainingMode: true });
+    const state = new CraftingState({
+      qi: 194,
+      stability: 10,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const sim = simulateCraft(state, config, 50, 50, neutralOnly, 25);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+
+    // Must stabilize at least once — starting at stability 10 with 100
+    // remaining work is not survivable without it.
+    expect(sim.history).toContain('Stabilize');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Medium-high targets (200–500 range)
+// ---------------------------------------------------------------------------
+
+describe('craft simulation — medium-high targets', () => {
+  const neutralOnly: CraftingConditionType[] = ['neutral'];
+
+  it('should complete a medium craft (comp=200, perf=200) with beginner skills', () => {
+    // Targets=400 total.  With intensity=12 and control=16, this needs
+    // ~17 fusions + ~13 refines = ~30 progress turns + stabilizes.
+    // Higher qi budget reflects realistic scaling for medium crafts.
+    const config = beginnerConfig({ maxQi: 400 });
+    const state = new CraftingState({
+      qi: 400,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const sim = simulateCraft(state, config, 200, 200, neutralOnly, 60);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+  });
+
+  it('should complete a large craft (comp=400, perf=400) with full skill set', () => {
+    // Targets=800 total.  Full skill set includes buffs and cycling skills
+    // which should allow more efficient progress.
+    // Higher qi budget reflects realistic scaling for large crafts.
+    const config = fullConfig({ maxQi: 1000 });
+    const state = new CraftingState({
+      qi: 1000,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const sim = simulateCraft(state, config, 400, 400, neutralOnly, 100);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+  });
+
+  it('should complete a large craft with mixed conditions', () => {
+    // Same 400/400 targets but with a realistic mixed condition sequence.
+    // Condition exploitation should help efficiency; negative turns should
+    // not cause the optimizer to stall or die.
+    const config = fullConfig({ maxQi: 1000 });
+    const state = new CraftingState({
+      qi: 1000,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const conditions: CraftingConditionType[] = [
+      'neutral',
+      'positive',
+      'neutral',
+      'negative',
+      'neutral',
+      'neutral',
+      'veryPositive',
+      'neutral',
+    ];
+
+    const sim = simulateCraft(state, config, 400, 400, conditions, 100);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Asymmetric targets
+// ---------------------------------------------------------------------------
+
+describe('craft simulation — asymmetric targets', () => {
+  const neutralOnly: CraftingConditionType[] = ['neutral'];
+
+  it('should complete a completion-heavy craft (comp=200, perf=50)', () => {
+    // Perfection should be met early (~4 refines), then the optimizer
+    // should focus exclusively on fusion for the remaining completion.
+    const config = beginnerConfig();
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const sim = simulateCraft(state, config, 200, 50, neutralOnly, 50);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+
+    // After perfection is met, no more refines should appear.
+    // Find the turn where perfection was first met.
+    let perfMetTurn = -1;
+    for (const entry of sim.log) {
+      if (entry.stateAfter.perfection >= 50) {
+        perfMetTurn = entry.turn;
+        break;
+      }
+    }
+    if (perfMetTurn >= 0 && perfMetTurn < sim.log.length - 1) {
+      const postPerfHistory = sim.log
+        .filter((e) => e.turn > perfMetTurn)
+        .map((e) => e.skillChosen);
+      const wastedRefines = postPerfHistory.filter(
+        (s) => s === 'Simple Refine',
+      ).length;
+      // Allow at most 1 wasted refine (search horizon may cause one).
+      expect(wastedRefines).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('should complete a perfection-heavy craft (comp=50, perf=200)', () => {
+    // Completion should be met early (~5 fusions), then the optimizer
+    // should focus exclusively on refine for the remaining perfection.
+    // Higher qi budget needed since refine costs 18 qi per use.
+    const config = beginnerConfig({ maxQi: 400 });
+    const state = new CraftingState({
+      qi: 400,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const sim = simulateCraft(state, config, 50, 200, neutralOnly, 50);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+
+    // After completion is met, no more fusions should appear.
+    let compMetTurn = -1;
+    for (const entry of sim.log) {
+      if (entry.stateAfter.completion >= 50) {
+        compMetTurn = entry.turn;
+        break;
+      }
+    }
+    if (compMetTurn >= 0 && compMetTurn < sim.log.length - 1) {
+      const postCompHistory = sim.log
+        .filter((e) => e.turn > compMetTurn)
+        .map((e) => e.skillChosen);
+      const wastedFusions = postCompHistory.filter(
+        (s) => s === 'Simple Fusion',
+      ).length;
+      // Allow at most 1 wasted fusion.
+      expect(wastedFusions).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// veryNegative conditions
+// ---------------------------------------------------------------------------
+
+describe('craft simulation — veryNegative conditions', () => {
+  it('should complete a craft under all-veryNegative conditions without dying', () => {
+    // veryNegative on a perfectable recipe: control multiplier = -1.0,
+    // so effective control = baseControl * (1 + -1.0) = 0, meaning Simple
+    // Refine gives 0 perfection.  Simple Fusion (scales with intensity,
+    // unaffected by control condition) still gives ~12 completion.
+    //
+    // Use comp-only target since perfection progress is impossible under
+    // all-veryNegative on a perfectable recipe.
+    const config = beginnerConfig();
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const conditions: CraftingConditionType[] = ['veryNegative'];
+
+    const sim = simulateCraft(state, config, 100, 0, conditions, 30);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+  });
+
+  it('should survive and complete with intermittent veryNegative conditions', () => {
+    // Mix of veryNegative and neutral.  The optimizer should avoid refine
+    // during veryNegative turns (gives 0 perfection) and use them for
+    // fusion or stabilize instead.
+    const config = beginnerConfig();
+    const state = new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const conditions: CraftingConditionType[] = [
+      'veryNegative',
+      'neutral',
+      'neutral',
+      'veryNegative',
+      'neutral',
+    ];
+
+    const sim = simulateCraft(state, config, 100, 100, conditions, 40);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sublime crafts
+// ---------------------------------------------------------------------------
+
+describe('craft simulation — sublime crafts', () => {
+  it('should complete a sublime craft reaching scaled targets (100/100 × 2.0)', () => {
+    // Sublime craft: base targets 100/100, multiplier 2.0.  The optimizer
+    // internally scales effective targets to 200/200 via targetMultiplier.
+    // We pass 200/200 as simulation targets so the loop doesn't stop early
+    // at base targets.  The optimizer's scoring must drive progress past
+    // 100/100 toward 200/200.
+    const config = createTestConfig({
+      skills: BEGINNER_SKILLS,
+      conditionEffectType: 'perfectable' as any,
+      isSublimeCraft: true,
+      targetMultiplier: 2.0,
+      maxQi: 400,
+    });
+    const state = new CraftingState({
+      qi: 400,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+    const neutralOnly: CraftingConditionType[] = ['neutral'];
+
+    // Pass scaled targets (200/200) to the simulation loop so it doesn't
+    // stop at base targets.
+    const sim = simulateCraft(state, config, 200, 200, neutralOnly, 60);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+    expect(sim.finalState.completion).toBeGreaterThanOrEqual(200);
+    expect(sim.finalState.perfection).toBeGreaterThanOrEqual(200);
+  });
+});
