@@ -3,7 +3,7 @@ title: Start Here For Agents
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-15
+last_verified: 2026-02-17
 source_of_truth: src/modContent/index.ts, src/optimizer/*, src/__tests__/*
 review_cycle_days: 14
 related_files:
@@ -56,14 +56,6 @@ Fast, low-noise onboarding for implementation work on AFNM-CraftBuddy.
 
 ## Fast guardrails
 
-- treat `docs/project/*` as authoritative
-- treat `docs/history/*` as historical only
-- treat `docs/reference/*` as reference-only context
-- do not bulk-load the full reference corpus; use curated shortlist first:
-  - `docs/reference/afnm-modding/README.md`
-  - `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md`
-
-## Verified baseline
-
-- branch context at refresh: `main`
-- tests at refresh: all passing (`bun run test`, verified 2026-02-15)
+- `docs/project/*` is authoritative; `docs/history/*` and `docs/reference/*` are non-authoritative context only
+- Do not bulk-load the reference corpus; use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` first
+- See `docs/index.md` for the full docs model and priority order

@@ -3,7 +3,7 @@ title: Documentation Inventory
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-16
+last_verified: 2026-02-17
 source_of_truth: repository markdown file inventory
 review_cycle_days: 30
 related_files:
@@ -12,7 +12,7 @@ related_files:
 
 # Documentation Inventory
 
-Generated on: 2026-02-16
+Generated on: 2026-02-17
 
 ## Summary
 

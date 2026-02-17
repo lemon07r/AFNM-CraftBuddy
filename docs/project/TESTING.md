@@ -3,7 +3,7 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-15
+last_verified: 2026-02-17
 source_of_truth: src/__tests__/*, package.json, scripts/docs/*
 review_cycle_days: 30
 related_files:
