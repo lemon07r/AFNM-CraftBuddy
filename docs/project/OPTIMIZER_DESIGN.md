@@ -46,21 +46,21 @@ related_files:
 
 ## Scoring architecture
 
-`scoreState()` uses a layered architecture where each layer handles one concern. See `AGENTS.md` → "Optimizer Design Principles" for the full design rules, anti-patterns, and validation workflow.
+`scoreState()` uses a layered architecture where each layer handles one concern. It accepts an optional `ScoringContext` parameter carrying precomputed craft-specific estimates (`avgStabilityCostPerTurn`, `avgGainPerTurn`) so that survivability calculations use actual skill data instead of hardcoded defaults. All scoring weights are defined in the `SCORING` named constants block at the top of `search.ts`; `buildScoringContext()` computes the context from `OptimizerConfig`. See `AGENTS.md` → "Optimizer Design Principles" for the full design rules, anti-patterns, and validation workflow.
 
 ### Layers (in evaluation order)
 
 1. **Progress** — weighted completion + perfection toward effective goals
-2. **Target-met bonus** — proportional to `totalTargetMagnitude * 2` (never hardcoded)
+2. **Target-met bonus** — proportional to `totalTargetMagnitude × SCORING.TARGET_MET_MULTIPLIER` (never hardcoded)
 3. **Buff valuation** — expected future return from active buffs (only when targets not yet met)
 4. **Resource value** — qi and stability as future-progress enablers (only when targets not yet met)
 5. **Overshoot penalty** — penalise going beyond effective caps
-6. **Survivability** — stability risk penalties (skipped entirely when targets are met)
-7. **Toxicity & harmony** — alchemy toxicity danger + sublime harmony signal
+6. **Survivability** — stability risk penalties using grounded estimates from `ScoringContext` (skipped entirely when targets are met)
+7. **Toxicity & harmony** — proportional toxicity penalty (`totalTargetMagnitude × SCORING.TOXICITY_PENALTY_FRACTION`) + sublime harmony signal
 
 ### Move ordering
 
-`orderSkillsForSearch()` uses condition-modified gains (via `calculateSkillGains()`) and soft stall penalties (via `computeStallPenalties()`) to rank skills for beam-width pruning. No skills are hard-filtered out of the search tree.
+`orderSkillsForSearch()` uses condition-modified gains (via `calculateSkillGains()`) and soft stall penalties (via `computeStallPenalties()`) to rank skills for beam-width pruning. Priority values and waste detection thresholds are defined in named constant blocks (`ORDERING`, `WASTE`, `STALL_PENALTY_MULTIPLIER`) at the top of `search.ts`. No skills are hard-filtered out of the search tree.
 
 ## Determinism expectations
 

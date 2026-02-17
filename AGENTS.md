@@ -65,7 +65,7 @@ These principles exist because past agents introduced compounding heuristic patc
 
 ### Scoring (`scoreState`)
 
-- **Proportional, not magic numbers.** Bonuses and penalties must scale with the craft's target magnitude (e.g., `totalTargetMagnitude * 2`) — never use hardcoded constants like `+200`, `+300`, `*45`, `*8`.
+- **Proportional, not magic numbers.** Bonuses and penalties must scale with the craft's target magnitude (e.g., `totalTargetMagnitude * 2`) — never use inline unnamed constants like `+200`, `+300`, `+50`. All scoring weights, ordering priorities, and waste thresholds are defined in named constant blocks (`SCORING`, `ORDERING`, `WASTE`, `STALL_PENALTY_MULTIPLIER`) at the top of `search.ts`; add new constants there with a rationale comment.
 - **Layered architecture.** The scorer has numbered layers (progress → target-met bonus → buffs → resources → overshoot → survivability → toxicity/harmony). New terms belong in an existing layer or a clearly documented new one.
 - **No stability penalties when targets are met.** If `baseTargetsMet` is true the craft is done — survivability penalties must not apply.
 - **Step efficiency.** Penalise `state.step` so shorter paths beat longer ones when both reach the same goal.
@@ -155,9 +155,9 @@ The tree search (`search()`) evaluates future states turn-by-turn and is the aut
 ```typescript
 // BAD — stall penalty overrides the tree search's survival detection
 // The tree correctly sees that stabilize leads to survival and progress
-// leads to death. But the -2000 penalty is added AFTER the tree search
-// score, reversing the tree's judgment.
-rec.score = evaluateFutureScoreAfterSkill(...) + stallPenalty; // -2000
+// leads to death. But the proportional stall penalty is added AFTER the
+// tree search score, reversing the tree's judgment.
+rec.score = evaluateFutureScoreAfterSkill(...) + stallPenalty; // -totalTargetMagnitude × STALL_PENALTY_MULTIPLIER
 
 // BAD — heuristic penalizes stabilize based on single-turn waste/cost,
 // ignoring that the craft needs multiple more turns of stability to survive
@@ -166,7 +166,7 @@ if (qiPerStability >= 2.2) penalize(stabilize);  // doesn't check runway
 
 // GOOD — heuristic checks multi-turn survival before penalizing
 const turnsToFinish = estimateRemainingTurns(state, targets);
-const turnsOfRunway = state.stability / avgStabilityCostPerTurn;
+const turnsOfRunway = state.stability / ctx.avgStabilityCostPerTurn;
 if (turnsToFinish > turnsOfRunway) {
   // Craft will die without stabilize — never penalize it
   return;
@@ -181,7 +181,7 @@ When a fix requires adding a new heuristic to counteract the effects of an exist
 ```typescript
 // BAD — three heuristics fighting each other:
 // 1. Runway penalty says "stabilize!" (+15 score for stabilize path)
-// 2. Stall penalty says "don't stabilize!" (-2000 score for stabilize)
+// 2. Stall penalty says "don't stabilize!" (large negative proportional to craft size)
 // 3. New "critical stabilize override" to compensate (+2500 when critical)
 // Each patch was "reasonable" in isolation but they interact unpredictably.
 
@@ -214,7 +214,7 @@ The stall penalty system in `computeStallPenalties()` must **never** penalize st
 
 When either is true, `isWastefulStabilize()` returns false and no stall penalty is applied. **Never bypass or weaken these protections.**
 
-The stall penalty (-2000) is applied to the first-move score in `evaluateFirstMoves()`, which means it can override the tree search's verdict. This is acceptable when stabilize is genuinely wasteful (stability near max, craft almost done). It is catastrophic when stabilize is needed for survival — the -2000 penalty can make stabilize score lower than progress even though the tree search correctly sees that progress leads to death.
+The stall penalty (`-totalTargetMagnitude × STALL_PENALTY_MULTIPLIER`, e.g. −2000 for targets=200) is applied to the first-move score in `evaluateFirstMoves()`, which means it can override the tree search's verdict. This is acceptable when stabilize is genuinely wasteful (stability near max, craft almost done). It is catastrophic when stabilize is needed for survival — the stall penalty can make stabilize score lower than progress even though the tree search correctly sees that progress leads to death.
 
 ### How to safely change the optimizer
 
