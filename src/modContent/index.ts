@@ -239,6 +239,476 @@ interface CachedTargets {
   timestamp: number;
 }
 
+type RuntimeSearchConfig = ReturnType<typeof getSearchConfig>;
+
+interface OptimizerReplayInputSnapshot {
+  createdAt: string;
+  searchEpoch: number;
+  lookaheadDepth: number;
+  targets: {
+    completion: number;
+    perfection: number;
+    stability: number;
+  };
+  caps: {
+    maxCompletionCap: number | null;
+    maxPerfectionCap: number | null;
+  };
+  conditions: {
+    current: string;
+    forecast: string[];
+    normalizedForecast: string[];
+  };
+  searchConfig: RuntimeSearchConfig;
+  settings: {
+    lookaheadDepth: number;
+    searchTimeBudgetMs: number;
+    searchMaxNodes: number;
+    searchBeamWidth: number;
+    compactMode: boolean;
+    panelVisible: boolean;
+  };
+  state: Record<string, unknown>;
+  config: Record<string, unknown>;
+  context: {
+    recipeName?: string;
+    craftingType: string;
+    isSublimeCraft: boolean;
+    sublimeTargetMultiplier: number;
+    targetStabilityAtSearchStart: number;
+  };
+}
+
+interface OptimizerReplaySnapshot {
+  input: OptimizerReplayInputSnapshot;
+  output?: Record<string, unknown>;
+  error?: string;
+  completedAt?: string;
+}
+
+let lastOptimizerReplaySnapshot: OptimizerReplaySnapshot | null = null;
+let debugToastTimeout: number | null = null;
+
+function sanitizeForJson(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+): unknown {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  const valueType = typeof value;
+  if (
+    valueType === 'number' ||
+    valueType === 'string' ||
+    valueType === 'boolean'
+  ) {
+    return value;
+  }
+  if (valueType === 'bigint') {
+    return value.toString();
+  }
+  if (valueType === 'symbol') {
+    return String(value);
+  }
+  if (valueType === 'function') {
+    return '[Function]';
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (value instanceof Map) {
+    const out: Record<string, unknown> = {};
+    value.forEach((v, k) => {
+      out[String(k)] = sanitizeForJson(v, seen);
+    });
+    return out;
+  }
+  if (value instanceof Set) {
+    return Array.from(value).map((entry) => sanitizeForJson(entry, seen));
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeForJson(entry, seen));
+  }
+  if (valueType === 'object') {
+    const objectValue = value as Record<string, unknown>;
+    if (seen.has(objectValue)) {
+      return '[Circular]';
+    }
+    seen.add(objectValue);
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(objectValue)) {
+      if (entry === undefined) continue;
+      out[key] = sanitizeForJson(entry, seen);
+    }
+    seen.delete(objectValue);
+    return out;
+  }
+
+  return String(value);
+}
+
+function mapToPlainObject<T>(
+  map: Map<string, T>,
+  serialize: (value: T) => unknown = (value) => value,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  map.forEach((value, key) => {
+    out[key] = serialize(value);
+  });
+  return out;
+}
+
+function buildSkillSnapshot(skill: SkillDefinition): Record<string, unknown> {
+  return {
+    name: skill.name,
+    key: skill.key,
+    type: skill.type,
+    actionKind: skill.actionKind || 'skill',
+    qiCost: skill.qiCost,
+    stabilityCost: skill.stabilityCost,
+    successChance: skill.successChance ?? 1,
+    baseCompletionGain: skill.baseCompletionGain,
+    basePerfectionGain: skill.basePerfectionGain,
+    stabilityGain: skill.stabilityGain,
+    maxStabilityChange: skill.maxStabilityChange,
+    buffType: skill.buffType,
+    buffDuration: skill.buffDuration,
+    buffMultiplier: skill.buffMultiplier,
+    scalesWithControl: !!skill.scalesWithControl,
+    scalesWithIntensity: !!skill.scalesWithIntensity,
+    isDisciplinedTouch: !!skill.isDisciplinedTouch,
+    preventsMaxStabilityDecay: !!skill.preventsMaxStabilityDecay,
+    toxicityCost: skill.toxicityCost ?? 0,
+    toxicityCleanse: skill.toxicityCleanse ?? 0,
+    cooldown: skill.cooldown ?? 0,
+    conditionRequirement: skill.conditionRequirement
+      ? String(skill.conditionRequirement)
+      : null,
+    buffRequirement: skill.buffRequirement
+      ? sanitizeForJson(skill.buffRequirement)
+      : null,
+    buffCost: skill.buffCost ? sanitizeForJson(skill.buffCost) : null,
+    restoresQi: !!skill.restoresQi,
+    qiRestore: skill.qiRestore ?? 0,
+    restoresMaxStabilityToFull: !!skill.restoresMaxStabilityToFull,
+    consumesTurn: skill.consumesTurn,
+    itemName: skill.itemName ?? null,
+    reagentOnlyAtStepZero: !!skill.reagentOnlyAtStepZero,
+    effects: skill.effects ? sanitizeForJson(skill.effects) : [],
+  };
+}
+
+function buildConfigSnapshot(config: OptimizerConfig): Record<string, unknown> {
+  return {
+    maxQi: config.maxQi,
+    maxStability: config.maxStability,
+    maxCompletion: config.maxCompletion ?? null,
+    maxPerfection: config.maxPerfection ?? null,
+    baseIntensity: config.baseIntensity,
+    baseControl: config.baseControl,
+    minStability: config.minStability,
+    defaultBuffMultiplier: config.defaultBuffMultiplier,
+    pillsPerRound: config.pillsPerRound ?? 1,
+    maxToxicity: config.maxToxicity ?? 0,
+    craftingType: config.craftingType ?? null,
+    conditionEffectType: config.conditionEffectType ?? null,
+    conditionEffectsData: config.conditionEffectsData
+      ? sanitizeForJson(config.conditionEffectsData)
+      : null,
+    isSublimeCraft: !!config.isSublimeCraft,
+    targetMultiplier: config.targetMultiplier ?? 1,
+    targetCompletion: config.targetCompletion ?? null,
+    targetPerfection: config.targetPerfection ?? null,
+    trainingMode: !!config.trainingMode,
+    skills: config.skills.map(buildSkillSnapshot),
+  };
+}
+
+function buildStateSnapshot(state: CraftingState): Record<string, unknown> {
+  return {
+    qi: state.qi,
+    stability: state.stability,
+    maxStability: state.maxStability,
+    initialMaxStability: state.initialMaxStability,
+    stabilityPenalty: state.stabilityPenalty,
+    completion: state.completion,
+    perfection: state.perfection,
+    critChance: state.critChance,
+    critMultiplier: state.critMultiplier,
+    successChanceBonus: state.successChanceBonus,
+    poolCostPercentage: state.poolCostPercentage,
+    stabilityCostPercentage: state.stabilityCostPercentage,
+    controlBuffTurns: state.controlBuffTurns,
+    intensityBuffTurns: state.intensityBuffTurns,
+    controlBuffMultiplier: state.controlBuffMultiplier,
+    intensityBuffMultiplier: state.intensityBuffMultiplier,
+    toxicity: state.toxicity,
+    maxToxicity: state.maxToxicity,
+    harmony: state.harmony,
+    step: state.step,
+    completionBonus: state.completionBonus,
+    consumedPillsThisTurn: state.consumedPillsThisTurn,
+    cooldowns: mapToPlainObject(state.cooldowns),
+    items: mapToPlainObject(state.items),
+    buffs: mapToPlainObject(state.buffs, (buff) => ({
+      name: buff.name,
+      stacks: buff.stacks,
+    })),
+    nativeVariables: state.nativeVariables
+      ? sanitizeForJson(state.nativeVariables)
+      : null,
+  };
+}
+
+function summarizeRecommendation(
+  recommendation: SearchResult['recommendation'],
+): Record<string, unknown> | null {
+  if (!recommendation) return null;
+  return {
+    skill: {
+      name: recommendation.skill.name,
+      key: recommendation.skill.key,
+      type: recommendation.skill.type,
+    },
+    score: recommendation.score,
+    qualityRating: recommendation.qualityRating ?? null,
+    expectedGains: recommendation.expectedGains,
+    immediateGains: recommendation.immediateGains,
+    followUpSkill: recommendation.followUpSkill ?? null,
+    consumesBuff: recommendation.consumesBuff ?? false,
+    reasoning: recommendation.reasoning,
+  };
+}
+
+function buildResultSnapshot(result: SearchResult): Record<string, unknown> {
+  return {
+    isTerminal: result.isTerminal,
+    targetsMet: result.targetsMet,
+    recommendation: summarizeRecommendation(result.recommendation),
+    alternatives: result.alternativeSkills.map((rec) => ({
+      skill: {
+        name: rec.skill.name,
+        key: rec.skill.key,
+        type: rec.skill.type,
+      },
+      score: rec.score,
+      qualityRating: rec.qualityRating ?? null,
+      expectedGains: rec.expectedGains,
+      immediateGains: rec.immediateGains,
+      followUpSkill: rec.followUpSkill ?? null,
+      consumesBuff: rec.consumesBuff ?? false,
+      reasoning: rec.reasoning,
+    })),
+    blockedReasons: result.blockedReasons ?? [],
+    optimalRotation: result.optimalRotation ?? [],
+    expectedFinalState: result.expectedFinalState ?? null,
+    searchMetrics: result.searchMetrics ?? null,
+  };
+}
+
+function buildOptimizerReplayInputSnapshot(params: {
+  state: CraftingState;
+  config: OptimizerConfig;
+  lookaheadDepth: number;
+  searchEpoch: number;
+  searchConfig: RuntimeSearchConfig;
+  currentConditionType?: string;
+  forecastedConditionTypes: string[];
+  targetCompletionAtSearchStart: number;
+  targetPerfectionAtSearchStart: number;
+  maxStabilityAtSearchStart: number;
+}): OptimizerReplayInputSnapshot {
+  const normalizedForecast = normalizeForecastConditionQueue(
+    params.currentConditionType as any,
+    params.forecastedConditionTypes as any,
+    params.state.harmony,
+    VISIBLE_CONDITION_QUEUE_LENGTH,
+  ).map((entry) => String(entry));
+
+  return {
+    createdAt: new Date().toISOString(),
+    searchEpoch: params.searchEpoch,
+    lookaheadDepth: params.lookaheadDepth,
+    targets: {
+      completion: params.targetCompletionAtSearchStart,
+      perfection: params.targetPerfectionAtSearchStart,
+      stability: targetStability,
+    },
+    caps: {
+      maxCompletionCap: maxCompletionCap ?? null,
+      maxPerfectionCap: maxPerfectionCap ?? null,
+    },
+    conditions: {
+      current: params.currentConditionType || 'neutral',
+      forecast: params.forecastedConditionTypes.map((entry) => String(entry)),
+      normalizedForecast,
+    },
+    searchConfig: {
+      timeBudgetMs: params.searchConfig.timeBudgetMs,
+      maxNodes: params.searchConfig.maxNodes,
+      beamWidth: params.searchConfig.beamWidth,
+    },
+    settings: {
+      lookaheadDepth: currentSettings.lookaheadDepth,
+      searchTimeBudgetMs: currentSettings.searchTimeBudgetMs,
+      searchMaxNodes: currentSettings.searchMaxNodes,
+      searchBeamWidth: currentSettings.searchBeamWidth,
+      compactMode: currentSettings.compactMode,
+      panelVisible: currentSettings.panelVisible,
+    },
+    state: buildStateSnapshot(params.state),
+    config: buildConfigSnapshot(params.config),
+    context: {
+      recipeName: (lastRecipe as any)?.name ?? (lastRecipeStats as any)?.name,
+      craftingType: currentCraftingType,
+      isSublimeCraft,
+      sublimeTargetMultiplier,
+      targetStabilityAtSearchStart: params.maxStabilityAtSearchStart,
+    },
+  };
+}
+
+function getSerializableOptimizerReplaySnapshot(): {
+  data: unknown;
+  json: string;
+} | null {
+  if (!lastOptimizerReplaySnapshot) {
+    return null;
+  }
+  const data = sanitizeForJson(lastOptimizerReplaySnapshot);
+  const json = JSON.stringify(data, null, 2);
+  return { data, json };
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  const clipboard = (globalThis as any)?.navigator?.clipboard;
+  if (clipboard?.writeText) {
+    try {
+      await clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fallback to document.execCommand below.
+    }
+  }
+
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', 'true');
+    Object.assign(textarea.style, {
+      position: 'fixed',
+      opacity: '0',
+      pointerEvents: 'none',
+      left: '-9999px',
+      top: '-9999px',
+    });
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
+function downloadTextFile(fileName: string, text: string): boolean {
+  try {
+    const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function showDebugToast(
+  message: string,
+  tone: 'info' | 'success' | 'warn' | 'error' = 'info',
+  durationMs: number = 2600,
+): void {
+  const existing = document.getElementById('craftbuddy-debug-toast');
+  if (existing && existing.parentNode) {
+    existing.parentNode.removeChild(existing);
+  }
+  if (debugToastTimeout !== null) {
+    window.clearTimeout(debugToastTimeout);
+    debugToastTimeout = null;
+  }
+
+  const toast = document.createElement('div');
+  toast.id = 'craftbuddy-debug-toast';
+  toast.textContent = message;
+
+  const toneStyles: Record<
+    string,
+    { bg: string; border: string; text: string }
+  > = {
+    info: {
+      bg: 'rgba(15, 23, 42, 0.92)',
+      border: 'rgba(59, 130, 246, 0.7)',
+      text: '#dbeafe',
+    },
+    success: {
+      bg: 'rgba(6, 78, 59, 0.92)',
+      border: 'rgba(16, 185, 129, 0.7)',
+      text: '#d1fae5',
+    },
+    warn: {
+      bg: 'rgba(120, 53, 15, 0.92)',
+      border: 'rgba(251, 191, 36, 0.7)',
+      text: '#fef3c7',
+    },
+    error: {
+      bg: 'rgba(127, 29, 29, 0.92)',
+      border: 'rgba(248, 113, 113, 0.75)',
+      text: '#fee2e2',
+    },
+  };
+
+  const palette = toneStyles[tone];
+  Object.assign(toast.style, {
+    position: 'fixed',
+    right: '18px',
+    top: '18px',
+    zIndex: '10002',
+    maxWidth: '420px',
+    padding: '10px 14px',
+    borderRadius: '8px',
+    border: `1px solid ${palette.border}`,
+    backgroundColor: palette.bg,
+    color: palette.text,
+    fontFamily: `'Trebuchet MS', 'Verdana', sans-serif`,
+    fontSize: '12px',
+    fontWeight: '600',
+    lineHeight: '1.3',
+    boxShadow: '0 10px 26px rgba(0, 0, 0, 0.35)',
+    pointerEvents: 'none',
+    opacity: '1',
+    transition: 'opacity 220ms ease-out',
+    whiteSpace: 'pre-wrap',
+  });
+
+  document.body.appendChild(toast);
+  debugToastTimeout = window.setTimeout(() => {
+    toast.style.opacity = '0';
+    window.setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 240);
+    debugToastTimeout = null;
+  }, durationMs);
+}
+
 /**
  * Save target values to localStorage for mid-craft save recovery.
  */
@@ -836,7 +1306,8 @@ function syncCraftingContextFromState(
   const craftingMode = String(recipeAny?.craftingMode || '').toLowerCase();
   const hasModeSignal =
     craftingMode === 'sublime' || craftingMode === 'harmony';
-  const hasHarmonySignal = !!recipeAny?.usesHarmony || !!recipeStatsAny?.harmonyBased;
+  const hasHarmonySignal =
+    !!recipeAny?.usesHarmony || !!recipeStatsAny?.harmonyBased;
   const completionCapRatio =
     targetCompletion > 0 && maxCompletionCap !== undefined
       ? maxCompletionCap / targetCompletion
@@ -865,12 +1336,17 @@ function syncCraftingContextFromState(
       recipeAny?.type === 'equipment' ||
       recipeAny?.resultType === 'equipment';
     const minimumMultiplier = isEquipmentCraft ? 3.0 : 2.0;
-    sublimeTargetMultiplier = Math.max(minimumMultiplier, inferredCapMultiplier);
+    sublimeTargetMultiplier = Math.max(
+      minimumMultiplier,
+      inferredCapMultiplier,
+    );
   } else {
     sublimeTargetMultiplier = 1.0;
   }
 
-  const explicitMaxToxicity = toFinitePositiveNumber(recipeStatsAny?.maxToxicity);
+  const explicitMaxToxicity = toFinitePositiveNumber(
+    recipeStatsAny?.maxToxicity,
+  );
   if (explicitMaxToxicity !== undefined) {
     maxToxicity = explicitMaxToxicity;
   } else if (currentCraftingType === 'alchemical') {
@@ -1819,6 +2295,19 @@ function updateRecommendation(
   }
 
   const searchEpoch = ++recommendationSearchEpoch;
+  const replayInputSnapshot = buildOptimizerReplayInputSnapshot({
+    state,
+    config,
+    lookaheadDepth,
+    searchEpoch,
+    searchConfig,
+    currentConditionType,
+    forecastedConditionTypes,
+    targetCompletionAtSearchStart,
+    targetPerfectionAtSearchStart,
+    maxStabilityAtSearchStart,
+  });
+  lastOptimizerReplaySnapshot = { input: replayInputSnapshot };
 
   // Set calculating state and render immediately to show loading indicator
   isCalculating = true;
@@ -1848,6 +2337,11 @@ function updateRecommendation(
       }
 
       currentRecommendation = recommendation;
+      lastOptimizerReplaySnapshot = {
+        input: replayInputSnapshot,
+        output: buildResultSnapshot(recommendation),
+        completedAt: new Date().toISOString(),
+      };
 
       debugLog(
         `[CraftBuddy] Updated: Pool=${pool}, Stability=${stability}/${maxStabilityAtSearchStart}, Completion=${completion}/${targetCompletionAtSearchStart}, Perfection=${perfection}/${targetPerfectionAtSearchStart}`,
@@ -1867,6 +2361,13 @@ function updateRecommendation(
       }
     } catch (e) {
       console.error('[CraftBuddy] Failed to calculate recommendation:', e);
+      const errorMessage =
+        e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      lastOptimizerReplaySnapshot = {
+        input: replayInputSnapshot,
+        error: errorMessage,
+        completedAt: new Date().toISOString(),
+      };
       if (searchEpoch !== recommendationSearchEpoch) {
         return;
       }
@@ -2138,9 +2639,7 @@ let unsubscribeFromReduxStore: (() => void) | null = null;
 let reduxStoreReconnectChecks = 0;
 const REDUX_STORE_RECHECK_INTERVAL_POLLS = 4;
 
-function isReduxStoreLike(
-  store: any,
-): store is {
+function isReduxStoreLike(store: any): store is {
   getState: () => any;
   subscribe: (listener: () => void) => () => void;
 } {
@@ -2169,7 +2668,10 @@ function processCraftingStateFromStore(store: any): void {
     const craftingState = extractActiveCraftingState(state);
     processCraftingState(craftingState);
   } catch (error) {
-    console.warn('[CraftBuddy] Failed to read crafting state from store:', error);
+    console.warn(
+      '[CraftBuddy] Failed to read crafting state from store:',
+      error,
+    );
   }
 }
 
@@ -2306,9 +2808,9 @@ function detectVisibleCraftingUi(): boolean {
     );
 
   const poolElement =
-    Array.from(gameRoot.querySelectorAll('[class*="pool"], [class*="qi"]')).find(
-      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
-    ) ||
+    Array.from(
+      gameRoot.querySelectorAll('[class*="pool"], [class*="qi"]'),
+    ).find((el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el)) ||
     Array.from(gameRoot.querySelectorAll('*')).find(
       (el) =>
         !isElementInCraftBuddyOverlay(el) &&
@@ -2317,7 +2819,9 @@ function detectVisibleCraftingUi(): boolean {
         el.children.length < 5,
     );
 
-  const interactiveElements = gameRoot.querySelectorAll('button, [role="button"]');
+  const interactiveElements = gameRoot.querySelectorAll(
+    'button, [role="button"]',
+  );
   let hasCraftingButtons = false;
   let visibleButtonCount = 0;
 
@@ -2333,8 +2837,12 @@ function detectVisibleCraftingUi(): boolean {
     const classNameRaw = htmlElement.className;
     const className =
       typeof classNameRaw === 'string' ? classNameRaw.toLowerCase() : '';
-    const dataTestId = (htmlElement.getAttribute('data-testid') || '').toLowerCase();
-    const ariaLabel = (htmlElement.getAttribute('aria-label') || '').toLowerCase();
+    const dataTestId = (
+      htmlElement.getAttribute('data-testid') || ''
+    ).toLowerCase();
+    const ariaLabel = (
+      htmlElement.getAttribute('aria-label') || ''
+    ).toLowerCase();
 
     if (
       text.includes('fusion') ||
@@ -2378,7 +2886,10 @@ function detectVisibleCraftingUi(): boolean {
   }
 
   // Require interactive crafting controls so result/summary screens don't keep us "active".
-  return hasCraftingButtons && (hasProgressSignals || hasDomProgressValues || !!craftingPanel);
+  return (
+    hasCraftingButtons &&
+    (hasProgressSignals || hasDomProgressValues || !!craftingPanel)
+  );
 }
 
 function extractActiveCraftingState(state: any): any | null {
@@ -2555,7 +3066,11 @@ function pollCraftingState(): void {
 
   if (hasReliableCraftingActivity) {
     wasCraftingActive = true;
-    if (hasVisibleCraftingUi && currentSettings.panelVisible && !isOverlayVisible) {
+    if (
+      hasVisibleCraftingUi &&
+      currentSettings.panelVisible &&
+      !isOverlayVisible
+    ) {
       debugLog('[CraftBuddy] Crafting detected, showing overlay');
       overlayForcedByActiveCraft = true;
       showOverlay();
@@ -2567,7 +3082,12 @@ function pollCraftingState(): void {
   }
 
   // If we have entity and progress from Redux, use them directly
-  if (hasReliableCraftingActivity && hasVisibleCraftingUi && entity && progress) {
+  if (
+    hasReliableCraftingActivity &&
+    hasVisibleCraftingUi &&
+    entity &&
+    progress
+  ) {
     // CRITICAL: Update target values from recipeStats BEFORE updating recommendation
     // recipeStats contains the authoritative target values (completion, perfection, stability)
     if (recipeStats) {
@@ -3509,6 +4029,134 @@ try {
       currentStability,
     };
   },
+
+  getOptimizerReplaySnapshot: () => lastOptimizerReplaySnapshot,
+
+  dumpOptimizerReplaySnapshot: () => {
+    const prepared = getSerializableOptimizerReplaySnapshot();
+    if (!prepared) {
+      console.warn(
+        '[CraftBuddy] No optimizer replay snapshot available yet. Run one recommendation first.',
+      );
+      showDebugToast(
+        'No snapshot yet. Trigger a recommendation first.',
+        'warn',
+      );
+      return null;
+    }
+
+    console.log('=== CRAFTBUDDY OPTIMIZER REPLAY SNAPSHOT ===');
+    console.log(prepared.json);
+    console.log('=== END OPTIMIZER REPLAY SNAPSHOT ===');
+    showDebugToast('Optimizer snapshot dumped to console.', 'info');
+    return prepared.data;
+  },
+
+  copyOptimizerReplaySnapshot: async () => {
+    const prepared = getSerializableOptimizerReplaySnapshot();
+    if (!prepared) {
+      console.warn(
+        '[CraftBuddy] No optimizer replay snapshot available yet. Run one recommendation first.',
+      );
+      showDebugToast(
+        'No snapshot yet. Trigger a recommendation first.',
+        'warn',
+      );
+      return false;
+    }
+
+    const copied = await copyTextToClipboard(prepared.json);
+    if (copied) {
+      console.log(
+        '[CraftBuddy] Optimizer replay snapshot copied to clipboard.',
+      );
+      showDebugToast('Optimizer snapshot copied to clipboard.', 'success');
+      return true;
+    }
+
+    console.warn(
+      '[CraftBuddy] Clipboard copy failed. Use dumpOptimizerReplaySnapshot() or downloadOptimizerReplaySnapshot().',
+    );
+    showDebugToast('Clipboard copy failed. Use download export.', 'warn');
+    return false;
+  },
+
+  downloadOptimizerReplaySnapshot: () => {
+    const prepared = getSerializableOptimizerReplaySnapshot();
+    if (!prepared) {
+      console.warn(
+        '[CraftBuddy] No optimizer replay snapshot available yet. Run one recommendation first.',
+      );
+      showDebugToast(
+        'No snapshot yet. Trigger a recommendation first.',
+        'warn',
+      );
+      return false;
+    }
+
+    const dateStamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `craftbuddy-optimizer-snapshot-${dateStamp}.json`;
+    const downloaded = downloadTextFile(fileName, prepared.json);
+    if (downloaded) {
+      console.log(
+        `[CraftBuddy] Optimizer replay snapshot downloaded as ${fileName}`,
+      );
+      showDebugToast(`Snapshot downloaded: ${fileName}`, 'success');
+      return true;
+    }
+
+    console.warn('[CraftBuddy] Failed to download optimizer replay snapshot.');
+    showDebugToast('Snapshot download failed.', 'error');
+    return false;
+  },
+
+  exportOptimizerReplaySnapshot: async () => {
+    const prepared = getSerializableOptimizerReplaySnapshot();
+    if (!prepared) {
+      console.warn(
+        '[CraftBuddy] No optimizer replay snapshot available yet. Run one recommendation first.',
+      );
+      showDebugToast(
+        'No snapshot yet. Trigger a recommendation first.',
+        'warn',
+      );
+      return { copied: false, downloaded: false };
+    }
+
+    const copied = await copyTextToClipboard(prepared.json);
+    if (copied) {
+      console.log(
+        '[CraftBuddy] Optimizer replay snapshot copied to clipboard.',
+      );
+      showDebugToast('Snapshot copied to clipboard (Ctrl+Shift+Y).', 'success');
+      return { copied: true, downloaded: false };
+    }
+
+    const dateStamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `craftbuddy-optimizer-snapshot-${dateStamp}.json`;
+    const downloaded = downloadTextFile(fileName, prepared.json);
+    if (downloaded) {
+      console.log(
+        `[CraftBuddy] Clipboard unavailable. Downloaded snapshot as ${fileName}`,
+      );
+      showDebugToast(
+        `Clipboard unavailable, downloaded ${fileName}.`,
+        'info',
+        3200,
+      );
+      return { copied: false, downloaded: true };
+    }
+
+    console.warn(
+      '[CraftBuddy] Failed to export optimizer replay snapshot (clipboard + download failed).',
+    );
+    showDebugToast(
+      'Export failed (clipboard + download unavailable).',
+      'error',
+      3200,
+    );
+    return { copied: false, downloaded: false };
+  },
 };
 
 /**
@@ -3539,6 +4187,19 @@ try {
           });
           renderOverlay();
           debugLog(`[CraftBuddy] Compact mode: ${currentSettings.compactMode}`);
+          break;
+        case 'y':
+          event.preventDefault();
+          void (window as any).craftBuddyDebug
+            ?.exportOptimizerReplaySnapshot?.()
+            ?.catch((error: unknown) => {
+              console.warn(
+                '[CraftBuddy] Failed to export optimizer replay snapshot:',
+                error,
+              );
+              showDebugToast('Snapshot export failed.', 'error');
+            });
+          debugLog('[CraftBuddy] Exported optimizer snapshot (Ctrl+Shift+Y)');
           break;
       }
     }
@@ -3735,17 +4396,23 @@ function processCraftingState(craftingState: any): void {
     }
     // Try recipe.difficulty (note: this is usually just a string like 'hard', not an object)
     if (recipe.difficulty && typeof recipe.difficulty === 'object') {
-      const completionTarget = parsePositiveGameNumber(recipe.difficulty.completion);
+      const completionTarget = parsePositiveGameNumber(
+        recipe.difficulty.completion,
+      );
       if (completionTarget !== undefined) {
         targetCompletion = completionTarget;
         foundTargets = true;
       }
-      const perfectionTarget = parsePositiveGameNumber(recipe.difficulty.perfection);
+      const perfectionTarget = parsePositiveGameNumber(
+        recipe.difficulty.perfection,
+      );
       if (perfectionTarget !== undefined) {
         targetPerfection = perfectionTarget;
         foundTargets = true;
       }
-      const stabilityTarget = parsePositiveGameNumber(recipe.difficulty.stability);
+      const stabilityTarget = parsePositiveGameNumber(
+        recipe.difficulty.stability,
+      );
       if (stabilityTarget !== undefined) {
         targetStability = stabilityTarget;
         foundTargets = true;

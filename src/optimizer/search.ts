@@ -309,12 +309,15 @@ interface ScoringContext {
   avgStabilityCostPerTurn: number;
   /** Average gain per progress turn (max of intensity, control stats). */
   avgGainPerTurn: number;
+  /** Average qi cost per progress turn, from available skills. */
+  avgQiCostPerTurn: number;
 }
 
 /** Default scoring context used when callers don't provide one. */
 const DEFAULT_SCORING_CONTEXT: ScoringContext = {
   avgStabilityCostPerTurn: 10,
   avgGainPerTurn: 16,
+  avgQiCostPerTurn: 0,
 };
 
 /**
@@ -331,17 +334,24 @@ function buildScoringContext(config: OptimizerConfig): ScoringContext {
   // Only consider turn-consuming skills that produce completion or perfection.
   const skills = config.skills || [];
   let totalStabCost = 0;
+  let totalQiCost = 0;
   let count = 0;
   for (const skill of skills) {
     if (skill.type === 'stabilize' || skill.type === 'support') continue;
+    const hasProgress =
+      (skill.baseCompletionGain || 0) > 0 ||
+      (skill.basePerfectionGain || 0) > 0;
+    if (!hasProgress) continue;
     if (skill.stabilityCost > 0) {
       totalStabCost += skill.stabilityCost;
-      count++;
     }
+    totalQiCost += Math.max(0, skill.qiCost || 0);
+    count++;
   }
   const avgStabilityCostPerTurn = count > 0 ? totalStabCost / count : 10;
+  const avgQiCostPerTurn = count > 0 ? totalQiCost / count : 0;
 
-  return { avgStabilityCostPerTurn, avgGainPerTurn };
+  return { avgStabilityCostPerTurn, avgGainPerTurn, avgQiCostPerTurn };
 }
 
 /**
@@ -904,6 +914,12 @@ function scoreState(
     perfNeedPct,
     (compNeedPct + perfNeedPct) / 2,
   );
+  const estimatedTurnsRemaining =
+    totalRemaining > 0 ? Math.ceil(totalRemaining / ctx.avgGainPerTurn) : 0;
+  const stepPenaltyWeight = Math.max(
+    SCORING.STEP_PENALTY,
+    ctx.avgGainPerTurn * 0.25,
+  );
 
   // ── 1. progress score (primary) ──────────────────────────────────────
   const compProgress =
@@ -933,12 +949,12 @@ function scoreState(
     score += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
     score += state.qi * SCORING.RESOURCE_TIEBREAKER;
     score += state.stability * SCORING.RESOURCE_TIEBREAKER;
-    score -= state.step * SCORING.STEP_PENALTY;
+    score -= state.step * stepPenaltyWeight;
   } else if (baseTargetsMet) {
     score += targetMetBonus;
     score += state.qi * SCORING.RESOURCE_TIEBREAKER;
     score += state.stability * SCORING.RESOURCE_TIEBREAKER;
-    score -= state.step * SCORING.STEP_PENALTY;
+    score -= state.step * stepPenaltyWeight;
     if (isSublimeCraft) {
       const compBeyondBase = Math.max(0, state.completion - targetCompletion);
       const perfBeyondBase = Math.max(0, state.perfection - targetPerfection);
@@ -969,7 +985,18 @@ function scoreState(
     }
 
     // ── 4. resource value (qi & stability as future-progress enablers) ─
-    score += state.qi * SCORING.QI_RESOURCE_WEIGHT;
+    // Qi is only valuable when it is a bottleneck for progress turns.
+    // This prevents overvaluing turn-consuming qi restores when progress
+    // skills are already qi-free.
+    if (ctx.avgQiCostPerTurn > 0 && estimatedTurnsRemaining > 0) {
+      const estimatedQiNeeded = estimatedTurnsRemaining * ctx.avgQiCostPerTurn;
+      const qiShortfall = Math.max(0, estimatedQiNeeded - state.qi);
+      if (qiShortfall > 0) {
+        const turnsShortByQi = qiShortfall / ctx.avgQiCostPerTurn;
+        score -= turnsShortByQi * ctx.avgGainPerTurn;
+      }
+    }
+
     score +=
       state.stability *
       (SCORING.STABILITY_BASE_WEIGHT +
@@ -979,7 +1006,7 @@ function scoreState(
     // Without this, the tree search sees no cost to "stabilize now,
     // progress later" vs "progress now", which can cause stabilize
     // spirals where the optimizer delays progress indefinitely.
-    score -= state.step * SCORING.STEP_PENALTY;
+    score -= state.step * stepPenaltyWeight;
   }
 
   // ── 5. overshoot penalty ─────────────────────────────────────────────
@@ -1076,8 +1103,6 @@ function scoreState(
     // Runway penalty: penalize states where estimated turns to finish
     // exceeds stability runway.  Proportional and uncapped — the penalty
     // scales with the severity of the shortfall.
-    const estimatedTurnsRemaining =
-      totalRemaining > 0 ? Math.ceil(totalRemaining / ctx.avgGainPerTurn) : 0;
     const estimatedRunwayTurns =
       ctx.avgStabilityCostPerTurn > 0
         ? Math.floor(Math.max(0, state.stability) / ctx.avgStabilityCostPerTurn)
@@ -1492,7 +1517,25 @@ function rankRecommendations(
     return scored;
   }
 
-  const sorted = [...scored].sort((a, b) => b.score - a.score);
+  const sorted = [...scored].sort((a, b) => {
+    const scoreDiff = b.score - a.score;
+    if (scoreDiff !== 0) {
+      return scoreDiff;
+    }
+
+    const aProgress =
+      Math.max(0, a.immediateGains.completion) +
+      Math.max(0, a.immediateGains.perfection);
+    const bProgress =
+      Math.max(0, b.immediateGains.completion) +
+      Math.max(0, b.immediateGains.perfection);
+    const progressDiff = bProgress - aProgress;
+    if (progressDiff !== 0) {
+      return progressDiff;
+    }
+
+    return a.skill.key.localeCompare(b.skill.key);
+  });
   if (sorted.length <= 2) {
     return sorted;
   }
@@ -1820,14 +1863,6 @@ export function greedySearch(
     config,
     normalizedCurrentCondition,
   );
-  const stallPenalties = computeStallPenalties(
-    state,
-    availableSkills,
-    config,
-    conditionEffects,
-    modeCompGoal,
-    modePerfGoal,
-  );
   const evaluatedMoves: Array<
     SkillRecommendation & TerminalStateClassification
   > = [];
@@ -1849,18 +1884,17 @@ export function greedySearch(
       config,
       conditionEffects,
     );
-    const score =
-      scoreState(
-        newState,
-        targetCompletion,
-        targetPerfection,
-        isSublime,
-        targetMult,
-        isTraining,
-        config.maxCompletion,
-        config.maxPerfection,
-        scoringCtx,
-      ) + (stallPenalties.get(skill.key) ?? 0);
+    const score = scoreState(
+      newState,
+      targetCompletion,
+      targetPerfection,
+      isSublime,
+      targetMult,
+      isTraining,
+      config.maxCompletion,
+      config.maxPerfection,
+      scoringCtx,
+    );
     const terminalState = classifyTerminalState(
       newState,
       config,
@@ -1986,17 +2020,13 @@ export function lookaheadSearch(
       : effectivePerfTarget;
   const modeCompGoal = isSublime ? effectiveCompGoal : targetCompletion;
   const modePerfGoal = isSublime ? effectivePerfGoal : targetPerfection;
-  const orderingCompGoal =
-    effectiveCompGoal > 0 ? effectiveCompGoal : targetCompletion;
-  const orderingPerfGoal =
-    effectivePerfGoal > 0 ? effectivePerfGoal : targetPerfection;
   const targetsMetForCurrentMode = (candidate: CraftingState): boolean =>
     goalsMet(candidate, modeCompGoal, modePerfGoal);
   const scoreStateWithTerminalPenalty = (
     candidate: CraftingState,
     conditionAtDepth: CraftingConditionType,
   ): number => {
-    const baseScore = scoreState(
+    let baseScore = scoreState(
       candidate,
       targetCompletion,
       targetPerfection,
@@ -2007,6 +2037,39 @@ export function lookaheadSearch(
       config.maxPerfection,
       scoringCtx,
     );
+    const remainingCompletion = Math.max(
+      0,
+      modeCompGoal - candidate.completion,
+    );
+    const remainingPerfection = Math.max(
+      0,
+      modePerfGoal - candidate.perfection,
+    );
+    const totalRemaining = remainingCompletion + remainingPerfection;
+    if (totalRemaining > 0) {
+      const compNeedShare = remainingCompletion / totalRemaining;
+      const perfNeedShare = remainingPerfection / totalRemaining;
+      const conditionEffects = getConditionEffectsForConfig(
+        config,
+        conditionAtDepth,
+      );
+      let intensityScale = 1;
+      let controlScale = 1;
+      for (const effect of conditionEffects) {
+        if (effect.kind === 'intensity' && effect.multiplier !== undefined) {
+          intensityScale += effect.multiplier;
+        }
+        if (effect.kind === 'control' && effect.multiplier !== undefined) {
+          controlScale += effect.multiplier;
+        }
+      }
+      const conditionedPotential =
+        compNeedShare * intensityScale + perfNeedShare * controlScale;
+      const neutralPotential = compNeedShare + perfNeedShare;
+      baseScore +=
+        (conditionedPotential - neutralPotential) * scoringCtx.avgGainPerTurn;
+    }
+
     const { isTerminalUnmet } = classifyTerminalState(
       candidate,
       config,
@@ -2016,6 +2079,114 @@ export function lookaheadSearch(
     );
     return isTerminalUnmet ? applyTerminalUnmetPenalty(baseScore) : baseScore;
   };
+  interface SearchMoveCandidate {
+    skill: SkillDefinition;
+    nextState: CraftingState;
+    orderingScore: number;
+    immediateProgress: number;
+  }
+
+  function estimatePostMoveStateScore(
+    newState: CraftingState,
+    skill: SkillDefinition,
+    conditionAtDepth: CraftingConditionType,
+    nextConditionQueueAtDepth: CraftingConditionType[],
+  ): number {
+    if (!actionConsumesTurn(skill)) {
+      return scoreStateWithTerminalPenalty(newState, conditionAtDepth);
+    }
+
+    const transitions = getConditionTransitionsWithProvider(
+      conditionAtDepth,
+      nextConditionQueueAtDepth,
+      newState.harmony,
+      cfg,
+    );
+    if (transitions.length === 0) {
+      return scoreStateWithTerminalPenalty(newState, conditionAtDepth);
+    }
+
+    let expectedScore = 0;
+    for (const transition of transitions) {
+      expectedScore +=
+        transition.probability *
+        scoreStateWithTerminalPenalty(newState, transition.nextCondition);
+    }
+    return expectedScore;
+  }
+
+  function buildOrderedMoveCandidates(
+    currentState: CraftingState,
+    currentConditionAtDepth: CraftingConditionType,
+    nextConditionQueueAtDepth: CraftingConditionType[],
+    conditionEffectsAtDepth: ReturnType<typeof getConditionEffectsForConfig>,
+  ): SearchMoveCandidate[] {
+    const availableSkills = getAvailableSkills(
+      currentState,
+      config,
+      currentConditionAtDepth,
+    );
+    const candidates: SearchMoveCandidate[] = [];
+
+    for (const skill of availableSkills) {
+      const nextState = applySkill(
+        currentState,
+        skill,
+        config,
+        conditionEffectsAtDepth,
+        targetCompletion,
+        currentConditionAtDepth,
+      );
+      if (nextState === null) {
+        continue;
+      }
+
+      const completionBefore =
+        modeCompGoal > 0
+          ? Math.min(modeCompGoal, currentState.completion)
+          : currentState.completion;
+      const perfectionBefore =
+        modePerfGoal > 0
+          ? Math.min(modePerfGoal, currentState.perfection)
+          : currentState.perfection;
+      const completionAfter =
+        modeCompGoal > 0
+          ? Math.min(modeCompGoal, nextState.completion)
+          : nextState.completion;
+      const perfectionAfter =
+        modePerfGoal > 0
+          ? Math.min(modePerfGoal, nextState.perfection)
+          : nextState.perfection;
+      const immediateProgress =
+        Math.max(0, completionAfter - completionBefore) +
+        Math.max(0, perfectionAfter - perfectionBefore);
+
+      candidates.push({
+        skill,
+        nextState,
+        orderingScore: estimatePostMoveStateScore(
+          nextState,
+          skill,
+          currentConditionAtDepth,
+          nextConditionQueueAtDepth,
+        ),
+        immediateProgress,
+      });
+    }
+
+    candidates.sort((a, b) => {
+      const scoreDiff = b.orderingScore - a.orderingScore;
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+      const progressDiff = b.immediateProgress - a.immediateProgress;
+      if (progressDiff !== 0) {
+        return progressDiff;
+      }
+      return a.skill.key.localeCompare(b.skill.key);
+    });
+    return candidates;
+  }
 
   // Check if targets already met
   if (targetsMetForCurrentMode(state)) {
@@ -2147,60 +2318,30 @@ export function lookaheadSearch(
       config,
       currentConditionAtDepth,
     );
-
-    const availableSkills = getAvailableSkills(
+    const orderedCandidates = buildOrderedMoveCandidates(
       currentState,
-      config,
       currentConditionAtDepth,
-    );
-    const stallPenaltiesAtDepth = computeStallPenalties(
-      currentState,
-      availableSkills,
-      config,
+      nextConditionQueueAtDepth,
       conditionEffectsAtDepth,
-      modeCompGoal,
-      modePerfGoal,
     );
-    // Apply move ordering to search promising skills first
-    const orderedSkills = orderSkillsForSearch(
-      availableSkills,
-      currentState,
-      config,
-      orderingCompGoal,
-      orderingPerfGoal,
-      conditionEffectsAtDepth,
-      stallPenaltiesAtDepth,
-    );
+    if (orderedCandidates.length === 0) {
+      return scoreStateWithTerminalPenalty(
+        currentState,
+        currentConditionAtDepth,
+      );
+    }
 
     // Apply adaptive beam search: use narrower beam for deep searches
     const effectiveBeamWidth = cfg.useAdaptiveBeamWidth
       ? getAdaptiveBeamWidth(cfg.beamWidth, remainingDepth, activeDepth)
       : cfg.beamWidth;
-    const beamSkills = orderedSkills.slice(0, effectiveBeamWidth);
+    const beamCandidates = orderedCandidates.slice(0, effectiveBeamWidth);
 
-    let bestScore = scoreState(
-      currentState,
-      targetCompletion,
-      targetPerfection,
-      isSublime,
-      targetMult,
-      isTraining,
-      config.maxCompletion,
-      config.maxPerfection,
-      scoringCtx,
-    );
+    let bestScore = -Infinity;
     let bestMoveKey = ''; // tracks which skill achieved bestScore
 
-    for (const skill of beamSkills) {
-      const newState = applySkill(
-        currentState,
-        skill,
-        config,
-        conditionEffectsAtDepth,
-        targetCompletion,
-        currentConditionAtDepth,
-      );
-      if (newState === null) continue;
+    for (const candidate of beamCandidates) {
+      const { skill, nextState: newState } = candidate;
 
       let score = 0;
       if (!actionConsumesTurn(skill)) {
@@ -2244,6 +2385,14 @@ export function lookaheadSearch(
         metrics.pruned++;
         break;
       }
+    }
+
+    if (!Number.isFinite(bestScore)) {
+      bestScore = scoreStateWithTerminalPenalty(
+        currentState,
+        currentConditionAtDepth,
+      );
+      bestMoveKey = '';
     }
 
     cache.set(cacheKey, { score: bestScore, bestMove: bestMoveKey });
@@ -2457,28 +2606,42 @@ export function lookaheadSearch(
       config,
       normalizedCurrentCondition,
     );
-    const availableSkills = getAvailableSkills(
+    const orderedCandidates = buildOrderedMoveCandidates(
       state,
-      config,
       normalizedCurrentCondition,
-    );
-    const firstMoveStallPenalties = computeStallPenalties(
-      state,
-      availableSkills,
-      config,
+      initialConditionQueue,
       currentConditionEffects,
-      modeCompGoal,
-      modePerfGoal,
     );
-    const orderedSkills = orderSkillsForSearch(
-      availableSkills,
-      state,
-      config,
-      orderingCompGoal,
-      orderingPerfGoal,
-      currentConditionEffects,
-      firstMoveStallPenalties,
-    );
+    const rootNeedsCompletion =
+      Number.isFinite(modeCompGoal) &&
+      modeCompGoal > 0 &&
+      state.completion < modeCompGoal;
+    const rootNeedsPerfection =
+      Number.isFinite(modePerfGoal) &&
+      modePerfGoal > 0 &&
+      state.perfection < modePerfGoal;
+    const compareRecommendations = (
+      a: SkillRecommendation,
+      b: SkillRecommendation,
+    ): number => {
+      const scoreDiff = b.score - a.score;
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+
+      const aProgress =
+        (rootNeedsCompletion ? Math.max(0, a.immediateGains.completion) : 0) +
+        (rootNeedsPerfection ? Math.max(0, a.immediateGains.perfection) : 0);
+      const bProgress =
+        (rootNeedsCompletion ? Math.max(0, b.immediateGains.completion) : 0) +
+        (rootNeedsPerfection ? Math.max(0, b.immediateGains.perfection) : 0);
+      const progressDiff = bProgress - aProgress;
+      if (progressDiff !== 0) {
+        return progressDiff;
+      }
+
+      return a.skill.key.localeCompare(b.skill.key);
+    };
     const evaluatedFirstMoves: Array<
       SkillRecommendation & TerminalStateClassification
     > = [];
@@ -2497,35 +2660,17 @@ export function lookaheadSearch(
         return undefined;
       }
 
-      const followUpSkills = getAvailableSkills(
-        stateAfterSkill,
-        config,
-        conditionAtDepth,
-      );
-      if (followUpSkills.length === 0) return undefined;
-
       const followUpConditionEffects = getConditionEffectsForConfig(
         config,
         conditionAtDepth,
       );
-      const followUpStallPenalties = computeStallPenalties(
+      const orderedFollowUpCandidates = buildOrderedMoveCandidates(
         stateAfterSkill,
-        followUpSkills,
-        config,
+        conditionAtDepth,
+        nextConditionQueueAtDepth,
         followUpConditionEffects,
-        modeCompGoal,
-        modePerfGoal,
       );
-
-      const orderedFollowUpSkills = orderSkillsForSearch(
-        followUpSkills,
-        stateAfterSkill,
-        config,
-        orderingCompGoal,
-        orderingPerfGoal,
-        followUpConditionEffects,
-        followUpStallPenalties,
-      );
+      if (orderedFollowUpCandidates.length === 0) return undefined;
 
       let bestFollowUp: SkillDefinition | null = null;
       let bestFollowUpScore = -Infinity;
@@ -2540,16 +2685,9 @@ export function lookaheadSearch(
         stability: 0,
       };
 
-      for (const followUp of orderedFollowUpSkills) {
-        const nextState = applySkill(
-          stateAfterSkill,
-          followUp,
-          config,
-          followUpConditionEffects,
-          targetCompletion,
-          conditionAtDepth,
-        );
-        if (nextState === null) continue;
+      for (const candidate of orderedFollowUpCandidates) {
+        const followUp = candidate.skill;
+        const nextState = candidate.nextState;
 
         const { expectedGains, immediateGains } = calculateRecommendationGains(
           stateAfterSkill,
@@ -2566,7 +2704,12 @@ export function lookaheadSearch(
               nextConditionQueueAtDepth,
               followUp,
             )
-          : scoreStateWithTerminalPenalty(nextState, conditionAtDepth);
+          : estimatePostMoveStateScore(
+              nextState,
+              followUp,
+              conditionAtDepth,
+              nextConditionQueueAtDepth,
+            );
 
         if (followUpScore > bestFollowUpScore) {
           bestFollowUpScore = followUpScore;
@@ -2588,16 +2731,9 @@ export function lookaheadSearch(
 
     // First pass: evaluate ALL first-level skills with basic scoring
     // This ensures we always have alternatives even if deep search times out
-    for (const skill of orderedSkills) {
-      const newState = applySkill(
-        state,
-        skill,
-        config,
-        currentConditionEffects,
-        targetCompletion,
-        normalizedCurrentCondition,
-      );
-      if (newState === null) continue;
+    for (const candidate of orderedCandidates) {
+      const skill = candidate.skill;
+      const newState = candidate.nextState;
 
       const { expectedGains, immediateGains } = calculateRecommendationGains(
         state,
@@ -2626,16 +2762,12 @@ export function lookaheadSearch(
         modePerfGoal,
       );
 
-      // Use immediate score as baseline (no deep search yet).
-      // Stall penalties are added to prevent wasteful stabilize/qi-restore
-      // from outranking progress skills.  The stabilizeProtected flag in
-      // computeStallPenalties() ensures survival-critical stabilize is
-      // never penalised.
-      const immediateScore =
-        scoreStateWithTerminalPenalty(
-          newState,
-          firstMoveConditionState.nextCondition,
-        ) + (firstMoveStallPenalties.get(skill.key) ?? 0);
+      const immediateScore = estimatePostMoveStateScore(
+        newState,
+        skill,
+        normalizedCurrentCondition,
+        initialConditionQueue,
+      );
 
       evaluatedFirstMoves.push({
         skill,
@@ -2655,7 +2787,7 @@ export function lookaheadSearch(
 
     // Second pass: enhance scores with deep lookahead if budget allows
     // Process skills in order of their immediate score (best first)
-    scored.sort((a, b) => b.score - a.score);
+    scored.sort(compareRecommendations);
     const fallbackFollowUpCount = 3;
 
     for (let index = 0; index < scored.length; index++) {
@@ -2680,21 +2812,14 @@ export function lookaheadSearch(
 
       const hasBudgetForDeepSearch = !checkBudget();
       if (hasBudgetForDeepSearch) {
-        // Deep evaluation — the tree search evaluates future states.
-        // Stall penalties are added to prevent wasteful stabilize from
-        // outranking progress when the tree can't see far enough to
-        // distinguish "stabilize now, progress later" from "progress now".
-        // The stabilizeProtected flag ensures survival-critical stabilize
-        // is never penalised.
-        rec.score =
-          evaluateFutureScoreAfterSkill(
-            newState,
-            Math.max(0, depthToSearch - 1),
-            1,
-            normalizedCurrentCondition,
-            initialConditionQueue,
-            rec.skill,
-          ) + (firstMoveStallPenalties.get(rec.skill.key) ?? 0);
+        rec.score = evaluateFutureScoreAfterSkill(
+          newState,
+          Math.max(0, depthToSearch - 1),
+          1,
+          normalizedCurrentCondition,
+          initialConditionQueue,
+          rec.skill,
+        );
       }
 
       // Always try to provide a follow-up suggestion for top-ranked skills.
@@ -2716,7 +2841,7 @@ export function lookaheadSearch(
       }
     }
 
-    scored.sort((a, b) => b.score - a.score);
+    scored.sort(compareRecommendations);
 
     const topRecommendation = scored[0];
     if (topRecommendation && !topRecommendation.followUpSkill) {
