@@ -3,12 +3,11 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-15
-source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts
+last_verified: 2026-02-28
+source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/settings/index.ts
 review_cycle_days: 30
 related_files:
   - AGENTS.md
-  - docs/project/PERFORMANCE.md
   - docs/project/TESTING.md
 ---
 
@@ -66,3 +65,39 @@ related_files:
 ## Determinism expectations
 
 Identical state + config inputs should produce stable recommendations within the deterministic EV model. Condition normalization lowercases unknown labels to avoid cache-key casing drift.
+
+## Performance tuning
+
+### User-tunable controls
+
+- `lookaheadDepth` (`1-96`, default `48`)
+- `searchTimeBudgetMs` (`100-10,000`, default `2,000`)
+- `searchMaxNodes` (`1,000-2,000,000`, default `750,000`)
+- `searchBeamWidth` (`3-20`, default `10`)
+- Settings sliders persist on commit (not every drag event) to reduce UI churn.
+
+### Internal search defaults
+
+- iterative deepening: enabled
+- adaptive beam width: enabled
+- condition branching beyond forecast: enabled
+- branch limit: `2`
+- branch min probability: `0.15`
+
+### Cost/quality tuning order
+
+1. raise `searchMaxNodes`
+2. raise `lookaheadDepth`
+3. adjust `searchBeamWidth`
+4. raise `searchTimeBudgetMs` only as needed
+
+### Long-craft guidance (~90 turns)
+
+- increase depth gradually and validate responsiveness
+- avoid maxing depth + beam simultaneously on slower machines
+- prefer keeping time budget bounded for UI responsiveness
+
+## Key design decisions
+
+- **Pure optimizer core** — simulation and search in `src/optimizer/*` remain pure/testable with no game runtime dependencies.
+- **Expected-value modeling** — EV for success/crit and future-condition branching provides stable quality with bounded runtime cost (no stochastic rollouts).

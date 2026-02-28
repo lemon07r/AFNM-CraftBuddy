@@ -1248,6 +1248,146 @@ describe('tutorial regression scenarios', () => {
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.type).not.toBe('stabilize');
   });
+
+  it('should treat runtime-reported 0 cost percentages as neutral baseline (same as 100)', () => {
+    const baseState = {
+      qi: 162,
+      stability: 30,
+      initialMaxStability: 60,
+      stabilityPenalty: 3, // 30/57 effective runway
+      completion: 20,
+      perfection: 10,
+    };
+    const forecast = ['positive', 'veryPositive', 'neutral'];
+    const searchConfig = { timeBudgetMs: 700, maxNodes: 200000, beamWidth: 10 };
+
+    const zeroPercentState = new CraftingState({
+      ...baseState,
+      poolCostPercentage: 0,
+      stabilityCostPercentage: 0,
+    });
+    const neutralPercentState = new CraftingState({
+      ...baseState,
+      poolCostPercentage: 100,
+      stabilityCostPercentage: 100,
+    });
+
+    const zeroResult = lookaheadSearch(
+      zeroPercentState,
+      tutorialConfig,
+      60,
+      60,
+      8,
+      'neutral',
+      forecast,
+      searchConfig,
+    );
+    const neutralResult = lookaheadSearch(
+      neutralPercentState,
+      tutorialConfig,
+      60,
+      60,
+      8,
+      'neutral',
+      forecast,
+      searchConfig,
+    );
+
+    expect(zeroResult.recommendation).not.toBeNull();
+    expect(neutralResult.recommendation).not.toBeNull();
+    expect(zeroResult.recommendation!.skill.name).toBe(
+      neutralResult.recommendation!.skill.name,
+    );
+    expect(zeroResult.recommendation!.score).toBeCloseTo(
+      neutralResult.recommendation!.score,
+      8,
+    );
+  });
+
+  it('should break near-equal ties toward progress before forceful stabilize', () => {
+    const snapshotLikeConfig = createTestConfig({
+      maxQi: 180,
+      baseIntensity: 10,
+      baseControl: 10,
+      minStability: 0,
+      skills: [SIMPLE_FUSION, SIMPLE_REFINE, FORCEFUL_STABILIZE],
+    });
+    const state = new CraftingState({
+      qi: 162,
+      stability: 30,
+      initialMaxStability: 60,
+      stabilityPenalty: 3, // 30/57
+      completion: 20,
+      perfection: 10,
+      step: 3,
+    });
+
+    const result = lookaheadSearch(
+      state,
+      snapshotLikeConfig,
+      60,
+      60,
+      36,
+      'neutral',
+      ['positive', 'veryPositive', 'neutral'],
+      { timeBudgetMs: 5000, maxNodes: 2000000, beamWidth: 10 },
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).not.toBe('stabilize');
+    expect(result.recommendation!.followUpSkill).toBeDefined();
+    expect(result.recommendation!.followUpSkill!.type).not.toBe('stabilize');
+    expect(result.optimalRotation?.[1]).not.toBe('Forceful Stabilize');
+  });
+
+  it('should not recommend forceful stabilize follow-up at 30/57 stability with realistic budget', () => {
+    // Exact reproduction of user-reported bug: at 30/57 stability the follow-up
+    // suggests Forceful Stabilize (88 qi for +40 stability) even though
+    // stability is adequate for 2-3 more progress turns.  The positive and
+    // veryPositive conditions should be used for progress, not wasted on stabilize.
+    const snapshotConfig = createTestConfig({
+      maxQi: 180,
+      baseIntensity: 10,
+      baseControl: 10,
+      minStability: 0,
+      skills: [SIMPLE_FUSION, SIMPLE_REFINE, FORCEFUL_STABILIZE],
+    });
+    const state = new CraftingState({
+      qi: 162,
+      stability: 30,
+      initialMaxStability: 60,
+      stabilityPenalty: 3, // 30/57
+      completion: 20,
+      perfection: 10,
+      step: 3,
+    });
+
+    // User's actual search budget is 1200ms.  Use a higher budget (3s) to
+    // account for test runner overhead (parallel tests reduce available CPU).
+    // The search will still hit its budget limit since depth 36 is far too
+    // deep to complete in 3s, exercising the budget-constrained code paths.
+    const result = lookaheadSearch(
+      state,
+      snapshotConfig,
+      60,
+      60,
+      36,
+      'neutral',
+      ['positive', 'veryPositive', 'neutral'],
+      { timeBudgetMs: 3000, maxNodes: 250000, beamWidth: 10 },
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).not.toBe('stabilize');
+    // The follow-up should not waste the positive condition on stabilize
+    if (result.recommendation!.followUpSkill) {
+      expect(result.recommendation!.followUpSkill.type).not.toBe('stabilize');
+    }
+    // Second move in rotation should not be Forceful Stabilize
+    if (result.optimalRotation && result.optimalRotation.length > 1) {
+      expect(result.optimalRotation[1]).not.toBe('Forceful Stabilize');
+    }
+  });
 });
 
 describe('survivability-first recommendation gate', () => {

@@ -8,7 +8,6 @@ source_of_truth: src/modContent/index.ts, src/optimizer/*
 review_cycle_days: 30
 related_files:
   - docs/dev-requests/STATUS.md
-  - docs/project/OPEN_QUESTIONS.md
 ---
 
 # API/Data Exposure Requests for Game Developer

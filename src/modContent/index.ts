@@ -909,6 +909,19 @@ function normalizeBuffKey(name: string | undefined): string {
     .replace(/\s+/g, '_');
 }
 
+function normalizeRuntimeCostPercentage(raw: unknown): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return 100;
+  }
+  // Game runtime can report 0 as the neutral "no modifier" baseline.
+  // Optimizer internals use 100 as the neutral percentage.
+  if (parsed === 0) {
+    return 100;
+  }
+  return parsed;
+}
+
 function normalizeConditionKey(
   condition: string | undefined,
 ): CraftingCondition {
@@ -2174,20 +2187,14 @@ function updateRecommendation(
     }
   }
 
-  // Read pool/stability cost percentage modifiers from entity stats + buffs
-  // Game default is 100 (= 100%, i.e. no modification)
-  const poolCostPercentageRaw = Number(
-    (entity as any)?.stats?.poolCostPercentage ?? 100,
+  // Read pool/stability cost percentage modifiers from entity stats + buffs.
+  // Runtime can report neutral baseline as 0, while optimizer internals use 100.
+  const poolCostPercentage = normalizeRuntimeCostPercentage(
+    (entity as any)?.stats?.poolCostPercentage,
   );
-  const poolCostPercentage = Number.isFinite(poolCostPercentageRaw)
-    ? poolCostPercentageRaw
-    : 100;
-  const stabilityCostPercentageRaw = Number(
-    (entity as any)?.stats?.stabilityCostPercentage ?? 100,
+  const stabilityCostPercentage = normalizeRuntimeCostPercentage(
+    (entity as any)?.stats?.stabilityCostPercentage,
   );
-  const stabilityCostPercentage = Number.isFinite(stabilityCostPercentageRaw)
-    ? stabilityCostPercentageRaw
-    : 100;
 
   // Extract completion bonus stacks from the Completion Bonus buff
   const completionBonusExtraction = extractCompletionBonusStacks(

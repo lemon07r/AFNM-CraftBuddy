@@ -510,6 +510,19 @@ function normalizeBuffName(name: string | undefined): string {
     .replace(/\s+/g, '_');
 }
 
+function normalizeRuntimeCostPercentage(raw: number | undefined): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return 100;
+  }
+  // Runtime snapshots can encode neutral baseline as 0 while the
+  // optimizer internally expects 100 for "no modification".
+  if (parsed === 0) {
+    return 100;
+  }
+  return parsed;
+}
+
 function buildNativeAvailabilityVariables(
   state: CraftingState,
   maxToxicity: number,
@@ -683,8 +696,12 @@ function buildTechniqueScalingVariables(
     resistance: 0,
     itemEffectiveness: 100,
     pillsPerRound: config.pillsPerRound || 1,
-    poolCostPercentage: state.poolCostPercentage,
-    stabilityCostPercentage: state.stabilityCostPercentage,
+    poolCostPercentage: normalizeRuntimeCostPercentage(
+      state.poolCostPercentage,
+    ),
+    stabilityCostPercentage: normalizeRuntimeCostPercentage(
+      state.stabilityCostPercentage,
+    ),
     successChanceBonus: state.successChanceBonus,
     stacks: 0,
     completion: state.completion,
@@ -776,16 +793,14 @@ function applyBuffStatContributions(
           successChanceBonus += raw;
           break;
         case 'poolCostPercentage':
-          poolCostPercentage =
-            poolCostPercentage === 0
-              ? raw
-              : Math.floor((poolCostPercentage / 100) * (raw / 100) * 100);
+          poolCostPercentage = Math.floor(
+            (poolCostPercentage / 100) * (raw / 100) * 100,
+          );
           break;
         case 'stabilityCostPercentage':
-          stabilityCostPercentage =
-            stabilityCostPercentage === 0
-              ? raw
-              : Math.floor((stabilityCostPercentage / 100) * (raw / 100) * 100);
+          stabilityCostPercentage = Math.floor(
+            (stabilityCostPercentage / 100) * (raw / 100) * 100,
+          );
           break;
       }
     }
@@ -810,8 +825,12 @@ function applyConditionEffectsToVariables(
   let control = vars.control;
   let intensity = vars.intensity;
   let successChanceBonus = vars.successChanceBonus;
-  let poolCostPercentage = vars.poolCostPercentage;
-  let stabilityCostPercentage = vars.stabilityCostPercentage;
+  let poolCostPercentage = normalizeRuntimeCostPercentage(
+    vars.poolCostPercentage,
+  );
+  let stabilityCostPercentage = normalizeRuntimeCostPercentage(
+    vars.stabilityCostPercentage,
+  );
 
   for (const effect of conditionEffects) {
     if (effect.kind === 'control' && effect.multiplier !== undefined) {
@@ -1080,6 +1099,12 @@ export function calculateEffectiveActionCosts(
   minStability: number,
   conditionEffects: ConditionEffect[] = [],
 ): EffectiveActionCosts {
+  const poolCostPercentage = normalizeRuntimeCostPercentage(
+    state.poolCostPercentage,
+  );
+  const stabilityCostPercentage = normalizeRuntimeCostPercentage(
+    state.stabilityCostPercentage,
+  );
   let qiCost = getEffectiveQiCost(skill);
   let stabilityDelta = -getEffectiveStabilityCost(skill);
 
@@ -1088,13 +1113,13 @@ export function calculateEffectiveActionCosts(
       qiCost = Math.floor(qiCost * effect.multiplier);
     }
   }
-  if (state.poolCostPercentage !== 100) {
-    qiCost = Math.floor((qiCost * state.poolCostPercentage) / 100);
+  if (poolCostPercentage !== 100) {
+    qiCost = Math.floor((qiCost * poolCostPercentage) / 100);
   }
 
-  if (stabilityDelta < 0 && state.stabilityCostPercentage !== 100) {
+  if (stabilityDelta < 0 && stabilityCostPercentage !== 100) {
     stabilityDelta = Math.ceil(
-      (stabilityDelta * state.stabilityCostPercentage) / 100,
+      (stabilityDelta * stabilityCostPercentage) / 100,
     );
   }
   for (const effect of conditionEffects) {

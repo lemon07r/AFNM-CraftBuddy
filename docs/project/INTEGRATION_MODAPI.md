@@ -3,19 +3,20 @@ title: Mod API Integration
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-07
+last_verified: 2026-02-28
 source_of_truth: src/modContent/index.ts
 review_cycle_days: 21
 related_files:
   - docs/dev-requests/API_EXPOSURE_REQUESTS.md
-  - docs/project/OPEN_QUESTIONS.md
 ---
 
 # Mod API Integration
 
 ## Role
 
-`src/modContent/index.ts` is the adapter from game runtime objects to optimizer input/output.
+`src/modContent/index.ts` is the sole adapter from game runtime objects to optimizer input/output.
+
+All fallback extraction and game-object adaptation logic is centralized here — never duplicated in optimizer modules. This is a deliberate design decision to maintain a single drift boundary and clearer parity auditing.
 
 ## Responsibilities
 
@@ -39,11 +40,9 @@ related_files:
 
 Fallback handling exists for targets/progress extraction, condition transitions, and optional payload fields when game objects are incomplete.
 
-## Migration targets (still pending game API exposure)
+## Migration targets
+
+Pending game API exposure — see `docs/dev-requests/API_EXPOSURE_REQUESTS.md` for full details and status:
 
 - finalized post-modifier pool/stability cost preview helpers
 - documented stable `getNextCondition` ModAPI symbol/path (guarded path probing currently active)
-
-## Guardrail
-
-Any new extraction/fallback logic must be centralized here (do not duplicate extraction logic across optimizer modules).

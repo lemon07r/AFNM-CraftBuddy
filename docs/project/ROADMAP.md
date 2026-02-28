@@ -3,24 +3,15 @@ title: Roadmap
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-07
+last_verified: 2026-02-28
 source_of_truth: src/optimizer/*, src/modContent/index.ts, docs/dev-requests/STATUS.md
 review_cycle_days: 30
 related_files:
   - docs/project/MECHANICS_PARITY.md
-  - docs/project/OPEN_QUESTIONS.md
+  - docs/dev-requests/STATUS.md
 ---
 
 # Roadmap
-
-## Completed in current branch line
-
-- harmony simulation integrated in runtime path
-- buff per-turn + action-specific effect execution integrated
-- mastery upgrade handling integrated
-- training-mode-aware scoring integrated
-- probabilistic condition branching beyond forecast integrated
-- legacy compatibility cleanup completed
 
 ## Active priorities
 
@@ -31,6 +22,7 @@ related_files:
 - switch to game-native finalized post-modifier cost helpers when exposed
 - validate all-depth native precheck parity in live crafts
 - retire fallback only after one full release proves stable
+- see `docs/dev-requests/STATUS.md` for API status and open questions
 
 ### P2: Cap-aware scoring and gains
 

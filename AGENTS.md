@@ -31,6 +31,7 @@
 - Use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` before opening any other reference docs.
 - Use `archive/` only when the curated/active docs are insufficient.
 - If you change docs, run `bun run docs:inventory` and `bun run docs:check` before committing.
+- See `docs/project/DOCS_GOVERNANCE.md` for the full docs model, metadata requirements, and update policy.
 
 ## Coding Style & Naming Conventions
 

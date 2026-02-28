@@ -3,50 +3,32 @@ title: Start Here For Agents
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-17
+last_verified: 2026-02-28
 source_of_truth: src/modContent/index.ts, src/optimizer/*, src/__tests__/*
 review_cycle_days: 14
 related_files:
   - AGENTS.md
   - docs/project/ARCHITECTURE.md
-  - docs/project/MECHANICS_PARITY.md
   - docs/project/OPTIMIZER_DESIGN.md
-  - docs/project/ROADMAP.md
 ---
 
 # Start Here For Agents
-
-## Goal
 
 Fast, low-noise onboarding for implementation work on AFNM-CraftBuddy.
 
 ## Critical first read
 
-- `AGENTS.md` — repository conventions, build/test commands, and **optimizer design principles** (anti-patterns, scoring rules, validation workflow). This file is loaded automatically by most AI agent frameworks.
+`AGENTS.md` — repository conventions, build/test commands, and **optimizer design principles** (anti-patterns, scoring rules, validation workflow). Loaded automatically by most AI agent frameworks.
 
 ## Recommended load order
 
 1. `AGENTS.md` (conventions + optimizer guardrails)
-2. `docs/project/ARCHITECTURE.md`
-3. `docs/project/MECHANICS_PARITY.md`
-4. `docs/project/OPTIMIZER_DESIGN.md`
-5. `docs/project/ROADMAP.md`
-6. `docs/project/OPEN_QUESTIONS.md`
+2. `docs/project/ARCHITECTURE.md` (module map + dependency direction)
+3. `docs/project/MECHANICS_PARITY.md` (what's implemented, what's pending)
+4. `docs/project/OPTIMIZER_DESIGN.md` (search, scoring, performance tuning)
+5. `docs/project/ROADMAP.md` (active priorities)
 
-## Project docs
-
-- `ARCHITECTURE.md` — runtime module map and dependency direction
-- `OPTIMIZER_DESIGN.md` — search modes, scoring architecture, caching
-- `MECHANICS_PARITY.md` — what's implemented, what's pending API exposure
-- `INTEGRATION_MODAPI.md` — game adapter layer responsibilities
-- `PERFORMANCE.md` — user-tunable search controls and tuning guidance
-- `TESTING.md` — test framework, suites, validation requirements
-- `ROADMAP.md` — active priorities and deferred work
-- `OPEN_QUESTIONS.md` — unresolved dependency questions
-- `DECISIONS.md` — key engineering decisions and rationale
-- `DOCS_GOVERNANCE.md` — metadata requirements and update policy
-
-## High-value code entrypoints
+## Key code entrypoints
 
 - integration: `src/modContent/index.ts`
 - search: `src/optimizer/search.ts`
@@ -54,8 +36,8 @@ Fast, low-noise onboarding for implementation work on AFNM-CraftBuddy.
 - formulas/types: `src/optimizer/gameTypes.ts`
 - harmony logic: `src/optimizer/harmony.ts`
 
-## Fast guardrails
+## Context rules
 
-- `docs/project/*` is authoritative; `docs/history/*` and `docs/reference/*` are non-authoritative context only
-- Do not bulk-load the reference corpus; use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` first
-- See `docs/index.md` for the full docs model and priority order
+- `docs/project/*` is authoritative; `docs/history/*` and `docs/reference/*` are non-authoritative context only.
+- Do not bulk-load the reference corpus; use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` first.
+- See `docs/project/DOCS_GOVERNANCE.md` for the full docs model, metadata requirements, and update policy.

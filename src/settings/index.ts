@@ -6,7 +6,7 @@
  */
 
 export interface CraftBuddySettings {
-  /** Lookahead search depth (1-96, default: 28) */
+  /** Lookahead search depth (1-96, default: 48) */
   lookaheadDepth: number;
   /** Whether to show the panel in compact mode */
   compactMode: boolean;
@@ -24,20 +24,20 @@ export interface CraftBuddySettings {
   showOptimalRotation: boolean;
 
   // Performance settings for late-game optimization
-  /** Maximum time budget for search in milliseconds (100-10000, default: 500) */
+  /** Maximum time budget for search in milliseconds (100-10000, default: 2000) */
   searchTimeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (1000-250000, default: 200000) */
+  /** Maximum nodes to explore before stopping (1000-2000000, default: 750000) */
   searchMaxNodes: number;
-  /** Beam width - max branches to explore at each level (3-15, default: 8) */
+  /** Beam width - max branches to explore at each level (3-20, default: 10) */
   searchBeamWidth: number;
 }
 
 const STORAGE_KEY = 'craftbuddy_settings';
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
-  // Balanced default profile tuned for strong quality + responsiveness.
-  // Turn-based gameplay can tolerate modestly longer searches.
-  lookaheadDepth: 28,
+  // Balanced default profile tuned for high-quality recommendations.
+  // Turn-based gameplay easily tolerates multi-second searches.
+  lookaheadDepth: 48,
   compactMode: false,
   panelVisible: true,
   maxAlternatives: 2,
@@ -45,11 +45,11 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
-  // Balanced defaults tuned for high-quality recommendations while keeping
-  // response time reasonable for a turn-based game.
-  searchTimeBudgetMs: 500,
-  searchMaxNodes: 200000,
-  searchBeamWidth: 8,
+  // Generous defaults — turn-based gameplay tolerates multi-second searches
+  // and the extra budget significantly improves recommendation quality.
+  searchTimeBudgetMs: 2000,
+  searchMaxNodes: 750000,
+  searchBeamWidth: 10,
 };
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
@@ -65,9 +65,7 @@ function clampInteger(
   return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
-function normalizeSettings(
-  settings: CraftBuddySettings,
-): CraftBuddySettings {
+function normalizeSettings(settings: CraftBuddySettings): CraftBuddySettings {
   return {
     ...settings,
     lookaheadDepth: clampInteger(
@@ -85,13 +83,13 @@ function normalizeSettings(
     searchMaxNodes: clampInteger(
       settings.searchMaxNodes,
       1000,
-      250000,
+      2000000,
       DEFAULT_SETTINGS.searchMaxNodes,
     ),
     searchBeamWidth: clampInteger(
       settings.searchBeamWidth,
       3,
-      15,
+      20,
       DEFAULT_SETTINGS.searchBeamWidth,
     ),
     maxAlternatives: clampInteger(
@@ -194,19 +192,19 @@ export function setSearchTimeBudget(ms: number): number {
 }
 
 /**
- * Set search max nodes (clamped to 1000-250000)
+ * Set search max nodes (clamped to 1000-2000000)
  */
 export function setSearchMaxNodes(nodes: number): number {
-  currentSettings.searchMaxNodes = Math.max(1000, Math.min(250000, nodes));
+  currentSettings.searchMaxNodes = Math.max(1000, Math.min(2000000, nodes));
   saveSettings(currentSettings);
   return currentSettings.searchMaxNodes;
 }
 
 /**
- * Set search beam width (clamped to 3-15)
+ * Set search beam width (clamped to 3-20)
  */
 export function setSearchBeamWidth(width: number): number {
-  currentSettings.searchBeamWidth = Math.max(3, Math.min(15, width));
+  currentSettings.searchBeamWidth = Math.max(3, Math.min(20, width));
   saveSettings(currentSettings);
   return currentSettings.searchBeamWidth;
 }

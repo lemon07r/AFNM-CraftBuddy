@@ -19,12 +19,12 @@ describe('settings search budget', () => {
   });
 
   it('keeps balanced defaults for search budgets', () => {
-    expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(500);
-    expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(200000);
-    expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(8);
-    expect(getSearchConfig().timeBudgetMs).toBe(500);
-    expect(getSearchConfig().maxNodes).toBe(200000);
-    expect(getSearchConfig().beamWidth).toBe(8);
+    expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(2000);
+    expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(750000);
+    expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(10);
+    expect(getSearchConfig().timeBudgetMs).toBe(2000);
+    expect(getSearchConfig().maxNodes).toBe(750000);
+    expect(getSearchConfig().beamWidth).toBe(10);
   });
 
   it('clamps search time budget to 100-10000ms', () => {
@@ -35,9 +35,9 @@ describe('settings search budget', () => {
     expect(getSearchConfig().timeBudgetMs).toBe(100);
   });
 
-  it('clamps search max nodes to 1000-250000', () => {
-    setSearchMaxNodes(500000);
-    expect(getSearchConfig().maxNodes).toBe(250000);
+  it('clamps search max nodes to 1000-2000000', () => {
+    setSearchMaxNodes(5000000);
+    expect(getSearchConfig().maxNodes).toBe(2000000);
 
     setSearchMaxNodes(100);
     expect(getSearchConfig().maxNodes).toBe(1000);

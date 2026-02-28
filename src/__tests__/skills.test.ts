@@ -390,6 +390,20 @@ describe('calculateEffectiveActionCosts', () => {
     );
     expect(costs.qiCost).toBe(17);
   });
+
+  it('should treat runtime 0 percentage modifiers as neutral cost baseline', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      poolCostPercentage: 0,
+      stabilityCostPercentage: 0,
+    });
+    const skill = createTestSkill({ qiCost: 17, stabilityCost: 9 });
+
+    const costs = calculateEffectiveActionCosts(state, skill, 0, []);
+    expect(costs.qiCost).toBe(17);
+    expect(costs.stabilityCost).toBe(9);
+  });
 });
 
 describe('calculateSkillGains', () => {

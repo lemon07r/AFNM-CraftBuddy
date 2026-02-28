@@ -48,10 +48,10 @@ During crafting (forge/alchemical/inscription/resonance), the panel shows:
 
 ![CraftBuddy Settings](pictures/settings.png)
 
-- `Lookahead Depth` (`1-96`, default `32`)
-- `Search Time Budget` (`10-500ms`, default `200ms`)
-- `Search Max Nodes` (`1,000-100,000`, default `100,000`)
-- `Search Beam Width` (`3-15`, default `6`)
+- `Lookahead Depth` (`1-96`, default `48`)
+- `Search Time Budget` (`100-10,000ms`, default `2,000ms`)
+- `Search Max Nodes` (`1,000-2,000,000`, default `750,000`)
+- `Search Beam Width` (`3-20`, default `10`)
 - display controls (rotation/final state/conditions/alternatives)
 
 Higher depth/node/beam values improve search breadth but can increase CPU use.

@@ -235,7 +235,7 @@ function simulateCraft(
       depth,
       condition,
       forecast,
-      { timeBudgetMs: 500, maxNodes: 200000 },
+      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
     );
 
     if (!result.recommendation) {
@@ -844,7 +844,7 @@ describe('craft simulation — rotation must not suggest stability death', () =>
       28, // default lookahead depth
       'neutral',
       ['positive', 'veryPositive', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000 },
+      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
     );
 
     // The rotation must not be all-progress — it should include stabilize.
@@ -905,7 +905,7 @@ describe('craft simulation — rotation must not suggest stability death', () =>
       28,
       'neutral',
       ['neutral', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000 },
+      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
     );
 
     const rotation = result.optimalRotation ?? [];

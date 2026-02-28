@@ -3,7 +3,7 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-07
+last_verified: 2026-02-28
 source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/harmony.ts, src/optimizer/search.ts
 review_cycle_days: 14
 related_files:
@@ -13,13 +13,10 @@ related_files:
 
 # Mechanics Parity Status
 
-## Implemented in runtime path
+## Implemented
 
-- scaling evaluation pipeline including mastery upgrade hooks:
-  - recursive search by `upgradeKey`
-  - direct numeric-property upgrades on matched objects only
-  - additive as `+change`, multiplicative as absolute `*change`
-- crit expected-value handling with excess crit conversion behavior
+- scaling evaluation pipeline (mastery upgrade hooks, recursive `upgradeKey` search, additive/multiplicative upgrades)
+- crit expected-value handling with excess crit conversion
 - technique effect simulation in transition path
 - buff stat contributions and per-turn/action-specific buff effect execution
 - harmony subsystem simulation (forge/alchemical/inscription/resonance)
@@ -27,35 +24,30 @@ related_files:
 - fixed 3-condition forecast queue normalization with probability-weighted EV beyond forecast
 - non-turn item actions keep turn-depth/index in lookahead search
 - training-mode-aware scoring policy
-- large-number-safe parsing/formatting helpers
+- large-number-safe parsing/formatting
 - local expression evaluator hardening (guarded formula filtering + bounded compile cache)
 - native `modAPI.utils` provider path for scaling + overcrit, with fallback
-- native all-depth `canUseAction` precheck path with simulated-variable propagation, with fallback
-- native max completion/perfection cap getter path in integration layer, with fallback
-- native crafting variable snapshot seeding (`getVariablesFromCraftingEntity`) for deeper parity checks
-- guarded native condition transition provider wiring via `getNextCondition` path probing, with fallback
-- native max toxicity getter fallback path (`getMaxToxicity`) for alchemy crafts
+- native all-depth `canUseAction` precheck with simulated-variable propagation, with fallback
+- native max completion/perfection cap getters in integration layer, with fallback
+- native crafting variable snapshot seeding (`getVariablesFromCraftingEntity`)
+- guarded native condition transition provider (`getNextCondition` path probing), with fallback
+- native max toxicity getter (`getMaxToxicity`) for alchemy crafts
 
-## Still dependency-gated (pending external API)
+## Dependency-gated
 
-- finalized post-modifier pool/stability cost preview helpers
-- documented stable `getNextCondition` ModAPI symbol/path (guarded path probing is currently used)
+See `docs/dev-requests/STATUS.md` for full status and open questions on pending APIs.
 
 ## Heuristic/fallback-sensitive areas
 
 - integration fallback extraction paths when full runtime state is missing
 - condition fallback table in `gameTypes.ts` (used when real condition data is unavailable)
-- local expression compilation path remains an internal fallback if native evaluator is unavailable/fails
+- local expression compilation path (internal fallback if native evaluator unavailable)
 
-## Verification anchors
+## Verification test suites
 
-- `src/__tests__/gameAccuracy.test.ts`
-- `src/__tests__/harmony.test.ts`
-- `src/__tests__/skills.test.ts`
-- `src/__tests__/search.test.ts`
-- `src/__tests__/largeNumbers.test.ts`
+`gameAccuracy.test.ts`, `harmony.test.ts`, `skills.test.ts`, `search.test.ts`, `largeNumbers.test.ts`
 
-## Non-goals currently
+## Non-goals
 
-- exact hidden RNG stream replication not exposed via API
-- complete modeling of every possible non-technique item family without normalized runtime payloads
+- exact hidden RNG stream replication (not exposed via API)
+- complete modeling of every non-technique item family without normalized runtime payloads

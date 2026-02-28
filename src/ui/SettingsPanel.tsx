@@ -51,7 +51,10 @@ interface SearchPreset {
   description: string;
   values: Pick<
     CraftBuddySettings,
-    'lookaheadDepth' | 'searchTimeBudgetMs' | 'searchMaxNodes' | 'searchBeamWidth'
+    | 'lookaheadDepth'
+    | 'searchTimeBudgetMs'
+    | 'searchMaxNodes'
+    | 'searchBeamWidth'
   >;
 }
 
@@ -59,23 +62,23 @@ const SEARCH_PRESETS: SearchPreset[] = [
   {
     id: 'instant',
     label: 'Instant',
-    description: 'Lower latency, good accuracy',
+    description: 'Quick results, good accuracy',
     values: {
-      lookaheadDepth: 16,
-      searchTimeBudgetMs: 200,
-      searchMaxNodes: 85000,
-      searchBeamWidth: 6,
+      lookaheadDepth: 24,
+      searchTimeBudgetMs: 500,
+      searchMaxNodes: 200000,
+      searchBeamWidth: 7,
     },
   },
   {
     id: 'fast',
     label: 'Fast',
-    description: 'Lower latency with strong accuracy',
+    description: 'Strong accuracy with low latency',
     values: {
-      lookaheadDepth: 24,
-      searchTimeBudgetMs: 300,
-      searchMaxNodes: 100000,
-      searchBeamWidth: 7,
+      lookaheadDepth: 36,
+      searchTimeBudgetMs: 1000,
+      searchMaxNodes: 500000,
+      searchBeamWidth: 8,
     },
   },
   {
@@ -83,21 +86,21 @@ const SEARCH_PRESETS: SearchPreset[] = [
     label: 'Balanced',
     description: 'Recommended default profile',
     values: {
-      lookaheadDepth: 28,
-      searchTimeBudgetMs: 500,
-      searchMaxNodes: 200000,
-      searchBeamWidth: 8,
+      lookaheadDepth: 48,
+      searchTimeBudgetMs: 2000,
+      searchMaxNodes: 750000,
+      searchBeamWidth: 10,
     },
   },
   {
     id: 'high_accuracy',
     label: 'High Accuracy',
-    description: 'True high-accuracy mode (slower, best late-game choices)',
+    description: 'Maximum quality (best for complex late-game crafts)',
     values: {
-      lookaheadDepth: 36,
-      searchTimeBudgetMs: 1000,
-      searchMaxNodes: 250000,
-      searchBeamWidth: 10,
+      lookaheadDepth: 64,
+      searchTimeBudgetMs: 5000,
+      searchMaxNodes: 1500000,
+      searchBeamWidth: 12,
     },
   },
 ];
@@ -453,8 +456,8 @@ export const SettingsPanel = memo(function SettingsPanel({
             hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}. Higher values improve quality but can stall UI updates.`}
             valueFormatter={formatSeconds}
             tip={
-              draftSettings.searchTimeBudgetMs > 3000
-                ? 'Warning: High time budgets can pause the crafting UI while searching.'
+              draftSettings.searchTimeBudgetMs > 5000
+                ? 'Warning: Very high time budgets may pause the crafting UI while searching.'
                 : undefined
             }
             onChange={(v) => handleSliderDraftChange('searchTimeBudgetMs', v)}
@@ -466,8 +469,8 @@ export const SettingsPanel = memo(function SettingsPanel({
             value={settings.searchMaxNodes}
             draftValue={draftSettings.searchMaxNodes}
             min={1000}
-            max={250000}
-            step={1000}
+            max={2000000}
+            step={10000}
             hint={`Default: ${formatNodesThousands(DEFAULT_SETTINGS.searchMaxNodes)} nodes. Larger values improve accuracy but take longer.`}
             valueFormatter={formatNodesThousands}
             onChange={(v) => handleSliderDraftChange('searchMaxNodes', v)}
@@ -479,7 +482,7 @@ export const SettingsPanel = memo(function SettingsPanel({
             value={settings.searchBeamWidth}
             draftValue={draftSettings.searchBeamWidth}
             min={3}
-            max={15}
+            max={20}
             step={1}
             onChange={(v) => handleSliderDraftChange('searchBeamWidth', v)}
             onCommit={(v) => handleSliderCommit('searchBeamWidth', v)}
@@ -567,7 +570,9 @@ export const SettingsPanel = memo(function SettingsPanel({
                     minWidth: 0,
                     color: active ? '#141414' : colors.textSecondary,
                     backgroundColor: active ? colors.gold : 'transparent',
-                    borderColor: active ? colors.gold : `${colors.borderMedium}`,
+                    borderColor: active
+                      ? colors.gold
+                      : `${colors.borderMedium}`,
                     transition: transitions.smooth,
                     '&:hover': {
                       borderColor: colors.gold,

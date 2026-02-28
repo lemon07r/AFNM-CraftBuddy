@@ -135,11 +135,11 @@ export interface SearchConfig {
 /** Game UI + runtime always expose 3 future conditions. */
 export const VISIBLE_CONDITION_QUEUE_LENGTH = 3;
 
-/** Default search configuration tuned via benchmark for accuracy + responsiveness */
+/** Default search configuration — generous budget for turn-based gameplay */
 const DEFAULT_SEARCH_CONFIG: SearchConfig = {
-  timeBudgetMs: 500,
-  maxNodes: 200000,
-  beamWidth: 8,
+  timeBudgetMs: 2000,
+  maxNodes: 750000,
+  beamWidth: 10,
   useAlphaBeta: true,
   progressBucketSize: 100,
   useIterativeDeepening: true,
@@ -1190,6 +1190,13 @@ interface StallActionContext {
   criticalStability: number;
 }
 
+interface SearchMoveCandidate {
+  skill: SkillDefinition;
+  nextState: CraftingState;
+  orderingScore: number;
+  immediateProgress: number;
+}
+
 function computeDynamicCriticalStability(
   candidates: ActionCandidateContext[],
   minStability: number,
@@ -1510,8 +1517,15 @@ function computeStallPenalties(
   return penalties;
 }
 
+function computeScoreTieWindow(totalTargetMagnitude: number): number {
+  // Treat sub-resource-tiebreak differences as effectively equal so tiny
+  // floating-point noise does not flip move choices.
+  return Math.max(1e-6, totalTargetMagnitude * SCORING.RESOURCE_TIEBREAKER * 2);
+}
+
 function rankRecommendations(
   scored: SkillRecommendation[],
+  scoreTieWindow: number = 0,
 ): SkillRecommendation[] {
   if (scored.length <= 1) {
     return scored;
@@ -1519,7 +1533,7 @@ function rankRecommendations(
 
   const sorted = [...scored].sort((a, b) => {
     const scoreDiff = b.score - a.score;
-    if (scoreDiff !== 0) {
+    if (Math.abs(scoreDiff) > scoreTieWindow) {
       return scoreDiff;
     }
 
@@ -1824,6 +1838,9 @@ export function greedySearch(
       : effectivePerfTarget;
   const modeCompGoal = isSublime ? effectiveCompGoal : targetCompletion;
   const modePerfGoal = isSublime ? effectivePerfGoal : targetPerfection;
+  const scoreTieWindow = computeScoreTieWindow(
+    Math.max(1, effectiveCompGoal + effectivePerfGoal),
+  );
   const normalizedCurrentCondition =
     normalizeConditionType(currentConditionType);
 
@@ -1925,7 +1942,7 @@ export function greedySearch(
       ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
     );
 
-  const rankedSkills = rankRecommendations(scoredSkills);
+  const rankedSkills = rankRecommendations(scoredSkills, scoreTieWindow);
 
   if (rankedSkills.length === 0) {
     return {
@@ -2020,8 +2037,35 @@ export function lookaheadSearch(
       : effectivePerfTarget;
   const modeCompGoal = isSublime ? effectiveCompGoal : targetCompletion;
   const modePerfGoal = isSublime ? effectivePerfGoal : targetPerfection;
+  const scoreTieWindow = computeScoreTieWindow(
+    Math.max(1, effectiveCompGoal + effectivePerfGoal),
+  );
   const targetsMetForCurrentMode = (candidate: CraftingState): boolean =>
     goalsMet(candidate, modeCompGoal, modePerfGoal);
+  const compareMoveCandidatesForTie = (
+    a: SearchMoveCandidate,
+    b: SearchMoveCandidate,
+    currentState: CraftingState,
+  ): number => {
+    const progressDiff = a.immediateProgress - b.immediateProgress;
+    if (progressDiff !== 0) {
+      return progressDiff;
+    }
+
+    const aIsStabilize = a.skill.type === 'stabilize';
+    const bIsStabilize = b.skill.type === 'stabilize';
+    if (aIsStabilize !== bIsStabilize) {
+      return aIsStabilize ? -1 : 1;
+    }
+
+    const qiSpentA = Math.max(0, currentState.qi - a.nextState.qi);
+    const qiSpentB = Math.max(0, currentState.qi - b.nextState.qi);
+    if (qiSpentA !== qiSpentB) {
+      return qiSpentB - qiSpentA;
+    }
+
+    return b.skill.key.localeCompare(a.skill.key);
+  };
   const scoreStateWithTerminalPenalty = (
     candidate: CraftingState,
     conditionAtDepth: CraftingConditionType,
@@ -2079,13 +2123,6 @@ export function lookaheadSearch(
     );
     return isTerminalUnmet ? applyTerminalUnmetPenalty(baseScore) : baseScore;
   };
-  interface SearchMoveCandidate {
-    skill: SkillDefinition;
-    nextState: CraftingState;
-    orderingScore: number;
-    immediateProgress: number;
-  }
-
   function estimatePostMoveStateScore(
     newState: CraftingState,
     skill: SkillDefinition,
@@ -2176,14 +2213,10 @@ export function lookaheadSearch(
 
     candidates.sort((a, b) => {
       const scoreDiff = b.orderingScore - a.orderingScore;
-      if (scoreDiff !== 0) {
+      if (Math.abs(scoreDiff) > scoreTieWindow) {
         return scoreDiff;
       }
-      const progressDiff = b.immediateProgress - a.immediateProgress;
-      if (progressDiff !== 0) {
-        return progressDiff;
-      }
-      return a.skill.key.localeCompare(b.skill.key);
+      return compareMoveCandidatesForTie(b, a, currentState);
     });
     return candidates;
   }
@@ -2338,6 +2371,7 @@ export function lookaheadSearch(
     const beamCandidates = orderedCandidates.slice(0, effectiveBeamWidth);
 
     let bestScore = -Infinity;
+    let bestCandidate: SearchMoveCandidate | null = null;
     let bestMoveKey = ''; // tracks which skill achieved bestScore
 
     for (const candidate of beamCandidates) {
@@ -2374,8 +2408,18 @@ export function lookaheadSearch(
           score += transition.probability * branchScore;
         }
       }
-      if (score > bestScore) {
+      const scoreDelta = score - bestScore;
+      const isClearImprovement = scoreDelta > scoreTieWindow;
+      const isScoreTie =
+        Math.abs(scoreDelta) <= scoreTieWindow && bestCandidate;
+      const winsTie =
+        isScoreTie &&
+        compareMoveCandidatesForTie(candidate, bestCandidate!, currentState) >
+          0;
+
+      if (isClearImprovement || winsTie || bestCandidate === null) {
         bestScore = score;
+        bestCandidate = candidate;
         bestMoveKey = skill.key;
       }
 
@@ -2514,34 +2558,40 @@ export function lookaheadSearch(
       if (skills.length === 0) break;
 
       // Try to use the transposition table's recorded best move.
+      // With iterative deepening, the exact remaining depth may not have
+      // been searched (budget exhausted mid-iteration).  Probe backwards
+      // from the deepest remaining depth to find the best available entry.
       const remainingDepth = maxDepth - currentDepth;
-      const cacheKey = getNormalizedCacheKey(
-        currentState,
-        effectiveCompGoal,
-        effectivePerfGoal,
-        remainingDepth,
-        conditionAtDepth,
-        conditionQueueAtDepth,
-        cfg.progressBucketSize,
-      );
-      const cached = cache.get(cacheKey);
       let chosenSkill: SkillDefinition | null = null;
       let chosenNextState: CraftingState | null = null;
 
-      if (cached && cached.bestMove) {
-        const cachedSkill = skills.find((s) => s.key === cached.bestMove);
-        if (cachedSkill) {
-          const nextState = applySkill(
-            currentState,
-            cachedSkill,
-            config,
-            conditionEffectsAtDepth,
-            targetCompletion,
-            conditionAtDepth,
-          );
-          if (nextState !== null) {
-            chosenSkill = cachedSkill;
-            chosenNextState = nextState;
+      for (let probeDepth = remainingDepth; probeDepth >= 1; probeDepth--) {
+        const probeCacheKey = getNormalizedCacheKey(
+          currentState,
+          effectiveCompGoal,
+          effectivePerfGoal,
+          probeDepth,
+          conditionAtDepth,
+          conditionQueueAtDepth,
+          cfg.progressBucketSize,
+        );
+        const probeEntry = cache.get(probeCacheKey);
+        if (probeEntry && probeEntry.bestMove) {
+          const cachedSkill = skills.find((s) => s.key === probeEntry.bestMove);
+          if (cachedSkill) {
+            const nextState = applySkill(
+              currentState,
+              cachedSkill,
+              config,
+              conditionEffectsAtDepth,
+              targetCompletion,
+              conditionAtDepth,
+            );
+            if (nextState !== null) {
+              chosenSkill = cachedSkill;
+              chosenNextState = nextState;
+              break; // deepest available entry is most authoritative
+            }
           }
         }
       }
@@ -2549,6 +2599,7 @@ export function lookaheadSearch(
       // Fallback: greedy evaluation when cache miss or cached skill unavailable.
       if (!chosenSkill || !chosenNextState) {
         let bestScore = -Infinity;
+        let bestCandidate: SearchMoveCandidate | null = null;
         for (const skill of skills) {
           const nextState = applySkill(
             currentState,
@@ -2568,8 +2619,46 @@ export function lookaheadSearch(
             conditionQueueAtDepth,
             skill,
           );
-          if (score > bestScore) {
+          const completionBefore =
+            modeCompGoal > 0
+              ? Math.min(modeCompGoal, currentState.completion)
+              : currentState.completion;
+          const perfectionBefore =
+            modePerfGoal > 0
+              ? Math.min(modePerfGoal, currentState.perfection)
+              : currentState.perfection;
+          const completionAfter =
+            modeCompGoal > 0
+              ? Math.min(modeCompGoal, nextState.completion)
+              : nextState.completion;
+          const perfectionAfter =
+            modePerfGoal > 0
+              ? Math.min(modePerfGoal, nextState.perfection)
+              : nextState.perfection;
+          const candidate: SearchMoveCandidate = {
+            skill,
+            nextState,
+            orderingScore: score,
+            immediateProgress:
+              Math.max(0, completionAfter - completionBefore) +
+              Math.max(0, perfectionAfter - perfectionBefore),
+          };
+
+          const scoreDelta = score - bestScore;
+          const isClearImprovement = scoreDelta > scoreTieWindow;
+          const isScoreTie =
+            Math.abs(scoreDelta) <= scoreTieWindow && bestCandidate;
+          const winsTie =
+            isScoreTie &&
+            compareMoveCandidatesForTie(
+              candidate,
+              bestCandidate!,
+              currentState,
+            ) > 0;
+
+          if (isClearImprovement || winsTie || bestCandidate === null) {
             bestScore = score;
+            bestCandidate = candidate;
             chosenSkill = skill;
             chosenNextState = nextState;
           }
@@ -2625,7 +2714,7 @@ export function lookaheadSearch(
       b: SkillRecommendation,
     ): number => {
       const scoreDiff = b.score - a.score;
-      if (scoreDiff !== 0) {
+      if (Math.abs(scoreDiff) > scoreTieWindow) {
         return scoreDiff;
       }
 
@@ -2664,6 +2753,61 @@ export function lookaheadSearch(
         config,
         conditionAtDepth,
       );
+
+      // Consult the transposition table first.  The tree search already
+      // evaluated this state and recorded its best move — using it here
+      // ensures the follow-up matches the tree search's verdict instead
+      // of diverging under budget pressure (see AGENTS.md anti-pattern #7).
+      //
+      // With iterative deepening, the exact remaining depth for this state
+      // may not have been searched at the current iteration (budget
+      // exhausted).  Walk backwards through depths to find the best
+      // available cache entry — deeper is more authoritative.
+      const skills = getAvailableSkills(
+        stateAfterSkill,
+        config,
+        conditionAtDepth,
+      );
+      const maxRemainingDepth = Math.max(0, depthToSearch - depthIndex);
+      let cachedBestMove: string | null = null;
+      for (let probeDepth = maxRemainingDepth; probeDepth >= 1; probeDepth--) {
+        const probeCacheKey = getNormalizedCacheKey(
+          stateAfterSkill,
+          effectiveCompGoal,
+          effectivePerfGoal,
+          probeDepth,
+          conditionAtDepth,
+          nextConditionQueueAtDepth,
+          cfg.progressBucketSize,
+        );
+        const probeEntry = cache.get(probeCacheKey);
+        if (probeEntry && probeEntry.bestMove) {
+          cachedBestMove = probeEntry.bestMove;
+          break; // deepest available entry is most authoritative
+        }
+      }
+      if (cachedBestMove) {
+        const cachedSkill = skills.find((s) => s.key === cachedBestMove);
+        if (cachedSkill) {
+          const { expectedGains, immediateGains } =
+            calculateRecommendationGains(
+              stateAfterSkill,
+              cachedSkill,
+              config,
+              followUpConditionEffects,
+            );
+          return {
+            name: cachedSkill.name,
+            type: cachedSkill.type,
+            icon: cachedSkill.icon,
+            expectedGains,
+            immediateGains,
+          };
+        }
+      }
+
+      // Fallback: re-evaluate when the cache has no entry for this state
+      // (e.g., cache miss due to bucketing or the state was never searched).
       const orderedFollowUpCandidates = buildOrderedMoveCandidates(
         stateAfterSkill,
         conditionAtDepth,
@@ -2673,6 +2817,7 @@ export function lookaheadSearch(
       if (orderedFollowUpCandidates.length === 0) return undefined;
 
       let bestFollowUp: SkillDefinition | null = null;
+      let bestFollowUpCandidate: SearchMoveCandidate | null = null;
       let bestFollowUpScore = -Infinity;
       let bestFollowUpExpectedGains: GainPreview = {
         completion: 0,
@@ -2711,9 +2856,22 @@ export function lookaheadSearch(
               nextConditionQueueAtDepth,
             );
 
-        if (followUpScore > bestFollowUpScore) {
+        const scoreDelta = followUpScore - bestFollowUpScore;
+        const isClearImprovement = scoreDelta > scoreTieWindow;
+        const isScoreTie =
+          Math.abs(scoreDelta) <= scoreTieWindow && bestFollowUpCandidate;
+        const winsTie =
+          isScoreTie &&
+          compareMoveCandidatesForTie(
+            candidate,
+            bestFollowUpCandidate!,
+            stateAfterSkill,
+          ) > 0;
+
+        if (isClearImprovement || winsTie || bestFollowUpCandidate === null) {
           bestFollowUpScore = followUpScore;
           bestFollowUp = followUp;
+          bestFollowUpCandidate = candidate;
           bestFollowUpExpectedGains = expectedGains;
           bestFollowUpImmediateGains = immediateGains;
         }
@@ -2979,6 +3137,46 @@ export function lookaheadSearch(
     );
     optimalRotation = [bestFirstMove.name, ...path];
 
+    // Ensure the top recommendation's follow-up matches the rotation.
+    // findFollowUpSkill may diverge from the rotation under budget pressure
+    // (shallow fallback), but the rotation uses cache-probed bestMove entries
+    // which are more authoritative.  If the rotation's second move differs
+    // from the current follow-up, update it.
+    if (path.length > 0) {
+      const rotationSecondSkillName = path[0];
+      const topRec = scoredSkills[0];
+      if (
+        topRec &&
+        topRec.skill.key === bestFirstMove.key &&
+        (!topRec.followUpSkill ||
+          topRec.followUpSkill.name !== rotationSecondSkillName)
+      ) {
+        const secondSkill = config.skills.find(
+          (s) => s.name === rotationSecondSkillName,
+        );
+        if (secondSkill) {
+          const secondConditionEffects = getConditionEffectsForConfig(
+            config,
+            firstMoveConditionState.nextCondition,
+          );
+          const { expectedGains, immediateGains } =
+            calculateRecommendationGains(
+              stateAfterFirstMove,
+              secondSkill,
+              config,
+              secondConditionEffects,
+            );
+          topRec.followUpSkill = {
+            name: secondSkill.name,
+            type: secondSkill.type,
+            icon: secondSkill.icon,
+            expectedGains,
+            immediateGains,
+          };
+        }
+      }
+    }
+
     // Calculate turns remaining (estimate based on progress needed)
     const compRemaining = Math.max(
       0,
@@ -3005,7 +3203,7 @@ export function lookaheadSearch(
 
   // Record final metrics
   metrics.timeTakenMs = Date.now() - startTime;
-  const rankedSkills = rankRecommendations(scoredSkills);
+  const rankedSkills = rankRecommendations(scoredSkills, scoreTieWindow);
 
   return {
     recommendation: rankedSkills[0],

@@ -3,7 +3,7 @@ title: Documentation Inventory
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-17
+last_verified: 2026-02-28
 source_of_truth: repository markdown file inventory
 review_cycle_days: 30
 related_files:
@@ -12,37 +12,32 @@ related_files:
 
 # Documentation Inventory
 
-Generated on: 2026-02-17
+Generated on: 2026-02-28
 
 ## Summary
 
 | Category | Count |
 |---|---|
-| project | 11 |
-| dev-request | 3 |
-| project-meta | 2 |
+| project | 8 |
+| dev-request | 2 |
+| project-meta | 1 |
 | history | 6 |
 | reference | 13 |
 | root-or-other | 2 |
-| total | 37 |
+| total | 32 |
 
 ## Authoritative Docs
 
 | Path | Category | Status | Authoritative | Owner | Decision |
 |---|---|---|---|---|---|
 | `docs/dev-requests/API_EXPOSURE_REQUESTS.md` | dev-request | active | true | craftbuddy-maintainers | keep-authoritative |
-| `docs/dev-requests/README.md` | dev-request | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/dev-requests/STATUS.md` | dev-request | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/DOC_INVENTORY.md` | project-meta | active | true | craftbuddy-maintainers | keep-authoritative |
-| `docs/index.md` | project-meta | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/ARCHITECTURE.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
-| `docs/project/DECISIONS.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/DOCS_GOVERNANCE.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/INTEGRATION_MODAPI.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/MECHANICS_PARITY.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
-| `docs/project/OPEN_QUESTIONS.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/OPTIMIZER_DESIGN.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
-| `docs/project/PERFORMANCE.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/ROADMAP.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/START_HERE_FOR_AGENTS.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/TESTING.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
