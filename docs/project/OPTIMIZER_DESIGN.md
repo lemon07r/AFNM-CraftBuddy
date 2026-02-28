@@ -72,7 +72,7 @@ Identical state + config inputs should produce stable recommendations within the
 
 - `lookaheadDepth` (`1-96`, default `48`)
 - `searchTimeBudgetMs` (`100-10,000`, default `2,000`)
-- `searchMaxNodes` (`1,000-2,000,000`, default `750,000`)
+- `searchMaxNodes` (`1,000-5,000,000`, default `750,000`)
 - `searchBeamWidth` (`3-20`, default `10`)
 - Settings sliders persist on commit (not every drag event) to reduce UI churn.
 

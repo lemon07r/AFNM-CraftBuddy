@@ -94,12 +94,24 @@ const SEARCH_PRESETS: SearchPreset[] = [
   {
     id: 'high_accuracy',
     label: 'High Accuracy',
-    description: 'Maximum quality (best for complex late-game crafts)',
+    description: 'High quality for complex late-game crafts',
     values: {
       lookaheadDepth: 64,
       searchTimeBudgetMs: 5000,
       searchMaxNodes: 1500000,
       searchBeamWidth: 12,
+    },
+  },
+  {
+    id: 'max',
+    label: 'Max',
+    description:
+      'Maximum accuracy, may take several seconds per recommendation',
+    values: {
+      lookaheadDepth: 96,
+      searchTimeBudgetMs: 8000,
+      searchMaxNodes: 5000000,
+      searchBeamWidth: 16,
     },
   },
 ];
@@ -470,7 +482,7 @@ export const SettingsPanel = memo(function SettingsPanel({
             value={settings.searchMaxNodes}
             draftValue={draftSettings.searchMaxNodes}
             min={1000}
-            max={2000000}
+            max={5000000}
             step={10000}
             hint={`Default: ${formatNodesThousands(DEFAULT_SETTINGS.searchMaxNodes)} nodes. Larger values improve accuracy but take longer.`}
             valueFormatter={formatNodesThousands}

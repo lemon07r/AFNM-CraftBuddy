@@ -598,6 +598,42 @@ describe('craft simulation — survivability', () => {
     expect(sim.history[0]).toBe('Simple Fusion');
     expect(sim.turnsUsed).toBe(1);
   });
+
+  it('should stabilize at near-zero stability mid-craft (user report: 2/49 stability)', () => {
+    // Exact scenario from user feedback: 0% completion, 43% perfection,
+    // stability 2 out of max 49.  11 turns of maxStability decay have
+    // already occurred (initialMaxStability 60 - stabilityPenalty 11 = 49).
+    // Every progress skill costs 10 stability, so any progress move would
+    // immediately kill the craft.  Stabilize must be the first recommendation.
+    const state = new CraftingState({
+      qi: 194,
+      stability: 2,
+      initialMaxStability: 60,
+      stabilityPenalty: 11, // maxStability = 60 - 11 = 49
+      completion: 0,
+      perfection: 43,
+    });
+
+    // Direct search: first recommendation must be stabilize.
+    const result = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      ['neutral', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('stabilize');
+
+    // Full simulation: craft must survive and complete from this dire state.
+    const sim = simulateCraft(state, config, 100, 100, ['neutral'], 30);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.history[0]).toBe('Stabilize');
+  });
 });
 
 describe('craft simulation — mid-craft stability management', () => {

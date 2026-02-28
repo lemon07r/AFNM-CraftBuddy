@@ -51,7 +51,7 @@ During crafting (forge/alchemical/inscription/resonance), the panel shows:
 
 - `Lookahead Depth` (`1-96`, default `48`)
 - `Search Time Budget` (`100-10,000ms`, default `2,000ms`)
-- `Search Max Nodes` (`1,000-2,000,000`, default `750,000`)
+- `Search Max Nodes` (`1,000-5,000,000`, default `750,000`)
 - `Search Beam Width` (`3-20`, default `10`)
 - display controls (rotation/final state/conditions/alternatives)
 

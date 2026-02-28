@@ -35,9 +35,9 @@ describe('settings search budget', () => {
     expect(getSearchConfig().timeBudgetMs).toBe(100);
   });
 
-  it('clamps search max nodes to 1000-2000000', () => {
-    setSearchMaxNodes(5000000);
-    expect(getSearchConfig().maxNodes).toBe(2000000);
+  it('clamps search max nodes to 1000-5000000', () => {
+    setSearchMaxNodes(10000000);
+    expect(getSearchConfig().maxNodes).toBe(5000000);
 
     setSearchMaxNodes(100);
     expect(getSearchConfig().maxNodes).toBe(1000);

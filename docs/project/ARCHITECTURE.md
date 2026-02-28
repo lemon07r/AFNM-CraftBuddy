@@ -27,8 +27,8 @@ related_files:
 - `src/ui/RecommendationPanel.tsx`, `src/ui/SettingsPanel.tsx` — recommendation and settings panels.
 - `src/ui/theme.ts` — MUI theme configuration with custom palette and component overrides.
 - `src/ui/ThemeProvider.tsx` — theme provider wrapper for UI components.
-- `src/ui/animations.ts` — shared animation definitions (keyframes, transitions).
-- `src/ui/components/StyledComponents.tsx` — reusable styled components (buttons, cards, indicators).
+- `src/ui/animations.ts` — shared animation definitions (keyframes, transitions, search progress fill).
+- `src/ui/components/StyledComponents.tsx` — reusable styled components (buttons, cards, indicators, search progress bar).
 - `src/ui/components/index.ts` — component barrel exports.
 - `src/settings/index.ts` — persistent user settings and optimizer search-config mapping.
 - `src/utils/largeNumbers.ts` — safe arithmetic, number parsing/formatting for late-game values.

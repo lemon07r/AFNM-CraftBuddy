@@ -26,7 +26,7 @@ export interface CraftBuddySettings {
   // Performance settings for late-game optimization
   /** Maximum time budget for search in milliseconds (100-10000, default: 2000) */
   searchTimeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (1000-2000000, default: 750000) */
+  /** Maximum nodes to explore before stopping (1000-5000000, default: 750000) */
   searchMaxNodes: number;
   /** Beam width - max branches to explore at each level (3-20, default: 10) */
   searchBeamWidth: number;
@@ -83,7 +83,7 @@ function normalizeSettings(settings: CraftBuddySettings): CraftBuddySettings {
     searchMaxNodes: clampInteger(
       settings.searchMaxNodes,
       1000,
-      2000000,
+      5000000,
       DEFAULT_SETTINGS.searchMaxNodes,
     ),
     searchBeamWidth: clampInteger(
@@ -192,10 +192,10 @@ export function setSearchTimeBudget(ms: number): number {
 }
 
 /**
- * Set search max nodes (clamped to 1000-2000000)
+ * Set search max nodes (clamped to 1000-5000000)
  */
 export function setSearchMaxNodes(nodes: number): number {
-  currentSettings.searchMaxNodes = Math.max(1000, Math.min(2000000, nodes));
+  currentSettings.searchMaxNodes = Math.max(1000, Math.min(5000000, nodes));
   saveSettings(currentSettings);
   return currentSettings.searchMaxNodes;
 }
