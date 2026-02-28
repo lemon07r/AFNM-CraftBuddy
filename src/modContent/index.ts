@@ -2425,8 +2425,15 @@ function renderOverlay(): void {
   }
 
   // Show overlay only while crafting is active and panel visibility is enabled.
+  // Also show when crafting has just started (wasCraftingActive) or when
+  // calculating, even before entity data arrives, so the loading skeleton is
+  // visible during the first recommendation on a new craft.
   const isCraftingActive = lastEntity !== null && lastProgressState !== null;
-  const shouldShow = currentSettings.panelVisible && isCraftingActive;
+  const isAwaitingFirstResult =
+    wasCraftingActive && currentRecommendation === null;
+  const shouldShow =
+    currentSettings.panelVisible &&
+    (isCraftingActive || isCalculating || isAwaitingFirstResult);
 
   if (!reactRoot || !shouldShow) {
     if (reactRoot && overlayContainer) {

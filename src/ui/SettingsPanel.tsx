@@ -614,94 +614,92 @@ export const SettingsPanel = memo(function SettingsPanel({
             })}
           </FlexRow>
 
-          <GradientDivider />
-
-          {/* Export Snapshot */}
-          <Tooltip
-            title="Copy game state snapshot to clipboard for bug reports and debugging"
-            enterDelay={300}
-            placement="top"
-            arrow
+          {/* Export Snapshot + Version */}
+          <Box
+            sx={{
+              position: 'relative',
+              mt: 2,
+              mb: 1,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              gap: 0.75,
+            }}
           >
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={handleCopySnapshot}
-              startIcon={
-                snapshotCopied ? (
-                  <CheckIcon sx={{ fontSize: '1rem' }} />
+            <Tooltip
+              title="Copy game state snapshot to clipboard for bug reports"
+              enterDelay={300}
+              placement="top"
+              arrow
+            >
+              <IconButton
+                size="small"
+                onClick={handleCopySnapshot}
+                sx={{
+                  color: snapshotCopied
+                    ? colors.gold
+                    : 'rgba(222, 205, 168, 0.5)',
+                  transition: transitions.smooth,
+                  padding: '3px',
+                  '&:hover': {
+                    color: colors.gold,
+                    backgroundColor: 'rgba(222, 184, 135, 0.1)',
+                  },
+                }}
+              >
+                {snapshotCopied ? (
+                  <CheckIcon sx={{ fontSize: '0.85rem' }} />
                 ) : (
-                  <ContentCopyIcon sx={{ fontSize: '1rem' }} />
-                )
-              }
-              sx={{
-                width: '100%',
-                color: snapshotCopied ? colors.gold : colors.textSecondary,
-                borderColor: snapshotCopied ? colors.gold : colors.borderMedium,
-                backgroundColor: snapshotCopied
-                  ? 'rgba(222, 184, 135, 0.08)'
-                  : 'transparent',
-                transition: transitions.smooth,
-                textTransform: 'none',
-                fontSize: '0.78rem',
-                py: 0.6,
-                '&:hover': {
-                  borderColor: colors.gold,
-                  backgroundColor: 'rgba(222, 184, 135, 0.12)',
-                },
-              }}
-            >
-              {snapshotCopied ? 'Snapshot Copied!' : 'Copy Game State Snapshot'}
-            </Button>
-          </Tooltip>
+                  <ContentCopyIcon sx={{ fontSize: '0.85rem' }} />
+                )}
+              </IconButton>
+            </Tooltip>
 
-          {versionLabel && (
-            <Typography
-              variant="caption"
-              sx={{
-                position: 'absolute',
-                right: 10,
-                bottom: 8,
-                display: 'inline-block',
-                overflow: 'hidden',
-                isolation: 'isolate',
-                fontSize: '0.66rem',
-                color: 'rgba(222, 205, 168, 0.96)',
-                letterSpacing: '0.04em',
-                lineHeight: 1,
-                pointerEvents: 'none',
-                opacity: showVersion ? 0.94 : 0,
-                transform: showVersion
-                  ? 'translateY(0) scale(1)'
-                  : 'translateY(5px) scale(0.9)',
-                filter: showVersion ? 'blur(0)' : 'blur(3px)',
-                textShadow: showVersion
-                  ? '0 0 10px rgba(255, 223, 140, 0.36)'
-                  : '0 0 0 rgba(255, 223, 140, 0)',
-                transition:
-                  'opacity 0.12s ease, transform 0.12s ease, filter 0.12s ease, text-shadow 0.14s ease',
-                animation: showVersion
-                  ? `${versionBadgeReveal} 0.62s cubic-bezier(0.25, 0.9, 0.3, 1) both`
-                  : 'none',
-                '&::after': {
-                  content: '""',
-                  position: 'absolute',
-                  inset: 0,
+            {versionLabel && (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'inline-block',
+                  overflow: 'hidden',
+                  isolation: 'isolate',
+                  fontSize: '0.66rem',
+                  color: 'rgba(222, 205, 168, 0.96)',
+                  letterSpacing: '0.04em',
+                  lineHeight: 1,
                   pointerEvents: 'none',
-                  background:
-                    'linear-gradient(110deg, transparent 22%, rgba(152, 218, 255, 0.25) 42%, rgba(255, 236, 166, 0.48) 50%, rgba(152, 218, 255, 0.24) 58%, transparent 78%)',
-                  mixBlendMode: 'screen',
-                  opacity: showVersion ? 1 : 0,
-                  transform: 'translateX(-130%)',
+                  opacity: showVersion ? 0.94 : 0,
+                  transform: showVersion
+                    ? 'translateY(0) scale(1)'
+                    : 'translateY(5px) scale(0.9)',
+                  filter: showVersion ? 'blur(0)' : 'blur(3px)',
+                  textShadow: showVersion
+                    ? '0 0 10px rgba(255, 223, 140, 0.36)'
+                    : '0 0 0 rgba(255, 223, 140, 0)',
+                  transition:
+                    'opacity 0.12s ease, transform 0.12s ease, filter 0.12s ease, text-shadow 0.14s ease',
                   animation: showVersion
-                    ? `${holographicSweep} 0.78s cubic-bezier(0.3, 0, 0.2, 1) 0.08s 1 both`
+                    ? `${versionBadgeReveal} 0.62s cubic-bezier(0.25, 0.9, 0.3, 1) both`
                     : 'none',
-                },
-              }}
-            >
-              {versionLabel}
-            </Typography>
-          )}
+                  '&::after': {
+                    content: '""',
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+                    background:
+                      'linear-gradient(110deg, transparent 22%, rgba(152, 218, 255, 0.25) 42%, rgba(255, 236, 166, 0.48) 50%, rgba(152, 218, 255, 0.24) 58%, transparent 78%)',
+                    mixBlendMode: 'screen',
+                    opacity: showVersion ? 1 : 0,
+                    transform: 'translateX(-130%)',
+                    animation: showVersion
+                      ? `${holographicSweep} 0.78s cubic-bezier(0.3, 0, 0.2, 1) 0.08s 1 both`
+                      : 'none',
+                  },
+                }}
+              >
+                {versionLabel}
+              </Typography>
+            )}
+          </Box>
         </Paper>
       </Collapse>
     </Box>
