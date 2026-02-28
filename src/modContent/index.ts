@@ -220,6 +220,7 @@ let overlayContainer: HTMLDivElement | null = null;
 let reactRoot: ReactDOM.Root | null = null;
 let isOverlayVisible = false;
 let wasCraftingActive = false;
+let wasVisibleCraftingUiLastPoll = false;
 let craftStartPending = false;
 let craftStartPendingUntil = 0;
 let overlayForcedByActiveCraft = false;
@@ -3078,10 +3079,37 @@ function pollCraftingState(): void {
     consumedPillsThisTurn,
     trainingMode,
   } = detectCraftingState();
+  const enteredVisibleCraftingUi =
+    hasVisibleCraftingUi && !wasVisibleCraftingUiLastPoll;
 
   // Only consider crafting truly active if we have actual entity/progress data from Redux.
   // DOM-based detection alone is not reliable (can false-positive on result screens).
   const hasCraftingData = !!(entity && progress);
+
+  // Mid-craft save resume can briefly expose the crafting UI before Redux craft
+  // state is available to mods. Show a loading shell immediately so users don't
+  // stare at empty space while initialization catches up.
+  if (
+    hasVisibleCraftingUi &&
+    !hasCraftingData &&
+    currentSettings.panelVisible &&
+    !isOverlayVisible
+  ) {
+    overlayForcedByActiveCraft = true;
+    markCraftStartPending();
+    currentRecommendation = null;
+    showOverlay();
+  }
+
+  // If the crafting UI just reappeared (e.g., resume from mid-craft save),
+  // force a visible loading pass and clear any stale recommendation.
+  if (enteredVisibleCraftingUi && currentSettings.panelVisible) {
+    overlayForcedByActiveCraft = true;
+    markCraftStartPending();
+    currentRecommendation = null;
+    renderOverlay();
+  }
+
   if (hasCraftingData) {
     if (hasVisibleCraftingUi) {
       missingVisibleCraftingUiPolls = 0;
@@ -3119,6 +3147,7 @@ function pollCraftingState(): void {
     }
   } else if (wasCraftingActive) {
     if (isPendingCraftStart) {
+      wasVisibleCraftingUiLastPoll = hasVisibleCraftingUi;
       return;
     }
     wasCraftingActive = false;
@@ -3202,7 +3231,8 @@ function pollCraftingState(): void {
       queueChanged ||
       newPool !== previousPool ||
       newToxicity !== currentToxicity ||
-      !lastEntity
+      !lastEntity ||
+      enteredVisibleCraftingUi
     ) {
       currentStep = newStep;
       debugLog(
@@ -3218,6 +3248,7 @@ function pollCraftingState(): void {
         recipe,
       );
     }
+    wasVisibleCraftingUiLastPoll = hasVisibleCraftingUi;
     return;
   }
 
@@ -3285,6 +3316,8 @@ function pollCraftingState(): void {
       }
     }
   }
+
+  wasVisibleCraftingUiLastPoll = hasVisibleCraftingUi;
 }
 
 /**
@@ -4638,10 +4671,13 @@ function processCraftingState(craftingState: any): void {
   }
 }
 
-// Subscribe to Redux store for state changes
+// Subscribe to Redux store for state changes.
+// Do an immediate attempt plus a delayed retry for runtimes where the store
+// is attached after the initial module bootstrap tick.
+refreshReduxStoreConnection(true);
 setTimeout(() => {
   refreshReduxStoreConnection(true);
-}, 1000); // Wait 1 second for game to initialize
+}, 1000);
 
 console.log('[CraftBuddy] Mod loaded successfully!');
 debugLog(
