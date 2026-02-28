@@ -59,13 +59,10 @@ import {
   HotkeyHints,
   LoadingSkeletonCard,
   LoadingHeader,
+  SearchProgressBar,
   RecalculateButton,
 } from './components';
-import {
-  fadeInUp,
-  transitions,
-  versionBadgeReveal,
-} from './animations';
+import { fadeInUp, transitions, versionBadgeReveal } from './animations';
 
 // ============================================================================
 // Utility Functions
@@ -314,7 +311,11 @@ const SingleSkillBox = memo(function SingleSkillBox({
   name: string;
   type: string;
   gains: { completion: number; perfection: number; stability: number };
-  projectedGains?: { completion: number; perfection: number; stability: number };
+  projectedGains?: {
+    completion: number;
+    perfection: number;
+    stability: number;
+  };
   icon?: string;
   qiCost?: number;
   stabilityCost?: number;
@@ -753,7 +754,8 @@ const FinalStateSection = memo(function FinalStateSection({
           Perf: {formatProgress(state.perfection, targetPerfection)}
         </Typography>
         <Typography variant="body2" sx={{ color: colors.stability }}>
-          Stab: {state.maxStability != null && state.maxStability > 0
+          Stab:{' '}
+          {state.maxStability != null && state.maxStability > 0
             ? formatProgress(state.stability, state.maxStability)
             : formatGain(state.stability)}
         </Typography>
@@ -933,10 +935,13 @@ export function RecommendationPanel({
 
   // No result yet - Loading state
   if (!result || isCalculating) {
+    const timeBudgetMs = settings?.searchTimeBudgetMs ?? 2000;
+
     return (
       <PanelContainer compact={compactMode}>
         <LoadingHeader compact={compactMode} />
         <LoadingSkeletonCard />
+        <SearchProgressBar durationMs={timeBudgetMs} />
         <PanelVersionBadge version={version} visible={!isSettingsOpen} />
       </PanelContainer>
     );

@@ -12,7 +12,6 @@ import {
   Paper,
   Slider,
   Switch,
-  FormControlLabel,
   IconButton,
   Collapse,
   Button,
@@ -210,21 +209,23 @@ const ToggleSetting = memo(function ToggleSetting({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <FormControlLabel
-      control={
-        <Switch
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          size="small"
-        />
-      }
-      label={
-        <Typography variant="body2" sx={{ color: colors.textSecondary }}>
-          {label}
-        </Typography>
-      }
-      sx={{ mb: 0.5 }}
-    />
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        mb: 0.5,
+      }}
+    >
+      <Typography variant="body2" sx={{ color: colors.textSecondary }}>
+        {label}
+      </Typography>
+      <Switch
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        size="small"
+      />
+    </Box>
   );
 });
 

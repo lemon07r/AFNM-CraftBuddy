@@ -4,7 +4,7 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 last_verified: 2026-02-28
-source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/harmony.ts, src/optimizer/search.ts
+source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/search.ts
 review_cycle_days: 14
 related_files:
   - docs/project/ROADMAP.md
@@ -45,7 +45,7 @@ See `docs/dev-requests/STATUS.md` for full status and open questions on pending 
 
 ## Verification test suites
 
-`gameAccuracy.test.ts`, `harmony.test.ts`, `skills.test.ts`, `search.test.ts`, `largeNumbers.test.ts`
+`gameAccuracy.test.ts`, `harmony.test.ts`, `skills.test.ts`, `search.test.ts`, `state.test.ts`, `gameTypes.test.ts`, `largeNumbers.test.ts`
 
 ## Non-goals
 

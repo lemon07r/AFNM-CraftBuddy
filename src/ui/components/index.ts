@@ -33,6 +33,7 @@ export {
   LoadingSkeletonCard,
   LoadingDots,
   LoadingHeader,
+  SearchProgressBar,
   // Recalculate
   RecalculateButton,
 } from './StyledComponents';

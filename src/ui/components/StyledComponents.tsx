@@ -25,6 +25,8 @@ import {
   fadeIn,
   loadingShimmer,
   dotPulse,
+  progressFill,
+  progressGlow,
   transitions,
 } from '../animations';
 
@@ -834,6 +836,114 @@ export const LoadingHeader = memo(function LoadingHeader({
           animation: `${pulseGold} 2s ease-in-out infinite`,
         }}
       />
+    </Box>
+  );
+});
+
+/**
+ * Animated search progress bar that fills over the search time budget.
+ * Uses GPU-composited `transform: scaleX()` so the animation continues
+ * smoothly even while the main thread is blocked by the synchronous search.
+ */
+export const SearchProgressBar = memo(function SearchProgressBar({
+  durationMs,
+}: {
+  durationMs: number;
+}) {
+  const durationSec = (durationMs / 1000).toFixed(1);
+
+  return (
+    <Box sx={{ mt: 1.5, mb: 0.5 }}>
+      {/* Duration label */}
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 0.5,
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{ color: colors.textMuted, fontSize: '0.65rem' }}
+        >
+          Searching...
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{ color: colors.textDisabled, fontSize: '0.6rem' }}
+        >
+          ~{durationSec}s
+        </Typography>
+      </Box>
+
+      {/* Track */}
+      <Box
+        sx={{
+          position: 'relative',
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: 'rgba(60, 65, 80, 0.5)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Filled bar — scaleX is GPU-composited, runs on compositor thread */}
+        <Box
+          sx={{
+            width: '100%',
+            height: '100%',
+            borderRadius: 2,
+            transformOrigin: 'left center',
+            transform: 'scaleX(0)',
+            background: `linear-gradient(90deg, ${colors.goldDark} 0%, ${colors.gold} 60%, ${colors.goldLight} 100%)`,
+            animation: `${progressFill} ${durationMs}ms cubic-bezier(0.25, 0.1, 0.25, 1) forwards`,
+            willChange: 'transform',
+          }}
+        />
+
+        {/* Glow dot that rides the leading edge */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            transformOrigin: 'left center',
+            transform: 'scaleX(0)',
+            animation: `${progressFill} ${durationMs}ms cubic-bezier(0.25, 0.1, 0.25, 1) forwards`,
+            willChange: 'transform',
+            pointerEvents: 'none',
+            // The ::after sits at the right edge of this scaled container
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              right: -1,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: colors.goldLight,
+              animation: `${progressGlow} 1s ease-in-out infinite`,
+            },
+          }}
+        />
+
+        {/* Shimmer sweep over the track */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: `linear-gradient(90deg, transparent 0%, rgba(255, 215, 0, 0.08) 50%, transparent 100%)`,
+            animation: `${loadingShimmer} 1.5s ease-in-out infinite`,
+            pointerEvents: 'none',
+          }}
+        />
+      </Box>
     </Box>
   );
 });

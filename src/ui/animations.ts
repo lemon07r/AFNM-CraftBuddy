@@ -130,6 +130,29 @@ export const loadingShimmer = keyframes`
   }
 `;
 
+// Progress bar fill — GPU-composited scaleX so it animates even while
+// the main thread is blocked by the synchronous search.
+export const progressFill = keyframes`
+  0% {
+    transform: scaleX(0);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+`;
+
+// Subtle glow pulse on the progress bar leading edge
+export const progressGlow = keyframes`
+  0%, 100% {
+    opacity: 0.5;
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.25);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.45), 0 0 16px rgba(255, 215, 0, 0.2);
+  }
+`;
+
 // Animated dots for loading text (opacity-only for performance)
 export const dotPulse = keyframes`
   0%, 20% {

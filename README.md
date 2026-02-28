@@ -43,6 +43,7 @@ During crafting (forge/alchemical/inscription/resonance), the panel shows:
 
 - `Ctrl+Shift+C`: toggle panel visibility
 - `Ctrl+Shift+M`: toggle compact mode
+- `Ctrl+Shift+Y`: export optimizer replay snapshot
 
 ### Settings
 
@@ -89,8 +90,9 @@ window.craftBuddyDebug.setLookaheadDepth(32);
 window.craftBuddyDebug.togglePanel();
 window.craftBuddyDebug.toggleCompact();
 window.craftBuddyDebug.logGameData();
-window.craftBuddyDebug.getConflicts();
-window.craftBuddyDebug.checkConflicts();
+window.craftBuddyDebug.getDiagnostics();
+window.craftBuddyDebug.getDiagnosticsSummary();
+window.craftBuddyDebug.dumpOptimizerReplaySnapshot();
 ```
 
 ## Build and test
@@ -123,9 +125,9 @@ CraftBuddy prefers direct game data when available and uses documented fallback 
 
 ## Known limitations
 
-- Some mechanics still rely on internal reimplementation until equivalent game APIs are exposed (scaling/overcrit/can-use-action/caps)
+- Native game APIs are used where available (scaling, overcrit, can-use-action, caps) with guarded fallback paths for resilience; fallback code may drift if upstream mechanics change
+- Some mechanics still await API exposure (post-modifier cost helpers, stable `getNextCondition` path) — see `docs/dev-requests/STATUS.md`
 - Fallback extraction paths are used when complete runtime state is unavailable
-- Behavior can drift if upstream game mechanics change and required APIs are not exposed yet
 
 ## Documentation
 
