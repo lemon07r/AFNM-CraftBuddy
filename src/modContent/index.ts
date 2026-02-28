@@ -221,6 +221,7 @@ let reactRoot: ReactDOM.Root | null = null;
 let isOverlayVisible = false;
 let wasCraftingActive = false;
 let craftStartPending = false;
+let craftStartPendingUntil = 0;
 let overlayForcedByActiveCraft = false;
 let missingVisibleCraftingUiPolls = 0;
 
@@ -228,6 +229,24 @@ let missingVisibleCraftingUiPolls = 0;
 let pollingInterval: number | null = null;
 const POLL_INTERVAL_MS = 500;
 const MISSING_VISIBLE_CRAFTING_UI_POLLS_BEFORE_END = 3;
+const CRAFT_START_PENDING_TIMEOUT_MS = 6000;
+
+function markCraftStartPending(): void {
+  craftStartPending = true;
+  craftStartPendingUntil = Date.now() + CRAFT_START_PENDING_TIMEOUT_MS;
+}
+
+function clearCraftStartPending(): void {
+  craftStartPending = false;
+  craftStartPendingUntil = 0;
+}
+
+function isCraftStartPendingActive(): boolean {
+  if (!craftStartPending) return false;
+  if (Date.now() <= craftStartPendingUntil) return true;
+  clearCraftStartPending();
+  return false;
+}
 
 // LocalStorage key for caching targets (used for mid-craft save loads)
 const TARGETS_CACHE_KEY = 'craftbuddy_targets_cache';
@@ -2387,7 +2406,7 @@ function updateRecommendation(
 
       // Always clear calculating flag even if search throws.
       isCalculating = false;
-      craftStartPending = false;
+      clearCraftStartPending();
       snapshotSearchSettings();
       checkIntegrationHealth();
 
@@ -2430,9 +2449,10 @@ function renderOverlay(): void {
   // Also show when a craft just started (craftStartPending) or when actively
   // calculating, so the loading skeleton is visible before entity data arrives.
   const isCraftingActive = lastEntity !== null && lastProgressState !== null;
+  const isPendingCraftStart = isCraftStartPendingActive();
   const shouldShow =
     currentSettings.panelVisible &&
-    (isCraftingActive || isCalculating || craftStartPending);
+    (isCraftingActive || isCalculating || isPendingCraftStart);
 
   if (!reactRoot || !shouldShow) {
     if (reactRoot && overlayContainer) {
@@ -2545,7 +2565,7 @@ function clearActiveCraftingRuntimeState(): void {
   currentCondition = undefined;
   nextConditions = [];
   isCalculating = false;
-  craftStartPending = false;
+  clearCraftStartPending();
   currentStep = 0;
 }
 
@@ -3077,6 +3097,7 @@ function pollCraftingState(): void {
     (hasVisibleCraftingUi ||
       missingVisibleCraftingUiPolls <
         MISSING_VISIBLE_CRAFTING_UI_POLLS_BEFORE_END);
+  const isPendingCraftStart = isCraftStartPendingActive();
 
   if (hasReliableCraftingActivity) {
     wasCraftingActive = true;
@@ -3087,10 +3108,13 @@ function pollCraftingState(): void {
     ) {
       debugLog('[CraftBuddy] Crafting detected, showing overlay');
       overlayForcedByActiveCraft = true;
-      craftStartPending = true;
+      markCraftStartPending();
       showOverlay();
     }
   } else if (wasCraftingActive) {
+    if (isPendingCraftStart) {
+      return;
+    }
     wasCraftingActive = false;
     debugLog('[CraftBuddy] Crafting ended, clearing active state');
     handleCraftingEnded();
@@ -3443,7 +3467,7 @@ try {
       const wasVisibleBeforeCraft = isOverlayVisible;
       overlayForcedByActiveCraft = !wasVisibleBeforeCraft;
       wasCraftingActive = true;
-      craftStartPending = true;
+      markCraftStartPending();
       isOverlayVisible = false; // Reset so showOverlay will work
       debugLog('[CraftBuddy] Crafting starting, syncing panel visibility');
       if (currentSettings.panelVisible) {
@@ -4289,6 +4313,9 @@ startPolling();
 function processCraftingState(craftingState: any): void {
   if (!craftingState?.player || !craftingState?.progressState) {
     if (wasCraftingActive) {
+      if (isCraftStartPendingActive()) {
+        return;
+      }
       wasCraftingActive = false;
       debugLog('[CraftBuddy] Redux reports crafting inactive, clearing state');
       handleCraftingEnded();
@@ -4583,7 +4610,7 @@ function processCraftingState(craftingState: any): void {
       detectVisibleCraftingUi()
     ) {
       overlayForcedByActiveCraft = true;
-      craftStartPending = true;
+      markCraftStartPending();
       showOverlay();
     }
 

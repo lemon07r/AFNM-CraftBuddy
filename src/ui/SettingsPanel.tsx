@@ -438,6 +438,9 @@ export const SettingsPanel = memo(function SettingsPanel({
           sx={{
             p: 2,
             mb: 1,
+            display: 'block',
+            height: 'auto',
+            minHeight: 0,
             position: 'relative',
             backgroundImage: gradients.panelBackground,
             border: `1px solid ${colors.borderMedium}`,
@@ -616,7 +619,7 @@ export const SettingsPanel = memo(function SettingsPanel({
           {/* Export Snapshot + Version */}
           <Box
             sx={{
-              mt: 1,
+              mt: 0.5,
               display: 'flex',
               justifyContent: 'flex-end',
               alignItems: 'center',
