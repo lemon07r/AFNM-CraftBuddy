@@ -15,9 +15,12 @@ import {
   IconButton,
   Collapse,
   Button,
+  Tooltip,
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CloseIcon from '@mui/icons-material/Close';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CheckIcon from '@mui/icons-material/Check';
 import {
   CraftBuddySettings,
   getSettings,
@@ -267,6 +270,7 @@ export const SettingsPanel = memo(function SettingsPanel({
 
   const [isOpen, setIsOpen] = useState(false);
   const [showVersion, setShowVersion] = useState(false);
+  const [snapshotCopied, setSnapshotCopied] = useState(false);
   const [settings, setSettings] = useState<CraftBuddySettings>(getSettings());
   const [draftSettings, setDraftSettings] =
     useState<CraftBuddySettings>(settings);
@@ -341,6 +345,15 @@ export const SettingsPanel = memo(function SettingsPanel({
       settings.searchBeamWidth === preset.values.searchBeamWidth,
     [settings],
   );
+
+  const handleCopySnapshot = useCallback(async () => {
+    const debug = (window as any)?.craftBuddyDebug;
+    if (debug?.exportOptimizerReplaySnapshot) {
+      await debug.exportOptimizerReplaySnapshot();
+      setSnapshotCopied(true);
+      setTimeout(() => setSnapshotCopied(false), 2000);
+    }
+  }, []);
 
   const handleToggle = useCallback(() => {
     setIsOpen((prev) => {
@@ -600,6 +613,47 @@ export const SettingsPanel = memo(function SettingsPanel({
               );
             })}
           </FlexRow>
+
+          <GradientDivider />
+
+          {/* Export Snapshot */}
+          <Tooltip
+            title="Copy game state snapshot to clipboard for bug reports and debugging"
+            enterDelay={300}
+            placement="top"
+            arrow
+          >
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleCopySnapshot}
+              startIcon={
+                snapshotCopied ? (
+                  <CheckIcon sx={{ fontSize: '1rem' }} />
+                ) : (
+                  <ContentCopyIcon sx={{ fontSize: '1rem' }} />
+                )
+              }
+              sx={{
+                width: '100%',
+                color: snapshotCopied ? colors.gold : colors.textSecondary,
+                borderColor: snapshotCopied ? colors.gold : colors.borderMedium,
+                backgroundColor: snapshotCopied
+                  ? 'rgba(222, 184, 135, 0.08)'
+                  : 'transparent',
+                transition: transitions.smooth,
+                textTransform: 'none',
+                fontSize: '0.78rem',
+                py: 0.6,
+                '&:hover': {
+                  borderColor: colors.gold,
+                  backgroundColor: 'rgba(222, 184, 135, 0.12)',
+                },
+              }}
+            >
+              {snapshotCopied ? 'Snapshot Copied!' : 'Copy Game State Snapshot'}
+            </Button>
+          </Tooltip>
 
           {versionLabel && (
             <Typography
