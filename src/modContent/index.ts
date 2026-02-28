@@ -220,6 +220,7 @@ let overlayContainer: HTMLDivElement | null = null;
 let reactRoot: ReactDOM.Root | null = null;
 let isOverlayVisible = false;
 let wasCraftingActive = false;
+let craftStartPending = false;
 let overlayForcedByActiveCraft = false;
 let missingVisibleCraftingUiPolls = 0;
 
@@ -2386,6 +2387,7 @@ function updateRecommendation(
 
       // Always clear calculating flag even if search throws.
       isCalculating = false;
+      craftStartPending = false;
       snapshotSearchSettings();
       checkIntegrationHealth();
 
@@ -2425,15 +2427,12 @@ function renderOverlay(): void {
   }
 
   // Show overlay only while crafting is active and panel visibility is enabled.
-  // Also show when crafting has just started (wasCraftingActive) or when
-  // calculating, even before entity data arrives, so the loading skeleton is
-  // visible during the first recommendation on a new craft.
+  // Also show when a craft just started (craftStartPending) or when actively
+  // calculating, so the loading skeleton is visible before entity data arrives.
   const isCraftingActive = lastEntity !== null && lastProgressState !== null;
-  const isAwaitingFirstResult =
-    wasCraftingActive && currentRecommendation === null;
   const shouldShow =
     currentSettings.panelVisible &&
-    (isCraftingActive || isCalculating || isAwaitingFirstResult);
+    (isCraftingActive || isCalculating || craftStartPending);
 
   if (!reactRoot || !shouldShow) {
     if (reactRoot && overlayContainer) {
@@ -2546,6 +2545,7 @@ function clearActiveCraftingRuntimeState(): void {
   currentCondition = undefined;
   nextConditions = [];
   isCalculating = false;
+  craftStartPending = false;
   currentStep = 0;
 }
 
@@ -3436,9 +3436,13 @@ try {
       nextConditions = [];
 
       // Show panel when crafting starts without mutating persisted user visibility settings.
+      // Set craftStartPending so the overlay stays visible while waiting for the
+      // first recommendation, even if the Redux subscription hasn't delivered
+      // entity/progress data yet.
       const wasVisibleBeforeCraft = isOverlayVisible;
       overlayForcedByActiveCraft = !wasVisibleBeforeCraft;
       wasCraftingActive = true;
+      craftStartPending = true;
       isOverlayVisible = false; // Reset so showOverlay will work
       debugLog('[CraftBuddy] Crafting starting, syncing panel visibility');
       if (currentSettings.panelVisible) {

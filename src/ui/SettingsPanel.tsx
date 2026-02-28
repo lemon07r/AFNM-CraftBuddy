@@ -617,9 +617,7 @@ export const SettingsPanel = memo(function SettingsPanel({
           {/* Export Snapshot + Version */}
           <Box
             sx={{
-              position: 'relative',
-              mt: 2,
-              mb: 1,
+              mt: 1,
               display: 'flex',
               justifyContent: 'flex-end',
               alignItems: 'center',
@@ -631,6 +629,15 @@ export const SettingsPanel = memo(function SettingsPanel({
               enterDelay={300}
               placement="top"
               arrow
+              PopperProps={{
+                disablePortal: false,
+                style: { zIndex: 10001 },
+                container:
+                  typeof document !== 'undefined'
+                    ? (document.getElementById('craftbuddy-overlay') ??
+                      document.body)
+                    : undefined,
+              }}
             >
               <IconButton
                 size="small"
