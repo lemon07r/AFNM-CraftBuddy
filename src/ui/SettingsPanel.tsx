@@ -432,15 +432,26 @@ export const SettingsPanel = memo(function SettingsPanel({
       </IconButton>
 
       {/* Settings panel */}
-      <Collapse in={isOpen}>
+      <Collapse
+        in={isOpen}
+        sx={{
+          '& .MuiCollapse-wrapper, & .MuiCollapse-wrapperInner': {
+            display: 'block !important',
+            height: 'auto !important',
+          },
+        }}
+      >
         <Paper
           elevation={0}
           sx={{
             p: 2,
             mb: 1,
-            display: 'block',
+            display: 'block !important',
             height: 'auto',
             minHeight: 0,
+            flexDirection: 'initial !important',
+            justifyContent: 'normal !important',
+            alignItems: 'stretch !important',
             position: 'relative',
             backgroundImage: gradients.panelBackground,
             border: `1px solid ${colors.borderMedium}`,

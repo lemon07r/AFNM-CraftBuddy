@@ -3097,14 +3097,20 @@ function pollCraftingState(): void {
     (hasVisibleCraftingUi ||
       missingVisibleCraftingUiPolls <
         MISSING_VISIBLE_CRAFTING_UI_POLLS_BEFORE_END);
+  const shouldInitializeFromPolling =
+    hasReliableCraftingActivity && !!entity && !!progress && !lastEntity;
   const isPendingCraftStart = isCraftStartPendingActive();
+
+  if (shouldInitializeFromPolling) {
+    markCraftStartPending();
+  }
 
   if (hasReliableCraftingActivity) {
     wasCraftingActive = true;
     if (
-      hasVisibleCraftingUi &&
       currentSettings.panelVisible &&
-      !isOverlayVisible
+      !isOverlayVisible &&
+      (hasVisibleCraftingUi || shouldInitializeFromPolling)
     ) {
       debugLog('[CraftBuddy] Crafting detected, showing overlay');
       overlayForcedByActiveCraft = true;
@@ -3123,9 +3129,9 @@ function pollCraftingState(): void {
   // If we have entity and progress from Redux, use them directly
   if (
     hasReliableCraftingActivity &&
-    hasVisibleCraftingUi &&
     entity &&
-    progress
+    progress &&
+    (hasVisibleCraftingUi || shouldInitializeFromPolling)
   ) {
     // CRITICAL: Update target values from recipeStats BEFORE updating recommendation
     // recipeStats contains the authoritative target values (completion, perfection, stability)
@@ -4604,10 +4610,13 @@ function processCraftingState(craftingState: any): void {
     );
 
     // Ensure panel is visible when the user has it enabled and crafting UI is on-screen.
+    // Allow first-load initialization to show the loading state even if crafting
+    // controls are not yet visible in the DOM.
+    const isCraftingUiVisible = detectVisibleCraftingUi();
     if (
       currentSettings.panelVisible &&
       !isOverlayVisible &&
-      detectVisibleCraftingUi()
+      (isCraftingUiVisible || needsInitialization)
     ) {
       overlayForcedByActiveCraft = true;
       markCraftStartPending();
