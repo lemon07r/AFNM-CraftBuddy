@@ -438,7 +438,6 @@ export const SettingsPanel = memo(function SettingsPanel({
           sx={{
             p: 2,
             mb: 1,
-            pb: 2.75,
             position: 'relative',
             backgroundImage: gradients.panelBackground,
             border: `1px solid ${colors.borderMedium}`,

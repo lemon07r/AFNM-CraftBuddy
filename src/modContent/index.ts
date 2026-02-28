@@ -3087,6 +3087,7 @@ function pollCraftingState(): void {
     ) {
       debugLog('[CraftBuddy] Crafting detected, showing overlay');
       overlayForcedByActiveCraft = true;
+      craftStartPending = true;
       showOverlay();
     }
   } else if (wasCraftingActive) {
@@ -4582,6 +4583,7 @@ function processCraftingState(craftingState: any): void {
       detectVisibleCraftingUi()
     ) {
       overlayForcedByActiveCraft = true;
+      craftStartPending = true;
       showOverlay();
     }
 
