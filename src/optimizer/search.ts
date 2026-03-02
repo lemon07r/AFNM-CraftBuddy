@@ -26,6 +26,7 @@ import {
   getBlockedSkillReasons,
   getConditionEffectsForConfig,
 } from './skills';
+import { getHarmonyStatModifiers } from './harmony';
 
 interface GainPreview {
   completion: number;
@@ -236,6 +237,11 @@ const SCORING = {
   // Harmony bonus weight in sublime mode.  Small incentive to maintain
   // positive harmony for the harmony sub-system benefits.
   HARMONY_BONUS_WEIGHT: 0.15,
+  // Harmony sub-system quality weight.  Scales with remaining work so
+  // the tree search values being in a productive harmony state (e.g.,
+  // forge heat 4-6) vs a terrible one (heat 0 or 10).  0.15× means at
+  // full remaining work, optimal heat adds ~15% of totalTargetMagnitude.
+  HARMONY_SUBSYSTEM_QUALITY_WEIGHT: 0.15,
 } as const;
 
 // ── Move ordering priorities ────────────────────────────────────────────────
@@ -835,6 +841,61 @@ function getNormalizedCacheKey(
 }
 
 /**
+ * Evaluate the quality of the current harmony sub-system state.
+ *
+ * Returns a value in [-1, +1] representing how productive the current
+ * harmony sub-system state is for making progress:
+ *   +1  = optimal (e.g., forge heat 4-6: both stats get 1.5×)
+ *    0  = neutral (no harmony data, or modifiers are all 1×)
+ *   -1  = terrible (e.g., forge heat 0: control is -9×)
+ *
+ * Uses the actual stat modifiers from `getHarmonyStatModifiers` so this
+ * works for all harmony types (forge, alchemical, inscription, resonance)
+ * without hardcoding sub-system-specific logic.
+ */
+function evaluateHarmonySubsystemQuality(
+  harmonyData: NonNullable<CraftingState['harmonyData']>,
+): number {
+  // Forge works: use heat-based modifiers directly.
+  if (harmonyData.forgeWorks) {
+    const heat = harmonyData.forgeWorks.heat;
+    const mods = getHarmonyStatModifiers(harmonyData, 'forge');
+    // Average the two key multipliers.  At heat 4-6 both are 1.5,
+    // at heat 0 control is -9 (intensity 1), at heat 10 intensity is -9.
+    const avgMult = (mods.controlMultiplier + mods.intensityMultiplier) / 2;
+    // Map: avgMult=1.5 → +1, avgMult=1.0 → 0, avgMult≤0 → -1
+    if (avgMult >= 1.5) return 1;
+    if (avgMult <= 0) return -1;
+    // Linear interpolation between 0 and 1.5
+    return (avgMult - 1) / 0.5; // 1.0→0, 1.25→0.5, 1.5→1.0
+  }
+
+  // Inscription: stacks provide a scaling bonus.
+  if (harmonyData.inscribedPatterns) {
+    const mods = getHarmonyStatModifiers(harmonyData, 'inscription');
+    return Math.min(1, (mods.controlMultiplier - 1) * 5);
+  }
+
+  // Alchemical / Resonance: use generic modifier averaging.
+  // These systems have more complex state but the modifier quality
+  // still captures whether the current state is productive.
+  const harmonyType = harmonyData.alchemicalArts
+    ? 'alchemical' as const
+    : harmonyData.resonance
+      ? 'resonance' as const
+      : undefined;
+  if (harmonyType) {
+    const mods = getHarmonyStatModifiers(harmonyData, harmonyType);
+    const avgMult = (mods.controlMultiplier + mods.intensityMultiplier) / 2;
+    if (avgMult >= 1.5) return 1;
+    if (avgMult <= 0) return -1;
+    return (avgMult - 1) / 0.5;
+  }
+
+  return 0;
+}
+
+/**
  * Score a state based on progress toward targets.
  *
  * Architecture:
@@ -1122,6 +1183,21 @@ function scoreState(
   }
   if (isSublimeCraft) {
     score += state.harmony * SCORING.HARMONY_BONUS_WEIGHT;
+
+    // Harmony sub-system quality: value being in a productive harmony
+    // state (e.g., forge heat 4-6 where both stats get 1.5×) vs a
+    // terrible one (heat 0 where control is -9×, or heat 10 where
+    // intensity is -9×).  This lets the tree search see that fusion
+    // now (raising heat from 0→2) enables future refine, even though
+    // fusion itself doesn't advance perfection.
+    if (!baseTargetsMet && state.harmonyData) {
+      const quality = evaluateHarmonySubsystemQuality(state.harmonyData);
+      score +=
+        quality *
+        remainingWorkPct *
+        totalTargetMagnitude *
+        SCORING.HARMONY_SUBSYSTEM_QUALITY_WEIGHT;
+    }
   }
 
   return score;

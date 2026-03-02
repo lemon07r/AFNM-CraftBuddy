@@ -1293,4 +1293,104 @@ describe('craft simulation — sublime crafts', () => {
     expect(sim.finalState.completion).toBeGreaterThanOrEqual(200);
     expect(sim.finalState.perfection).toBeGreaterThanOrEqual(200);
   });
+
+  it('should use fusion to raise heat before refining in forge works at heat=0', () => {
+    // Forge works sublime craft: at heat=0, control multiplier is -9
+    // (effectively -1000%), so refine gives 0 perfection.  The optimizer
+    // must recommend fusion to raise heat before refine becomes useful.
+    // This reproduces the user report: "kept telling me to refine giving
+    // 0 benefit when I needed to use fusion to raise the heat first."
+    const config = createTestConfig({
+      skills: BEGINNER_SKILLS,
+      conditionEffectType: 'perfectable' as any,
+      isSublimeCraft: true,
+      craftingType: 'forge' as any,
+      targetMultiplier: 2.0,
+      maxQi: 400,
+    });
+    // Start at heat=0 with some completion already done, needing perfection.
+    const state = new CraftingState({
+      qi: 400,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 50,
+      perfection: 0,
+      harmony: 0,
+      harmonyData: {
+        forgeWorks: { heat: 0 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+    });
+    const neutralOnly: CraftingConditionType[] = ['neutral'];
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      ['neutral', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+    );
+
+    // At heat=0, refine gives 0 perfection.  The optimizer MUST NOT
+    // recommend refine — it should recommend fusion to raise heat first.
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).not.toBe('refine');
+    expect(result.recommendation!.skill.type).toBe('fusion');
+  });
+
+  it('should complete a forge works sublime craft without wasting turns on zero-gain refines', () => {
+    // Full simulation of a forge works craft.  The optimizer must manage
+    // heat properly: use fusion to raise heat, then refine when heat is
+    // in the productive range (2-6).  It should never recommend refine
+    // when heat=0 (giving 0 perfection).
+    const config = createTestConfig({
+      skills: BEGINNER_SKILLS,
+      conditionEffectType: 'perfectable' as any,
+      isSublimeCraft: true,
+      craftingType: 'forge' as any,
+      targetMultiplier: 2.0,
+      maxQi: 600,
+    });
+    const state = new CraftingState({
+      qi: 600,
+      stability: 80,
+      initialMaxStability: 80,
+      completion: 0,
+      perfection: 0,
+      harmony: 0,
+      harmonyData: {
+        forgeWorks: { heat: 0 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+    });
+    const neutralOnly: CraftingConditionType[] = ['neutral'];
+
+    const sim = simulateCraft(state, config, 200, 200, neutralOnly, 80);
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
+
+    // Count refines done at heat=0 (which give 0 perfection — wasted turns).
+    // Track heat through the simulation by replaying harmony effects.
+    let heat = 0;
+    let zeroHeatRefines = 0;
+    for (const entry of sim.log) {
+      const skillType = config.skills.find(
+        (s) => s.name === entry.skillChosen,
+      )?.type;
+      if (skillType === 'refine' && heat === 0) {
+        zeroHeatRefines++;
+      }
+      // Update heat after the action (matching processForgeWorks)
+      if (skillType === 'fusion') {
+        heat = Math.min(10, heat + 2);
+      } else {
+        heat = Math.max(0, heat - 1);
+      }
+    }
+    // The optimizer should never waste turns on refine at heat=0.
+    expect(zeroHeatRefines).toBe(0);
+  });
 });
