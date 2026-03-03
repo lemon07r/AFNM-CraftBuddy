@@ -19,8 +19,10 @@ related_files:
 - crit expected-value handling with excess crit conversion
 - technique effect simulation in transition path
 - buff stat contributions and per-turn/action-specific buff effect execution
+- active-buff definition hydration from skill payloads when runtime snapshots omit buff definitions
 - harmony subsystem simulation (forge/alchemical/inscription/resonance)
 - condition-effect handling from recipe condition config
+- integration guard against stale recipe condition-effect cache across craft transitions
 - fixed 3-condition forecast queue normalization with probability-weighted EV beyond forecast
 - non-turn item actions keep turn-depth/index in lookahead search
 - training-mode-aware scoring policy

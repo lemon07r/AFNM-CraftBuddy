@@ -523,6 +523,86 @@ function normalizeRuntimeCostPercentage(raw: number | undefined): number {
   return parsed;
 }
 
+type ActiveBuffMap = Map<
+  string,
+  { name: string; stacks: number; definition?: BuffDefinition }
+>;
+
+const buffDefinitionLookupCache = new WeakMap<
+  OptimizerConfig,
+  Map<string, BuffDefinition>
+>();
+
+function getBuffDefinitionLookup(
+  config: OptimizerConfig,
+): Map<string, BuffDefinition> {
+  const cached = buffDefinitionLookupCache.get(config);
+  if (cached) {
+    return cached;
+  }
+
+  const lookup = new Map<string, BuffDefinition>();
+  const addDefinition = (definition: BuffDefinition | undefined): void => {
+    if (!definition?.name) return;
+    const key = normalizeBuffName(definition.name);
+    if (!key || lookup.has(key)) return;
+    lookup.set(key, definition);
+  };
+
+  for (const skill of config.skills || []) {
+    addDefinition(skill.grantedBuff);
+    for (const effect of skill.effects || []) {
+      if (effect?.kind === 'createBuff') {
+        addDefinition(effect.buff);
+      }
+    }
+  }
+
+  buffDefinitionLookupCache.set(config, lookup);
+  return lookup;
+}
+
+function getResolvedActiveBuffs(
+  state: CraftingState,
+  config: OptimizerConfig | undefined,
+): ActiveBuffMap {
+  if (!config || state.buffs.size === 0) {
+    return state.buffs;
+  }
+
+  let hasMissingDefinition = false;
+  state.buffs.forEach((tracked) => {
+    if (!tracked.definition) {
+      hasMissingDefinition = true;
+    }
+  });
+  if (!hasMissingDefinition) {
+    return state.buffs;
+  }
+
+  const lookup = getBuffDefinitionLookup(config);
+  if (lookup.size === 0) {
+    return state.buffs;
+  }
+
+  let resolved: ActiveBuffMap | undefined;
+  state.buffs.forEach((tracked, buffKey) => {
+    if (tracked.definition) return;
+    const normalizedName = normalizeBuffName(tracked.name || buffKey);
+    const definition = lookup.get(normalizedName) || lookup.get(buffKey);
+    if (!definition) return;
+    if (!resolved) {
+      resolved = new Map(state.buffs);
+    }
+    resolved.set(buffKey, {
+      ...tracked,
+      definition,
+    });
+  });
+
+  return resolved ?? state.buffs;
+}
+
 function buildNativeAvailabilityVariables(
   state: CraftingState,
   maxToxicity: number,
@@ -683,6 +763,7 @@ function buildTechniqueScalingVariables(
   intensity: number,
   critChance: number,
   critMultiplier: number,
+  activeBuffs: ActiveBuffMap = state.buffs,
 ): ScalingVariables {
   const vars: ScalingVariables = {
     control,
@@ -713,7 +794,7 @@ function buildTechniqueScalingVariables(
     stabilitypenalty: state.stabilityPenalty,
   };
 
-  state.buffs.forEach((tracked, buffName) => {
+  activeBuffs.forEach((tracked, buffName) => {
     vars[buffName] = tracked.stacks;
     const normalized = normalizeBuffName(buffName);
     if (!(normalized in vars)) {
@@ -728,8 +809,9 @@ function applyBuffStatContributions(
   state: CraftingState,
   vars: ScalingVariables,
   masteryUpgrades: MasteryUpgradeMap = EMPTY_MASTERY_UPGRADES,
+  activeBuffs: ActiveBuffMap = state.buffs,
 ): ScalingVariables {
-  const buffDefinitions = Array.from(state.buffs.values())
+  const buffDefinitions = Array.from(activeBuffs.values())
     .map((tracked) => tracked.definition)
     .filter((definition): definition is BuffDefinition => Boolean(definition));
   const hasExplicitControlBuff = buffDefinitions.some(
@@ -756,7 +838,7 @@ function applyBuffStatContributions(
   let poolCostPercentage = vars.poolCostPercentage;
   let stabilityCostPercentage = vars.stabilityCostPercentage;
 
-  state.buffs.forEach((tracked, buffKey) => {
+  activeBuffs.forEach((tracked, buffKey) => {
     const definition = tracked.definition;
     if (!definition?.stats) return;
     const evalVars: ScalingVariables = { ...vars, stacks: tracked.stacks };
@@ -1044,6 +1126,7 @@ function buildPreMasteryActionVariables(
   harmonyMods: ReturnType<typeof getHarmonyStatModifiers>,
   masteryUpgrades: MasteryUpgradeMap = EMPTY_MASTERY_UPGRADES,
 ): ScalingVariables {
+  const activeBuffs = getResolvedActiveBuffs(state, config);
   const baseVars = buildTechniqueScalingVariables(
     state,
     config,
@@ -1051,11 +1134,13 @@ function buildPreMasteryActionVariables(
     config.baseIntensity,
     state.critChance,
     state.critMultiplier,
+    activeBuffs,
   );
   const withBuffs = applyBuffStatContributions(
     state,
     baseVars,
     masteryUpgrades,
+    activeBuffs,
   );
   const withConditions = applyConditionEffectsToVariables(
     withBuffs,
@@ -1100,6 +1185,7 @@ export function calculateEffectiveActionCosts(
   conditionEffects: ConditionEffect[] = [],
   config?: OptimizerConfig,
 ): EffectiveActionCosts {
+  const activeBuffs = getResolvedActiveBuffs(state, config);
   let poolCostPercentage = normalizeRuntimeCostPercentage(
     state.poolCostPercentage,
   );
@@ -1110,7 +1196,7 @@ export function calculateEffectiveActionCosts(
   // Only run the heavier runtime-derivation path when active buffs/harmony
   // can actually modify costs. This avoids unnecessary overhead in search.
   if (config) {
-    const hasCostAffectingBuff = Array.from(state.buffs.values()).some(
+    const hasCostAffectingBuff = Array.from(activeBuffs.values()).some(
       (tracked) =>
         Boolean(
           tracked.definition?.stats?.poolCostPercentage ||
@@ -1721,6 +1807,7 @@ export function applySkill(
   currentCondition?: string,
 ): CraftingState | null {
   const maxToxicity = config.maxToxicity || 0;
+  const resolvedActiveBuffs = getResolvedActiveBuffs(state, config);
 
   // Validate skill can be applied
   if (
@@ -1882,7 +1969,7 @@ export function applySkill(
   }
 
   // Update stack-based buffs
-  const newBuffs = new Map(state.buffs);
+  const newBuffs = new Map(resolvedActiveBuffs);
   const newItems = new Map(state.items);
 
   if (isItemAction) {
@@ -1897,7 +1984,7 @@ export function applySkill(
 
   // Consume buff costs
   if (skill.buffCost) {
-    const buff = state.getBuff(skill.buffCost.buffName);
+    const buff = resolvedActiveBuffs.get(skill.buffCost.buffName);
     if (buff) {
       const have = buff.stacks;
       const consume = skill.buffCost.consumeAll

@@ -3399,10 +3399,10 @@ try {
             ((recipe as any)?.realm as string | undefined),
         );
 
-        const conditionType = recipeStats.conditionType;
-        if (conditionType) {
-          conditionEffectsCache = conditionType;
-        }
+        const conditionType = (recipeStats as any)?.conditionType;
+        conditionEffectsCache = conditionType?.conditionEffects
+          ? (conditionType as RecipeConditionEffect)
+          : null;
 
         debugLog(
           `[CraftBuddy] Targets: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}, caps=${maxCompletionCap ?? 'n/a'}/${maxPerfectionCap ?? 'n/a'}`,

@@ -455,6 +455,67 @@ describe('calculateEffectiveActionCosts', () => {
     );
     expect(energized.qiCost).toBe(27); // floor(floor(62 * 0.5) * 0.88)
   });
+
+  it('should hydrate missing active buff definitions from config skill data', () => {
+    const forceful = createTestSkill({
+      key: 'forceful_stabilize',
+      name: 'Forceful Stabilize',
+      qiCost: 62,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      stabilityGain: 40,
+      type: 'stabilize',
+      scalesWithIntensity: false,
+      scalesWithControl: false,
+    });
+    const sourceSkill = createTestSkill({
+      key: 'source_skill',
+      name: 'Source Skill',
+      qiCost: 0,
+      stabilityCost: 0,
+      type: 'support',
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      scalesWithIntensity: false,
+      scalesWithControl: false,
+      effects: [
+        {
+          kind: 'createBuff',
+          buff: {
+            name: 'Energising (12%)',
+            canStack: true,
+            effects: [],
+            stats: {
+              poolCostPercentage: { value: 88 },
+            },
+          },
+          stacks: { value: 1 },
+        },
+      ] as any,
+    });
+    const config = createTestConfig({
+      skills: [forceful, sourceSkill],
+    });
+    const state = new CraftingState({
+      qi: 420,
+      stability: 39,
+      initialMaxStability: 59,
+      poolCostPercentage: 100,
+      buffs: new Map([
+        [
+          'energising_(12%)',
+          {
+            name: 'energising_(12%)',
+            stacks: 1,
+          },
+        ],
+      ]),
+    });
+
+    const costs = calculateEffectiveActionCosts(state, forceful, 0, [], config);
+    expect(costs.qiCost).toBe(54);
+  });
 });
 
 describe('calculateSkillGains', () => {
@@ -491,6 +552,77 @@ describe('calculateSkillGains', () => {
     // Base control 16, multiplier 1.0, so 1.0 * 16 = 16
     expect(gains.completion).toBe(0);
     expect(gains.perfection).toBe(16);
+  });
+
+  it('should hydrate missing active buff definitions for perfection scaling gains', () => {
+    const perfectionSkill = createTestSkill({
+      key: 'perfection_skill',
+      name: 'Perfection Skill',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      scalesWithControl: true,
+      scalesWithIntensity: false,
+      effects: [
+        {
+          kind: 'perfection',
+          amount: { value: 1, stat: 'control' },
+        },
+      ] as any,
+    });
+    const sourceSkill = createTestSkill({
+      key: 'source_skill',
+      name: 'Source Skill',
+      type: 'support',
+      qiCost: 0,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      scalesWithControl: false,
+      scalesWithIntensity: false,
+      effects: [
+        {
+          kind: 'createBuff',
+          buff: {
+            name: 'Control Aura',
+            canStack: true,
+            stats: {
+              control: { value: 0.5, stat: 'control' },
+            },
+            effects: [],
+          },
+          stacks: { value: 1 },
+        },
+      ] as any,
+    });
+    const configWithSource = createTestConfig({
+      skills: [perfectionSkill, sourceSkill],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      perfection: 0,
+      buffs: new Map([
+        [
+          'control_aura',
+          {
+            name: 'control_aura',
+            stacks: 1,
+          },
+        ],
+      ]),
+    });
+
+    const gains = calculateSkillGains(state, perfectionSkill, configWithSource, [], {
+      includeExpectedValue: false,
+    });
+
+    // Base control is 16 from createTestConfig. Buff adds 50% of control (+8),
+    // so the skill's perfection amount (1.0 * control) should be 24.
+    expect(gains.perfection).toBe(24);
+    expect(gains.completion).toBe(0);
   });
 
   it('should apply control buff to refine skills', () => {
@@ -1011,6 +1143,69 @@ describe('applySkill', () => {
     expect(newState).not.toBeNull();
     expect(newState!.controlBuffTurns).toBe(1); // 2 - 1
     expect(newState!.intensityBuffTurns).toBe(0); // 1 - 1
+  });
+
+  it('should apply hydrated active buff per-turn effects from config definitions', () => {
+    const turnSkill = createTestSkill({
+      key: 'turn_skill',
+      name: 'Turn Skill',
+      qiCost: 0,
+      stabilityCost: 0,
+      type: 'support',
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      scalesWithControl: false,
+      scalesWithIntensity: false,
+    });
+    const sourceSkill = createTestSkill({
+      key: 'source_skill',
+      name: 'Source Skill',
+      qiCost: 0,
+      stabilityCost: 0,
+      type: 'support',
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      scalesWithControl: false,
+      scalesWithIntensity: false,
+      effects: [
+        {
+          kind: 'createBuff',
+          buff: {
+            name: 'Transient Buff',
+            canStack: true,
+            stats: {},
+            effects: [
+              {
+                kind: 'addStack',
+                stacks: { value: -1 },
+              },
+            ],
+          },
+          stacks: { value: 1 },
+        },
+      ] as any,
+    });
+    const configWithSource = createTestConfig({
+      skills: [turnSkill, sourceSkill],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      buffs: new Map([
+        [
+          'transient_buff',
+          {
+            name: 'transient_buff',
+            stacks: 2,
+          },
+        ],
+      ]),
+    });
+
+    const newState = applySkill(state, turnSkill, configWithSource);
+    expect(newState).not.toBeNull();
+    expect(newState!.getBuffStacks('transient_buff')).toBe(1);
   });
 
   it('should add toxicity cost', () => {
