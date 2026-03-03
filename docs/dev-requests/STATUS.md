@@ -3,7 +3,7 @@ title: API Request Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-28
+last_verified: 2026-03-03
 source_of_truth: docs/dev-requests/API_EXPOSURE_REQUESTS.md
 review_cycle_days: 14
 related_files:
@@ -21,7 +21,7 @@ related_files:
 | Game-native overcrit helper | Available (`afnm-types@0.6.38`) | Native provider wired with EV-preserving fallback |
 | Game-native action availability precheck | Available (`afnm-types@0.6.38`) | All-depth native precheck wired with local fallback on errors |
 | Completion/perfection cap getters | Available (`afnm-types@0.6.38`) | ModAPI cap getters wired in integration with heuristic fallback |
-| Finalized post-modifier cost preview helpers | **Pending** | Keep internal cost-order/parity checks |
+| Finalized post-modifier cost preview helpers | **Pending** | Internal runtime cost modeling + cost-order/parity checks active |
 | Harmony state/config data | Available | Integrated into optimizer simulation |
 | Buff definitions/effects payloads | Available | Integrated into buff simulation |
 | Condition effect payloads | Available | Integrated into condition handling |
@@ -37,7 +37,7 @@ These unresolved questions block specific improvements:
 
 **Q2: Cap getter retirement** — When should heuristic cap extraction be fully retired? Current: native cap getter path with local extraction fallback. Unblock: one stable release with no native cap regressions.
 
-**Q3: Post-modifier cost preview helpers** — When will canonical post-modifier pool/stability cost preview helpers be exposed? Current: internal cost modeling. Unblock: API availability + integration cutover tests.
+**Q3: Post-modifier cost preview helpers** — When will canonical post-modifier pool/stability cost preview helpers be exposed? Current: internal runtime cost modeling with parity checks. Unblock: API availability + integration cutover tests.
 
 **Q4: Completion-bonus identifier** — Is the completion-bonus buff key/name stable across versions/locales? Current: buff-first extraction with computed fallback. Low risk — no longer blocks parity.
 

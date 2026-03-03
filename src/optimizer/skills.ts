@@ -1098,13 +1098,48 @@ export function calculateEffectiveActionCosts(
   skill: SkillDefinition,
   minStability: number,
   conditionEffects: ConditionEffect[] = [],
+  config?: OptimizerConfig,
 ): EffectiveActionCosts {
-  const poolCostPercentage = normalizeRuntimeCostPercentage(
+  let poolCostPercentage = normalizeRuntimeCostPercentage(
     state.poolCostPercentage,
   );
-  const stabilityCostPercentage = normalizeRuntimeCostPercentage(
+  let stabilityCostPercentage = normalizeRuntimeCostPercentage(
     state.stabilityCostPercentage,
   );
+
+  // Only run the heavier runtime-derivation path when active buffs/harmony
+  // can actually modify costs. This avoids unnecessary overhead in search.
+  if (config) {
+    const hasCostAffectingBuff = Array.from(state.buffs.values()).some(
+      (tracked) =>
+        Boolean(
+          tracked.definition?.stats?.poolCostPercentage ||
+            tracked.definition?.stats?.stabilityCostPercentage,
+        ),
+    );
+    const harmonyMods = getHarmonyStatModifiers(
+      state.harmonyData,
+      config.craftingType,
+    );
+    const harmonyAffectsCosts =
+      harmonyMods.poolCostPercentage !== 100 ||
+      harmonyMods.stabilityCostPercentage !== 100;
+
+    if (hasCostAffectingBuff || harmonyAffectsCosts) {
+      const runtimeVars = buildPreMasteryActionVariables(
+        state,
+        config,
+        [],
+        harmonyMods,
+      );
+      poolCostPercentage = normalizeRuntimeCostPercentage(
+        runtimeVars.poolCostPercentage,
+      );
+      stabilityCostPercentage = normalizeRuntimeCostPercentage(
+        runtimeVars.stabilityCostPercentage,
+      );
+    }
+  }
   let qiCost = getEffectiveQiCost(skill);
   let stabilityDelta = -getEffectiveStabilityCost(skill);
 
@@ -1553,6 +1588,7 @@ export function canApplySkill(
   currentCondition?: string,
   conditionEffects: ConditionEffect[] = [],
   pillsPerRound: number = 1,
+  config?: OptimizerConfig,
 ): boolean {
   const isItemAction = skill.actionKind === 'item';
 
@@ -1623,6 +1659,7 @@ export function canApplySkill(
     skill,
     minStability,
     conditionEffects,
+    config,
   );
 
   // Check qi requirement
@@ -1695,6 +1732,7 @@ export function applySkill(
       currentCondition,
       conditionEffects,
       config.pillsPerRound || 1,
+      config,
     )
   ) {
     return null;
@@ -1715,6 +1753,7 @@ export function applySkill(
     skill,
     config.minStability,
     conditionEffects,
+    config,
   );
   const effectiveQiCost = effectiveCosts.qiCost;
   const effectiveStabilityCost = effectiveCosts.stabilityCost;
@@ -2342,6 +2381,7 @@ export function getAvailableSkills(
       normalizedCondition,
       conditionEffects,
       config.pillsPerRound || 1,
+      config,
     ),
   );
 }
@@ -2487,6 +2527,7 @@ export function getBlockedSkillReasons(
       skill,
       config.minStability,
       conditionEffects,
+      config,
     );
 
     // Check qi requirement

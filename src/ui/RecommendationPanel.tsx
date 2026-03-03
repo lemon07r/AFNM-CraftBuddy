@@ -433,8 +433,9 @@ const SkillCard = memo(function SkillCard({
   const hasFollowUp = rec.followUpSkill !== undefined;
 
   const skill = rec.skill;
-  const qiCost = skill.qiCost || 0;
-  const stabilityCost = skill.stabilityCost || 0;
+  const qiCost = (rec.effectiveCosts?.qi ?? skill.qiCost) || 0;
+  const stabilityCost =
+    (rec.effectiveCosts?.stability ?? skill.stabilityCost) || 0;
   const buffGranted = getBuffName(skill.buffType);
   const buffDuration = skill.buffDuration || 0;
 
@@ -483,6 +484,8 @@ const SkillCard = memo(function SkillCard({
                 gains={rec.followUpSkill.immediateGains}
                 projectedGains={rec.followUpSkill.expectedGains}
                 icon={rec.followUpSkill.icon}
+                qiCost={rec.followUpSkill.effectiveCosts?.qi ?? 0}
+                stabilityCost={rec.followUpSkill.effectiveCosts?.stability ?? 0}
                 isPrimary={isPrimary}
                 isFollowUp={true}
               />

@@ -404,6 +404,57 @@ describe('calculateEffectiveActionCosts', () => {
     expect(costs.qiCost).toBe(17);
     expect(costs.stabilityCost).toBe(9);
   });
+
+  it('should include buff-derived pool cost modifiers when config is provided', () => {
+    const skill = createTestSkill({
+      key: 'forceful_stabilize',
+      qiCost: 62,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      type: 'stabilize',
+      scalesWithIntensity: false,
+      scalesWithControl: false,
+    });
+    const state = new CraftingState({
+      qi: 420,
+      stability: 39,
+      initialMaxStability: 59,
+      poolCostPercentage: 100,
+      buffs: new Map([
+        [
+          'energising_(12%)',
+          {
+            name: 'energising_(12%)',
+            stacks: 1,
+            definition: {
+              name: 'Energising (12%)',
+              canStack: true,
+              effects: [],
+              stats: {
+                poolCostPercentage: { value: 88 },
+              },
+            },
+          },
+        ],
+      ]),
+    });
+    const config = createTestConfig({
+      skills: [skill],
+    });
+
+    const neutral = calculateEffectiveActionCosts(state, skill, 0, [], config);
+    expect(neutral.qiCost).toBe(54); // floor(62 * 0.88)
+
+    const energized = calculateEffectiveActionCosts(
+      state,
+      skill,
+      0,
+      [{ kind: 'pool', multiplier: 0.5 }],
+      config,
+    );
+    expect(energized.qiCost).toBe(27); // floor(floor(62 * 0.5) * 0.88)
+  });
 });
 
 describe('calculateSkillGains', () => {

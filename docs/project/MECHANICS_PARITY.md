@@ -3,7 +3,7 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-28
+last_verified: 2026-03-03
 source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/search.ts
 review_cycle_days: 14
 related_files:
@@ -32,6 +32,7 @@ related_files:
 - native crafting variable snapshot seeding (`getVariablesFromCraftingEntity`)
 - guarded native condition transition provider (`getNextCondition` path probing), with fallback
 - native max toxicity getter (`getMaxToxicity`) for alchemy crafts
+- internal effective action-cost modeling (buff/harmony/condition aware) used by recommendation and follow-up previews
 
 ## Dependency-gated
 

@@ -34,12 +34,19 @@ interface GainPreview {
   stability: number;
 }
 
+interface ActionCostPreview {
+  qi: number;
+  stability: number;
+}
+
 export interface SkillRecommendation {
   skill: SkillDefinition;
   /** Projected expected-value gain (includes RNG EV). */
   expectedGains: GainPreview;
   /** Immediate tooltip-style gain (without RNG EV multipliers). */
   immediateGains: GainPreview;
+  /** Effective action costs after runtime modifiers (buffs/condition/harmony). */
+  effectiveCosts: ActionCostPreview;
   score: number;
   reasoning: string;
   /** Quality rating from 0-100 based on how close to optimal this choice is */
@@ -53,6 +60,7 @@ export interface SkillRecommendation {
     icon?: string;
     expectedGains: GainPreview;
     immediateGains: GainPreview;
+    effectiveCosts: ActionCostPreview;
   };
 }
 
@@ -1213,7 +1221,11 @@ function calculateRecommendationGains(
   skill: SkillDefinition,
   config: OptimizerConfig,
   conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
-): { expectedGains: GainPreview; immediateGains: GainPreview } {
+): {
+  expectedGains: GainPreview;
+  immediateGains: GainPreview;
+  effectiveCosts: ActionCostPreview;
+} {
   const expected = calculateSkillGains(state, skill, config, conditionEffects);
   const immediate = calculateSkillGains(
     state,
@@ -1221,6 +1233,13 @@ function calculateRecommendationGains(
     config,
     conditionEffects,
     { includeExpectedValue: false },
+  );
+  const costs = calculateEffectiveActionCosts(
+    state,
+    skill,
+    config.minStability,
+    conditionEffects,
+    config,
   );
 
   return {
@@ -1233,6 +1252,10 @@ function calculateRecommendationGains(
       completion: immediate.completion,
       perfection: immediate.perfection,
       stability: immediate.stability,
+    },
+    effectiveCosts: {
+      qi: costs.qiCost,
+      stability: costs.stabilityCost,
     },
   };
 }
@@ -1326,6 +1349,7 @@ function buildStallActionContext(
       skill,
       config.minStability,
       conditionEffects,
+      config,
     );
     const consumesTurn = actionConsumesTurn(skill);
     const turnStabilitySpend = Math.max(0, effectiveCosts.stabilityCost);
@@ -2002,12 +2026,13 @@ export function greedySearch(
     );
     if (newState === null) continue;
 
-    const { expectedGains, immediateGains } = calculateRecommendationGains(
-      state,
-      skill,
-      config,
-      conditionEffects,
-    );
+    const { expectedGains, immediateGains, effectiveCosts } =
+      calculateRecommendationGains(
+        state,
+        skill,
+        config,
+        conditionEffects,
+      );
     const score = scoreState(
       newState,
       targetCompletion,
@@ -2038,6 +2063,7 @@ export function greedySearch(
       skill,
       expectedGains,
       immediateGains,
+      effectiveCosts,
       score,
       reasoning,
       ...terminalState,
@@ -2896,7 +2922,7 @@ export function lookaheadSearch(
       if (cachedBestMove) {
         const cachedSkill = skills.find((s) => s.key === cachedBestMove);
         if (cachedSkill) {
-          const { expectedGains, immediateGains } =
+          const { expectedGains, immediateGains, effectiveCosts } =
             calculateRecommendationGains(
               stateAfterSkill,
               cachedSkill,
@@ -2909,6 +2935,7 @@ export function lookaheadSearch(
             icon: cachedSkill.icon,
             expectedGains,
             immediateGains,
+            effectiveCosts,
           };
         }
       }
@@ -2936,17 +2963,22 @@ export function lookaheadSearch(
         perfection: 0,
         stability: 0,
       };
+      let bestFollowUpEffectiveCosts: ActionCostPreview = {
+        qi: 0,
+        stability: 0,
+      };
 
       for (const candidate of orderedFollowUpCandidates) {
         const followUp = candidate.skill;
         const nextState = candidate.nextState;
 
-        const { expectedGains, immediateGains } = calculateRecommendationGains(
-          stateAfterSkill,
-          followUp,
-          config,
-          followUpConditionEffects,
-        );
+        const { expectedGains, immediateGains, effectiveCosts } =
+          calculateRecommendationGains(
+            stateAfterSkill,
+            followUp,
+            config,
+            followUpConditionEffects,
+          );
         const followUpScore = useDeepLookahead
           ? evaluateFutureScoreAfterSkill(
               nextState,
@@ -2981,6 +3013,7 @@ export function lookaheadSearch(
           bestFollowUpCandidate = candidate;
           bestFollowUpExpectedGains = expectedGains;
           bestFollowUpImmediateGains = immediateGains;
+          bestFollowUpEffectiveCosts = effectiveCosts;
         }
       }
 
@@ -2991,6 +3024,7 @@ export function lookaheadSearch(
         icon: bestFollowUp.icon,
         expectedGains: bestFollowUpExpectedGains,
         immediateGains: bestFollowUpImmediateGains,
+        effectiveCosts: bestFollowUpEffectiveCosts,
       };
     }
 
@@ -3000,12 +3034,13 @@ export function lookaheadSearch(
       const skill = candidate.skill;
       const newState = candidate.nextState;
 
-      const { expectedGains, immediateGains } = calculateRecommendationGains(
-        state,
-        skill,
-        config,
-        currentConditionEffects,
-      );
+      const { expectedGains, immediateGains, effectiveCosts } =
+        calculateRecommendationGains(
+          state,
+          skill,
+          config,
+          currentConditionEffects,
+        );
       const reasoning = generateReasoning(
         skill,
         state,
@@ -3038,6 +3073,7 @@ export function lookaheadSearch(
         skill,
         expectedGains,
         immediateGains,
+        effectiveCosts,
         score: immediateScore,
         reasoning,
         consumesBuff: skill.isDisciplinedTouch === true,
@@ -3266,7 +3302,7 @@ export function lookaheadSearch(
             config,
             firstMoveConditionState.nextCondition,
           );
-          const { expectedGains, immediateGains } =
+          const { expectedGains, immediateGains, effectiveCosts } =
             calculateRecommendationGains(
               stateAfterFirstMove,
               secondSkill,
@@ -3279,6 +3315,7 @@ export function lookaheadSearch(
             icon: secondSkill.icon,
             expectedGains,
             immediateGains,
+            effectiveCosts,
           };
         }
       }

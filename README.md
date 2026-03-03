@@ -6,6 +6,7 @@ A mod for **Ascend From Nine Mountains** that calculates and displays the recomm
 
 - Real-time recommendation for the next action during crafting
 - Expected completion/perfection/stability gain preview
+- Effective qi/stability cost preview (current + follow-up), condition/buff/harmony aware
 - Alternative action suggestions
 - Lookahead search with performance controls
 - Condition forecast awareness and probabilistic branching beyond forecast queue
@@ -126,7 +127,7 @@ CraftBuddy prefers direct game data when available and uses documented fallback 
 ## Known limitations
 
 - Native game APIs are used where available (scaling, overcrit, can-use-action, caps) with guarded fallback paths for resilience; fallback code may drift if upstream mechanics change
-- Some mechanics still await API exposure (post-modifier cost helpers, stable `getNextCondition` path) — see `docs/dev-requests/STATUS.md`
+- Some mechanics still await API exposure (canonical post-modifier cost preview helpers, stable `getNextCondition` path); cost previews currently use internal runtime modeling/parity checks — see `docs/dev-requests/STATUS.md`
 - Fallback extraction paths are used when complete runtime state is unavailable
 
 ## Documentation

@@ -1733,6 +1733,56 @@ describe('condition timeline modeling', () => {
     expect(result.recommendation!.skill.name).toBe('Negative Burst');
   });
 
+  it('should report follow-up effective costs using the next condition', () => {
+    const progress = createCustomSkill({
+      name: 'Progress',
+      key: 'progress',
+      type: 'fusion',
+      qiCost: 10,
+      stabilityCost: 1,
+      baseCompletionGain: 1,
+      scalesWithIntensity: true,
+    });
+
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 10,
+      baseControl: 10,
+      skills: [progress],
+      conditionEffectsData: {
+        neutral: [],
+        positive: [],
+        negative: [{ kind: 'pool', multiplier: 2 }],
+        veryPositive: [],
+        veryNegative: [],
+      },
+    });
+
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      100,
+      0,
+      2,
+      'neutral',
+      ['negative', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 50000, beamWidth: 4 },
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.effectiveCosts.qi).toBe(10);
+    expect(result.recommendation!.followUpSkill).toBeDefined();
+    expect(result.recommendation!.followUpSkill!.effectiveCosts.qi).toBe(20);
+  });
+
   it('should project likely future conditions beyond forecast using harmony', () => {
     const setup = createCustomSkill({
       name: 'Setup',
