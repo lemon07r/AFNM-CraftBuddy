@@ -3,7 +3,7 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-28
+last_verified: 2026-03-02
 source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/settings/index.ts
 review_cycle_days: 30
 related_files:
@@ -56,11 +56,11 @@ related_files:
 4. **Resource value** — qi and stability as future-progress enablers (only when targets not yet met)
 5. **Overshoot penalty** — penalise going beyond effective caps
 6. **Survivability** — stability risk penalties using grounded estimates from `ScoringContext` (skipped entirely when targets are met). Includes: quadratic threshold penalty, death penalty (`totalTargetMagnitude × SCORING.DEATH_PENALTY_MULTIPLIER`), near-death linear penalty, and proportional uncapped runway gap penalty (`gap × totalTargetMagnitude × SCORING.RUNWAY_GAP_FRACTION`)
-7. **Toxicity & harmony** — proportional toxicity penalty (`totalTargetMagnitude × SCORING.TOXICITY_PENALTY_FRACTION`) + sublime harmony signal
+7. **Toxicity & harmony** — proportional toxicity penalty (`totalTargetMagnitude × SCORING.TOXICITY_PENALTY_FRACTION`) + sublime harmony signal + harmony sub-system quality term (`evaluateHarmonySubsystemQuality()` × remaining-work% × `totalTargetMagnitude × SCORING.HARMONY_SUBSYSTEM_QUALITY_WEIGHT`). The quality function maps sub-system state (e.g., forge heat) to a [-1, +1] score using actual stat modifiers from `getHarmonyStatModifiers`, so the tree search can value skills like fusion that don't directly advance targets but enable future progress.
 
 ### Move ordering
 
-`orderSkillsForSearch()` uses condition-modified gains (via `calculateSkillGains()`) and soft stall penalties (via `computeStallPenalties()`) to rank skills for beam-width pruning. Priority values and waste detection thresholds are defined in named constant blocks (`ORDERING`, `WASTE`, `STALL_PENALTY_MULTIPLIER`) at the top of `search.ts`. No skills are hard-filtered out of the search tree.
+`orderSkillsForSearch()` uses condition-modified gains (via `calculateSkillGains()`) and soft stall penalties (via `computeStallPenalties()`) to rank skills for beam-width pruning. Priority values and waste detection thresholds are defined in named constant blocks (`ORDERING`, `WASTE`, `STALL_PENALTY_MULTIPLIER`) at the top of `search.ts`. No skills are hard-filtered out of the search tree. Skills that create buffs with action-triggered effects (`onFusion`/`onRefine`/`onStabilize`/`onSupport`) receive an `ORDERING.BUFF_ACTION_TRIGGER` priority boost so they survive beam pruning. The stabilize waste ratio check uses effect-evaluated stability gain (from `calculateSkillGains`) rather than the raw `skill.stabilityGain` field, so skills with large stability effects (e.g., Restoring Brilliance) are not incorrectly penalized.
 
 ## Determinism expectations
 

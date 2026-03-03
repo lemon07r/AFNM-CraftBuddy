@@ -1737,3 +1737,65 @@ describe('buff per-turn effects', () => {
     expect(result!.completion).toBe(4);
   });
 });
+
+describe('Restoring Brilliance stability gain bug', () => {
+  it('should calculate correct stability gain from effects (32, not 9)', () => {
+    const state = new CraftingState({
+      qi: 394,
+      stability: 24,
+      initialMaxStability: 60,
+      stabilityPenalty: 4,
+      completion: 32812,
+      perfection: 3884,
+      critChance: 23,
+      critMultiplier: 185,
+      successChanceBonus: 0,
+      poolCostPercentage: 100,
+      stabilityCostPercentage: 100,
+      step: 6,
+    });
+
+    const restoringBrilliance = createTestSkill({
+      name: 'Restoring Brilliance',
+      key: 'restoring_brilliance',
+      type: 'stabilize',
+      qiCost: 0,
+      stabilityCost: 0,
+      successChance: 1,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      stabilityGain: 1,
+      maxStabilityChange: 1,
+      scalesWithControl: false,
+      scalesWithIntensity: false,
+      preventsMaxStabilityDecay: true,
+      restoresMaxStabilityToFull: true,
+      effects: [
+        { kind: 'stability' as any, amount: { value: 32.5, upgradeKey: 'stability' } },
+        { kind: 'maxStability' as any, amount: { value: 1 } },
+        { kind: 'stability' as any, condition: { kind: 'chance' as any, percentage: 18 }, amount: { value: 1 } },
+      ],
+    });
+
+    const testConfig = createTestConfig({
+      maxQi: 458,
+      maxStability: 60,
+      maxCompletion: 38980,
+      maxPerfection: 38980,
+      baseIntensity: 2108,
+      baseControl: 1686,
+      targetCompletion: 38980,
+      targetPerfection: 38980,
+    });
+
+    // Without expected value (immediate gains) - should be 32 (floor of 32.5)
+    const immediate = calculateSkillGains(state, restoringBrilliance, testConfig, [], {
+      includeExpectedValue: false,
+    });
+    expect(immediate.stability).toBe(32);
+
+    // With expected value - 32.5 * 1 + 1 * 0.18 = 32.68, floor = 32
+    const expected = calculateSkillGains(state, restoringBrilliance, testConfig, []);
+    expect(expected.stability).toBe(32);
+  });
+});

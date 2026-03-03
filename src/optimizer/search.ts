@@ -272,6 +272,11 @@ const ORDERING = {
   GAIN_MULTIPLIER: 8,
   // Small bonus for skills that scale with an active buff.
   BUFF_SCALING: 100,
+  // Bonus for skills that create buffs with action-triggered effects
+  // (onFusion, onRefine, onStabilize, onSupport).  These buffs amplify
+  // future turns but produce zero immediate gains, so without a boost
+  // they sink below beam-width cutoff and are never explored.
+  BUFF_ACTION_TRIGGER: 350,
   // Stability threshold for "low stability" ordering boost.
   // Derived from: ~2.5 turns × 10 stability/turn = 25.
   LOW_STABILITY_THRESHOLD: 25,
@@ -1757,6 +1762,12 @@ function orderSkillsForSearch(
   const scored = skills.map((skill) => {
     let priority = 0;
 
+    // Compute condition-adjusted gains early so they can be used by
+    // multiple ordering checks (stabilize waste, progress priority, etc.).
+    const gains = calculateSkillGains(state, skill, config, conditionEffects, {
+      includeExpectedValue: false,
+    });
+
     // Highest priority: stabilize when low
     if (lowStability && skill.type === 'stabilize') {
       priority += ORDERING.STABILIZE_CRITICAL;
@@ -1767,17 +1778,21 @@ function orderSkillsForSearch(
       priority += ORDERING.BUFF_CONSUMER;
     }
 
-    // Deprioritize stabilize skills when stability is already at or near max
+    // Deprioritize stabilize skills when stability is already at or near max.
+    // Use effect-evaluated stability gain when available so that skills
+    // whose stabilityGain field is just 1 (e.g., Restoring Brilliance with
+    // a 32-point stability effect) are not incorrectly penalized.
     if (skill.type === 'stabilize') {
       if (state.stability >= state.maxStability) {
         priority += ORDERING.STABILIZE_AT_MAX;
       } else {
-        // Penalize stabilize when most of the gain would be wasted (clamped by maxStability)
+        const actualStabilityGain =
+          gains.stability > 0 ? gains.stability : (skill.stabilityGain || 0);
         const effectiveGain = Math.min(
-          skill.stabilityGain || 0,
+          actualStabilityGain,
           state.maxStability - state.stability,
         );
-        const nominalGain = skill.stabilityGain || 1;
+        const nominalGain = Math.max(1, actualStabilityGain);
         const wasteRatio = 1 - effectiveGain / nominalGain; // 0 = no waste, 1 = all wasted
         if (wasteRatio > ORDERING.STABILIZE_WASTE_THRESHOLD) {
           priority -= Math.round(wasteRatio * ORDERING.STABILIZE_WASTE_SCALE);
@@ -1847,14 +1862,30 @@ function orderSkillsForSearch(
     // bonuses steer the beam toward the right skills.  The multiplier is
     // large enough that a condition-doubled gain outranks hardcoded
     // bonuses like buff-granting, ensuring condition exploitation.
-    const gains = calculateSkillGains(state, skill, config, conditionEffects, {
-      includeExpectedValue: false,
-    });
     if (needsCompletion && gains.completion > 0) {
       priority += gains.completion * ORDERING.GAIN_MULTIPLIER;
     }
     if (needsPerfection && gains.perfection > 0) {
       priority += gains.perfection * ORDERING.GAIN_MULTIPLIER;
+    }
+
+    // Boost skills that create buffs with action-triggered effects.
+    // These buffs (onFusion, onRefine, onStabilize, onSupport) amplify
+    // future turns but produce zero immediate completion/perfection,
+    // so without this boost they are pruned by beam width.
+    if (skill.effects && skill.effects.length > 0) {
+      const createsActionTriggerBuff = skill.effects.some(
+        (effect) =>
+          effect?.kind === 'createBuff' &&
+          effect.buff &&
+          (effect.buff.onFusion?.length ||
+            effect.buff.onRefine?.length ||
+            effect.buff.onStabilize?.length ||
+            effect.buff.onSupport?.length),
+      );
+      if (createsActionTriggerBuff) {
+        priority += ORDERING.BUFF_ACTION_TRIGGER;
+      }
     }
 
     // Bonus for using buffs effectively

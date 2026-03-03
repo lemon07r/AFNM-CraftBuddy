@@ -621,8 +621,21 @@ export function evaluateScaling(
 ): number {
   if (!scaling) return defaultValue;
 
+  // For simple scalings (only value, no stat/scaling/eqn/customScaling),
+  // always use the local fallback.  The native evaluateScaling can
+  // misinterpret simple values (e.g., returning 9 instead of 32 for
+  // {value: 32.5, upgradeKey: 'stability'}) because it may apply
+  // game-internal mastery/upgrade logic that the optimizer already
+  // handles separately via evaluateScalingWithMasteryUpgrades.
+  const isSimpleScaling =
+    !scaling.stat &&
+    !scaling.scaling &&
+    !scaling.eqn &&
+    !scaling.customScaling &&
+    !scaling.additiveEqn;
+
   const nativeScaling = activeNativeCraftingUtils?.evaluateScaling;
-  if (nativeScaling) {
+  if (nativeScaling && !isSimpleScaling) {
     try {
       const nativeValue = nativeScaling(
         scaling as unknown as Record<string, unknown>,

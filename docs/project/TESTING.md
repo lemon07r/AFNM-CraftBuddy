@@ -3,7 +3,7 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-28
+last_verified: 2026-03-02
 source_of_truth: src/__tests__/*, package.json, scripts/docs/*
 review_cycle_days: 30
 related_files:
@@ -45,6 +45,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 - buff utilization: buff setup → payoff sequences preferred over raw progress
 - survivability: stabilize when critical, skip when a finisher is available
 - mixed conditions: varied/all-negative sequences don't cause craft death
+- harmony sub-systems: forge works crafts use fusion to raise heat before refining, complete without wasting turns on zero-gain skills
 
 **Add a simulation test when:** a scoring/ordering change affects multi-turn behavior, or a bug describes "optimizer does X instead of Y over several turns."
 
