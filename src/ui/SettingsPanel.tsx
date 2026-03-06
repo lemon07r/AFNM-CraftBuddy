@@ -10,7 +10,6 @@ import React, {
   memo,
   useCallback,
   useEffect,
-  useRef,
 } from 'react';
 import {
   Box,
@@ -21,7 +20,6 @@ import {
   IconButton,
   Button,
   Tooltip,
-  Popper,
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CloseIcon from '@mui/icons-material/Close';
@@ -35,8 +33,8 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_SEARCH_SETTINGS,
 } from '../settings';
-import { colors, gradients, shadows } from './theme';
-import { GradientDivider, FlexRow } from './components';
+import { colors, shadows } from './theme';
+import { FlexRow } from './components';
 import {
   transitions,
   versionBadgeReveal,
@@ -53,6 +51,8 @@ interface SettingsPanelProps {
   version?: string;
   /** Optional controls to render to the left of the settings button */
   leadingControls?: React.ReactNode;
+  /** Whether the recommendation panel is in compact mode */
+  compact?: boolean;
 }
 
 interface SearchPreset {
@@ -308,6 +308,52 @@ const SettingsSectionHeader = memo(function SettingsSectionHeader({
   );
 });
 
+const SettingsGroup = memo(function SettingsGroup({
+  title,
+  help,
+  description,
+  children,
+}: {
+  title: string;
+  help?: SettingHelpContent;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        mb: 1.1,
+        p: 1.1,
+        borderRadius: 1.75,
+        background:
+          'linear-gradient(180deg, rgba(255, 215, 0, 0.05) 0%, rgba(17, 21, 30, 0.72) 22%, rgba(13, 16, 24, 0.92) 100%)',
+        border: '1px solid rgba(255, 215, 0, 0.13)',
+        boxShadow:
+          'inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 24px rgba(0, 0, 0, 0.16)',
+      }}
+    >
+      <FlexRow
+        gap={0.5}
+        sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}
+      >
+        <FlexRow gap={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+          <SettingsSectionHeader>{title}</SettingsSectionHeader>
+          {help && <InlineHelp help={help} />}
+        </FlexRow>
+      </FlexRow>
+      {description && (
+        <Typography
+          variant="caption"
+          sx={{ color: colors.textDisabled, display: 'block', mb: 0.9 }}
+        >
+          {description}
+        </Typography>
+      )}
+      {children}
+    </Box>
+  );
+});
+
 /**
  * Slider setting component.
  */
@@ -343,7 +389,7 @@ const SliderSetting = memo(function SliderSetting({
     : String(draftValue);
 
   return (
-    <Box sx={{ mb: 2 }}>
+    <Box sx={{ mb: 1.45 }}>
       <FlexRow
         gap={0.5}
         sx={{ alignItems: 'center', mb: 0.35, justifyContent: 'space-between' }}
@@ -375,7 +421,7 @@ const SliderSetting = memo(function SliderSetting({
       {hint && (
         <Typography
           variant="caption"
-          sx={{ color: colors.textDisabled, display: 'block', mt: 0.25 }}
+          sx={{ color: colors.textDisabled, display: 'block', mt: 0.15 }}
         >
           {hint}
         </Typography>
@@ -439,6 +485,7 @@ export const SettingsPanel = memo(function SettingsPanel({
   onOpenChange,
   version,
   leadingControls,
+  compact = false,
 }: SettingsPanelProps) {
   const versionLabel = version
     ? version.startsWith('v')
@@ -460,7 +507,6 @@ export const SettingsPanel = memo(function SettingsPanel({
   const [settings, setSettings] = useState<CraftBuddySettings>(getSettings());
   const [draftSettings, setDraftSettings] =
     useState<CraftBuddySettings>(settings);
-  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
 
   type SliderSettingKey =
     | 'lookaheadDepth'
@@ -550,11 +596,31 @@ export const SettingsPanel = memo(function SettingsPanel({
     });
   }, [onOpenChange]);
 
+  const handleClose = useCallback(() => {
+    setIsOpen(false);
+    onOpenChange?.(false);
+  }, [onOpenChange]);
+
   useEffect(() => {
     return () => {
       onOpenChange?.(false);
     };
   }, [onOpenChange]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleClose, isOpen]);
 
   useEffect(() => {
     let fadeInTimer: ReturnType<typeof setTimeout> | undefined;
@@ -573,7 +639,7 @@ export const SettingsPanel = memo(function SettingsPanel({
   }, [isOpen]);
 
   return (
-    <Box sx={{ position: 'relative' }}>
+    <>
       {leadingControls && (
         <Box
           sx={{
@@ -581,8 +647,14 @@ export const SettingsPanel = memo(function SettingsPanel({
             top: -8,
             right: 28,
             zIndex: 9,
-            transform: isOpen ? 'translate(-6px, 12px)' : 'translate(0, 0)',
-            transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)',
+            opacity: isOpen ? 0 : 1,
+            pointerEvents: isOpen ? 'none' : 'auto',
+            transform: isOpen
+              ? 'translate(-10px, 10px) scale(0.94)'
+              : 'translate(0, 0) scale(1)',
+            filter: isOpen ? 'blur(2px)' : 'blur(0)',
+            transition:
+              'opacity 0.18s ease, transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), filter 0.22s ease',
           }}
         >
           {leadingControls}
@@ -591,7 +663,6 @@ export const SettingsPanel = memo(function SettingsPanel({
 
       {/* Settings toggle button */}
       <IconButton
-        ref={settingsButtonRef}
         onClick={handleToggle}
         size="small"
         sx={{
@@ -618,334 +689,423 @@ export const SettingsPanel = memo(function SettingsPanel({
           <SettingsIcon fontSize="small" />
         )}
       </IconButton>
-
-      <Popper
-        open={isOpen}
-        anchorEl={settingsButtonRef.current}
-        placement="bottom-end"
-        container={getOverlayContainer()}
-        modifiers={[
-          {
-            name: 'offset',
-            options: {
-              offset: [0, 8],
-            },
-          },
-        ]}
-        sx={{ zIndex: 10002 }}
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: compact ? -12 : -16,
+          zIndex: 8,
+          pointerEvents: isOpen ? 'auto' : 'none',
+          visibility: isOpen ? 'visible' : 'hidden',
+          transition: `visibility 0s linear ${isOpen ? '0s' : '0.42s'}`,
+          overflow: 'hidden',
+          borderRadius: 2,
+        }}
       >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(180deg, rgba(7, 10, 16, 0.18) 0%, rgba(7, 10, 16, 0.32) 100%)',
+            backdropFilter: isOpen ? 'blur(7px)' : 'blur(0px)',
+            opacity: isOpen ? 1 : 0,
+            transition:
+              'opacity 0.24s ease, backdrop-filter 0.32s cubic-bezier(0.22, 1, 0.36, 1)',
+          }}
+        />
+
         <Paper
           elevation={0}
           sx={{
-            p: 1.5,
-            position: 'relative',
-            width: 'min(420px, calc(100vw - 24px))',
-            maxWidth: 'calc(100vw - 24px)',
-            maxHeight: 'min(76vh, 720px)',
-            overflowY: 'auto',
-            backgroundImage: gradients.panelBackground,
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            background:
+              'radial-gradient(circle at top right, rgba(255, 215, 0, 0.08), transparent 26%), radial-gradient(circle at top left, rgba(114, 162, 255, 0.08), transparent 28%), linear-gradient(160deg, rgba(20, 22, 32, 0.985) 0%, rgba(12, 12, 18, 0.99) 100%)',
             border: `1px solid ${colors.borderMedium}`,
             borderRadius: 2,
             boxShadow: shadows.panel,
+            opacity: isOpen ? 1 : 0,
+            transform: isOpen
+              ? 'translateX(0) scale(1)'
+              : 'translateX(103%) scale(0.985)',
+            transformOrigin: 'right center',
+            transition:
+              'transform 0.42s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(120deg, transparent 22%, rgba(255, 244, 202, 0.08) 40%, rgba(152, 218, 255, 0.12) 52%, transparent 70%)',
+              opacity: isOpen ? 1 : 0,
+              transform: 'translateX(-140%)',
+              animation: isOpen
+                ? `${holographicSweep} 0.95s cubic-bezier(0.3, 0, 0.2, 1) 1 both`
+                : 'none',
+              pointerEvents: 'none',
+            },
           }}
         >
-          {/* Header */}
-          <FlexRow gap={1} sx={{ mb: 1.5 }}>
-            <SettingsIcon sx={{ color: colors.gold, fontSize: 20 }} />
-            <Typography
-              variant="subtitle1"
-              sx={{ color: colors.gold, fontWeight: 600 }}
+          <Box
+            sx={{
+              position: 'relative',
+              px: compact ? 1.4 : 1.65,
+              py: compact ? 1.2 : 1.35,
+              borderBottom: '1px solid rgba(255, 215, 0, 0.14)',
+              background:
+                'linear-gradient(180deg, rgba(255, 215, 0, 0.07) 0%, rgba(255, 215, 0, 0.02) 70%, transparent 100%)',
+            }}
+          >
+            <FlexRow
+              gap={1}
+              sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}
             >
-              Settings
-            </Typography>
-          </FlexRow>
+              <Box sx={{ minWidth: 0 }}>
+                <FlexRow gap={0.8} sx={{ alignItems: 'center', mb: 0.4 }}>
+                  <SettingsIcon sx={{ color: colors.gold, fontSize: 18 }} />
+                  <Typography
+                    variant="subtitle1"
+                    sx={{ color: colors.gold, fontWeight: 600 }}
+                  >
+                    Settings
+                  </Typography>
+                </FlexRow>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: colors.textSecondary,
+                    display: 'block',
+                    maxWidth: 360,
+                  }}
+                >
+                  Search controls now live on a dedicated panel face. Tune them
+                  here, then close to return to recommendations.
+                </Typography>
+              </Box>
 
-          {/* Search Settings */}
-          <FlexRow gap={0.5} sx={{ alignItems: 'center' }}>
-            <SettingsSectionHeader>Search Settings</SettingsSectionHeader>
-            <Box sx={{ mb: 1 }}>
-              <InlineHelp help={SEARCH_BUDGET_HELP} />
-            </Box>
-          </FlexRow>
-          <Typography
-            variant="caption"
-            sx={{ color: colors.textDisabled, display: 'block', mb: 1.25 }}
-          >
-            Use presets unless you intentionally want manual tuning. The
-            tooltip on each control explains the tradeoff.
-          </Typography>
-
-          <SliderSetting
-            label="Lookahead Depth"
-            draftValue={draftSettings.lookaheadDepth}
-            min={1}
-            max={96}
-            step={1}
-            marks
-            hint={`Default: ${DEFAULT_SETTINGS.lookaheadDepth}`}
-            tooltip={LOOKAHEAD_DEPTH_HELP}
-            onChange={(v) => handleSliderDraftChange('lookaheadDepth', v)}
-            onCommit={(v) => handleSliderCommit('lookaheadDepth', v)}
-          />
-
-          <SliderSetting
-            label="Search Time Budget"
-            draftValue={draftSettings.searchTimeBudgetMs}
-            min={100}
-            max={10000}
-            step={100}
-            hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}`}
-            valueFormatter={formatSeconds}
-            tooltip={SEARCH_TIME_HELP}
-            tip={
-              draftSettings.searchTimeBudgetMs > 5000
-                ? 'Warning: Very high time budgets may pause the crafting UI while searching.'
-                : undefined
-            }
-            onChange={(v) => handleSliderDraftChange('searchTimeBudgetMs', v)}
-            onCommit={(v) => handleSliderCommit('searchTimeBudgetMs', v)}
-          />
-
-          <SliderSetting
-            label="Search Max Nodes"
-            draftValue={draftSettings.searchMaxNodes}
-            min={1000}
-            max={5000000}
-            step={10000}
-            hint={`Default: ${formatNodesThousands(DEFAULT_SETTINGS.searchMaxNodes)} nodes`}
-            valueFormatter={formatNodesThousands}
-            tooltip={SEARCH_MAX_NODES_HELP}
-            onChange={(v) => handleSliderDraftChange('searchMaxNodes', v)}
-            onCommit={(v) => handleSliderCommit('searchMaxNodes', v)}
-          />
-
-          <SliderSetting
-            label="Search Beam Width"
-            draftValue={draftSettings.searchBeamWidth}
-            min={3}
-            max={20}
-            step={1}
-            hint={`Default: ${DEFAULT_SETTINGS.searchBeamWidth}`}
-            tooltip={SEARCH_BEAM_WIDTH_HELP}
-            onChange={(v) => handleSliderDraftChange('searchBeamWidth', v)}
-            onCommit={(v) => handleSliderCommit('searchBeamWidth', v)}
-          />
-
-          <GradientDivider />
-
-          {/* Display Options */}
-          <SettingsSectionHeader>Display Options</SettingsSectionHeader>
-
-          <ToggleSetting
-            label="Compact Mode"
-            checked={settings.compactMode}
-            tooltip={COMPACT_MODE_HELP}
-            onChange={(v) => handleSettingChange('compactMode', v)}
-          />
-
-          <ToggleSetting
-            label="Show Rotation"
-            checked={settings.showOptimalRotation}
-            tooltip={SHOW_ROTATION_HELP}
-            onChange={(v) => handleSettingChange('showOptimalRotation', v)}
-          />
-
-          <ToggleSetting
-            label="Show Final State"
-            checked={settings.showExpectedFinalState}
-            tooltip={SHOW_FINAL_STATE_HELP}
-            onChange={(v) => handleSettingChange('showExpectedFinalState', v)}
-          />
-
-          <ToggleSetting
-            label="Show Conditions"
-            checked={settings.showForecastedConditions}
-            tooltip={SHOW_CONDITIONS_HELP}
-            onChange={(v) => handleSettingChange('showForecastedConditions', v)}
-          />
-
-          <SliderSetting
-            label="Max Alternatives"
-            draftValue={draftSettings.maxAlternatives}
-            min={0}
-            max={5}
-            step={1}
-            marks
-            hint={`Default: ${DEFAULT_SETTINGS.maxAlternatives}`}
-            tooltip={MAX_ALTERNATIVES_HELP}
-            onChange={(v) => handleSliderDraftChange('maxAlternatives', v)}
-            onCommit={(v) => handleSliderCommit('maxAlternatives', v)}
-          />
-
-          <GradientDivider />
-
-          {/* Keyboard Shortcuts */}
-          <SettingsSectionHeader>Keyboard Shortcuts</SettingsSectionHeader>
-          <Typography
-            variant="caption"
-            sx={{ color: colors.textDisabled, display: 'block' }}
-          >
-            Ctrl+Shift+C - Toggle panel visibility
-          </Typography>
-          <Typography
-            variant="caption"
-            sx={{ color: colors.textDisabled, display: 'block' }}
-          >
-            Ctrl+Shift+M - Toggle compact mode
-          </Typography>
-          <Typography
-            variant="caption"
-            sx={{ color: colors.textDisabled, display: 'block' }}
-          >
-            Ctrl+Shift+Y - Export snapshot (clipboard or download)
-          </Typography>
-
-          <GradientDivider />
-
-          {/* Search Presets */}
-          <SettingsSectionHeader>Search Presets</SettingsSectionHeader>
-          <Typography
-            variant="caption"
-            sx={{ color: colors.textDisabled, display: 'block', mb: 1 }}
-          >
-            Apply a tuned profile. This overwrites Depth, Time, Nodes, and
-            Beam together.
-          </Typography>
-          <FlexRow gap={1} sx={{ flexWrap: 'wrap' }}>
-            {SEARCH_PRESETS.map((preset) => {
-              const active = isPresetActive(preset);
-              return (
+              <FlexRow gap={0.35} sx={{ alignItems: 'center', flexShrink: 0 }}>
                 <Tooltip
-                  key={preset.id}
-                  title={renderHelpContent({
-                    title: preset.label,
-                    description: preset.description,
-                    note: `Depth ${preset.values.lookaheadDepth} | Time ${formatSeconds(
-                      preset.values.searchTimeBudgetMs,
-                    )} | Nodes ${formatNodesThousands(
-                      preset.values.searchMaxNodes,
-                    )} | Beam ${preset.values.searchBeamWidth}`,
-                  })}
-                  enterDelay={250}
-                  placement="top"
+                  title="Export optimizer replay snapshot for bug reports (same as Ctrl+Shift+Y; copies to clipboard when available, otherwise downloads a .json file)"
+                  enterDelay={300}
+                  placement="bottom-end"
                   arrow
                   PopperProps={getTooltipPopperProps()}
                 >
-                  <Button
+                  <IconButton
                     size="small"
-                    variant={active ? 'contained' : 'outlined'}
-                    onClick={() => handleApplyPreset(preset)}
+                    onClick={handleCopySnapshot}
                     sx={{
-                      minWidth: 0,
-                      color: active ? '#141414' : colors.textSecondary,
-                      backgroundColor: active ? colors.gold : 'transparent',
-                      borderColor: active
+                      color: snapshotCopied
                         ? colors.gold
-                        : `${colors.borderMedium}`,
+                        : 'rgba(222, 205, 168, 0.7)',
                       transition: transitions.smooth,
+                      padding: '4px',
+                      border: '1px solid rgba(255, 215, 0, 0.16)',
+                      backgroundColor: 'rgba(18, 22, 32, 0.55)',
                       '&:hover': {
-                        borderColor: colors.gold,
-                        backgroundColor: active
-                          ? colors.goldDark
-                          : 'rgba(222, 184, 135, 0.12)',
+                        color: colors.gold,
+                        borderColor: colors.borderMedium,
+                        backgroundColor: 'rgba(222, 184, 135, 0.1)',
                       },
                     }}
                   >
-                    {preset.label}
-                  </Button>
+                    {snapshotCopied ? (
+                      <CheckIcon sx={{ fontSize: '0.9rem' }} />
+                    ) : (
+                      <ContentCopyIcon sx={{ fontSize: '0.9rem' }} />
+                    )}
+                  </IconButton>
                 </Tooltip>
-              );
-            })}
-          </FlexRow>
 
-          {/* Export Snapshot + Version */}
+                <IconButton
+                  size="small"
+                  onClick={handleClose}
+                  sx={{
+                    color: colors.textSecondary,
+                    border: '1px solid rgba(255, 215, 0, 0.16)',
+                    backgroundColor: 'rgba(18, 22, 32, 0.55)',
+                    '&:hover': {
+                      color: colors.gold,
+                      borderColor: colors.borderMedium,
+                      backgroundColor: 'rgba(222, 184, 135, 0.1)',
+                    },
+                  }}
+                >
+                  <CloseIcon sx={{ fontSize: '0.95rem' }} />
+                </IconButton>
+              </FlexRow>
+            </FlexRow>
+          </Box>
+
           <Box
             sx={{
-              mt: 0.5,
-              display: 'flex',
-              justifyContent: 'flex-end',
-              alignItems: 'center',
-              gap: 0.75,
+              flex: 1,
+              overflowY: 'auto',
+              px: compact ? 1.2 : 1.45,
+              py: compact ? 1.1 : 1.25,
             }}
           >
-            <Tooltip
-              title="Export optimizer replay snapshot for bug reports (same as Ctrl+Shift+Y; copies to clipboard when available, otherwise downloads a .json file)"
-              enterDelay={300}
-              placement="top"
-              arrow
-              PopperProps={getTooltipPopperProps()}
+            <SettingsGroup
+              title="Search Presets"
+              description="Use a tuned profile unless you intentionally want to reproduce an edge case with manual slider values."
             >
-              <IconButton
-                size="small"
-                onClick={handleCopySnapshot}
-                sx={{
-                  color: snapshotCopied
-                    ? colors.gold
-                    : 'rgba(222, 205, 168, 0.5)',
-                  transition: transitions.smooth,
-                  padding: '3px',
-                  '&:hover': {
-                    color: colors.gold,
-                    backgroundColor: 'rgba(222, 184, 135, 0.1)',
-                  },
-                }}
-              >
-                {snapshotCopied ? (
-                  <CheckIcon sx={{ fontSize: '0.85rem' }} />
-                ) : (
-                  <ContentCopyIcon sx={{ fontSize: '0.85rem' }} />
-                )}
-              </IconButton>
-            </Tooltip>
+              <FlexRow gap={0.8} sx={{ flexWrap: 'wrap' }}>
+                {SEARCH_PRESETS.map((preset) => {
+                  const active = isPresetActive(preset);
+                  return (
+                    <Tooltip
+                      key={preset.id}
+                      title={renderHelpContent({
+                        title: preset.label,
+                        description: preset.description,
+                        note: `Depth ${preset.values.lookaheadDepth} | Time ${formatSeconds(
+                          preset.values.searchTimeBudgetMs,
+                        )} | Nodes ${formatNodesThousands(
+                          preset.values.searchMaxNodes,
+                        )} | Beam ${preset.values.searchBeamWidth}`,
+                      })}
+                      enterDelay={250}
+                      placement="top"
+                      arrow
+                      PopperProps={getTooltipPopperProps()}
+                    >
+                      <Button
+                        size="small"
+                        variant={active ? 'contained' : 'outlined'}
+                        onClick={() => handleApplyPreset(preset)}
+                        sx={{
+                          minWidth: 0,
+                          color: active ? '#141414' : colors.textSecondary,
+                          backgroundColor: active ? colors.gold : 'transparent',
+                          borderColor: active
+                            ? colors.gold
+                            : `${colors.borderMedium}`,
+                          transition: transitions.smooth,
+                          '&:hover': {
+                            borderColor: colors.gold,
+                            backgroundColor: active
+                              ? colors.goldDark
+                              : 'rgba(222, 184, 135, 0.12)',
+                          },
+                        }}
+                      >
+                        {preset.label}
+                      </Button>
+                    </Tooltip>
+                  );
+                })}
+              </FlexRow>
+            </SettingsGroup>
 
-            {versionLabel && (
+            <SettingsGroup
+              title="Search Budget"
+              help={SEARCH_BUDGET_HELP}
+              description="Depth, time, nodes, and beam width share one budget. Raise them in balance."
+            >
+              <SliderSetting
+                label="Lookahead Depth"
+                draftValue={draftSettings.lookaheadDepth}
+                min={1}
+                max={96}
+                step={1}
+                marks
+                hint={`Default: ${DEFAULT_SETTINGS.lookaheadDepth}`}
+                tooltip={LOOKAHEAD_DEPTH_HELP}
+                onChange={(v) => handleSliderDraftChange('lookaheadDepth', v)}
+                onCommit={(v) => handleSliderCommit('lookaheadDepth', v)}
+              />
+
+              <SliderSetting
+                label="Search Time Budget"
+                draftValue={draftSettings.searchTimeBudgetMs}
+                min={100}
+                max={10000}
+                step={100}
+                hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}`}
+                valueFormatter={formatSeconds}
+                tooltip={SEARCH_TIME_HELP}
+                tip={
+                  draftSettings.searchTimeBudgetMs > 5000
+                    ? 'Very high time budgets can make recalculation feel sluggish.'
+                    : undefined
+                }
+                onChange={(v) =>
+                  handleSliderDraftChange('searchTimeBudgetMs', v)
+                }
+                onCommit={(v) => handleSliderCommit('searchTimeBudgetMs', v)}
+              />
+
+              <SliderSetting
+                label="Search Max Nodes"
+                draftValue={draftSettings.searchMaxNodes}
+                min={1000}
+                max={5000000}
+                step={10000}
+                hint={`Default: ${formatNodesThousands(DEFAULT_SETTINGS.searchMaxNodes)} nodes`}
+                valueFormatter={formatNodesThousands}
+                tooltip={SEARCH_MAX_NODES_HELP}
+                onChange={(v) => handleSliderDraftChange('searchMaxNodes', v)}
+                onCommit={(v) => handleSliderCommit('searchMaxNodes', v)}
+              />
+
+              <SliderSetting
+                label="Search Beam Width"
+                draftValue={draftSettings.searchBeamWidth}
+                min={3}
+                max={20}
+                step={1}
+                hint={`Default: ${DEFAULT_SETTINGS.searchBeamWidth}`}
+                tooltip={SEARCH_BEAM_WIDTH_HELP}
+                onChange={(v) => handleSliderDraftChange('searchBeamWidth', v)}
+                onCommit={(v) => handleSliderCommit('searchBeamWidth', v)}
+              />
+            </SettingsGroup>
+
+            <SettingsGroup title="Display Options">
+              <ToggleSetting
+                label="Compact Mode"
+                checked={settings.compactMode}
+                tooltip={COMPACT_MODE_HELP}
+                onChange={(v) => handleSettingChange('compactMode', v)}
+              />
+
+              <ToggleSetting
+                label="Show Rotation"
+                checked={settings.showOptimalRotation}
+                tooltip={SHOW_ROTATION_HELP}
+                onChange={(v) => handleSettingChange('showOptimalRotation', v)}
+              />
+
+              <ToggleSetting
+                label="Show Final State"
+                checked={settings.showExpectedFinalState}
+                tooltip={SHOW_FINAL_STATE_HELP}
+                onChange={(v) =>
+                  handleSettingChange('showExpectedFinalState', v)
+                }
+              />
+
+              <ToggleSetting
+                label="Show Conditions"
+                checked={settings.showForecastedConditions}
+                tooltip={SHOW_CONDITIONS_HELP}
+                onChange={(v) =>
+                  handleSettingChange('showForecastedConditions', v)
+                }
+              />
+
+              <SliderSetting
+                label="Max Alternatives"
+                draftValue={draftSettings.maxAlternatives}
+                min={0}
+                max={5}
+                step={1}
+                marks
+                hint={`Default: ${DEFAULT_SETTINGS.maxAlternatives}`}
+                tooltip={MAX_ALTERNATIVES_HELP}
+                onChange={(v) => handleSliderDraftChange('maxAlternatives', v)}
+                onCommit={(v) => handleSliderCommit('maxAlternatives', v)}
+              />
+            </SettingsGroup>
+
+            <SettingsGroup
+              title="Keyboard Shortcuts"
+              description="These remain active while crafting."
+            >
               <Typography
                 variant="caption"
-                sx={{
-                  display: 'inline-block',
-                  overflow: 'hidden',
-                  isolation: 'isolate',
-                  fontSize: '0.66rem',
-                  color: 'rgba(222, 205, 168, 0.96)',
-                  letterSpacing: '0.04em',
-                  lineHeight: 1,
-                  pointerEvents: 'none',
-                  opacity: showVersion ? 0.94 : 0,
-                  transform: showVersion
-                    ? 'translateY(0) scale(1)'
-                    : 'translateY(5px) scale(0.9)',
-                  filter: showVersion ? 'blur(0)' : 'blur(3px)',
-                  textShadow: showVersion
-                    ? '0 0 10px rgba(255, 223, 140, 0.36)'
-                    : '0 0 0 rgba(255, 223, 140, 0)',
-                  transition:
-                    'opacity 0.12s ease, transform 0.12s ease, filter 0.12s ease, text-shadow 0.14s ease',
-                  animation: showVersion
-                    ? `${versionBadgeReveal} 0.62s cubic-bezier(0.25, 0.9, 0.3, 1) both`
-                    : 'none',
-                  '&::after': {
-                    content: '""',
-                    position: 'absolute',
-                    inset: 0,
-                    pointerEvents: 'none',
-                    background:
-                      'linear-gradient(110deg, transparent 22%, rgba(152, 218, 255, 0.25) 42%, rgba(255, 236, 166, 0.48) 50%, rgba(152, 218, 255, 0.24) 58%, transparent 78%)',
-                    mixBlendMode: 'screen',
-                    opacity: showVersion ? 1 : 0,
-                    transform: 'translateX(-130%)',
-                    animation: showVersion
-                      ? `${holographicSweep} 0.78s cubic-bezier(0.3, 0, 0.2, 1) 0.08s 1 both`
-                      : 'none',
-                  },
-                }}
+                sx={{ color: colors.textSecondary, display: 'block' }}
               >
-                {versionLabel}
+                Ctrl+Shift+C - Toggle panel visibility
               </Typography>
-            )}
+              <Typography
+                variant="caption"
+                sx={{ color: colors.textSecondary, display: 'block', mt: 0.2 }}
+              >
+                Ctrl+Shift+M - Toggle compact mode
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{ color: colors.textSecondary, display: 'block', mt: 0.2 }}
+              >
+                Ctrl+Shift+Y - Export snapshot (clipboard or download)
+              </Typography>
+            </SettingsGroup>
           </Box>
+
+          {(versionLabel || snapshotCopied) && (
+            <Box
+              sx={{
+                px: compact ? 1.35 : 1.5,
+                py: 0.7,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                borderTop: '1px solid rgba(255, 215, 0, 0.12)',
+                backgroundColor: 'rgba(12, 14, 22, 0.65)',
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{ color: colors.textMuted, minHeight: 14 }}
+              >
+                {snapshotCopied
+                  ? 'Snapshot exported for bug reports.'
+                  : 'Press Esc to close settings.'}
+              </Typography>
+
+              {versionLabel && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'inline-block',
+                    overflow: 'hidden',
+                    isolation: 'isolate',
+                    fontSize: '0.66rem',
+                    color: 'rgba(222, 205, 168, 0.96)',
+                    letterSpacing: '0.04em',
+                    lineHeight: 1,
+                    pointerEvents: 'none',
+                    opacity: showVersion ? 0.94 : 0,
+                    transform: showVersion
+                      ? 'translateY(0) scale(1)'
+                      : 'translateY(5px) scale(0.9)',
+                    filter: showVersion ? 'blur(0)' : 'blur(3px)',
+                    textShadow: showVersion
+                      ? '0 0 10px rgba(255, 223, 140, 0.36)'
+                      : '0 0 0 rgba(255, 223, 140, 0)',
+                    transition:
+                      'opacity 0.12s ease, transform 0.12s ease, filter 0.12s ease, text-shadow 0.14s ease',
+                    animation: showVersion
+                      ? `${versionBadgeReveal} 0.62s cubic-bezier(0.25, 0.9, 0.3, 1) both`
+                      : 'none',
+                    '&::after': {
+                      content: '""',
+                      position: 'absolute',
+                      inset: 0,
+                      pointerEvents: 'none',
+                      background:
+                        'linear-gradient(110deg, transparent 22%, rgba(152, 218, 255, 0.25) 42%, rgba(255, 236, 166, 0.48) 50%, rgba(152, 218, 255, 0.24) 58%, transparent 78%)',
+                      mixBlendMode: 'screen',
+                      opacity: showVersion ? 1 : 0,
+                      transform: 'translateX(-130%)',
+                      animation: showVersion
+                        ? `${holographicSweep} 0.78s cubic-bezier(0.3, 0, 0.2, 1) 0.08s 1 both`
+                        : 'none',
+                    },
+                  }}
+                >
+                  {versionLabel}
+                </Typography>
+              )}
+            </Box>
+          )}
         </Paper>
-      </Popper>
-    </Box>
+      </Box>
+    </>
   );
 });
 

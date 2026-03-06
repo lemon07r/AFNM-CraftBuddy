@@ -992,96 +992,117 @@ export function RecommendationPanel({
   // Normal recommendation state
   return (
     <PanelContainer compact={compactMode}>
-      {/* Settings Panel */}
-      <SettingsPanel
-        onSettingsChange={onSettingsChange}
-        onSearchSettingsChange={onSearchSettingsChange}
-        onOpenChange={setIsSettingsOpen}
-        version={version}
-        leadingControls={
-          !compactMode ? <CommunityLinks isOpen={isSettingsOpen} /> : undefined
-        }
-      />
-
-      {/* Recalculate button when search settings changed */}
-      {onRecalculate && (
-        <RecalculateButton visible={settingsStale} onClick={onRecalculate} />
-      )}
-
-      <SectionHeader color={colors.gold} compact={compactMode}>
-        {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
-      </SectionHeader>
-
-      {/* Progress display */}
-      <ProgressSection
-        currentCompletion={currentCompletion}
-        currentPerfection={currentPerfection}
-        targetCompletion={targetCompletion}
-        targetPerfection={targetPerfection}
-        maxCompletionCap={maxCompletionCap}
-        maxPerfectionCap={maxPerfectionCap}
-        currentStability={currentStability}
-        currentMaxStability={currentMaxStability}
-        targetStability={targetStability}
-        currentToxicity={currentToxicity}
-        maxToxicity={maxToxicity}
-      />
-
-      {/* Conditions display */}
-      {showForecastedConditions && !compactMode && (
-        <ConditionsSection
-          currentCondition={currentCondition}
-          nextConditions={nextConditions}
+      <Box sx={{ position: 'relative' }}>
+        {/* Settings Panel */}
+        <SettingsPanel
+          onSettingsChange={onSettingsChange}
+          onSearchSettingsChange={onSearchSettingsChange}
+          onOpenChange={setIsSettingsOpen}
+          version={version}
+          compact={compactMode}
+          leadingControls={
+            !compactMode ? <CommunityLinks isOpen={isSettingsOpen} /> : undefined
+          }
         />
-      )}
 
-      {/* Primary recommendation */}
-      <SkillCard rec={result.recommendation} isPrimary />
+        <Box
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            pointerEvents: isSettingsOpen ? 'none' : 'auto',
+            transform: isSettingsOpen
+              ? 'translateX(-18px) scale(0.985)'
+              : 'translateX(0) scale(1)',
+            transformOrigin: 'left center',
+            opacity: isSettingsOpen ? 0.18 : 1,
+            filter: isSettingsOpen
+              ? 'blur(7px) saturate(0.72)'
+              : 'blur(0) saturate(1)',
+            transition:
+              'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, filter 0.3s ease',
+          }}
+        >
+          {/* Recalculate button when search settings changed */}
+          {onRecalculate && (
+            <RecalculateButton visible={settingsStale} onClick={onRecalculate} />
+          )}
 
-      {/* Optimal rotation preview */}
-      {showOptimalRotation && result.optimalRotation && !compactMode && (
-        <RotationSection
-          rotation={result.optimalRotation}
-          maxDisplay={maxRotationDisplay}
-        />
-      )}
+          <SectionHeader color={colors.gold} compact={compactMode}>
+            {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
+          </SectionHeader>
 
-      {/* Expected final state */}
-      {showExpectedFinalState && result.expectedFinalState && !compactMode && (
-        <FinalStateSection
-          state={result.expectedFinalState}
-          targetCompletion={targetCompletion}
-          targetPerfection={targetPerfection}
-          turnsCount={result.optimalRotation?.length || 1}
-        />
-      )}
+          {/* Progress display */}
+          <ProgressSection
+            currentCompletion={currentCompletion}
+            currentPerfection={currentPerfection}
+            targetCompletion={targetCompletion}
+            targetPerfection={targetPerfection}
+            maxCompletionCap={maxCompletionCap}
+            maxPerfectionCap={maxPerfectionCap}
+            currentStability={currentStability}
+            currentMaxStability={currentMaxStability}
+            targetStability={targetStability}
+            currentToxicity={currentToxicity}
+            maxToxicity={maxToxicity}
+          />
 
-      {/* Alternative skills */}
-      {maxAlternatives > 0 &&
-        result.alternativeSkills.length > 0 &&
-        !compactMode && (
-          <>
-            <GradientDivider />
-            <SubSectionHeader>Alternatives:</SubSectionHeader>
-            {result.alternativeSkills
-              .slice(0, maxAlternatives)
-              .map((rec, idx) => (
-                <SkillCard key={idx} rec={rec} showQuality />
-              ))}
-          </>
-        )}
+          {/* Conditions display */}
+          {showForecastedConditions && !compactMode && (
+            <ConditionsSection
+              currentCondition={currentCondition}
+              nextConditions={nextConditions}
+            />
+          )}
 
-      {/* Hotkey hints */}
-      {!compactMode && (
-        <HotkeyHints
-          hints={[
-            { key: 'Ctrl+Shift+C', action: 'Hide' },
-            { key: 'Ctrl+Shift+M', action: 'Compact' },
-          ]}
-        />
-      )}
+          {/* Primary recommendation */}
+          <SkillCard rec={result.recommendation} isPrimary />
 
-      <PanelVersionBadge version={version} visible={!isSettingsOpen} />
+          {/* Optimal rotation preview */}
+          {showOptimalRotation && result.optimalRotation && !compactMode && (
+            <RotationSection
+              rotation={result.optimalRotation}
+              maxDisplay={maxRotationDisplay}
+            />
+          )}
+
+          {/* Expected final state */}
+          {showExpectedFinalState && result.expectedFinalState && !compactMode && (
+            <FinalStateSection
+              state={result.expectedFinalState}
+              targetCompletion={targetCompletion}
+              targetPerfection={targetPerfection}
+              turnsCount={result.optimalRotation?.length || 1}
+            />
+          )}
+
+          {/* Alternative skills */}
+          {maxAlternatives > 0 &&
+            result.alternativeSkills.length > 0 &&
+            !compactMode && (
+              <>
+                <GradientDivider />
+                <SubSectionHeader>Alternatives:</SubSectionHeader>
+                {result.alternativeSkills
+                  .slice(0, maxAlternatives)
+                  .map((rec, idx) => (
+                    <SkillCard key={idx} rec={rec} showQuality />
+                  ))}
+              </>
+            )}
+
+          {/* Hotkey hints */}
+          {!compactMode && (
+            <HotkeyHints
+              hints={[
+                { key: 'Ctrl+Shift+C', action: 'Hide' },
+                { key: 'Ctrl+Shift+M', action: 'Compact' },
+              ]}
+            />
+          )}
+
+          <PanelVersionBadge version={version} visible={!isSettingsOpen} />
+        </Box>
+      </Box>
     </PanelContainer>
   );
 }

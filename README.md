@@ -51,6 +51,7 @@ During crafting (forge/alchemical/inscription/resonance), the panel shows:
 
 ![CraftBuddy Settings](pictures/settings.png)
 
+- The settings view opens as a dedicated slide-over panel face inside CraftBuddy, instead of expanding the panel footprint
 - Search presets: `Instant`, `Fast`, `Balanced` (default), `High Accuracy`, `Max`
 - `Lookahead Depth` (`1-96`, default `64`)
 - `Search Time Budget` (`100-10,000ms`, default `4,500ms`)

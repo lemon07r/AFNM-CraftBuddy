@@ -75,7 +75,7 @@ For visual/UI changes, do not rely only on static code review. Use the committed
 3. `agent-browser open http://127.0.0.1:4173`
 4. capture `agent-browser snapshot -i` / `agent-browser screenshot`
 
-The harness renders a stable recommendation/settings fixture that is good enough for layout regressions like card overflow, tooltip placement, and settings panel size.
+The harness renders a stable recommendation/settings fixture that is good enough for layout regressions like card overflow, tooltip placement, settings panel size, and open/close cover transitions.
 
 Keep `react` and `react-dom` on the same version. Standalone browser verification will fail fast on mismatched versions even if the mod webpack build still succeeds.
 
