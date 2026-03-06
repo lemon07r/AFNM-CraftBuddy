@@ -323,7 +323,6 @@ const SettingsGroup = memo(function SettingsGroup({
   return (
     <Box
       sx={{
-        mb: 0.95,
         p: 1,
         display: 'flex',
         flexDirection: 'column',
@@ -393,7 +392,7 @@ const SliderSetting = memo(function SliderSetting({
     : String(draftValue);
 
   return (
-    <Box sx={{ mb: 1.1 }}>
+    <Box>
       <FlexRow
         gap={0.5}
         sx={{ alignItems: 'center', mb: 0.2, justifyContent: 'space-between' }}
@@ -462,7 +461,6 @@ const ToggleSetting = memo(function ToggleSetting({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        mb: 0.5,
       }}
     >
       <FlexRow gap={0.5} sx={{ alignItems: 'center' }}>
@@ -1037,7 +1035,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                       flex: 1,
                       display: 'flex',
                       flexDirection: 'column',
-                      justifyContent: compact ? 'flex-start' : 'space-between',
+                      gap: compact ? 0.9 : 0.75,
                       minHeight: 0,
                     }}
                   >
@@ -1130,9 +1128,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                         flex: 1,
                         display: 'flex',
                         flexDirection: 'column',
-                        justifyContent: compact
-                          ? 'flex-start'
-                          : 'space-between',
+                        gap: compact ? 0.7 : 0.55,
                         minHeight: 0,
                       }}
                     >
