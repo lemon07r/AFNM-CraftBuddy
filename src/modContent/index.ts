@@ -981,21 +981,6 @@ function configureNativeOptimizerProviders(): void {
   const modUtils = (window as any)?.modAPI?.utils;
   const nextConditionResolver = getModApiNextConditionResolver();
 
-  const nativeEvaluateScaling =
-    typeof modUtils?.evaluateScaling === 'function'
-      ? (
-          scaling: Record<string, unknown>,
-          variables: Record<string, number>,
-          stanceLength: number,
-          preMaxTransform?: (value: number) => number,
-        ) =>
-          modUtils.evaluateScaling(
-            scaling as any,
-            variables,
-            stanceLength,
-            preMaxTransform,
-          )
-      : undefined;
   const nativeCalculateOvercrit =
     typeof modUtils?.calculateCraftingOvercrit === 'function'
       ? (critChance: number, critMultiplier: number) =>
@@ -1003,14 +988,13 @@ function configureNativeOptimizerProviders(): void {
       : undefined;
 
   setNativeCraftingUtils(
-    nativeEvaluateScaling || nativeCalculateOvercrit
+    nativeCalculateOvercrit
       ? {
-          evaluateScaling: nativeEvaluateScaling,
           calculateCraftingOvercrit: nativeCalculateOvercrit,
         }
       : undefined,
   );
-  integrationDiagnostics.usingModApiScalingEvaluator = !!nativeEvaluateScaling;
+  integrationDiagnostics.usingModApiScalingEvaluator = false;
   integrationDiagnostics.usingModApiOvercritHelper = !!nativeCalculateOvercrit;
 
   const nativeCanUseAction =

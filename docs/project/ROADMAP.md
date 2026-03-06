@@ -3,7 +3,7 @@ title: Roadmap
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-28
+last_verified: 2026-03-06
 source_of_truth: src/optimizer/*, src/modContent/index.ts, docs/dev-requests/STATUS.md
 review_cycle_days: 30
 related_files:
@@ -17,8 +17,9 @@ related_files:
 
 ### P1: Native API cutover
 
-- keep native scaling/overcrit/all-depth can-use-action precheck path enabled with fallback
+- keep native overcrit/all-depth can-use-action precheck path enabled with fallback
 - keep guarded native condition-transition provider enabled with fallback
+- require a documented pure hypothetical-state scaling contract before reconsidering native scaling in search
 - switch to game-native finalized post-modifier cost helpers when exposed
 - validate all-depth native precheck parity in live crafts
 - retire fallback only after one full release proves stable

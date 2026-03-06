@@ -344,48 +344,12 @@ export interface NativeCraftingUtils {
 }
 
 let activeNativeCraftingUtils: NativeCraftingUtils | undefined;
-let warnedNativeScalingFailure = false;
 let warnedNativeOvercritFailure = false;
-
-function scalingTreeContainsUpgradeKey(scaling: Scaling | undefined): boolean {
-  if (!scaling) {
-    return false;
-  }
-
-  const visited = new WeakSet<object>();
-  const walk = (value: unknown): boolean => {
-    if (!value || typeof value !== 'object') {
-      return false;
-    }
-    if (visited.has(value as object)) {
-      return false;
-    }
-    visited.add(value as object);
-
-    if (Array.isArray(value)) {
-      return value.some((entry) => walk(entry));
-    }
-
-    const record = value as Record<string, unknown>;
-    const rawUpgradeKey = record.upgradeKey;
-    if (
-      typeof rawUpgradeKey === 'string' &&
-      rawUpgradeKey.trim().length > 0
-    ) {
-      return true;
-    }
-
-    return Object.values(record).some((entry) => walk(entry));
-  };
-
-  return walk(scaling);
-}
 
 export function setNativeCraftingUtils(
   nativeUtils: NativeCraftingUtils | undefined
 ): void {
   activeNativeCraftingUtils = nativeUtils;
-  warnedNativeScalingFailure = false;
   warnedNativeOvercritFailure = false;
 }
 
@@ -655,42 +619,11 @@ export function evaluateScaling(
 ): number {
   if (!scaling) return defaultValue;
 
-  // For simple scalings (only value, no stat/scaling/eqn/customScaling),
-  // always use the local fallback.  The native evaluateScaling can
-  // misinterpret simple values (e.g., returning 9 instead of 32 for
-  // {value: 32.5, upgradeKey: 'stability'}) because it may apply
-  // game-internal mastery/upgrade logic that the optimizer already
-  // handles separately via evaluateScalingWithMasteryUpgrades.  The same
-  // issue can affect any scaling tree that still carries an upgradeKey, so
-  // those must also stay on the local deterministic path.
-  const isSimpleScaling =
-    !scaling.stat &&
-    !scaling.scaling &&
-    !scaling.eqn &&
-    !scaling.customScaling &&
-    !scaling.additiveEqn;
-
-  const nativeScaling = activeNativeCraftingUtils?.evaluateScaling;
-  if (nativeScaling && !isSimpleScaling && !scalingTreeContainsUpgradeKey(scaling)) {
-    try {
-      const nativeValue = nativeScaling(
-        scaling as unknown as Record<string, unknown>,
-        variables as Record<string, number>,
-        1
-      );
-      if (Number.isFinite(nativeValue)) {
-        return nativeValue;
-      }
-    } catch (error) {
-      if (!warnedNativeScalingFailure) {
-        console.warn(
-          '[CraftBuddy] Native evaluateScaling failed, using local fallback:',
-          error
-        );
-        warnedNativeScalingFailure = true;
-      }
-    }
-  }
+  // Keep scaling evaluation fully local inside optimizer simulation.
+  // Live native evaluateScaling has proven not to be referentially transparent
+  // for hypothetical future states: it can reflect ambient runtime state and
+  // already-upgraded payloads instead of only the variables we pass in. That
+  // makes search-path gains drift from the simulated state graph.
 
   let result = scaling.value;
 

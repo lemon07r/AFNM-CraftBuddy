@@ -20,8 +20,8 @@ This list contains the smallest set of exposures that materially improve optimiz
 
 - Data/function: `evaluateScaling(scaling, variables, defaultValue)`
 - Why: central formula for technique/buff amounts
-- Mod usage: selectively delegate parity-safe scaling trees in `src/optimizer/gameTypes.ts`; local evaluation remains authoritative for upgrade-bearing trees
-- Status: available via `modAPI.utils.evaluateScaling` (`afnm-types@0.6.38`)
+- Mod usage: only usable if the API is guaranteed pure for hypothetical future-state variables; current optimizer keeps local evaluation authoritative for all scaling in search/simulation
+- Status: available via `modAPI.utils.evaluateScaling` (`afnm-types@0.6.38`), but the current runtime provider is not trusted in search because it can diverge from hypothetical-state simulation
 
 ### P0-2: Expose game-native overcrit helper
 
@@ -65,9 +65,9 @@ This list contains the smallest set of exposures that materially improve optimiz
 
 ## Current implementation posture
 
-CraftBuddy now uses native provider-backed paths for exposed APIs with guarded fallbacks:
+CraftBuddy now uses native provider-backed paths for exposed APIs with guarded fallbacks where the helper is simulation-safe:
 
-- native overcrit helper plus selective native scaling for parity-safe scaling trees in optimizer core
+- native overcrit helper in optimizer core
 - native all-depth action availability precheck with simulated-variable propagation
 - native completion/perfection cap getters in integration layer
 - native crafting-variable seeding via `getVariablesFromCraftingEntity`

@@ -314,4 +314,82 @@ describe('integration regression - forge heat parity', () => {
     expect(result.recommendation?.skill.key).toBe('simple_fusion');
     expect(result.recommendation?.immediateGains.perfection).toBe(0);
   });
+
+  it('ignores misbehaving native scaling for non-upgrade refine side effects at zero heat', () => {
+    const nativeEvaluateScaling = jest.fn(() => 999999);
+    setNativeCraftingUtils({
+      evaluateScaling: nativeEvaluateScaling,
+    });
+
+    const simpleFusion = createSkill({
+      name: 'Simple Fusion',
+      key: 'simple_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 1,
+      scalesWithIntensity: true,
+    });
+    const vulnerableRefine = createSkill({
+      name: 'Vulnerable Refine',
+      key: 'vulnerable_refine',
+      type: 'refine',
+      qiCost: 18,
+      stabilityCost: 10,
+      effects: [
+        {
+          kind: 'perfection',
+          amount: {
+            value: 1,
+            stat: 'control',
+            upgradeKey: 'perfection',
+          },
+        },
+        {
+          kind: 'perfection',
+          condition: {
+            kind: 'chance',
+            percentage: 10,
+          },
+          amount: {
+            value: 0.8,
+            stat: 'control',
+          },
+        },
+      ] as any,
+    });
+    const config = createForgeConfig([simpleFusion, vulnerableRefine]);
+
+    const state = new CraftingState({
+      qi: 400,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 50,
+      perfection: 0,
+      harmony: 0,
+      harmonyData: {
+        forgeWorks: { heat: 0 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+    });
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      ['neutral', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+    );
+
+    expect(nativeEvaluateScaling).not.toHaveBeenCalled();
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation?.skill.key).toBe('simple_fusion');
+    expect(
+      result.alternativeSkills.find((rec) => rec.skill.key === 'vulnerable_refine')
+        ?.immediateGains.perfection,
+    ).toBe(0);
+  });
 });

@@ -289,6 +289,38 @@ describe('Game-Accurate Mechanics', () => {
       expect(nativeEvaluateScaling).not.toHaveBeenCalled();
     });
 
+    it('should ignore native scaling for non-upgrade stat scalings in optimizer simulation', () => {
+      const nativeEvaluateScaling = jest.fn(() => 999999);
+      setNativeCraftingUtils({
+        evaluateScaling: nativeEvaluateScaling,
+      });
+
+      const scaling = {
+        value: 0.8,
+        stat: 'control',
+      };
+      const variables = {
+        control: -2655,
+        intensity: 253,
+        critchance: 8,
+        critmultiplier: 135,
+        pool: 254,
+        maxpool: 266.9,
+        toxicity: 0,
+        maxtoxicity: 160,
+        resistance: 5,
+        itemEffectiveness: 10,
+        pillsPerRound: 1,
+        poolCostPercentage: 100,
+        stabilityCostPercentage: 100,
+        successChanceBonus: 0,
+        stacks: 0,
+      } as any;
+
+      expect(evaluateScaling(scaling, variables, 0)).toBe(-2124);
+      expect(nativeEvaluateScaling).not.toHaveBeenCalled();
+    });
+
     it('should respect max cap', () => {
       const scaling = {
         value: 100,

@@ -3,7 +3,7 @@ title: API Request Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-03
+last_verified: 2026-03-06
 source_of_truth: docs/dev-requests/API_EXPOSURE_REQUESTS.md
 review_cycle_days: 14
 related_files:
@@ -17,7 +17,7 @@ related_files:
 
 | Request | Status | Notes |
 | --- | --- | --- |
-| Game-native scaling evaluator | Available (`afnm-types@0.6.38`) | Native provider wired with local fallback |
+| Game-native scaling evaluator | Available (`afnm-types@0.6.38`) | Not wired into optimizer search; local evaluator remains authoritative because the live provider is not hypothetical-state-safe |
 | Game-native overcrit helper | Available (`afnm-types@0.6.38`) | Native provider wired with EV-preserving fallback |
 | Game-native action availability precheck | Available (`afnm-types@0.6.38`) | All-depth native precheck wired with local fallback on errors |
 | Completion/perfection cap getters | Available (`afnm-types@0.6.38`) | ModAPI cap getters wired in integration with heuristic fallback |

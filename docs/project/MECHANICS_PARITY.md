@@ -29,7 +29,7 @@ related_files:
 - training-mode-aware scoring policy
 - large-number-safe parsing/formatting
 - local expression evaluator hardening (guarded formula filtering + bounded compile cache)
-- guarded native `modAPI.utils` provider path for overcrit and parity-safe scaling trees, with local fallback
+- local scaling evaluation throughout optimizer simulation, with guarded native `modAPI.utils` overcrit fallback
 - native all-depth `canUseAction` precheck with simulated-variable propagation, with fallback
 - native max completion/perfection cap getters in integration layer, with fallback
 - native crafting variable snapshot seeding (`getVariablesFromCraftingEntity`)
@@ -48,8 +48,8 @@ See `docs/dev-requests/STATUS.md` for full status and open questions on pending 
 - integration fallback extraction paths when full runtime state is missing
   forge heat fallback is verified against runtime mirrors; non-forge harmony state is treated as missing instead of guessed when authoritative subtype data is absent
 - condition fallback table in `gameTypes.ts` (used when real condition data is unavailable)
-- local expression compilation path (internal fallback if native evaluator unavailable)
-- upgrade-bearing scaling trees stay on the local evaluator even when native scaling is available, because live technique payloads may already have upgrades baked in
+- local expression compilation path (internal evaluator for optimizer simulation)
+- native scaling is intentionally disabled in optimizer simulation because the live provider can diverge from hypothetical future-state variables
 
 ## Verification test suites
 
