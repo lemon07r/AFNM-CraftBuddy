@@ -81,6 +81,52 @@ Keep `react` and `react-dom` on the same version. Standalone browser verificatio
 
 When touching craft-entry loading behavior in `src/modContent/index.ts`, also verify in the live game by entering a craft from the main menu. The harness can cover layout, but it cannot reproduce the real `createRoot` mount/poll/search timing that decides whether the loading shell paints before the first recommendation.
 
+## Live game verification
+
+The installed game at `/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains` is an Electron app, so it can be exercised through Chrome DevTools Protocol.
+
+Recommended local flow:
+
+1. Build CraftBuddy:
+
+   ```bash
+   bun run build
+   ```
+
+2. Stage the current build into the game's `mods/` directory. A symlink works well for repeated local testing:
+
+   ```bash
+   ln -sfn "/home/lamim/Development/AFNM/AFNM - CraftBuddy/builds/afnm-craftbuddy.zip" "/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains/mods/afnm-craftbuddy.zip"
+   ```
+
+3. Optional but recommended for manual debugging: create `devMode` in the game directory so F12/devtools are available.
+
+4. Launch the game with a remote debugging port:
+
+   ```bash
+   "/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains/launch-native.sh" --remote-debugging-port=9222
+   ```
+
+5. Attach `agent-browser`:
+
+   ```bash
+   agent-browser connect 9222
+   agent-browser tab
+   agent-browser snapshot -i
+   ```
+
+6. Enter a craft from the main menu and verify:
+
+- the CraftBuddy panel appears
+- the loading shell renders before the first recommendation when craft state is still initializing
+- the settings panel still opens and closes correctly
+
+Notes:
+
+- The game launcher already forwards extra Chromium/Electron flags, so `--remote-debugging-port=9222` works with `launch-native.sh`.
+- `README.md` documents the `devMode` file for opening in-game devtools manually.
+- The live runtime externalizes React/ReactDOM globals differently from the harness/browser build. When touching mount timing, validate in the live game, not only in the harness.
+
 ## Validation requirements
 
 For any mechanics change: see `AGENTS.md` → "How to safely change the optimizer" for the full workflow. Summary:

@@ -23,6 +23,7 @@
 - `bun run test:coverage`: generate coverage reports in `coverage/` (text, lcov, html).
 - `bun run ui:harness:build`: build the browser UI harness into `tmp/ui-harness/`.
 - `bun run ui:harness:serve`: serve the UI harness at `http://127.0.0.1:4173` for `agent-browser`.
+- `"/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains/launch-native.sh" --remote-debugging-port=9222`: launch the installed game with a CDP port for live `agent-browser` verification after staging the build into the game's `mods/` directory.
 - `bun run docs:check`: validate docs links/freshness/authority.
 - `bun run docs:inventory`: regenerate `docs/DOC_INVENTORY.md`.
 - `bun run jest src/__tests__/search.test.ts`: run a focused test file.
@@ -34,6 +35,7 @@
 - Use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` before opening any other reference docs.
 - Use `archive/` only when the curated/active docs are insufficient.
 - If you change docs, run `bun run docs:inventory` and `bun run docs:check` before committing.
+- Use `docs/project/RELEASE_PROCESS.md` for the concrete version bump, commit, push, tag, GitHub release, and Workshop upload pipeline.
 - See `docs/project/DOCS_GOVERNANCE.md` for the full docs model, metadata requirements, and update policy.
 
 ## Coding Style & Naming Conventions
@@ -59,6 +61,14 @@
 - Keep commits scoped to one logical change and use imperative summaries.
 - PRs should include a clear change summary, linked issue (if available), test evidence (commands run), and screenshots for UI updates in `src/ui/`.
 - Explicitly call out gameplay-impacting changes (search scoring, harmony behavior, config defaults).
+
+## Release Workflow
+
+- Bump `package.json` and `scripts/ui/agent-browser-harness.tsx` together before cutting a release tag.
+- Run `bun run test` and `bun run build` before release; if docs changed, also run `bun run docs:inventory` and `bun run docs:check`.
+- Push the release commit to `origin/main` before tagging.
+- Use `bun run workshop:upload -- --change-note "..."` for the normal Workshop publish path, or the underlying `../ModUploader-AFNM` CLI when debugging the uploader itself.
+- Push `git tag vX.Y.Z` to trigger `.github/workflows/release.yml`, which creates the GitHub Release and uploads `builds/afnm-craftbuddy.zip`.
 
 ## Optimizer Design Principles
 

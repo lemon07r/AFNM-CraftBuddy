@@ -18,13 +18,13 @@ Generated on: 2026-03-06
 
 | Category | Count |
 |---|---|
-| project | 8 |
+| project | 9 |
 | dev-request | 2 |
 | project-meta | 1 |
 | history | 6 |
 | reference | 13 |
 | root-or-other | 2 |
-| total | 32 |
+| total | 33 |
 
 ## Authoritative Docs
 
@@ -38,6 +38,7 @@ Generated on: 2026-03-06
 | `docs/project/INTEGRATION_MODAPI.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/MECHANICS_PARITY.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/OPTIMIZER_DESIGN.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
+| `docs/project/RELEASE_PROCESS.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/ROADMAP.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/START_HERE_FOR_AGENTS.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/TESTING.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |

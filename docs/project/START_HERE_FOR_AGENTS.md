@@ -10,6 +10,7 @@ related_files:
   - AGENTS.md
   - docs/project/ARCHITECTURE.md
   - docs/project/OPTIMIZER_DESIGN.md
+  - docs/project/RELEASE_PROCESS.md
 ---
 
 # Start Here For Agents
@@ -27,6 +28,11 @@ Fast, low-noise onboarding for implementation work on AFNM-CraftBuddy.
 3. `docs/project/MECHANICS_PARITY.md` (what's implemented, what's pending)
 4. `docs/project/OPTIMIZER_DESIGN.md` (search, scoring, performance tuning)
 5. `docs/project/ROADMAP.md` (active priorities)
+
+## Task-specific docs
+
+- testing + harness + live game verification: `docs/project/TESTING.md`
+- release/version bump/tag/workshop flow: `docs/project/RELEASE_PROCESS.md`
 
 ## Key code entrypoints
 

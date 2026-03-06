@@ -11,7 +11,6 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { flushSync } from 'react-dom';
 import {
   CraftingEntity,
   ProgressState,
@@ -229,6 +228,7 @@ let craftStartPending = false;
 let craftStartPendingUntil = 0;
 let overlayForcedByActiveCraft = false;
 let missingVisibleCraftingUiPolls = 0;
+let hasLoggedMissingHostFlushSync = false;
 
 // Polling interval for crafting state detection
 let pollingInterval: number | null = null;
@@ -265,6 +265,51 @@ function scheduleAfterNextPaint(callback: () => void): void {
   }
 
   setTimeout(callback, 0);
+}
+
+function hostReactDomSupportsFlushSync(): boolean {
+  return typeof (ReactDOM as typeof ReactDOM & { flushSync?: unknown })
+    .flushSync === 'function';
+}
+
+function scheduleSearchAfterLoadingShell(callback: () => void): void {
+  if (hostReactDomSupportsFlushSync()) {
+    scheduleAfterNextPaint(callback);
+    return;
+  }
+
+  // The host game exposes createRoot via ReactDOM, but some builds do not
+  // expose flushSync on that same object. Give the concurrent root a full
+  // paint to commit the loading shell before starting synchronous search work.
+  scheduleAfterNextPaint(() => {
+    scheduleAfterNextPaint(callback);
+  });
+}
+
+function renderReactRoot(
+  root: ReactDOM.Root,
+  element: React.ReactNode,
+  { sync = false }: { sync?: boolean } = {},
+): void {
+  const reactDomCompat = ReactDOM as typeof ReactDOM & {
+    flushSync?: (callback: () => void) => void;
+  };
+
+  if (sync && typeof reactDomCompat.flushSync === 'function') {
+    reactDomCompat.flushSync(() => {
+      root.render(element);
+    });
+    return;
+  }
+
+  if (sync && !hasLoggedMissingHostFlushSync) {
+    hasLoggedMissingHostFlushSync = true;
+    debugLog(
+      '[CraftBuddy] Host ReactDOM does not expose flushSync; using async overlay commit',
+    );
+  }
+
+  root.render(element);
 }
 
 // LocalStorage key for caching targets (used for mid-craft save loads)
@@ -2239,15 +2284,15 @@ function updateRecommendation(
   });
   lastOptimizerReplaySnapshot = { input: replayInputSnapshot };
 
-  // Set calculating state and force the loading shell to commit before search.
-  // React's concurrent root can otherwise batch the first loading render with
-  // the result render on craft entry, which makes the shell disappear entirely.
+  // Set calculating state and render the loading shell before search. If the
+  // host ReactDOM exposes flushSync we use it, otherwise we still wait for a
+  // real paint before starting synchronous search work.
   isCalculating = true;
   renderOverlay({ sync: true });
 
   // Cross a paint boundary before the expensive synchronous search so the
   // loading shell has a frame to appear on main-menu craft entry.
-  scheduleAfterNextPaint(() => {
+  scheduleSearchAfterLoadingShell(() => {
     if (searchEpoch !== recommendationSearchEpoch) {
       return;
     }
@@ -2441,14 +2486,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     return;
   }
 
-  if (sync) {
-    flushSync(() => {
-      root.render(themedPanel);
-    });
-    return;
-  }
-
-  root.render(themedPanel);
+  renderReactRoot(root, themedPanel, { sync });
 }
 
 /**
