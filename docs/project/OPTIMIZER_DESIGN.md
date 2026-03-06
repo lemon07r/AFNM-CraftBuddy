@@ -79,6 +79,7 @@ Identical state + config inputs should produce stable recommendations within the
 - `searchBeamWidth` (`3-20`, default `8`)
 - Settings sliders persist on commit (not every drag event) to reduce UI churn.
 - Preset tuning now keeps the beam narrower through mid-budget tiers; replay benchmarking showed widening too early can produce worse partial-frontier recommendations than a deeper narrow-beam search.
+- Manual tuning is coupled: over-raising one slider while starving the others can reduce effective frontier quality. Presets exist to keep the budget ratios in a safer range.
 
 ### Internal search defaults
 

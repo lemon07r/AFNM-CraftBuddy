@@ -21,6 +21,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import {
   CraftBuddySettings,
   getSettings,
@@ -58,6 +59,12 @@ interface SearchPreset {
     | 'searchMaxNodes'
     | 'searchBeamWidth'
   >;
+}
+
+interface SettingHelpContent {
+  title: string;
+  description: string;
+  note?: string;
 }
 
 const SEARCH_PRESETS: SearchPreset[] = [
@@ -119,6 +126,160 @@ const SEARCH_PRESETS: SearchPreset[] = [
   },
 ];
 
+const SEARCH_BUDGET_HELP: SettingHelpContent = {
+  title: 'Search budget coupling',
+  description:
+    'Depth, time, nodes, and beam width work as one shared budget. Pushing one much higher than the others can waste search and sometimes make partial-frontier recommendations worse.',
+  note: 'If you are unsure, start from a preset and only tune one step at a time.',
+};
+
+const LOOKAHEAD_DEPTH_HELP: SettingHelpContent = {
+  title: 'Lookahead Depth',
+  description:
+    'Sets the maximum turn horizon the search can plan through. Extra depth only helps if time and node budgets are high enough to actually reach it.',
+  note: 'Very high depth with low nodes or time often adds little real search.',
+};
+
+const SEARCH_TIME_HELP: SettingHelpContent = {
+  title: 'Search Time Budget',
+  description:
+    'Wall-clock cutoff for each recommendation. This is machine-dependent: faster computers search farther within the same time budget.',
+  note: 'Raise time after depth and nodes are already high enough; otherwise the search may hit a different cap first.',
+};
+
+const SEARCH_MAX_NODES_HELP: SettingHelpContent = {
+  title: 'Search Max Nodes',
+  description:
+    'Caps how many states the optimizer can explore. This is usually the most direct way to improve recommendation quality on difficult turns.',
+  note: 'If nodes are too low, higher depth or time may not matter because search stops early.',
+};
+
+const SEARCH_BEAM_WIDTH_HELP: SettingHelpContent = {
+  title: 'Search Beam Width',
+  description:
+    'Controls how many candidate branches survive at each layer. Wider is not automatically better because it spreads the budget across more lines.',
+  note: 'Keep beam width moderate unless you also have enough depth, time, and nodes to support it.',
+};
+
+const MAX_ALTERNATIVES_HELP: SettingHelpContent = {
+  title: 'Max Alternatives',
+  description:
+    'Sets how many backup moves are shown under the top recommendation.',
+  note: 'This affects panel output only and does not improve or reduce search accuracy.',
+};
+
+const COMPACT_MODE_HELP: SettingHelpContent = {
+  title: 'Compact Mode',
+  description:
+    'Shrinks the recommendation panel to save screen space during crafting.',
+  note: 'Display-only setting. Does not change optimizer behavior.',
+};
+
+const SHOW_ROTATION_HELP: SettingHelpContent = {
+  title: 'Show Rotation',
+  description:
+    'Displays the predicted follow-up move sequence from the current search result.',
+  note: 'Display-only setting. Does not change optimizer behavior.',
+};
+
+const SHOW_FINAL_STATE_HELP: SettingHelpContent = {
+  title: 'Show Final State',
+  description:
+    'Displays the expected craft state after following the shown path.',
+  note: 'Display-only setting. Does not change optimizer behavior.',
+};
+
+const SHOW_CONDITIONS_HELP: SettingHelpContent = {
+  title: 'Show Conditions',
+  description:
+    'Displays the visible upcoming condition forecast used by the optimizer.',
+  note: 'Display-only setting. Does not change optimizer behavior.',
+};
+
+function getTooltipPopperProps() {
+  return {
+    disablePortal: false,
+    style: { zIndex: 10001 },
+    container:
+      typeof document !== 'undefined'
+        ? (document.getElementById('craftbuddy-overlay') ?? document.body)
+        : undefined,
+  };
+}
+
+function renderHelpContent(help: SettingHelpContent): React.ReactNode {
+  return (
+    <Box sx={{ maxWidth: 320 }}>
+      <Typography
+        variant="subtitle2"
+        sx={{ color: colors.gold, fontWeight: 600, mb: 0.4 }}
+      >
+        {help.title}
+      </Typography>
+      <Typography
+        variant="body2"
+        sx={{ color: colors.textSecondary, lineHeight: 1.45 }}
+      >
+        {help.description}
+      </Typography>
+      {help.note && (
+        <Typography
+          variant="caption"
+          sx={{ color: colors.textDisabled, display: 'block', mt: 0.75 }}
+        >
+          {help.note}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+const InlineHelp = memo(function InlineHelp({
+  help,
+  placement = 'top-start',
+}: {
+  help: SettingHelpContent;
+  placement?:
+    | 'bottom'
+    | 'bottom-end'
+    | 'bottom-start'
+    | 'left'
+    | 'left-end'
+    | 'left-start'
+    | 'right'
+    | 'right-end'
+    | 'right-start'
+    | 'top'
+    | 'top-end'
+    | 'top-start';
+}) {
+  return (
+    <Tooltip
+      title={renderHelpContent(help)}
+      enterDelay={250}
+      placement={placement}
+      arrow
+      PopperProps={getTooltipPopperProps()}
+    >
+      <Box
+        component="span"
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          color: colors.textDisabled,
+          cursor: 'help',
+          transition: transitions.smooth,
+          '&:hover': {
+            color: colors.gold,
+          },
+        }}
+      >
+        <HelpOutlineIcon sx={{ fontSize: 14 }} />
+      </Box>
+    </Tooltip>
+  );
+});
+
 /**
  * Section header for settings groups.
  */
@@ -155,6 +316,7 @@ const SliderSetting = memo(function SliderSetting({
   marks,
   hint,
   tip,
+  tooltip,
   valueFormatter,
   onChange,
   onCommit,
@@ -168,6 +330,7 @@ const SliderSetting = memo(function SliderSetting({
   marks?: boolean;
   hint?: string;
   tip?: string;
+  tooltip?: SettingHelpContent;
   valueFormatter?: (value: number) => string;
   onChange: (value: number) => void;
   onCommit: (value: number) => void;
@@ -178,12 +341,15 @@ const SliderSetting = memo(function SliderSetting({
 
   return (
     <Box sx={{ mb: 2 }}>
-      <Typography variant="body2" sx={{ color: colors.textSecondary, mb: 0.5 }}>
-        {label}:{' '}
+      <FlexRow gap={0.5} sx={{ alignItems: 'center', mb: 0.5 }}>
+        <Typography variant="body2" sx={{ color: colors.textSecondary }}>
+          {label}:
+        </Typography>
+        {tooltip && <InlineHelp help={tooltip} />}
         <Box component="span" sx={{ color: colors.gold }}>
           {formattedValue}
         </Box>
-      </Typography>
+      </FlexRow>
       <Slider
         value={draftValue}
         onChange={(_, v) => onChange(v as number)}
@@ -217,10 +383,12 @@ const SliderSetting = memo(function SliderSetting({
 const ToggleSetting = memo(function ToggleSetting({
   label,
   checked,
+  tooltip,
   onChange,
 }: {
   label: string;
   checked: boolean;
+  tooltip?: SettingHelpContent;
   onChange: (checked: boolean) => void;
 }) {
   return (
@@ -232,9 +400,12 @@ const ToggleSetting = memo(function ToggleSetting({
         mb: 0.5,
       }}
     >
-      <Typography variant="body2" sx={{ color: colors.textSecondary }}>
-        {label}
-      </Typography>
+      <FlexRow gap={0.5} sx={{ alignItems: 'center' }}>
+        <Typography variant="body2" sx={{ color: colors.textSecondary }}>
+          {label}
+        </Typography>
+        {tooltip && <InlineHelp help={tooltip} />}
+      </FlexRow>
       <Switch
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
@@ -471,6 +642,22 @@ export const SettingsPanel = memo(function SettingsPanel({
           </FlexRow>
 
           {/* Search Settings */}
+          <FlexRow gap={0.5} sx={{ alignItems: 'center' }}>
+            <SettingsSectionHeader>Search Settings</SettingsSectionHeader>
+            <Box sx={{ mb: 1 }}>
+              <InlineHelp help={SEARCH_BUDGET_HELP} />
+            </Box>
+          </FlexRow>
+          <Typography
+            variant="caption"
+            sx={{ color: colors.textDisabled, display: 'block', mb: 1.25 }}
+          >
+            These four sliders share one search budget. If one is pushed much
+            higher than the others, accuracy can get worse instead of better.
+            Presets keep them in safer ratios. Changes apply when you release
+            the slider.
+          </Typography>
+
           <SliderSetting
             label="Lookahead Depth"
             value={settings.lookaheadDepth}
@@ -479,8 +666,9 @@ export const SettingsPanel = memo(function SettingsPanel({
             max={96}
             step={1}
             marks
-            hint={`Default: ${DEFAULT_SETTINGS.lookaheadDepth}. Higher values can cause lag.`}
+            hint={`Default: ${DEFAULT_SETTINGS.lookaheadDepth}. Higher values only help if time and nodes are high enough to reach deeper turns.`}
             tip="Tip: For long crafts (60-90 rounds), start with Balanced (64) or Max (96)."
+            tooltip={LOOKAHEAD_DEPTH_HELP}
             onChange={(v) => handleSliderDraftChange('lookaheadDepth', v)}
             onCommit={(v) => handleSliderCommit('lookaheadDepth', v)}
           />
@@ -492,8 +680,9 @@ export const SettingsPanel = memo(function SettingsPanel({
             min={100}
             max={10000}
             step={100}
-            hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}. Higher values improve quality but delay the next recommendation.`}
+            hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}. Search stops at the first budget hit, so extra time only helps if another cap is not stopping it earlier.`}
             valueFormatter={formatSeconds}
+            tooltip={SEARCH_TIME_HELP}
             tip={
               draftSettings.searchTimeBudgetMs > 5000
                 ? 'Warning: Very high time budgets may pause the crafting UI while searching.'
@@ -510,8 +699,9 @@ export const SettingsPanel = memo(function SettingsPanel({
             min={1000}
             max={5000000}
             step={10000}
-            hint={`Default: ${formatNodesThousands(DEFAULT_SETTINGS.searchMaxNodes)} nodes. Larger values improve accuracy but take longer.`}
+            hint={`Default: ${formatNodesThousands(DEFAULT_SETTINGS.searchMaxNodes)} nodes. If this cap is too low, extra depth or time may never get used.`}
             valueFormatter={formatNodesThousands}
+            tooltip={SEARCH_MAX_NODES_HELP}
             onChange={(v) => handleSliderDraftChange('searchMaxNodes', v)}
             onCommit={(v) => handleSliderCommit('searchMaxNodes', v)}
           />
@@ -523,6 +713,9 @@ export const SettingsPanel = memo(function SettingsPanel({
             min={3}
             max={20}
             step={1}
+            hint={`Default: ${DEFAULT_SETTINGS.searchBeamWidth}. Wider beams need the rest of the budget to keep up.`}
+            tip="Tip: Raise beam width last. Too much width on a thin budget can hurt recommendation quality."
+            tooltip={SEARCH_BEAM_WIDTH_HELP}
             onChange={(v) => handleSliderDraftChange('searchBeamWidth', v)}
             onCommit={(v) => handleSliderCommit('searchBeamWidth', v)}
           />
@@ -535,24 +728,28 @@ export const SettingsPanel = memo(function SettingsPanel({
           <ToggleSetting
             label="Compact Mode"
             checked={settings.compactMode}
+            tooltip={COMPACT_MODE_HELP}
             onChange={(v) => handleSettingChange('compactMode', v)}
           />
 
           <ToggleSetting
             label="Show Rotation"
             checked={settings.showOptimalRotation}
+            tooltip={SHOW_ROTATION_HELP}
             onChange={(v) => handleSettingChange('showOptimalRotation', v)}
           />
 
           <ToggleSetting
             label="Show Final State"
             checked={settings.showExpectedFinalState}
+            tooltip={SHOW_FINAL_STATE_HELP}
             onChange={(v) => handleSettingChange('showExpectedFinalState', v)}
           />
 
           <ToggleSetting
             label="Show Conditions"
             checked={settings.showForecastedConditions}
+            tooltip={SHOW_CONDITIONS_HELP}
             onChange={(v) => handleSettingChange('showForecastedConditions', v)}
           />
 
@@ -564,6 +761,8 @@ export const SettingsPanel = memo(function SettingsPanel({
             max={5}
             step={1}
             marks
+            hint="Display-only setting. More alternatives do not improve the optimizer's top recommendation."
+            tooltip={MAX_ALTERNATIVES_HELP}
             onChange={(v) => handleSliderDraftChange('maxAlternatives', v)}
             onCommit={(v) => handleSliderCommit('maxAlternatives', v)}
           />
@@ -584,6 +783,12 @@ export const SettingsPanel = memo(function SettingsPanel({
           >
             Ctrl+Shift+M - Toggle compact mode
           </Typography>
+          <Typography
+            variant="caption"
+            sx={{ color: colors.textDisabled, display: 'block' }}
+          >
+            Ctrl+Shift+Y - Export snapshot (clipboard or download)
+          </Typography>
 
           <GradientDivider />
 
@@ -593,36 +798,54 @@ export const SettingsPanel = memo(function SettingsPanel({
             variant="caption"
             sx={{ color: colors.textDisabled, display: 'block', mb: 1 }}
           >
-            Apply a tuned search profile.
+            Apply a tuned search profile. This overwrites Depth, Time Budget,
+            Max Nodes, and Beam Width together. If you are not intentionally
+            reproducing an edge case, start here instead of manual slider
+            tuning.
           </Typography>
           <FlexRow gap={1} sx={{ flexWrap: 'wrap' }}>
             {SEARCH_PRESETS.map((preset) => {
               const active = isPresetActive(preset);
               return (
-                <Button
+                <Tooltip
                   key={preset.id}
-                  size="small"
-                  variant={active ? 'contained' : 'outlined'}
-                  onClick={() => handleApplyPreset(preset)}
-                  title={preset.description}
-                  sx={{
-                    minWidth: 0,
-                    color: active ? '#141414' : colors.textSecondary,
-                    backgroundColor: active ? colors.gold : 'transparent',
-                    borderColor: active
-                      ? colors.gold
-                      : `${colors.borderMedium}`,
-                    transition: transitions.smooth,
-                    '&:hover': {
-                      borderColor: colors.gold,
-                      backgroundColor: active
-                        ? colors.goldDark
-                        : 'rgba(222, 184, 135, 0.12)',
-                    },
-                  }}
+                  title={renderHelpContent({
+                    title: preset.label,
+                    description: preset.description,
+                    note: `Depth ${preset.values.lookaheadDepth} | Time ${formatSeconds(
+                      preset.values.searchTimeBudgetMs,
+                    )} | Nodes ${formatNodesThousands(
+                      preset.values.searchMaxNodes,
+                    )} | Beam ${preset.values.searchBeamWidth}`,
+                  })}
+                  enterDelay={250}
+                  placement="top"
+                  arrow
+                  PopperProps={getTooltipPopperProps()}
                 >
-                  {preset.label}
-                </Button>
+                  <Button
+                    size="small"
+                    variant={active ? 'contained' : 'outlined'}
+                    onClick={() => handleApplyPreset(preset)}
+                    sx={{
+                      minWidth: 0,
+                      color: active ? '#141414' : colors.textSecondary,
+                      backgroundColor: active ? colors.gold : 'transparent',
+                      borderColor: active
+                        ? colors.gold
+                        : `${colors.borderMedium}`,
+                      transition: transitions.smooth,
+                      '&:hover': {
+                        borderColor: colors.gold,
+                        backgroundColor: active
+                          ? colors.goldDark
+                          : 'rgba(222, 184, 135, 0.12)',
+                      },
+                    }}
+                  >
+                    {preset.label}
+                  </Button>
+                </Tooltip>
               );
             })}
           </FlexRow>
@@ -638,19 +861,11 @@ export const SettingsPanel = memo(function SettingsPanel({
             }}
           >
             <Tooltip
-              title="Copy game state snapshot to clipboard for bug reports"
+              title="Export optimizer replay snapshot for bug reports (same as Ctrl+Shift+Y; copies to clipboard when available, otherwise downloads a .json file)"
               enterDelay={300}
               placement="top"
               arrow
-              PopperProps={{
-                disablePortal: false,
-                style: { zIndex: 10001 },
-                container:
-                  typeof document !== 'undefined'
-                    ? (document.getElementById('craftbuddy-overlay') ??
-                      document.body)
-                    : undefined,
-              }}
+              PopperProps={getTooltipPopperProps()}
             >
               <IconButton
                 size="small"
