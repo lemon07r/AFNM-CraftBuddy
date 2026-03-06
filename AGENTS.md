@@ -34,6 +34,7 @@
 - Treat `docs/project/*` as implementation source of truth, then verify against code/tests.
 - Use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` before opening any other reference docs.
 - Use `archive/` only when the curated/active docs are insufficient.
+- When a task is finished, do a lean docs pass for any changed behavior, workflow, or tooling. Update stale/inaccurate docs if needed, but keep additions concise and avoid padding.
 - If you change docs, run `bun run docs:inventory` and `bun run docs:check` before committing.
 - Use `docs/project/RELEASE_PROCESS.md` for the concrete version bump, commit, push, tag, GitHub release, and Workshop upload pipeline.
 - See `docs/project/DOCS_GOVERNANCE.md` for the full docs model, metadata requirements, and update policy.
@@ -64,10 +65,11 @@
 
 ## Release Workflow
 
+- After implementation and validation are complete, do the docs pass above, then follow this release workflow unless the user explicitly says not to publish yet.
 - Bump `package.json` and `scripts/ui/agent-browser-harness.tsx` together before cutting a release tag.
 - Run `bun run test` and `bun run build` before release; if docs changed, also run `bun run docs:inventory` and `bun run docs:check`.
 - Push the release commit to `origin/main` before tagging.
-- Use `bun run workshop:upload -- --change-note "..."` for the normal Workshop publish path, or the underlying `../ModUploader-AFNM` CLI when debugging the uploader itself.
+- Use `bun run workshop:upload -- --change-note "vX.Y.Z - ..."` for the normal Workshop publish path, or the underlying `../ModUploader-AFNM` CLI when debugging the uploader itself. Include the release tag in the Workshop change note.
 - Push `git tag vX.Y.Z` to trigger `.github/workflows/release.yml`, which creates the GitHub Release and uploads `builds/afnm-craftbuddy.zip`.
 
 ## Optimizer Design Principles

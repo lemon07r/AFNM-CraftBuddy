@@ -15,7 +15,7 @@ related_files:
 
 # Release Process
 
-Use this pipeline after code changes are complete and validation is finished.
+Use this pipeline after code changes are complete and validation is finished. Before publishing, do a lean docs pass for any behavior, workflow, or tooling changed by the task: update stale or inaccurate docs if needed, but keep additions concise.
 
 ## 1. Bump the version
 
@@ -41,6 +41,8 @@ If docs changed, also run:
 bun run docs:inventory
 bun run docs:check
 ```
+
+If the task changed behavior or workflow but the docs did not need edits after review, explicitly confirm that no authoritative docs became stale before continuing.
 
 If the change touched `src/modContent/`, UI integration, craft-entry behavior, or anything runtime-sensitive in the installed game, consider running the live game verification flow in [`docs/project/TESTING.md`](./TESTING.md) before publishing.
 
@@ -69,8 +71,11 @@ git push origin main
 Preferred wrapper from this repo:
 
 ```bash
-bun run workshop:upload -- --change-note "What changed in vX.Y.Z"
+bun run workshop:upload -- --change-note "vX.Y.Z - What changed"
 ```
+
+Include the pushed release tag in the Workshop change note itself. Example:
+`v3.5.22 - Fix CraftBuddy not appearing after the loading-screen timing update.`
 
 What that wrapper does:
 
@@ -83,7 +88,7 @@ Equivalent explicit uploader commands:
 ```bash
 cd ../ModUploader-AFNM
 bun run cli:prepare
-bun run cli:upload -- --workshop-id 3661729323 --zip /absolute/path/to/AFNM-CraftBuddy/builds/afnm-craftbuddy.zip --change-note "What changed in vX.Y.Z"
+bun run cli:upload -- --workshop-id 3661729323 --zip /absolute/path/to/AFNM-CraftBuddy/builds/afnm-craftbuddy.zip --change-note "vX.Y.Z - What changed"
 ```
 
 Requirements:
@@ -116,6 +121,7 @@ Confirm all three release surfaces match:
 
 - `package.json` version
 - pushed Git tag `vX.Y.Z`
-- Steam Workshop change note / uploaded build
+- Steam Workshop change note starts with `vX.Y.Z`
+- Steam Workshop uploaded build
 
 If the GitHub Release needs to be created, do not skip the tag push. The workflow is tag-driven, not branch-push-driven.

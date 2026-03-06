@@ -10,6 +10,8 @@ import React, {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useRef,
 } from 'react';
 import {
   Box,
@@ -323,6 +325,9 @@ const SettingsGroup = memo(function SettingsGroup({
       sx={{
         mb: 0.95,
         p: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
         borderRadius: 1.75,
         background:
           'linear-gradient(180deg, rgba(255, 215, 0, 0.05) 0%, rgba(17, 21, 30, 0.72) 22%, rgba(13, 16, 24, 0.92) 100%)',
@@ -506,6 +511,13 @@ export const SettingsPanel = memo(function SettingsPanel({
   const [settings, setSettings] = useState<CraftBuddySettings>(getSettings());
   const [draftSettings, setDraftSettings] =
     useState<CraftBuddySettings>(settings);
+  const [panelHeight, setPanelHeight] = useState<number | null>(null);
+  const [panelLayoutPhase, setPanelLayoutPhase] = useState<'base' | 'measured'>(
+    'base',
+  );
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const panelBodyRef = useRef<HTMLDivElement | null>(null);
+  const panelInset = compact ? 12 : 16;
 
   type SliderSettingKey =
     | 'lookaheadDepth'
@@ -637,8 +649,93 @@ export const SettingsPanel = memo(function SettingsPanel({
     };
   }, [isOpen]);
 
+  useLayoutEffect(() => {
+    setPanelLayoutPhase('base');
+  }, [
+    isOpen,
+    settings,
+    draftSettings,
+    snapshotCopied,
+    versionLabel,
+  ]);
+
+  useLayoutEffect(() => {
+    if (
+      typeof window === 'undefined' ||
+      !hostRef.current ||
+      !panelBodyRef.current
+    ) {
+      return;
+    }
+
+    const maxHeight = Math.max(0, window.innerHeight - 24);
+    const baseHeight = Math.min(
+      Math.ceil(hostRef.current.getBoundingClientRect().height + panelInset * 2),
+      maxHeight || Number.MAX_SAFE_INTEGER,
+    );
+
+    if (panelLayoutPhase === 'base' || panelHeight == null) {
+      if (panelHeight !== baseHeight) {
+        setPanelHeight(baseHeight);
+        return;
+      }
+
+      const bodyOverflow = Math.max(
+        0,
+        panelBodyRef.current.scrollHeight - panelBodyRef.current.clientHeight,
+      );
+      const desiredHeight = Math.min(
+        baseHeight + bodyOverflow,
+        maxHeight || baseHeight + bodyOverflow,
+      );
+
+      setPanelLayoutPhase('measured');
+      if (desiredHeight !== baseHeight) {
+        setPanelHeight(Math.ceil(desiredHeight));
+      }
+    }
+  }, [panelHeight, panelInset, panelLayoutPhase]);
+
+  useEffect(() => {
+    if (
+      typeof window === 'undefined' ||
+      typeof ResizeObserver === 'undefined'
+    ) {
+      return undefined;
+    }
+
+    const handleResizeProbe = () => {
+      setPanelLayoutPhase('base');
+    };
+
+    const resizeObserver = new ResizeObserver(handleResizeProbe);
+    const observedElements = [hostRef.current].filter(
+      (element): element is HTMLDivElement => element !== null,
+    );
+
+    for (const element of observedElements) {
+      resizeObserver.observe(element);
+    }
+
+    window.addEventListener('resize', handleResizeProbe);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', handleResizeProbe);
+    };
+  }, []);
+
   return (
-    <>
+    <Box
+      ref={hostRef}
+      sx={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 8,
+        overflow: 'visible',
+        pointerEvents: 'none',
+      }}
+    >
       {leadingControls && (
         <Box
           sx={{
@@ -646,8 +743,8 @@ export const SettingsPanel = memo(function SettingsPanel({
             top: -8,
             right: 28,
             zIndex: 9,
-            opacity: isOpen ? 0 : 1,
             pointerEvents: isOpen ? 'none' : 'auto',
+            opacity: isOpen ? 0 : 1,
             visibility: isOpen ? 'hidden' : 'visible',
             transform: isOpen
               ? 'translate(-10px, 6px) scale(0.94)'
@@ -697,10 +794,11 @@ export const SettingsPanel = memo(function SettingsPanel({
       <Box
         sx={{
           position: 'absolute',
-          top: compact ? -12 : -16,
-          left: compact ? -12 : -16,
-          right: compact ? -12 : -16,
-          bottom: compact ? -108 : -146,
+          top: -panelInset,
+          left: -panelInset,
+          right: -panelInset,
+          height:
+            panelHeight ?? `calc(100% + ${panelInset * 2}px)`,
           zIndex: 8,
           pointerEvents: isOpen ? 'auto' : 'none',
           visibility: isOpen ? 'visible' : 'hidden',
@@ -730,8 +828,6 @@ export const SettingsPanel = memo(function SettingsPanel({
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            minHeight: '100%',
-            maxHeight: 'calc(100vh - 24px)',
             background:
               'radial-gradient(circle at top right, rgba(255, 215, 0, 0.08), transparent 26%), radial-gradient(circle at top left, rgba(114, 162, 255, 0.08), transparent 28%), linear-gradient(160deg, rgba(20, 22, 32, 0.985) 0%, rgba(12, 12, 18, 0.99) 100%)',
             border: `1px solid ${colors.borderMedium}`,
@@ -846,8 +942,10 @@ export const SettingsPanel = memo(function SettingsPanel({
           </Box>
 
           <Box
+            ref={panelBodyRef}
             sx={{
               flex: 1,
+              minHeight: 0,
               overflowY: 'auto',
               px: compact ? 1.05 : 1.2,
               py: compact ? 0.95 : 1.05,
@@ -859,8 +957,11 @@ export const SettingsPanel = memo(function SettingsPanel({
                 gridTemplateColumns: compact
                   ? 'minmax(0, 1fr)'
                   : 'minmax(0, 1.3fr) minmax(0, 0.92fr)',
+                gridTemplateRows: compact ? 'auto' : 'auto minmax(0, 1fr)',
                 gap: 1.05,
-                alignItems: 'start',
+                alignItems: 'stretch',
+                alignContent: 'stretch',
+                minHeight: '100%',
               }}
             >
               <Box sx={{ gridColumn: compact ? 'auto' : '1 / -1' }}>
@@ -916,120 +1017,177 @@ export const SettingsPanel = memo(function SettingsPanel({
                 </SettingsGroup>
               </Box>
 
-              <Box sx={{ minWidth: 0 }}>
+              <Box
+                sx={{
+                  minWidth: 0,
+                  minHeight: 0,
+                  display: 'flex',
+                  '& > *': {
+                    flex: 1,
+                  },
+                }}
+              >
                 <SettingsGroup
                   title="Search Budget"
                   help={SEARCH_BUDGET_HELP}
                   description="These sliders share one search budget. Keep them in ratio."
                 >
-                  <SliderSetting
-                    label="Lookahead Depth"
-                    draftValue={draftSettings.lookaheadDepth}
-                    min={1}
-                    max={96}
-                    step={1}
-                    tooltip={LOOKAHEAD_DEPTH_HELP}
-                    onChange={(v) =>
-                      handleSliderDraftChange('lookaheadDepth', v)
-                    }
-                    onCommit={(v) => handleSliderCommit('lookaheadDepth', v)}
-                  />
+                  <Box
+                    sx={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: compact ? 'flex-start' : 'space-between',
+                      minHeight: 0,
+                    }}
+                  >
+                    <SliderSetting
+                      label="Lookahead Depth"
+                      draftValue={draftSettings.lookaheadDepth}
+                      min={1}
+                      max={96}
+                      step={1}
+                      tooltip={LOOKAHEAD_DEPTH_HELP}
+                      onChange={(v) =>
+                        handleSliderDraftChange('lookaheadDepth', v)
+                      }
+                      onCommit={(v) => handleSliderCommit('lookaheadDepth', v)}
+                    />
 
-                  <SliderSetting
-                    label="Search Time Budget"
-                    draftValue={draftSettings.searchTimeBudgetMs}
-                    min={100}
-                    max={10000}
-                    step={100}
-                    valueFormatter={formatSeconds}
-                    tooltip={SEARCH_TIME_HELP}
-                    onChange={(v) =>
-                      handleSliderDraftChange('searchTimeBudgetMs', v)
-                    }
-                    onCommit={(v) =>
-                      handleSliderCommit('searchTimeBudgetMs', v)
-                    }
-                  />
+                    <SliderSetting
+                      label="Search Time Budget"
+                      draftValue={draftSettings.searchTimeBudgetMs}
+                      min={100}
+                      max={10000}
+                      step={100}
+                      valueFormatter={formatSeconds}
+                      tooltip={SEARCH_TIME_HELP}
+                      onChange={(v) =>
+                        handleSliderDraftChange('searchTimeBudgetMs', v)
+                      }
+                      onCommit={(v) =>
+                        handleSliderCommit('searchTimeBudgetMs', v)
+                      }
+                    />
 
-                  <SliderSetting
-                    label="Search Max Nodes"
-                    draftValue={draftSettings.searchMaxNodes}
-                    min={1000}
-                    max={5000000}
-                    step={10000}
-                    valueFormatter={formatNodesThousands}
-                    tooltip={SEARCH_MAX_NODES_HELP}
-                    onChange={(v) =>
-                      handleSliderDraftChange('searchMaxNodes', v)
-                    }
-                    onCommit={(v) => handleSliderCommit('searchMaxNodes', v)}
-                  />
+                    <SliderSetting
+                      label="Search Max Nodes"
+                      draftValue={draftSettings.searchMaxNodes}
+                      min={1000}
+                      max={5000000}
+                      step={10000}
+                      valueFormatter={formatNodesThousands}
+                      tooltip={SEARCH_MAX_NODES_HELP}
+                      onChange={(v) =>
+                        handleSliderDraftChange('searchMaxNodes', v)
+                      }
+                      onCommit={(v) => handleSliderCommit('searchMaxNodes', v)}
+                    />
 
-                  <SliderSetting
-                    label="Search Beam Width"
-                    draftValue={draftSettings.searchBeamWidth}
-                    min={3}
-                    max={20}
-                    step={1}
-                    tooltip={SEARCH_BEAM_WIDTH_HELP}
-                    onChange={(v) =>
-                      handleSliderDraftChange('searchBeamWidth', v)
-                    }
-                    onCommit={(v) => handleSliderCommit('searchBeamWidth', v)}
-                  />
+                    <SliderSetting
+                      label="Search Beam Width"
+                      draftValue={draftSettings.searchBeamWidth}
+                      min={3}
+                      max={20}
+                      step={1}
+                      tooltip={SEARCH_BEAM_WIDTH_HELP}
+                      onChange={(v) =>
+                        handleSliderDraftChange('searchBeamWidth', v)
+                      }
+                      onCommit={(v) =>
+                        handleSliderCommit('searchBeamWidth', v)
+                      }
+                    />
+                  </Box>
                 </SettingsGroup>
               </Box>
 
-              <Box sx={{ minWidth: 0 }}>
-                <SettingsGroup title="Display Options">
-                  <ToggleSetting
-                    label="Compact Mode"
-                    checked={settings.compactMode}
-                    tooltip={COMPACT_MODE_HELP}
-                    onChange={(v) => handleSettingChange('compactMode', v)}
-                  />
+              <Box
+                sx={{
+                  minWidth: 0,
+                  minHeight: 0,
+                  display: 'grid',
+                  gap: 1.05,
+                  gridTemplateRows: compact
+                    ? 'auto auto'
+                    : 'minmax(0, 1fr) auto',
+                  alignItems: 'stretch',
+                }}
+              >
+                <Box
+                  sx={{
+                    minWidth: 0,
+                    minHeight: 0,
+                    display: 'flex',
+                    '& > *': {
+                      flex: 1,
+                    },
+                  }}
+                >
+                  <SettingsGroup title="Display Options">
+                    <Box
+                      sx={{
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: compact
+                          ? 'flex-start'
+                          : 'space-between',
+                        minHeight: 0,
+                      }}
+                    >
+                      <ToggleSetting
+                        label="Compact Mode"
+                        checked={settings.compactMode}
+                        tooltip={COMPACT_MODE_HELP}
+                        onChange={(v) => handleSettingChange('compactMode', v)}
+                      />
 
-                  <ToggleSetting
-                    label="Show Rotation"
-                    checked={settings.showOptimalRotation}
-                    tooltip={SHOW_ROTATION_HELP}
-                    onChange={(v) =>
-                      handleSettingChange('showOptimalRotation', v)
-                    }
-                  />
+                      <ToggleSetting
+                        label="Show Rotation"
+                        checked={settings.showOptimalRotation}
+                        tooltip={SHOW_ROTATION_HELP}
+                        onChange={(v) =>
+                          handleSettingChange('showOptimalRotation', v)
+                        }
+                      />
 
-                  <ToggleSetting
-                    label="Show Final State"
-                    checked={settings.showExpectedFinalState}
-                    tooltip={SHOW_FINAL_STATE_HELP}
-                    onChange={(v) =>
-                      handleSettingChange('showExpectedFinalState', v)
-                    }
-                  />
+                      <ToggleSetting
+                        label="Show Final State"
+                        checked={settings.showExpectedFinalState}
+                        tooltip={SHOW_FINAL_STATE_HELP}
+                        onChange={(v) =>
+                          handleSettingChange('showExpectedFinalState', v)
+                        }
+                      />
 
-                  <ToggleSetting
-                    label="Show Conditions"
-                    checked={settings.showForecastedConditions}
-                    tooltip={SHOW_CONDITIONS_HELP}
-                    onChange={(v) =>
-                      handleSettingChange('showForecastedConditions', v)
-                    }
-                  />
+                      <ToggleSetting
+                        label="Show Conditions"
+                        checked={settings.showForecastedConditions}
+                        tooltip={SHOW_CONDITIONS_HELP}
+                        onChange={(v) =>
+                          handleSettingChange('showForecastedConditions', v)
+                        }
+                      />
 
-                  <SliderSetting
-                    label="Max Alternatives"
-                    draftValue={draftSettings.maxAlternatives}
-                    min={0}
-                    max={5}
-                    step={1}
-                    marks
-                    tooltip={MAX_ALTERNATIVES_HELP}
-                    onChange={(v) =>
-                      handleSliderDraftChange('maxAlternatives', v)
-                    }
-                    onCommit={(v) => handleSliderCommit('maxAlternatives', v)}
-                  />
-                </SettingsGroup>
+                      <SliderSetting
+                        label="Max Alternatives"
+                        draftValue={draftSettings.maxAlternatives}
+                        min={0}
+                        max={5}
+                        step={1}
+                        marks
+                        tooltip={MAX_ALTERNATIVES_HELP}
+                        onChange={(v) =>
+                          handleSliderDraftChange('maxAlternatives', v)
+                        }
+                        onCommit={(v) =>
+                          handleSliderCommit('maxAlternatives', v)
+                        }
+                      />
+                    </Box>
+                  </SettingsGroup>
+                </Box>
 
                 <SettingsGroup title="Keyboard Shortcuts">
                   <Typography
@@ -1040,13 +1198,21 @@ export const SettingsPanel = memo(function SettingsPanel({
                   </Typography>
                   <Typography
                     variant="caption"
-                    sx={{ color: colors.textSecondary, display: 'block', mt: 0.2 }}
+                    sx={{
+                      color: colors.textSecondary,
+                      display: 'block',
+                      mt: 0.2,
+                    }}
                   >
                     Ctrl+Shift+M - Toggle compact mode
                   </Typography>
                   <Typography
                     variant="caption"
-                    sx={{ color: colors.textSecondary, display: 'block', mt: 0.2 }}
+                    sx={{
+                      color: colors.textSecondary,
+                      display: 'block',
+                      mt: 0.2,
+                    }}
                   >
                     Ctrl+Shift+Y - Export snapshot (clipboard or download)
                   </Typography>
@@ -1124,7 +1290,7 @@ export const SettingsPanel = memo(function SettingsPanel({
           )}
         </Paper>
       </Box>
-    </>
+    </Box>
   );
 });
 
