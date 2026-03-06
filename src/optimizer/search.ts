@@ -1768,7 +1768,7 @@ export function lookaheadSearch(
   // Transposition table: cacheKey -> best score and best move found.
   // Storing bestMove enables findOptimalPath() to reconstruct the tree
   // search's actual chosen path instead of greedily re-deciding at each step.
-  const cache = new Map<string, { score: number; bestMove: string }>();
+  let cache = new Map<string, { score: number; bestMove: string }>();
 
   // Flag to signal early termination due to time/node budget
   let shouldTerminate = false;
@@ -2211,7 +2211,10 @@ export function lookaheadSearch(
   /**
    * Evaluate all first moves at a specific depth.
    */
-  function evaluateFirstMoves(depthToSearch: number): SkillRecommendation[] {
+  function evaluateFirstMoves(depthToSearch: number): {
+    recommendations: SkillRecommendation[];
+    completed: boolean;
+  } {
     activeDepth = depthToSearch;
     const currentConditionEffects = getConditionEffectsForConfig(
       config,
@@ -2561,7 +2564,10 @@ export function lookaheadSearch(
       }
     }
 
-    return scored;
+    return {
+      recommendations: scored,
+      completed: !shouldTerminate,
+    };
   }
 
   const depthPlan = (() => {
@@ -2581,16 +2587,41 @@ export function lookaheadSearch(
 
   let usedDepth = depthPlan[0] ?? depth;
   let scoredSkills: SkillRecommendation[] = [];
+  let acceptedCache = cache;
   for (const candidateDepth of depthPlan) {
     if (checkBudget()) break;
-    const candidateSkills = evaluateFirstMoves(candidateDepth);
+    const iterationCache = new Map<string, { score: number; bestMove: string }>();
+    cache = iterationCache;
+    const candidateResult = evaluateFirstMoves(candidateDepth);
+    const candidateSkills = candidateResult.recommendations;
+    const iterationCompleted = candidateResult.completed;
+
+    // Preserve the last fully completed iteration. A deeper pass that hits a
+    // budget limit mid-evaluation is only a partial frontier and should not
+    // overwrite a fully completed shallower pass.
     if (candidateSkills.length > 0) {
-      scoredSkills = candidateSkills;
-      usedDepth = candidateDepth;
-      metrics.depthReached = candidateDepth;
+      if (iterationCompleted || scoredSkills.length === 0) {
+        scoredSkills = candidateSkills;
+        usedDepth = candidateDepth;
+        acceptedCache = iterationCache;
+      } else {
+        cache = acceptedCache;
+      }
+
+      if (iterationCompleted) {
+        metrics.depthReached = candidateDepth;
+      }
+    } else {
+      cache = acceptedCache;
     }
-    if (shouldTerminate) break;
+
+    if (shouldTerminate) {
+      cache = acceptedCache;
+      break;
+    }
   }
+
+  cache = acceptedCache;
 
   if (metrics.depthReached === 0) {
     metrics.depthReached = usedDepth;

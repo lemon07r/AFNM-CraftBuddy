@@ -33,7 +33,7 @@ related_files:
 - `findOptimalPath()` reconstructs the tree search's actual chosen path by walking the transposition table's `bestMove` entries, with greedy evaluation fallback for cache misses
 - beam-limited exploration
 - adaptive beam width at deeper layers
-- iterative deepening option
+- iterative deepening option (only fully completed deeper passes replace shallower results)
 - node/time budget constraints
 - terminal-state shortcuts
 

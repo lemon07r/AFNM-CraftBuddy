@@ -64,6 +64,8 @@ Exported optimizer snapshots are only useful for bug reproduction if they preser
 
 Because search is wall-clock-budgeted, CI/browser/live runs can reach different frontiers before cutoff. Real-user regressions should use exported snapshot fixtures or explicit constrained budgets instead of assuming one machine's timing behavior generalizes.
 
+For search-budget regressions, prefer deterministic node-budget cutoffs over wall-clock-only assertions when the behavior under test is iterative-deepening stability rather than raw responsiveness.
+
 ## UI checks with `agent-browser`
 
 For visual/UI changes, do not rely only on static code review. Use the committed harness with `agent-browser`:

@@ -559,6 +559,58 @@ describe('lookaheadSearch', () => {
     expect(result.searchMetrics!.depthReached).toBeLessThanOrEqual(6);
   });
 
+  it('should keep the last fully completed iterative-deepening pass when node budget stops deeper search', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    // Depth 4 completes within this node budget, but depth 5 does not.
+    const stableDepthFour = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      4,
+      undefined,
+      [],
+      {
+        useIterativeDeepening: false,
+        timeBudgetMs: 100000,
+        maxNodes: 10000000,
+      },
+    );
+    const interruptedDeepening = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      6,
+      undefined,
+      [],
+      {
+        useIterativeDeepening: true,
+        iterativeDeepeningMinDepth: 3,
+        timeBudgetMs: 100000,
+        maxNodes: 12000,
+      },
+    );
+
+    expect(stableDepthFour.recommendation).not.toBeNull();
+    expect(interruptedDeepening.recommendation).not.toBeNull();
+    expect(interruptedDeepening.searchMetrics!.depthReached).toBe(4);
+    expect(interruptedDeepening.recommendation!.skill.key).toBe(
+      stableDepthFour.recommendation!.skill.key,
+    );
+    expect(interruptedDeepening.recommendation!.score).toBeCloseTo(
+      stableDepthFour.recommendation!.score,
+      10,
+    );
+  });
+
   it('should avoid recommending stabilize at high stability when most gain would be wasted', () => {
     const focusedConfig = createTestConfig({
       minStability: 0,
