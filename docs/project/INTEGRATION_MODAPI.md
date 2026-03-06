@@ -3,7 +3,7 @@ title: Mod API Integration
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-28
+last_verified: 2026-03-06
 source_of_truth: src/modContent/index.ts
 review_cycle_days: 21
 related_files:
@@ -24,7 +24,7 @@ All fallback extraction and game-object adaptation logic is centralized here —
 - normalize techniques/masteries/buffs into optimizer action definitions
 - collect condition effects and forecasted conditions
 - seed optimizer state with native variable snapshots when available
-- register guarded native provider seams (availability + condition transitions)
+- register guarded native provider seams (selective scaling, overcrit, availability, condition transitions)
 - pass harmony/training mode fields to optimizer config/state
 - map settings to search config
 - update overlay UI and debug surface
@@ -38,7 +38,7 @@ All fallback extraction and game-object adaptation logic is centralized here —
 
 ## Known fallback paths
 
-Fallback handling exists for targets/progress extraction, condition transitions, and optional payload fields when game objects are incomplete.
+Fallback handling exists for targets/progress extraction, condition transitions, optional payload fields when game objects are incomplete, and selective scaling evaluation. Upgrade-bearing scaling trees stay on the local deterministic evaluator even when `modAPI.utils.evaluateScaling` is available, to avoid double-applying upgrades against already-upgraded live technique payloads.
 
 ## Migration targets
 

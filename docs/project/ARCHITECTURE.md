@@ -3,7 +3,7 @@ title: Architecture
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-05
+last_verified: 2026-03-06
 source_of_truth: src/mod.ts, src/modContent/*, src/optimizer/*, src/ui/*, src/settings/index.ts, src/utils/*
 review_cycle_days: 30
 related_files:
@@ -22,7 +22,7 @@ related_files:
 - `src/modContent/replaySnapshot.ts` — optimizer replay snapshot serialization for live bug reports/debug captures.
 - `src/optimizer/index.ts` — barrel re-exports (public API surface of the optimizer module).
 - `src/optimizer/state.ts` — immutable simulation state model and cache-key generation.
-- `src/optimizer/gameTypes.ts` — game-aligned types + shared formulas (`evaluateScaling`, condition parsing, crit EV helpers).
+- `src/optimizer/gameTypes.ts` — game-aligned types + shared formulas (`evaluateScaling`, guarded native-scaling bridge, condition parsing, crit EV helpers).
 - `src/optimizer/skills.ts` — action transition engine (`calculateSkillGains`, `applySkill`, mastery + buff + harmony handling).
 - `src/optimizer/harmony.ts` — deterministic harmony subsystem simulation for forge/alchemical/inscription/resonance.
 - `src/optimizer/nativeVariables.ts` — canonical native-variable storage + runtime re-derivation of buff/harmony aliases for native availability checks.

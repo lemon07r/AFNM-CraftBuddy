@@ -2,6 +2,7 @@ import { BuffType, CraftingState } from '../optimizer/state';
 import { lookaheadSearch } from '../optimizer/search';
 import type { OptimizerConfig, SkillDefinition } from '../optimizer/skills';
 import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
+import { setNativeCraftingUtils } from '../optimizer/gameTypes';
 import { hydrateHarmonyData } from '../modContent/harmonyState';
 import { buildStateSnapshot } from '../modContent/replaySnapshot';
 
@@ -45,6 +46,10 @@ function createForgeConfig(
     ...overrides,
   };
 }
+
+afterEach(() => {
+  setNativeCraftingUtils(undefined);
+});
 
 describe('modContent harmony hydration', () => {
   it('hydrates forge heat from native variables when progress harmony data is missing', () => {
@@ -242,5 +247,71 @@ describe('integration regression - forge heat parity', () => {
 
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation?.skill.type).toBe('fusion');
+  });
+
+  it('ignores misbehaving native scaling for upgrade-bearing refine effects', () => {
+    const nativeEvaluateScaling = jest.fn((scaling: Record<string, unknown>) => {
+      return scaling.upgradeKey === 'perfection' ? 999999 : Number.NaN;
+    });
+    setNativeCraftingUtils({
+      evaluateScaling: nativeEvaluateScaling,
+    });
+
+    const simpleFusion = createSkill({
+      name: 'Simple Fusion',
+      key: 'simple_fusion',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 1,
+      scalesWithIntensity: true,
+    });
+    const upgradedRefine = createSkill({
+      name: 'Upgraded Refine',
+      key: 'upgraded_refine',
+      type: 'refine',
+      qiCost: 18,
+      stabilityCost: 10,
+      effects: [
+        {
+          kind: 'perfection',
+          amount: {
+            value: 1,
+            stat: 'control',
+            upgradeKey: 'perfection',
+          },
+        },
+      ] as any,
+    });
+    const config = createForgeConfig([simpleFusion, upgradedRefine]);
+
+    const state = new CraftingState({
+      qi: 400,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 50,
+      perfection: 0,
+      harmony: 0,
+      harmonyData: {
+        forgeWorks: { heat: 0 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+    });
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      ['neutral', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+    );
+
+    expect(nativeEvaluateScaling).not.toHaveBeenCalled();
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation?.skill.key).toBe('simple_fusion');
+    expect(result.recommendation?.immediateGains.perfection).toBe(0);
   });
 });

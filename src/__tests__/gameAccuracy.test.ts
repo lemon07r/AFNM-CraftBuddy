@@ -28,11 +28,16 @@ import {
   evalExpression,
   parseRecipeConditionEffects,
   ConditionEffect,
+  setNativeCraftingUtils,
 } from '../optimizer/gameTypes';
 import { getConditionEffectsForConfig } from '../optimizer/skills';
 import { BuffType } from '../optimizer/state';
 
 describe('Game-Accurate Mechanics', () => {
+  afterEach(() => {
+    setNativeCraftingUtils(undefined);
+  });
+
   describe('Critical Hit Formula', () => {
     it('should calculate expected crit multiplier correctly for normal crit chance', () => {
       // 50% crit chance, 150% crit multiplier (1.5x)
@@ -249,6 +254,39 @@ describe('Game-Accurate Mechanics', () => {
 
       const result = evaluateScaling(scaling, variables, 0);
       expect(result).toBe(50); // 10 * 5
+    });
+
+    it('should bypass native scaling for upgrade-bearing stat scalings', () => {
+      const nativeEvaluateScaling = jest.fn(() => 999999);
+      setNativeCraftingUtils({
+        evaluateScaling: nativeEvaluateScaling,
+      });
+
+      const scaling = {
+        value: 3.5,
+        stat: 'control',
+        upgradeKey: 'perfection',
+      };
+      const variables = {
+        control: -2412,
+        intensity: 252,
+        critchance: 8,
+        critmultiplier: 135,
+        pool: 266.9,
+        maxpool: 266.9,
+        toxicity: 0,
+        maxtoxicity: 160,
+        resistance: 5,
+        itemEffectiveness: 10,
+        pillsPerRound: 1,
+        poolCostPercentage: 100,
+        stabilityCostPercentage: 100,
+        successChanceBonus: 0,
+        stacks: 0,
+      } as any;
+
+      expect(evaluateScaling(scaling, variables, 0)).toBe(-8442);
+      expect(nativeEvaluateScaling).not.toHaveBeenCalled();
     });
 
     it('should respect max cap', () => {

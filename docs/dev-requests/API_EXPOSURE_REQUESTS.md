@@ -3,7 +3,7 @@ title: API Exposure Requests
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-07
+last_verified: 2026-03-06
 source_of_truth: src/modContent/index.ts, src/optimizer/*
 review_cycle_days: 30
 related_files:
@@ -20,7 +20,7 @@ This list contains the smallest set of exposures that materially improve optimiz
 
 - Data/function: `evaluateScaling(scaling, variables, defaultValue)`
 - Why: central formula for technique/buff amounts
-- Mod usage: replace internal evaluator in `src/optimizer/gameTypes.ts`
+- Mod usage: selectively delegate parity-safe scaling trees in `src/optimizer/gameTypes.ts`; local evaluation remains authoritative for upgrade-bearing trees
 - Status: available via `modAPI.utils.evaluateScaling` (`afnm-types@0.6.38`)
 
 ### P0-2: Expose game-native overcrit helper
@@ -67,7 +67,7 @@ This list contains the smallest set of exposures that materially improve optimiz
 
 CraftBuddy now uses native provider-backed paths for exposed APIs with guarded fallbacks:
 
-- native scaling + overcrit helpers in optimizer core
+- native overcrit helper plus selective native scaling for parity-safe scaling trees in optimizer core
 - native all-depth action availability precheck with simulated-variable propagation
 - native completion/perfection cap getters in integration layer
 - native crafting-variable seeding via `getVariablesFromCraftingEntity`

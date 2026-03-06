@@ -3,7 +3,7 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-05
+last_verified: 2026-03-06
 source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/search.ts
 review_cycle_days: 14
 related_files:
@@ -29,7 +29,7 @@ related_files:
 - training-mode-aware scoring policy
 - large-number-safe parsing/formatting
 - local expression evaluator hardening (guarded formula filtering + bounded compile cache)
-- native `modAPI.utils` provider path for scaling + overcrit, with fallback
+- guarded native `modAPI.utils` provider path for overcrit and parity-safe scaling trees, with local fallback
 - native all-depth `canUseAction` precheck with simulated-variable propagation, with fallback
 - native max completion/perfection cap getters in integration layer, with fallback
 - native crafting variable snapshot seeding (`getVariablesFromCraftingEntity`)
@@ -49,6 +49,7 @@ See `docs/dev-requests/STATUS.md` for full status and open questions on pending 
   forge heat fallback is verified against runtime mirrors; non-forge harmony state is treated as missing instead of guessed when authoritative subtype data is absent
 - condition fallback table in `gameTypes.ts` (used when real condition data is unavailable)
 - local expression compilation path (internal fallback if native evaluator unavailable)
+- upgrade-bearing scaling trees stay on the local evaluator even when native scaling is available, because live technique payloads may already have upgrades baked in
 
 ## Verification test suites
 

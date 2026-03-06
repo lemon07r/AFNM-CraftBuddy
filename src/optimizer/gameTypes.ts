@@ -347,6 +347,40 @@ let activeNativeCraftingUtils: NativeCraftingUtils | undefined;
 let warnedNativeScalingFailure = false;
 let warnedNativeOvercritFailure = false;
 
+function scalingTreeContainsUpgradeKey(scaling: Scaling | undefined): boolean {
+  if (!scaling) {
+    return false;
+  }
+
+  const visited = new WeakSet<object>();
+  const walk = (value: unknown): boolean => {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+    if (visited.has(value as object)) {
+      return false;
+    }
+    visited.add(value as object);
+
+    if (Array.isArray(value)) {
+      return value.some((entry) => walk(entry));
+    }
+
+    const record = value as Record<string, unknown>;
+    const rawUpgradeKey = record.upgradeKey;
+    if (
+      typeof rawUpgradeKey === 'string' &&
+      rawUpgradeKey.trim().length > 0
+    ) {
+      return true;
+    }
+
+    return Object.values(record).some((entry) => walk(entry));
+  };
+
+  return walk(scaling);
+}
+
 export function setNativeCraftingUtils(
   nativeUtils: NativeCraftingUtils | undefined
 ): void {
@@ -626,7 +660,9 @@ export function evaluateScaling(
   // misinterpret simple values (e.g., returning 9 instead of 32 for
   // {value: 32.5, upgradeKey: 'stability'}) because it may apply
   // game-internal mastery/upgrade logic that the optimizer already
-  // handles separately via evaluateScalingWithMasteryUpgrades.
+  // handles separately via evaluateScalingWithMasteryUpgrades.  The same
+  // issue can affect any scaling tree that still carries an upgradeKey, so
+  // those must also stay on the local deterministic path.
   const isSimpleScaling =
     !scaling.stat &&
     !scaling.scaling &&
@@ -635,7 +671,7 @@ export function evaluateScaling(
     !scaling.additiveEqn;
 
   const nativeScaling = activeNativeCraftingUtils?.evaluateScaling;
-  if (nativeScaling && !isSimpleScaling) {
+  if (nativeScaling && !isSimpleScaling && !scalingTreeContainsUpgradeKey(scaling)) {
     try {
       const nativeValue = nativeScaling(
         scaling as unknown as Record<string, unknown>,

@@ -3,7 +3,7 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-05
+last_verified: 2026-03-06
 source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/settings/index.ts
 review_cycle_days: 30
 related_files:
@@ -67,7 +67,7 @@ No skills are hard-filtered out of the search tree before evaluation. If a move 
 
 ## Determinism expectations
 
-Identical state + config inputs should produce stable recommendations within the deterministic EV model. Condition normalization lowercases unknown labels to avoid cache-key casing drift.
+Identical state + config inputs should produce stable recommendations within the deterministic EV model when the search reaches the same effective frontier under the configured limits. Because lookahead is bounded by wall-clock time, node caps, beam width, and iterative deepening, the same slider values can explore different depths on faster vs slower machines; `searchTimeBudgetMs`, `searchMaxNodes`, `searchBeamWidth`, and `lookaheadDepth` define a budget envelope, not a cross-machine determinism guarantee. Condition normalization lowercases unknown labels to avoid cache-key casing drift.
 
 ## Performance tuning
 
