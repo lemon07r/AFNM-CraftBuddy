@@ -17,6 +17,7 @@
 
 - `bun install`: install dependencies.
 - `bun run build`: run webpack production build and package the mod zip to `builds/`.
+- `bun run workshop:upload -- --change-note "..."`: build CraftBuddy and upload `builds/afnm-craftbuddy.zip` to the configured Steam Workshop item via the sibling `../ModUploader-AFNM` repo. Requires Steam running locally.
 - `bun run test`: run all Jest tests once.
 - `bun run test:watch`: run tests in watch mode while iterating.
 - `bun run test:coverage`: generate coverage reports in `coverage/` (text, lcov, html).

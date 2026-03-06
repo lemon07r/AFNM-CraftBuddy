@@ -991,7 +991,7 @@ export function RecommendationPanel({
 
   // Normal recommendation state
   return (
-    <PanelContainer compact={compactMode}>
+    <PanelContainer compact={compactMode} allowOverflowVisible={isSettingsOpen}>
       <Box sx={{ position: 'relative' }}>
         {/* Settings Panel */}
         <SettingsPanel

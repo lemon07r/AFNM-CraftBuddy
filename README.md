@@ -63,6 +63,16 @@ If you are unsure, use a preset. Presets overwrite all four search sliders toget
 
 Depth, time, nodes, and beam width are coupled search-budget controls: pushing one much higher than the others can waste search and sometimes reduce recommendation quality. Search stops when either the time budget or node budget is hit first, and exact results vary somewhat by craft complexity and machine speed because the time budget is wall-clock based. Manual slider changes apply when you release the slider.
 
+## Local Workshop Publish
+
+If the sibling uploader repo is available at `../ModUploader-AFNM`, you can publish the current build directly from this repo:
+
+```bash
+bun run workshop:upload -- --change-note "What changed"
+```
+
+That rebuilds CraftBuddy, prepares `ModUploader-AFNM`, and updates workshop item `3661729323`. Steam must be running and logged in locally.
+
 ## Debug helpers
 
 ### Enabling Game Dev Mode

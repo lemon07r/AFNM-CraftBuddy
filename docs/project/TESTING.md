@@ -79,6 +79,8 @@ The harness renders a stable recommendation/settings fixture that is good enough
 
 Keep `react` and `react-dom` on the same version. Standalone browser verification will fail fast on mismatched versions even if the mod webpack build still succeeds.
 
+When touching craft-entry loading behavior in `src/modContent/index.ts`, also verify in the live game by entering a craft from the main menu. The harness can cover layout, but it cannot reproduce the real `createRoot` mount/poll/search timing that decides whether the loading shell paints before the first recommendation.
+
 ## Validation requirements
 
 For any mechanics change: see `AGENTS.md` → "How to safely change the optimizer" for the full workflow. Summary:

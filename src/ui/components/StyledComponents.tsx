@@ -39,6 +39,7 @@ interface PanelContainerProps {
   compact?: boolean;
   variant?: 'default' | 'success' | 'error';
   animate?: boolean;
+  allowOverflowVisible?: boolean;
 }
 
 /**
@@ -50,6 +51,7 @@ export const PanelContainer = memo(function PanelContainer({
   compact = false,
   variant = 'default',
   animate = true,
+  allowOverflowVisible = false,
 }: PanelContainerProps) {
   const getBorderColor = () => {
     switch (variant) {
@@ -84,7 +86,7 @@ export const PanelContainer = memo(function PanelContainer({
         border: `1px solid ${getBorderColor()}`,
         borderRadius: 2,
         boxShadow: shadows.panel,
-        overflow: 'hidden',
+        overflow: allowOverflowVisible ? 'visible' : 'hidden',
         animation: animate ? `${slideInRight} 0.3s ease-out` : 'none',
         // Decorative corner accents
         '&::before': {

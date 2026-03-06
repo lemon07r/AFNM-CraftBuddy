@@ -11,6 +11,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import {
   CraftingEntity,
   ProgressState,
@@ -250,6 +251,20 @@ function isCraftStartPendingActive(): boolean {
   if (Date.now() <= craftStartPendingUntil) return true;
   clearCraftStartPending();
   return false;
+}
+
+function scheduleAfterNextPaint(callback: () => void): void {
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.requestAnimationFrame === 'function'
+  ) {
+    window.requestAnimationFrame(() => {
+      setTimeout(callback, 0);
+    });
+    return;
+  }
+
+  setTimeout(callback, 0);
 }
 
 // LocalStorage key for caching targets (used for mid-craft save loads)
@@ -2224,13 +2239,15 @@ function updateRecommendation(
   });
   lastOptimizerReplaySnapshot = { input: replayInputSnapshot };
 
-  // Set calculating state and render immediately to show loading indicator
+  // Set calculating state and force the loading shell to commit before search.
+  // React's concurrent root can otherwise batch the first loading render with
+  // the result render on craft entry, which makes the shell disappear entirely.
   isCalculating = true;
-  renderOverlay();
+  renderOverlay({ sync: true });
 
-  // Use setTimeout to allow UI to update before blocking on search
-  // This ensures the loading indicator is visible during calculation
-  setTimeout(() => {
+  // Cross a paint boundary before the expensive synchronous search so the
+  // loading shell has a frame to appear on main-menu craft entry.
+  scheduleAfterNextPaint(() => {
     if (searchEpoch !== recommendationSearchEpoch) {
       return;
     }
@@ -2301,7 +2318,7 @@ function updateRecommendation(
       // Update the overlay with results
       renderOverlay();
     }
-  }, 0);
+  });
 }
 
 /**
@@ -2328,7 +2345,7 @@ function createOverlayContainer(): void {
 /**
  * Render the recommendation panel in the overlay.
  */
-function renderOverlay(): void {
+function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
   if (!overlayContainer || !reactRoot) {
     createOverlayContainer();
   }
@@ -2418,8 +2435,20 @@ function renderOverlay(): void {
 
   // Wrap panel with ThemeProvider for styled components
   const themedPanel = React.createElement(CraftBuddyThemeProvider, null, panel);
+  const root = reactRoot;
 
-  reactRoot.render(themedPanel);
+  if (!root) {
+    return;
+  }
+
+  if (sync) {
+    flushSync(() => {
+      root.render(themedPanel);
+    });
+    return;
+  }
+
+  root.render(themedPanel);
 }
 
 /**
@@ -2436,10 +2465,10 @@ function hideOverlay(): void {
  * Show the overlay.
  * Only actually shows if there's active crafting data; otherwise defers to renderOverlay's logic.
  */
-function showOverlay(): void {
+function showOverlay({ sync = false }: { sync?: boolean } = {}): void {
   // Let renderOverlay decide whether to actually show based on crafting state.
   // This prevents briefly flashing the overlay when there's no crafting data.
-  renderOverlay();
+  renderOverlay({ sync });
 }
 
 /**
@@ -2979,13 +3008,14 @@ function pollCraftingState(): void {
   if (
     hasVisibleCraftingUi &&
     !hasCraftingData &&
-    currentSettings.panelVisible &&
-    !isOverlayVisible
+    currentSettings.panelVisible
   ) {
     overlayForcedByActiveCraft = true;
     markCraftStartPending();
     currentRecommendation = null;
-    showOverlay();
+    if (!isOverlayVisible) {
+      showOverlay({ sync: true });
+    }
   }
 
   // If the crafting UI just reappeared (e.g., resume from mid-craft save),
@@ -2994,7 +3024,7 @@ function pollCraftingState(): void {
     overlayForcedByActiveCraft = true;
     markCraftStartPending();
     currentRecommendation = null;
-    renderOverlay();
+    renderOverlay({ sync: true });
   }
 
   if (hasCraftingData) {
@@ -3030,7 +3060,7 @@ function pollCraftingState(): void {
       debugLog('[CraftBuddy] Crafting detected, showing overlay');
       overlayForcedByActiveCraft = true;
       markCraftStartPending();
-      showOverlay();
+      showOverlay({ sync: true });
     }
   } else if (wasCraftingActive) {
     if (isPendingCraftStart) {
@@ -3397,7 +3427,7 @@ try {
       isOverlayVisible = false; // Reset so showOverlay will work
       debugLog('[CraftBuddy] Crafting starting, syncing panel visibility');
       if (currentSettings.panelVisible) {
-        showOverlay();
+        showOverlay({ sync: true });
       }
 
       return recipeStats;
@@ -4540,7 +4570,7 @@ function processCraftingState(craftingState: any): void {
     ) {
       overlayForcedByActiveCraft = true;
       markCraftStartPending();
-      showOverlay();
+      showOverlay({ sync: true });
     }
 
     const inventoryItems = cachedStore?.getState?.()?.inventory?.items as
