@@ -39,6 +39,7 @@ import {
   setNativeCraftingUtils,
   setNativeCanUseActionProvider,
 } from '../optimizer';
+import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 import { CraftBuddyThemeProvider } from '../ui/ThemeProvider';
 import {
@@ -48,6 +49,8 @@ import {
   getSearchConfig,
 } from '../settings';
 import { resolveBaseCraftingStats } from './configStats';
+import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
+import { buildStateSnapshot } from './replaySnapshot';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 
@@ -366,18 +369,6 @@ function sanitizeForJson(
 
   return String(value);
 }
-
-function mapToPlainObject<T>(
-  map: Map<string, T>,
-  serialize: (value: T) => unknown = (value) => value,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  map.forEach((value, key) => {
-    out[key] = serialize(value);
-  });
-  return out;
-}
-
 function buildSkillSnapshot(skill: SkillDefinition): Record<string, unknown> {
   return {
     name: skill.name,
@@ -444,42 +435,6 @@ function buildConfigSnapshot(config: OptimizerConfig): Record<string, unknown> {
   };
 }
 
-function buildStateSnapshot(state: CraftingState): Record<string, unknown> {
-  return {
-    qi: state.qi,
-    stability: state.stability,
-    maxStability: state.maxStability,
-    initialMaxStability: state.initialMaxStability,
-    stabilityPenalty: state.stabilityPenalty,
-    completion: state.completion,
-    perfection: state.perfection,
-    critChance: state.critChance,
-    critMultiplier: state.critMultiplier,
-    successChanceBonus: state.successChanceBonus,
-    poolCostPercentage: state.poolCostPercentage,
-    stabilityCostPercentage: state.stabilityCostPercentage,
-    controlBuffTurns: state.controlBuffTurns,
-    intensityBuffTurns: state.intensityBuffTurns,
-    controlBuffMultiplier: state.controlBuffMultiplier,
-    intensityBuffMultiplier: state.intensityBuffMultiplier,
-    toxicity: state.toxicity,
-    maxToxicity: state.maxToxicity,
-    harmony: state.harmony,
-    step: state.step,
-    completionBonus: state.completionBonus,
-    consumedPillsThisTurn: state.consumedPillsThisTurn,
-    cooldowns: mapToPlainObject(state.cooldowns),
-    items: mapToPlainObject(state.items),
-    buffs: mapToPlainObject(state.buffs, (buff) => ({
-      name: buff.name,
-      stacks: buff.stacks,
-    })),
-    nativeVariables: state.nativeVariables
-      ? sanitizeForJson(state.nativeVariables)
-      : null,
-  };
-}
-
 function summarizeRecommendation(
   recommendation: SearchResult['recommendation'],
 ): Record<string, unknown> | null {
@@ -530,6 +485,7 @@ function buildResultSnapshot(result: SearchResult): Record<string, unknown> {
 
 function buildOptimizerReplayInputSnapshot(params: {
   state: CraftingState;
+  harmonyDataSource: HarmonyDataSource;
   config: OptimizerConfig;
   lookaheadDepth: number;
   searchEpoch: number;
@@ -578,7 +534,7 @@ function buildOptimizerReplayInputSnapshot(params: {
       compactMode: currentSettings.compactMode,
       panelVisible: currentSettings.panelVisible,
     },
-    state: buildStateSnapshot(params.state),
+    state: buildStateSnapshot(params.state, params.harmonyDataSource),
     config: buildConfigSnapshot(params.config),
     context: {
       recipeName: (lastRecipe as any)?.name ?? (lastRecipeStats as any)?.name,
@@ -2199,7 +2155,7 @@ function updateRecommendation(
       const stacks = buff?.stacks ?? 0;
       if (stacks > 0) {
         extractedBuffs.set(key, {
-          name: key,
+          name: buff?.name || key,
           stacks,
           definition: {
             ...(buff as any),
@@ -2268,11 +2224,23 @@ function updateRecommendation(
   const gameHarmonyData = progressState?.harmonyTypeData;
   // @ts-ignore - harmony exists on game's ProgressState
   const gameHarmony = progressState?.harmony ?? 0;
-  const nativeVariables = resolveNativeCraftingVariables(
+  const rawNativeVariables = resolveNativeCraftingVariables(
     entity,
     progressState,
     recipeStats || lastRecipeStats,
   );
+  const { harmonyData, source: harmonyDataSource } = hydrateHarmonyData({
+    isSublimeCraft,
+    craftingType: currentCraftingType,
+    progressHarmonyData: gameHarmonyData,
+    nativeVariables: rawNativeVariables,
+    buffs: extractedBuffs,
+  });
+  const nativeVariables = buildCanonicalNativeVariables({
+    nativeVariables: rawNativeVariables,
+    buffs: extractedBuffs,
+    harmonyData,
+  });
 
   const state = new CraftingState({
     qi: pool,
@@ -2297,9 +2265,7 @@ function updateRecommendation(
     consumedPillsThisTurn,
     buffs: extractedBuffs,
     harmony: gameHarmony,
-    harmonyData:
-      gameHarmonyData ??
-      (isSublimeCraft ? { recommendedTechniqueTypes: [] } : undefined),
+    harmonyData,
     completionBonus: completionBonusStacks,
     nativeVariables,
     step: progressState?.step || 0,
@@ -2327,6 +2293,7 @@ function updateRecommendation(
   const searchEpoch = ++recommendationSearchEpoch;
   const replayInputSnapshot = buildOptimizerReplayInputSnapshot({
     state,
+    harmonyDataSource,
     config,
     lookaheadDepth,
     searchEpoch,

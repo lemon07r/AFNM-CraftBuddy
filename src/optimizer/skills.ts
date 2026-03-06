@@ -26,6 +26,11 @@ import {
   evaluateScaling,
 } from './gameTypes';
 import { processHarmonyEffect, getHarmonyStatModifiers } from './harmony';
+import {
+  collectDerivedNativeVariableAliases,
+  applyDerivedNativeVariableAliases,
+  buildCanonicalNativeVariables,
+} from './nativeVariables';
 
 /**
  * Simplified skill definition for optimizer.
@@ -644,12 +649,9 @@ function buildNativeAvailabilityVariables(
     step: state.step,
   };
 
-  state.buffs.forEach((tracked, buffKey) => {
-    variables[buffKey] = tracked.stacks;
-    const normalized = normalizeBuffName(tracked.name || buffKey);
-    if (!(normalized in variables)) {
-      variables[normalized] = tracked.stacks;
-    }
+  applyDerivedNativeVariableAliases(variables, {
+    buffs: state.buffs,
+    harmonyData: state.harmonyData,
   });
 
   return variables;
@@ -703,6 +705,7 @@ function propagateNativeVariablesAfterAction(
     string,
     { name: string; stacks: number; definition?: BuffDefinition }
   >,
+  nextHarmonyData: CraftingState['harmonyData'],
   maxToxicity: number,
   pillsPerRound: number,
 ): Record<string, number> | undefined {
@@ -731,29 +734,34 @@ function propagateNativeVariablesAfterAction(
     maxToxicity > 0 ? maxToxicity : Math.max(1, state.maxToxicity);
 
   const keysToRefresh = new Set<string>();
-  state.buffs.forEach((tracked, buffKey) => {
-    keysToRefresh.add(buffKey);
-    keysToRefresh.add(normalizeBuffName(tracked.name || buffKey));
+  collectDerivedNativeVariableAliases({
+    buffs: state.buffs,
+    harmonyData: state.harmonyData,
+  }).forEach((key) => {
+    keysToRefresh.add(key);
   });
-  nextBuffs.forEach((tracked, buffKey) => {
-    keysToRefresh.add(buffKey);
-    keysToRefresh.add(normalizeBuffName(tracked.name || buffKey));
+  collectDerivedNativeVariableAliases({
+    buffs: nextBuffs,
+    harmonyData: nextHarmonyData,
+  }).forEach((key) => {
+    keysToRefresh.add(key);
   });
   keysToRefresh.forEach((key) => {
     if (key) {
       delete variables[key];
     }
   });
-  nextBuffs.forEach((tracked, buffKey) => {
-    if (tracked.stacks <= 0) return;
-    variables[buffKey] = tracked.stacks;
-    const normalized = normalizeBuffName(tracked.name || buffKey);
-    if (!(normalized in variables)) {
-      variables[normalized] = tracked.stacks;
-    }
+
+  applyDerivedNativeVariableAliases(variables, {
+    buffs: nextBuffs,
+    harmonyData: nextHarmonyData,
   });
 
-  return variables;
+  return buildCanonicalNativeVariables({
+    nativeVariables: variables,
+    buffs: nextBuffs,
+    harmonyData: nextHarmonyData,
+  });
 }
 
 function buildTechniqueScalingVariables(
@@ -2413,6 +2421,7 @@ export function applySkill(
       step: nextStep,
     },
     newBuffs,
+    newHarmonyData,
     maxToxicity,
     config.pillsPerRound || 1,
   );

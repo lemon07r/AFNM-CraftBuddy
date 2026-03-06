@@ -3,7 +3,7 @@ title: Architecture
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-28
+last_verified: 2026-03-05
 source_of_truth: src/mod.ts, src/modContent/*, src/optimizer/*, src/ui/*, src/settings/index.ts, src/utils/*
 review_cycle_days: 30
 related_files:
@@ -18,11 +18,14 @@ related_files:
 - `src/mod.ts` — bootstrap entrypoint and metadata export.
 - `src/modContent/index.ts` — runtime integration boundary: reads game state, builds optimizer config/state/actions, invokes optimizer, renders overlay panel.
 - `src/modContent/configStats.ts` — base crafting stat resolution from game entities.
+- `src/modContent/harmonyState.ts` — harmony-state hydration/canonicalization from authoritative progress payloads and verified runtime fallbacks.
+- `src/modContent/replaySnapshot.ts` — optimizer replay snapshot serialization for live bug reports/debug captures.
 - `src/optimizer/index.ts` — barrel re-exports (public API surface of the optimizer module).
 - `src/optimizer/state.ts` — immutable simulation state model and cache-key generation.
 - `src/optimizer/gameTypes.ts` — game-aligned types + shared formulas (`evaluateScaling`, condition parsing, crit EV helpers).
 - `src/optimizer/skills.ts` — action transition engine (`calculateSkillGains`, `applySkill`, mastery + buff + harmony handling).
 - `src/optimizer/harmony.ts` — deterministic harmony subsystem simulation for forge/alchemical/inscription/resonance.
+- `src/optimizer/nativeVariables.ts` — canonical native-variable storage + runtime re-derivation of buff/harmony aliases for native availability checks.
 - `src/optimizer/search.ts` — recommendation search (`greedySearch`, `lookaheadSearch`, `findBestSkill`) with memoization, pruning, branching.
 - `src/ui/RecommendationPanel.tsx`, `src/ui/SettingsPanel.tsx` — recommendation and settings panels.
 - `src/ui/theme.ts` — MUI theme configuration with custom palette and component overrides.
@@ -37,7 +40,7 @@ related_files:
 ## Runtime lifecycle (high level)
 
 1. Craft state detection/refresh in integration layer.
-2. Conversion of live game payloads -> optimizer model.
+2. Conversion of live game payloads -> optimizer model, including harmony hydration and canonical native-variable extraction.
 3. Search execution for best next action.
 4. UI render/update with recommendation + alternatives.
 5. Repeat on craft-state changes.

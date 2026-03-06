@@ -291,7 +291,7 @@ describe('native canUseAction precheck integration', () => {
     expect(provider.mock.calls[0][0].currentCondition).toBe('positive');
   });
 
-  it('should propagate nativeVariables through applySkill state transitions', () => {
+  it('should preserve only supplemental nativeVariables through applySkill state transitions', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -310,8 +310,8 @@ describe('native canUseAction precheck integration', () => {
     const nextState = applySkill(state, skill, config, [], 0, 'neutral');
     expect(nextState).not.toBeNull();
     expect(nextState?.nativeVariables?.customFlag).toBe(11);
-    expect(nextState?.nativeVariables?.pool).toBe(90);
-    expect(nextState?.nativeVariables?.step).toBe(1);
+    expect(nextState?.nativeVariables?.pool).toBeUndefined();
+    expect(nextState?.nativeVariables?.step).toBeUndefined();
   });
 });
 

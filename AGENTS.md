@@ -64,7 +64,7 @@ See `docs/project/OPTIMIZER_DESIGN.md` for the implementation details (scoring l
 
 ### Scoring rules
 
-- **Proportional, not magic numbers.** Bonuses and penalties must scale with the craft's target magnitude (e.g., `totalTargetMagnitude * 2`). All weights are defined in named constant blocks (`SCORING`, `ORDERING`, `WASTE`, `STALL_PENALTY_MULTIPLIER`) at the top of `search.ts`; add new constants there with a rationale comment.
+- **Proportional, not magic numbers.** Bonuses and penalties must scale with the craft's target magnitude (e.g., `totalTargetMagnitude * 2`). Live scoring weights are defined in named constant blocks at the top of `search.ts`; add new constants there with a rationale comment.
 - **No stability penalties when targets are met.** If `baseTargetsMet` is true the craft is done — survivability penalties must not apply.
 - **Step efficiency.** Penalise `state.step` so shorter paths beat longer ones when both reach the same goal.
 - **Tiny resource tiebreakers when targets are met.** Use `*0.001` (not `*0.05`) so leftover qi/stability never justifies an extra turn.
@@ -77,20 +77,9 @@ See `docs/project/OPTIMIZER_DESIGN.md` for the implementation details (scoring l
 
 ### Move ordering & filtering
 
-- **No hard filters.** Never remove a skill from the search tree before evaluation. Use `computeStallPenalties()` → soft penalties folded into `orderSkillsForSearch()` instead.
-- **Condition-aware ordering.** `orderSkillsForSearch()` must use `calculateSkillGains()` with current condition effects — never raw `baseCompletionGain`/`basePerfectionGain`.
-- **Stall penalties apply at recommendation level.** In greedy search and the lookahead first-move evaluation, stall penalties are added to `scoreState` results. Inside the recursive tree search, only ordering is affected.
-
-### Stabilize penalty rules
-
-The stall penalty system in `computeStallPenalties()` must **never** penalize stabilize when the craft needs it to survive. The `stabilizeProtected` flag gates this:
-
-- `allProgressWouldEndCraft`: every progress skill would drop stability to 0.
-- `stabilityRunwayInsufficient`: estimated turns to finish exceeds estimated turns of stability remaining. **Only applies when `canStabilizeHelpRunway` is true** (i.e., `stability < maxStability`, so stabilize would actually gain stability).
-
-**Critical invariant**: `stabilityRunwayInsufficient` must be gated on whether stabilize can actually help. If stability equals maxStability (due to maxStability decay), stabilize gains 0 stability and cannot improve the runway. Protecting it in this case causes a **stabilize death spiral** — the optimizer recommends stabilize repeatedly (wasting qi and turns) because the runway check keeps protecting it, but each stabilize does nothing.
-
-The stall penalty (`-totalTargetMagnitude × STALL_PENALTY_MULTIPLIER`) is applied to the first-move score in `evaluateFirstMoves()`, which can override the tree search's verdict. This is acceptable when stabilize is genuinely wasteful, but catastrophic when stabilize is needed for survival.
+- **Single ordering path.** `buildOrderedMoveCandidates()` is the authoritative beam-ordering path. It must rank moves from the post-action state using `estimatePostMoveStateScore()` plus the existing tie-breakers, not from a separate heuristic lane.
+- **No hard filters.** Never remove a skill from the search tree before evaluation.
+- **No parallel heuristic ordering systems.** If a move class is under-ranked, fix the post-move evaluation or the transition/scoring model that feeds it. Do not add a second ordering path that can drift from live search behavior.
 
 ### Anti-patterns (DO NOT repeat)
 
@@ -110,10 +99,11 @@ if (baseTargetsMet) score += totalTargetMagnitude * 2;
 
 ```typescript
 // BAD — permanently removes a skill before the tree can evaluate it
-const filtered = skills.filter(s => !isWastefulStabilize(s));
+const filtered = skills.filter(s => !shouldFilterSkill(s));
 
-// GOOD — soft penalty that sinks the skill in ordering but keeps it reachable
-const penalties = computeStallPenalties(state, skills, ...);
+// GOOD — keep all legal skills, then improve the live post-move evaluation
+// so the beam orders them correctly without hiding them.
+const candidates = buildOrderedMoveCandidates(state, condition, queue, effects);
 ```
 
 **3. Ignoring condition effects in move ordering**
@@ -162,19 +152,13 @@ The tree search (`search()`) is the authoritative evaluator. Heuristics added ou
 When a fix requires adding a new heuristic to counteract an existing one, the design is wrong. Each added heuristic interacts with all others, creating exponentially more edge cases.
 
 ```typescript
-// BAD — stall penalty overrides the tree search's survival detection
-rec.score = evaluateFutureScoreAfterSkill(...) + stallPenalty;
+// BAD — first-move ordering or recommendation uses a separate heuristic score
+// that can disagree with the recursive search's actual post-move evaluation.
+const heuristic = rawGain * 8 + buffBonus - stallPenalty;
 
-// BAD — three heuristics fighting each other:
-// 1. Runway penalty says "stabilize!"
-// 2. Stall penalty says "don't stabilize!"
-// 3. New "critical override" to compensate
-// Each was "reasonable" in isolation but they interact unpredictably.
-
-// GOOD — heuristic checks multi-turn survival before penalizing
-const turnsToFinish = estimateRemainingTurns(state, targets);
-const turnsOfRunway = state.stability / ctx.avgStabilityCostPerTurn;
-if (turnsToFinish > turnsOfRunway) return; // never penalize survival-critical stabilize
+// GOOD — evaluate the actual post-action state with the same scoring model
+// the tree search uses, then let tie-breakers handle near-equal moves.
+const orderingScore = estimatePostMoveStateScore(nextState, skill, condition, queue);
 ```
 
 Signs you are creating heuristic soup:

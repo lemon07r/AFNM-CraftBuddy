@@ -3,7 +3,7 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-02
+last_verified: 2026-03-05
 source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/settings/index.ts
 review_cycle_days: 30
 related_files:
@@ -17,6 +17,7 @@ related_files:
 
 - State: immutable `CraftingState` with deterministic cache key.
 - State defensively clones tracked buff entries to preserve immutability boundaries.
+- Integration seeds only canonical supplemental `nativeVariables`; state/buff/harmony mirrors are re-derived on demand from `CraftingState` during native availability checks instead of being persisted into cache keys.
 - Actions: crafting techniques + mapped item actions (when provided by integration layer).
 - Transition engine: `calculateSkillGains(...)` + `applySkill(...)` in `src/optimizer/skills.ts`.
 
@@ -60,7 +61,9 @@ related_files:
 
 ### Move ordering
 
-`orderSkillsForSearch()` uses condition-modified gains (via `calculateSkillGains()`) and soft stall penalties (via `computeStallPenalties()`) to rank skills for beam-width pruning. Priority values and waste detection thresholds are defined in named constant blocks (`ORDERING`, `WASTE`, `STALL_PENALTY_MULTIPLIER`) at the top of `search.ts`. No skills are hard-filtered out of the search tree. Skills that create buffs with action-triggered effects (`onFusion`/`onRefine`/`onStabilize`/`onSupport`) receive an `ORDERING.BUFF_ACTION_TRIGGER` priority boost so they survive beam pruning. The stabilize waste ratio check uses effect-evaluated stability gain (from `calculateSkillGains`) rather than the raw `skill.stabilityGain` field, so skills with large stability effects (e.g., Restoring Brilliance) are not incorrectly penalized.
+`buildOrderedMoveCandidates()` is the live beam-ordering path. It evaluates every currently legal move with `applySkill(...)`, scores the resulting state through `estimatePostMoveStateScore(...)`, and then uses `compareMoveCandidatesForTie(...)` plus immediate progress as tie-breakers. This keeps beam pruning aligned with the same post-move state evaluation that the tree search and first-move recommendation path use.
+
+No skills are hard-filtered out of the search tree before evaluation. If a move class is being mis-ordered, fix the post-move state evaluation or the underlying transition/scoring model instead of introducing a second heuristic ordering lane.
 
 ## Determinism expectations
 
