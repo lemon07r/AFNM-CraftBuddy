@@ -4,7 +4,10 @@ import type { OptimizerConfig, SkillDefinition } from '../optimizer/skills';
 import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
 import { setNativeCraftingUtils } from '../optimizer/gameTypes';
 import { hydrateHarmonyData } from '../modContent/harmonyState';
-import { buildStateSnapshot } from '../modContent/replaySnapshot';
+import {
+  buildConfigSnapshot,
+  buildStateSnapshot,
+} from '../modContent/replaySnapshot';
 
 function createSkill(
   overrides: Partial<SkillDefinition> = {},
@@ -45,6 +48,22 @@ function createForgeConfig(
     targetMultiplier: 2,
     ...overrides,
   };
+}
+
+function reviveConfigSnapshot(snapshot: Record<string, any>): OptimizerConfig {
+  return {
+    ...snapshot,
+    skills: (snapshot.skills || []) as SkillDefinition[],
+  } as OptimizerConfig;
+}
+
+function reviveStateSnapshot(snapshot: Record<string, any>): CraftingState {
+  return new CraftingState({
+    ...snapshot,
+    cooldowns: new Map(Object.entries(snapshot.cooldowns || {})),
+    items: new Map(Object.entries(snapshot.items || {})),
+    buffs: new Map(Object.entries(snapshot.buffs || {})),
+  });
 }
 
 afterEach(() => {
@@ -184,6 +203,209 @@ describe('optimizer replay state snapshots', () => {
         recommendedTechniqueTypes: ['fusion'],
       },
     });
+  });
+
+  it('preserves active buff definitions needed for replay parity', () => {
+    const state = new CraftingState({
+      qi: 200,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      buffs: new Map([
+        [
+          'tidal_current',
+          {
+            name: 'Tidal Current',
+            stacks: 1,
+            definition: {
+              name: 'Tidal Current',
+              canStack: true,
+              stats: {
+                control: {
+                  value: 20,
+                },
+              },
+              effects: [],
+            },
+          },
+        ],
+      ]),
+    });
+
+    const snapshot = buildStateSnapshot(state, 'progressState');
+
+    expect(snapshot).toMatchObject({
+      buffs: {
+        tidal_current: {
+          name: 'Tidal Current',
+          stacks: 1,
+          definition: {
+            name: 'Tidal Current',
+            stats: {
+              control: {
+                value: 20,
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it('preserves mastery and granted buff data in config snapshots', () => {
+    const config = createForgeConfig([
+      createSkill({
+        name: 'Mastered Refine',
+        key: 'mastered_refine',
+        type: 'refine',
+        basePerfectionGain: 1,
+        scalesWithControl: true,
+        nativeTechnique: {
+          name: 'Mastered Refine',
+          currentCooldown: 0,
+        },
+        mastery: {
+          controlBonus: 0.25,
+        },
+        masteryEntries: [
+          {
+            kind: 'upgrade',
+            upgradeKey: 'perfection',
+            change: 0.5,
+          },
+        ],
+        grantedBuff: {
+          name: 'Refinement Edge',
+          canStack: true,
+          stats: {
+            control: {
+              value: 10,
+            },
+          },
+          effects: [],
+        },
+      }),
+    ]);
+
+    const snapshot = buildConfigSnapshot(config);
+
+    expect((snapshot.skills as Record<string, unknown>[])[0]).toMatchObject({
+      key: 'mastered_refine',
+      mastery: {
+        controlBonus: 0.25,
+      },
+      masteryEntries: [
+        {
+          kind: 'upgrade',
+          upgradeKey: 'perfection',
+          change: 0.5,
+        },
+      ],
+      grantedBuff: {
+        name: 'Refinement Edge',
+      },
+      nativeTechnique: {
+        name: 'Mastered Refine',
+        currentCooldown: 0,
+      },
+    });
+  });
+
+  it('round-trips runtime-shaped config and state without changing the recommendation', () => {
+    const config = createForgeConfig([
+      createSkill({
+        name: 'Heat Builder',
+        key: 'heat_builder',
+        type: 'fusion',
+        qiCost: 0,
+        stabilityCost: 10,
+        baseCompletionGain: 1,
+        scalesWithIntensity: true,
+      }),
+      createSkill({
+        name: 'Mastered Refine',
+        key: 'mastered_refine',
+        type: 'refine',
+        qiCost: 0,
+        stabilityCost: 10,
+        effects: [
+          {
+            kind: 'perfection',
+            amount: {
+              value: 1,
+              stat: 'control',
+              upgradeKey: 'perfection',
+            },
+          },
+        ] as any,
+        masteryEntries: [
+          {
+            kind: 'upgrade',
+            upgradeKey: 'perfection',
+            change: 0.5,
+          },
+        ],
+      }),
+    ]);
+    const state = new CraftingState({
+      qi: 200,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      harmony: 50,
+      buffs: new Map([
+        [
+          'tidal_current',
+          {
+            name: 'Tidal Current',
+            stacks: 1,
+            definition: {
+              name: 'Tidal Current',
+              canStack: true,
+              stats: {
+                control: {
+                  value: 50,
+                },
+              },
+              effects: [],
+            },
+          },
+        ],
+      ]),
+      harmonyData: {
+        forgeWorks: { heat: 5 },
+        recommendedTechniqueTypes: ['refine'],
+      },
+    });
+
+    const direct = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      4,
+      'neutral',
+      ['neutral', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 100000, beamWidth: 8 },
+    );
+
+    const replayed = lookaheadSearch(
+      reviveStateSnapshot(buildStateSnapshot(state, 'progressState')),
+      reviveConfigSnapshot(buildConfigSnapshot(config)),
+      100,
+      100,
+      4,
+      'neutral',
+      ['neutral', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 100000, beamWidth: 8 },
+    );
+
+    expect(direct.recommendation?.skill.key).toBe('mastered_refine');
+    expect(replayed.recommendation?.skill.key).toBe(
+      direct.recommendation?.skill.key,
+    );
   });
 });
 

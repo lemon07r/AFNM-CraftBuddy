@@ -3,7 +3,7 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-02
+last_verified: 2026-03-06
 source_of_truth: src/__tests__/*, package.json, scripts/docs/*
 review_cycle_days: 30
 related_files:
@@ -35,6 +35,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 | `largeNumbers.test.ts` | Numeric safety |
 | `configStats.test.ts` | Config statistics calculation |
 | `settings.test.ts` | Settings persistence |
+| `modContentHarmonyState.test.ts` | Harmony hydration, replay snapshot parity, integration regressions |
 
 ## Simulation tests (`craftSimulation.test.ts`)
 
@@ -50,6 +51,16 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 **Add a simulation test when:** a scoring/ordering change affects multi-turn behavior, or a bug describes "optimizer does X instead of Y over several turns."
 
 **Use a unit test when:** single-turn scoring, specific function I/O, or helper edge cases.
+
+## Replay-parity regressions
+
+Exported optimizer snapshots are only useful for bug reproduction if they preserve search-relevant state. Snapshot regressions should cover:
+
+- runtime-shaped config fields that affect gains/search (`mastery`, `masteryEntries`, granted buff payloads)
+- active buff definitions when current-state buffs change stats/costs
+- replay parity: round-tripped snapshot input should keep the same first recommendation as the direct in-memory config/state for the same search budget
+
+Because search is wall-clock-budgeted, CI/browser/live runs can reach different frontiers before cutoff. Real-user regressions should use exported snapshot fixtures or explicit constrained budgets instead of assuming one machine's timing behavior generalizes.
 
 ## Validation requirements
 

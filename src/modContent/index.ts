@@ -50,7 +50,7 @@ import {
 } from '../settings';
 import { resolveBaseCraftingStats } from './configStats';
 import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
-import { buildStateSnapshot } from './replaySnapshot';
+import { buildConfigSnapshot, buildStateSnapshot } from './replaySnapshot';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 
@@ -369,72 +369,6 @@ function sanitizeForJson(
 
   return String(value);
 }
-function buildSkillSnapshot(skill: SkillDefinition): Record<string, unknown> {
-  return {
-    name: skill.name,
-    key: skill.key,
-    type: skill.type,
-    actionKind: skill.actionKind || 'skill',
-    qiCost: skill.qiCost,
-    stabilityCost: skill.stabilityCost,
-    successChance: skill.successChance ?? 1,
-    baseCompletionGain: skill.baseCompletionGain,
-    basePerfectionGain: skill.basePerfectionGain,
-    stabilityGain: skill.stabilityGain,
-    maxStabilityChange: skill.maxStabilityChange,
-    buffType: skill.buffType,
-    buffDuration: skill.buffDuration,
-    buffMultiplier: skill.buffMultiplier,
-    scalesWithControl: !!skill.scalesWithControl,
-    scalesWithIntensity: !!skill.scalesWithIntensity,
-    isDisciplinedTouch: !!skill.isDisciplinedTouch,
-    preventsMaxStabilityDecay: !!skill.preventsMaxStabilityDecay,
-    toxicityCost: skill.toxicityCost ?? 0,
-    toxicityCleanse: skill.toxicityCleanse ?? 0,
-    cooldown: skill.cooldown ?? 0,
-    conditionRequirement: skill.conditionRequirement
-      ? String(skill.conditionRequirement)
-      : null,
-    buffRequirement: skill.buffRequirement
-      ? sanitizeForJson(skill.buffRequirement)
-      : null,
-    buffCost: skill.buffCost ? sanitizeForJson(skill.buffCost) : null,
-    restoresQi: !!skill.restoresQi,
-    qiRestore: skill.qiRestore ?? 0,
-    restoresMaxStabilityToFull: !!skill.restoresMaxStabilityToFull,
-    consumesTurn: skill.consumesTurn,
-    itemName: skill.itemName ?? null,
-    reagentOnlyAtStepZero: !!skill.reagentOnlyAtStepZero,
-    effects: skill.effects ? sanitizeForJson(skill.effects) : [],
-  };
-}
-
-function buildConfigSnapshot(config: OptimizerConfig): Record<string, unknown> {
-  return {
-    maxQi: config.maxQi,
-    maxStability: config.maxStability,
-    maxCompletion: config.maxCompletion ?? null,
-    maxPerfection: config.maxPerfection ?? null,
-    baseIntensity: config.baseIntensity,
-    baseControl: config.baseControl,
-    minStability: config.minStability,
-    defaultBuffMultiplier: config.defaultBuffMultiplier,
-    pillsPerRound: config.pillsPerRound ?? 1,
-    maxToxicity: config.maxToxicity ?? 0,
-    craftingType: config.craftingType ?? null,
-    conditionEffectType: config.conditionEffectType ?? null,
-    conditionEffectsData: config.conditionEffectsData
-      ? sanitizeForJson(config.conditionEffectsData)
-      : null,
-    isSublimeCraft: !!config.isSublimeCraft,
-    targetMultiplier: config.targetMultiplier ?? 1,
-    targetCompletion: config.targetCompletion ?? null,
-    targetPerfection: config.targetPerfection ?? null,
-    trainingMode: !!config.trainingMode,
-    skills: config.skills.map(buildSkillSnapshot),
-  };
-}
-
 function summarizeRecommendation(
   recommendation: SearchResult['recommendation'],
 ): Record<string, unknown> | null {

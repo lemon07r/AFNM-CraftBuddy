@@ -40,6 +40,8 @@ All fallback extraction and game-object adaptation logic is centralized here —
 
 Fallback handling exists for targets/progress extraction, condition transitions, optional payload fields when game objects are incomplete, and local scaling evaluation. `modAPI.utils.evaluateScaling` is not used by optimizer simulation because the live provider can drift from hypothetical future-state variables and already-upgraded payloads.
 
+Replay snapshots are expected to be parity-grade bug reports, not just light debug summaries. They should preserve runtime-shaped skill fields (including mastery/granted-buff payloads) and active buff definitions when those change optimizer gains or costs.
+
 ## Migration targets
 
 Pending game API exposure — see `docs/dev-requests/API_EXPOSURE_REQUESTS.md` for full details and status:
