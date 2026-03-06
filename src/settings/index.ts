@@ -6,7 +6,7 @@
  */
 
 export interface CraftBuddySettings {
-  /** Lookahead search depth (1-96, default: 48) */
+  /** Lookahead search depth (1-96, default: 64) */
   lookaheadDepth: number;
   /** Whether to show the panel in compact mode */
   compactMode: boolean;
@@ -24,20 +24,20 @@ export interface CraftBuddySettings {
   showOptimalRotation: boolean;
 
   // Performance settings for late-game optimization
-  /** Maximum time budget for search in milliseconds (100-10000, default: 2000) */
+  /** Maximum time budget for search in milliseconds (100-10000, default: 4500) */
   searchTimeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (1000-5000000, default: 750000) */
+  /** Maximum nodes to explore before stopping (1000-5000000, default: 2000000) */
   searchMaxNodes: number;
-  /** Beam width - max branches to explore at each level (3-20, default: 10) */
+  /** Beam width - max branches to explore at each level (3-20, default: 8) */
   searchBeamWidth: number;
 }
 
 const STORAGE_KEY = 'craftbuddy_settings';
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
-  // Balanced default profile tuned for high-quality recommendations.
-  // Turn-based gameplay easily tolerates multi-second searches.
-  lookaheadDepth: 48,
+  // Balanced default profile tuned from replay benchmarks.
+  // Keep beam conservative until the budget can support wider search.
+  lookaheadDepth: 64,
   compactMode: false,
   panelVisible: true,
   maxAlternatives: 2,
@@ -45,11 +45,11 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
-  // Generous defaults — turn-based gameplay tolerates multi-second searches
-  // and the extra budget significantly improves recommendation quality.
-  searchTimeBudgetMs: 2000,
-  searchMaxNodes: 750000,
-  searchBeamWidth: 10,
+  // Turn-based gameplay tolerates multi-second searches, and replay
+  // benchmarks showed these higher defaults are materially more stable.
+  searchTimeBudgetMs: 4500,
+  searchMaxNodes: 2000000,
+  searchBeamWidth: 8,
 };
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };

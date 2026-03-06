@@ -64,57 +64,57 @@ const SEARCH_PRESETS: SearchPreset[] = [
   {
     id: 'instant',
     label: 'Instant',
-    description: 'Quick results, good accuracy',
+    description: 'Fastest preset that still keeps a meaningful lookahead',
     values: {
-      lookaheadDepth: 24,
-      searchTimeBudgetMs: 500,
-      searchMaxNodes: 200000,
-      searchBeamWidth: 7,
+      lookaheadDepth: 32,
+      searchTimeBudgetMs: 1000,
+      searchMaxNodes: 400000,
+      searchBeamWidth: 8,
     },
   },
   {
     id: 'fast',
     label: 'Fast',
-    description: 'Strong accuracy with low latency',
+    description: 'More depth without widening into unstable mid-budget search',
     values: {
-      lookaheadDepth: 36,
-      searchTimeBudgetMs: 1000,
-      searchMaxNodes: 500000,
+      lookaheadDepth: 40,
+      searchTimeBudgetMs: 1200,
+      searchMaxNodes: 800000,
       searchBeamWidth: 8,
     },
   },
   {
     id: 'balanced',
     label: 'Balanced',
-    description: 'Recommended default profile',
+    description: 'Recommended default for most real crafts',
     values: {
-      lookaheadDepth: 48,
-      searchTimeBudgetMs: 2000,
-      searchMaxNodes: 750000,
-      searchBeamWidth: 10,
+      lookaheadDepth: 64,
+      searchTimeBudgetMs: 4500,
+      searchMaxNodes: 2000000,
+      searchBeamWidth: 8,
     },
   },
   {
     id: 'high_accuracy',
     label: 'High Accuracy',
-    description: 'High quality for complex late-game crafts',
+    description: 'Deep search for difficult late-game turns',
     values: {
-      lookaheadDepth: 64,
-      searchTimeBudgetMs: 5000,
-      searchMaxNodes: 1500000,
-      searchBeamWidth: 12,
+      lookaheadDepth: 80,
+      searchTimeBudgetMs: 8000,
+      searchMaxNodes: 3500000,
+      searchBeamWidth: 9,
     },
   },
   {
     id: 'max',
     label: 'Max',
     description:
-      'Maximum accuracy, may take several seconds per recommendation',
+      'Largest budget; best for the hardest turns and long crafts',
     values: {
       lookaheadDepth: 96,
-      searchTimeBudgetMs: 8000,
+      searchTimeBudgetMs: 10000,
       searchMaxNodes: 5000000,
-      searchBeamWidth: 16,
+      searchBeamWidth: 12,
     },
   },
 ];
@@ -480,7 +480,7 @@ export const SettingsPanel = memo(function SettingsPanel({
             step={1}
             marks
             hint={`Default: ${DEFAULT_SETTINGS.lookaheadDepth}. Higher values can cause lag.`}
-            tip="Tip: For long crafts (60-90 rounds), try 64 or 96."
+            tip="Tip: For long crafts (60-90 rounds), start with Balanced (64) or Max (96)."
             onChange={(v) => handleSliderDraftChange('lookaheadDepth', v)}
             onCommit={(v) => handleSliderCommit('lookaheadDepth', v)}
           />
@@ -492,7 +492,7 @@ export const SettingsPanel = memo(function SettingsPanel({
             min={100}
             max={10000}
             step={100}
-            hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}. Higher values improve quality but can stall UI updates.`}
+            hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}. Higher values improve quality but delay the next recommendation.`}
             valueFormatter={formatSeconds}
             tip={
               draftSettings.searchTimeBudgetMs > 5000

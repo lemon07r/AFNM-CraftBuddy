@@ -73,11 +73,12 @@ Identical state + config inputs should produce stable recommendations within the
 
 ### User-tunable controls
 
-- `lookaheadDepth` (`1-96`, default `48`)
-- `searchTimeBudgetMs` (`100-10,000`, default `2,000`)
-- `searchMaxNodes` (`1,000-5,000,000`, default `750,000`)
-- `searchBeamWidth` (`3-20`, default `10`)
+- `lookaheadDepth` (`1-96`, default `64`)
+- `searchTimeBudgetMs` (`100-10,000`, default `4,500`)
+- `searchMaxNodes` (`1,000-5,000,000`, default `2,000,000`)
+- `searchBeamWidth` (`3-20`, default `8`)
 - Settings sliders persist on commit (not every drag event) to reduce UI churn.
+- Preset tuning now keeps the beam narrower through mid-budget tiers; replay benchmarking showed widening too early can produce worse partial-frontier recommendations than a deeper narrow-beam search.
 
 ### Internal search defaults
 
@@ -98,7 +99,7 @@ Identical state + config inputs should produce stable recommendations within the
 
 - increase depth gradually and validate responsiveness
 - avoid maxing depth + beam simultaneously on slower machines
-- prefer keeping time budget bounded for UI responsiveness
+- prefer bounded multi-second time budgets; turn-based crafts can tolerate waiting, but exact frontier depth still varies by machine
 
 ## Key design decisions
 
