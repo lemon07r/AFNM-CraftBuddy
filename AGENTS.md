@@ -20,6 +20,8 @@
 - `bun run test`: run all Jest tests once.
 - `bun run test:watch`: run tests in watch mode while iterating.
 - `bun run test:coverage`: generate coverage reports in `coverage/` (text, lcov, html).
+- `bun run ui:harness:build`: build the browser UI harness into `tmp/ui-harness/`.
+- `bun run ui:harness:serve`: serve the UI harness at `http://127.0.0.1:4173` for `agent-browser`.
 - `bun run docs:check`: validate docs links/freshness/authority.
 - `bun run docs:inventory`: regenerate `docs/DOC_INVENTORY.md`.
 - `bun run jest src/__tests__/search.test.ts`: run a focused test file.
@@ -46,6 +48,7 @@
 - Add tests in `src/__tests__/` and mirror feature names (`skills.test.ts`, `state.test.ts`, etc.).
 - For changes in `src/optimizer/`, include cases for target completion, stability/Qi limits, and condition or buff interactions.
 - Run `bun run test` before pushing; use coverage checks for larger refactors.
+- For `src/ui/` layout or interaction changes, also use the committed browser harness with `agent-browser`; see `docs/project/TESTING.md`.
 - Any change to scoring or move ordering in `search.ts` must pass **both** the simulation tests (`craftSimulation.test.ts`) and the regression tests at the bottom of `search.test.ts`.
 - See `docs/project/TESTING.md` for simulation vs. unit test guidance, test ownership by area, and validation requirements.
 

@@ -5,7 +5,13 @@
  * Uses themed components for consistent styling.
  */
 
-import React, { useState, memo, useCallback, useEffect } from 'react';
+import React, {
+  useState,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+} from 'react';
 import {
   Box,
   Typography,
@@ -13,9 +19,9 @@ import {
   Slider,
   Switch,
   IconButton,
-  Collapse,
   Button,
   Tooltip,
+  Popper,
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CloseIcon from '@mui/icons-material/Close';
@@ -27,6 +33,7 @@ import {
   getSettings,
   saveSettings,
   DEFAULT_SETTINGS,
+  DEFAULT_SEARCH_SETTINGS,
 } from '../settings';
 import { colors, gradients, shadows } from './theme';
 import { GradientDivider, FlexRow } from './components';
@@ -94,12 +101,7 @@ const SEARCH_PRESETS: SearchPreset[] = [
     id: 'balanced',
     label: 'Balanced',
     description: 'Recommended default for most real crafts',
-    values: {
-      lookaheadDepth: 64,
-      searchTimeBudgetMs: 4500,
-      searchMaxNodes: 2000000,
-      searchBeamWidth: 8,
-    },
+    values: { ...DEFAULT_SEARCH_SETTINGS },
   },
   {
     id: 'high_accuracy',
@@ -196,14 +198,17 @@ const SHOW_CONDITIONS_HELP: SettingHelpContent = {
   note: 'Display-only setting. Does not change optimizer behavior.',
 };
 
+function getOverlayContainer() {
+  return typeof document !== 'undefined'
+    ? (document.getElementById('craftbuddy-overlay') ?? document.body)
+    : undefined;
+}
+
 function getTooltipPopperProps() {
   return {
     disablePortal: false,
     style: { zIndex: 10001 },
-    container:
-      typeof document !== 'undefined'
-        ? (document.getElementById('craftbuddy-overlay') ?? document.body)
-        : undefined,
+    container: getOverlayContainer(),
   };
 }
 
@@ -308,7 +313,6 @@ const SettingsSectionHeader = memo(function SettingsSectionHeader({
  */
 const SliderSetting = memo(function SliderSetting({
   label,
-  value,
   draftValue,
   min,
   max,
@@ -322,7 +326,6 @@ const SliderSetting = memo(function SliderSetting({
   onCommit,
 }: {
   label: string;
-  value: number;
   draftValue: number;
   min: number;
   max: number;
@@ -341,14 +344,23 @@ const SliderSetting = memo(function SliderSetting({
 
   return (
     <Box sx={{ mb: 2 }}>
-      <FlexRow gap={0.5} sx={{ alignItems: 'center', mb: 0.5 }}>
-        <Typography variant="body2" sx={{ color: colors.textSecondary }}>
-          {label}:
-        </Typography>
-        {tooltip && <InlineHelp help={tooltip} />}
-        <Box component="span" sx={{ color: colors.gold }}>
+      <FlexRow
+        gap={0.5}
+        sx={{ alignItems: 'center', mb: 0.35, justifyContent: 'space-between' }}
+      >
+        <FlexRow gap={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+          <Typography variant="body2" sx={{ color: colors.textSecondary }}>
+            {label}:
+          </Typography>
+          {tooltip && <InlineHelp help={tooltip} />}
+        </FlexRow>
+        <Typography
+          component="span"
+          variant="body2"
+          sx={{ color: colors.gold, fontWeight: 600, flexShrink: 0 }}
+        >
           {formattedValue}
-        </Box>
+        </Typography>
       </FlexRow>
       <Slider
         value={draftValue}
@@ -361,7 +373,10 @@ const SliderSetting = memo(function SliderSetting({
         size="small"
       />
       {hint && (
-        <Typography variant="caption" sx={{ color: colors.textDisabled }}>
+        <Typography
+          variant="caption"
+          sx={{ color: colors.textDisabled, display: 'block', mt: 0.25 }}
+        >
           {hint}
         </Typography>
       )}
@@ -445,6 +460,7 @@ export const SettingsPanel = memo(function SettingsPanel({
   const [settings, setSettings] = useState<CraftBuddySettings>(getSettings());
   const [draftSettings, setDraftSettings] =
     useState<CraftBuddySettings>(settings);
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
 
   type SliderSettingKey =
     | 'lookaheadDepth'
@@ -575,6 +591,7 @@ export const SettingsPanel = memo(function SettingsPanel({
 
       {/* Settings toggle button */}
       <IconButton
+        ref={settingsButtonRef}
         onClick={handleToggle}
         size="small"
         sx={{
@@ -602,28 +619,30 @@ export const SettingsPanel = memo(function SettingsPanel({
         )}
       </IconButton>
 
-      {/* Settings panel */}
-      <Collapse
-        in={isOpen}
-        sx={{
-          '& .MuiCollapse-wrapper, & .MuiCollapse-wrapperInner': {
-            display: 'block !important',
-            height: 'auto !important',
+      <Popper
+        open={isOpen}
+        anchorEl={settingsButtonRef.current}
+        placement="bottom-end"
+        container={getOverlayContainer()}
+        modifiers={[
+          {
+            name: 'offset',
+            options: {
+              offset: [0, 8],
+            },
           },
-        }}
+        ]}
+        sx={{ zIndex: 10002 }}
       >
         <Paper
           elevation={0}
           sx={{
-            p: 2,
-            mb: 1,
-            display: 'block !important',
-            height: 'auto',
-            minHeight: 0,
-            flexDirection: 'initial !important',
-            justifyContent: 'normal !important',
-            alignItems: 'stretch !important',
+            p: 1.5,
             position: 'relative',
+            width: 'min(420px, calc(100vw - 24px))',
+            maxWidth: 'calc(100vw - 24px)',
+            maxHeight: 'min(76vh, 720px)',
+            overflowY: 'auto',
             backgroundImage: gradients.panelBackground,
             border: `1px solid ${colors.borderMedium}`,
             borderRadius: 2,
@@ -652,22 +671,18 @@ export const SettingsPanel = memo(function SettingsPanel({
             variant="caption"
             sx={{ color: colors.textDisabled, display: 'block', mb: 1.25 }}
           >
-            These four sliders share one search budget. If one is pushed much
-            higher than the others, accuracy can get worse instead of better.
-            Presets keep them in safer ratios. Changes apply when you release
-            the slider.
+            Use presets unless you intentionally want manual tuning. The
+            tooltip on each control explains the tradeoff.
           </Typography>
 
           <SliderSetting
             label="Lookahead Depth"
-            value={settings.lookaheadDepth}
             draftValue={draftSettings.lookaheadDepth}
             min={1}
             max={96}
             step={1}
             marks
-            hint={`Default: ${DEFAULT_SETTINGS.lookaheadDepth}. Higher values only help if time and nodes are high enough to reach deeper turns.`}
-            tip="Tip: For long crafts (60-90 rounds), start with Balanced (64) or Max (96)."
+            hint={`Default: ${DEFAULT_SETTINGS.lookaheadDepth}`}
             tooltip={LOOKAHEAD_DEPTH_HELP}
             onChange={(v) => handleSliderDraftChange('lookaheadDepth', v)}
             onCommit={(v) => handleSliderCommit('lookaheadDepth', v)}
@@ -675,12 +690,11 @@ export const SettingsPanel = memo(function SettingsPanel({
 
           <SliderSetting
             label="Search Time Budget"
-            value={settings.searchTimeBudgetMs}
             draftValue={draftSettings.searchTimeBudgetMs}
             min={100}
             max={10000}
             step={100}
-            hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}. Search stops at the first budget hit, so extra time only helps if another cap is not stopping it earlier.`}
+            hint={`Default: ${formatSeconds(DEFAULT_SETTINGS.searchTimeBudgetMs)}`}
             valueFormatter={formatSeconds}
             tooltip={SEARCH_TIME_HELP}
             tip={
@@ -694,12 +708,11 @@ export const SettingsPanel = memo(function SettingsPanel({
 
           <SliderSetting
             label="Search Max Nodes"
-            value={settings.searchMaxNodes}
             draftValue={draftSettings.searchMaxNodes}
             min={1000}
             max={5000000}
             step={10000}
-            hint={`Default: ${formatNodesThousands(DEFAULT_SETTINGS.searchMaxNodes)} nodes. If this cap is too low, extra depth or time may never get used.`}
+            hint={`Default: ${formatNodesThousands(DEFAULT_SETTINGS.searchMaxNodes)} nodes`}
             valueFormatter={formatNodesThousands}
             tooltip={SEARCH_MAX_NODES_HELP}
             onChange={(v) => handleSliderDraftChange('searchMaxNodes', v)}
@@ -708,13 +721,11 @@ export const SettingsPanel = memo(function SettingsPanel({
 
           <SliderSetting
             label="Search Beam Width"
-            value={settings.searchBeamWidth}
             draftValue={draftSettings.searchBeamWidth}
             min={3}
             max={20}
             step={1}
-            hint={`Default: ${DEFAULT_SETTINGS.searchBeamWidth}. Wider beams need the rest of the budget to keep up.`}
-            tip="Tip: Raise beam width last. Too much width on a thin budget can hurt recommendation quality."
+            hint={`Default: ${DEFAULT_SETTINGS.searchBeamWidth}`}
             tooltip={SEARCH_BEAM_WIDTH_HELP}
             onChange={(v) => handleSliderDraftChange('searchBeamWidth', v)}
             onCommit={(v) => handleSliderCommit('searchBeamWidth', v)}
@@ -755,13 +766,12 @@ export const SettingsPanel = memo(function SettingsPanel({
 
           <SliderSetting
             label="Max Alternatives"
-            value={settings.maxAlternatives}
             draftValue={draftSettings.maxAlternatives}
             min={0}
             max={5}
             step={1}
             marks
-            hint="Display-only setting. More alternatives do not improve the optimizer's top recommendation."
+            hint={`Default: ${DEFAULT_SETTINGS.maxAlternatives}`}
             tooltip={MAX_ALTERNATIVES_HELP}
             onChange={(v) => handleSliderDraftChange('maxAlternatives', v)}
             onCommit={(v) => handleSliderCommit('maxAlternatives', v)}
@@ -798,10 +808,8 @@ export const SettingsPanel = memo(function SettingsPanel({
             variant="caption"
             sx={{ color: colors.textDisabled, display: 'block', mb: 1 }}
           >
-            Apply a tuned search profile. This overwrites Depth, Time Budget,
-            Max Nodes, and Beam Width together. If you are not intentionally
-            reproducing an edge case, start here instead of manual slider
-            tuning.
+            Apply a tuned profile. This overwrites Depth, Time, Nodes, and
+            Beam together.
           </Typography>
           <FlexRow gap={1} sx={{ flexWrap: 'wrap' }}>
             {SEARCH_PRESETS.map((preset) => {
@@ -936,7 +944,7 @@ export const SettingsPanel = memo(function SettingsPanel({
             )}
           </Box>
         </Paper>
-      </Collapse>
+      </Popper>
     </Box>
   );
 });

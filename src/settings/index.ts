@@ -33,11 +33,27 @@ export interface CraftBuddySettings {
 }
 
 const STORAGE_KEY = 'craftbuddy_settings';
+const SEARCH_DEFAULTS_RESET_VERSION_KEY =
+  'craftbuddy_search_defaults_reset_version';
+const SEARCH_DEFAULTS_RESET_VERSION = '1';
+
+export const DEFAULT_SEARCH_SETTINGS: Pick<
+  CraftBuddySettings,
+  | 'lookaheadDepth'
+  | 'searchTimeBudgetMs'
+  | 'searchMaxNodes'
+  | 'searchBeamWidth'
+> = {
+  lookaheadDepth: 64,
+  searchTimeBudgetMs: 4500,
+  searchMaxNodes: 2000000,
+  searchBeamWidth: 8,
+};
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
   // Balanced default profile tuned from replay benchmarks.
   // Keep beam conservative until the budget can support wider search.
-  lookaheadDepth: 64,
+  ...DEFAULT_SEARCH_SETTINGS,
   compactMode: false,
   panelVisible: true,
   maxAlternatives: 2,
@@ -45,14 +61,23 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
-  // Turn-based gameplay tolerates multi-second searches, and replay
-  // benchmarks showed these higher defaults are materially more stable.
-  searchTimeBudgetMs: 4500,
-  searchMaxNodes: 2000000,
-  searchBeamWidth: 8,
 };
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
+
+function getStorage(): Storage | null {
+  if (typeof localStorage === 'undefined') {
+    return null;
+  }
+  if (
+    typeof localStorage.getItem !== 'function' ||
+    typeof localStorage.setItem !== 'function' ||
+    typeof localStorage.removeItem !== 'function'
+  ) {
+    return null;
+  }
+  return localStorage;
+}
 
 function clampInteger(
   value: number,
@@ -101,16 +126,40 @@ function normalizeSettings(settings: CraftBuddySettings): CraftBuddySettings {
   };
 }
 
+function applyDefaultSearchSettings(
+  settings: CraftBuddySettings,
+): CraftBuddySettings {
+  return normalizeSettings({
+    ...settings,
+    ...DEFAULT_SEARCH_SETTINGS,
+  });
+}
+
 /**
  * Load settings from localStorage
  */
 export function loadSettings(): CraftBuddySettings {
+  const storage = getStorage();
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = storage?.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
       // Merge with defaults to handle new settings added in updates
       currentSettings = normalizeSettings({ ...DEFAULT_SETTINGS, ...parsed });
+    } else {
+      currentSettings = { ...DEFAULT_SETTINGS };
+    }
+
+    const needsSearchReset =
+      storage?.getItem(SEARCH_DEFAULTS_RESET_VERSION_KEY) !==
+      SEARCH_DEFAULTS_RESET_VERSION;
+    if (needsSearchReset) {
+      currentSettings = applyDefaultSearchSettings(currentSettings);
+      storage?.setItem(STORAGE_KEY, JSON.stringify(currentSettings));
+      storage?.setItem(
+        SEARCH_DEFAULTS_RESET_VERSION_KEY,
+        SEARCH_DEFAULTS_RESET_VERSION,
+      );
     }
   } catch (e) {
     console.warn('[CraftBuddy] Failed to load settings:', e);
@@ -126,8 +175,9 @@ export function saveSettings(
   settings: Partial<CraftBuddySettings>,
 ): CraftBuddySettings {
   currentSettings = normalizeSettings({ ...currentSettings, ...settings });
+  const storage = getStorage();
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentSettings));
+    storage?.setItem(STORAGE_KEY, JSON.stringify(currentSettings));
     console.log('[CraftBuddy] Settings saved:', currentSettings);
   } catch (e) {
     console.warn('[CraftBuddy] Failed to save settings:', e);
@@ -147,8 +197,10 @@ export function getSettings(): CraftBuddySettings {
  */
 export function resetSettings(): CraftBuddySettings {
   currentSettings = { ...DEFAULT_SETTINGS };
+  const storage = getStorage();
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    storage?.removeItem(STORAGE_KEY);
+    storage?.removeItem(SEARCH_DEFAULTS_RESET_VERSION_KEY);
   } catch (e) {
     // Ignore
   }

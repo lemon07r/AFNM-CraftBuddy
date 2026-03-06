@@ -2,7 +2,46 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = process.cwd();
-const IGNORE_DIRS = new Set(['.git', '.junie', 'node_modules', 'dist', 'builds', 'coverage', 'archive']);
+const IGNORE_DIRS = new Set([
+  '.git',
+  '.junie',
+  '.adal',
+  '.agent',
+  '.agents',
+  '.augment',
+  '.claude',
+  '.codebuddy',
+  '.commandcode',
+  '.continue',
+  '.cortex',
+  '.crush',
+  '.factory',
+  '.goose',
+  '.iflow',
+  '.kilocode',
+  '.kiro',
+  '.kode',
+  '.mcpjam',
+  '.mux',
+  '.neovate',
+  '.openhands',
+  '.pi',
+  '.pochi',
+  '.qoder',
+  '.qwen',
+  '.roo',
+  '.trae',
+  '.vibe',
+  '.windsurf',
+  '.zencoder',
+  'node_modules',
+  'dist',
+  'builds',
+  'coverage',
+  'archive',
+  'tmp',
+  'skills',
+]);
 
 function walk(dir, predicate, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

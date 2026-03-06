@@ -374,6 +374,20 @@ const SingleSkillBox = memo(function SingleSkillBox({
             </Typography>
           )}
 
+          {reasoning && isPrimary && !isFollowUp && (
+            <Typography
+              variant="body2"
+              sx={{
+                color: colors.textSecondary,
+                fontStyle: 'italic',
+                fontSize: '0.8rem',
+                mt: 0.5,
+              }}
+            >
+              {reasoning}
+            </Typography>
+          )}
+
           {/* Buff indicators */}
           <FlexRow gap={0.5} wrap sx={{ mt: 0.25 }}>
             {buffGranted && buffDuration > 0 && (
@@ -397,21 +411,6 @@ const SingleSkillBox = memo(function SingleSkillBox({
           </FlexRow>
         </Box>
       </FlexRow>
-
-      {/* Reasoning - only for primary skill */}
-      {reasoning && isPrimary && !isFollowUp && (
-        <Typography
-          variant="body2"
-          sx={{
-            color: colors.textSecondary,
-            fontStyle: 'italic',
-            fontSize: '0.8rem',
-            mt: 0.75,
-          }}
-        >
-          {reasoning}
-        </Typography>
-      )}
     </SkillCardContainer>
   );
 });
@@ -469,7 +468,7 @@ const SkillCard = memo(function SkillCard({
             isPrimary={isPrimary}
             isFollowUp={false}
             consumesBuff={rec.consumesBuff}
-            reasoning={!hasFollowUp ? rec.reasoning : undefined}
+            reasoning={isPrimary ? rec.reasoning : undefined}
           />
         </Box>
 
@@ -494,20 +493,6 @@ const SkillCard = memo(function SkillCard({
         )}
       </FlexRow>
 
-      {/* Reasoning below the skill boxes if there's a follow-up */}
-      {hasFollowUp && rec.reasoning && isPrimary && (
-        <Typography
-          variant="body2"
-          sx={{
-            color: colors.textSecondary,
-            fontStyle: 'italic',
-            fontSize: '0.8rem',
-            mt: 0.5,
-          }}
-        >
-          {rec.reasoning}
-        </Typography>
-      )}
     </Box>
   );
 });

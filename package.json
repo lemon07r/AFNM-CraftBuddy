@@ -1,6 +1,6 @@
 {
   "name": "afnm-craftbuddy",
-  "version": "3.5.17",
+  "version": "3.5.18",
   "description": "Automatically calculates and displays the optimal next skill to use during crafting in Ascend From Nine Mountains",
   "author": {
     "name": "lemon07r"
@@ -13,6 +13,8 @@
     "test": "bun run jest",
     "test:watch": "bun run jest --watch",
     "test:coverage": "bun run jest --coverage",
+    "ui:harness:build": "mkdir -p tmp/ui-harness && cp scripts/ui/agent-browser-harness.html tmp/ui-harness/index.html && bun build scripts/ui/agent-browser-harness.tsx --outfile tmp/ui-harness/craftbuddy-ui-harness.js --target browser --format esm",
+    "ui:harness:serve": "python3 -m http.server 4173 --directory tmp/ui-harness",
     "docs:check-links": "bun run scripts/docs/check-links.js",
     "docs:check-freshness": "bun run scripts/docs/check-freshness.js",
     "docs:check-authority": "bun run scripts/docs/check-authority.js",
@@ -41,6 +43,7 @@
     "@mui/material": "^7.3.8",
     "@reduxjs/toolkit": "^2.11.2",
     "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "react-icons": "^5.5.0"
   }
 }

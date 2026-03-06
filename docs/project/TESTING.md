@@ -20,6 +20,8 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 - `bun run test` — full suite
 - `bun run test:watch` — watch mode
 - `bun run jest src/__tests__/<file>.test.ts` — focused file
+- `bun run ui:harness:build` — build the committed browser harness into `tmp/ui-harness/`
+- `bun run ui:harness:serve` — serve the harness at `http://127.0.0.1:4173`
 
 ## Test ownership by area
 
@@ -61,6 +63,19 @@ Exported optimizer snapshots are only useful for bug reproduction if they preser
 - replay parity: round-tripped snapshot input should keep the same first recommendation as the direct in-memory config/state for the same search budget
 
 Because search is wall-clock-budgeted, CI/browser/live runs can reach different frontiers before cutoff. Real-user regressions should use exported snapshot fixtures or explicit constrained budgets instead of assuming one machine's timing behavior generalizes.
+
+## UI checks with `agent-browser`
+
+For visual/UI changes, do not rely only on static code review. Use the committed harness with `agent-browser`:
+
+1. `bun run ui:harness:build`
+2. `bun run ui:harness:serve`
+3. `agent-browser open http://127.0.0.1:4173`
+4. capture `agent-browser snapshot -i` / `agent-browser screenshot`
+
+The harness renders a stable recommendation/settings fixture that is good enough for layout regressions like card overflow, tooltip placement, and settings panel size.
+
+Keep `react` and `react-dom` on the same version. Standalone browser verification will fail fast on mismatched versions even if the mod webpack build still succeeds.
 
 ## Validation requirements
 
