@@ -477,7 +477,7 @@ const SkillCard = memo(function SkillCard({
 
       {/* Skills displayed side-by-side */}
       <FlexRow align="stretch" gap={0.5}>
-        <Box sx={{ flex: 1 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
           <SingleSkillBox
             name={rec.skill.name}
             type={rec.skill.type}
@@ -501,7 +501,7 @@ const SkillCard = memo(function SkillCard({
         {hasFollowUp && rec.followUpSkill && (
           <>
             <SequenceArrow />
-            <Box sx={{ flex: 1 }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
               <SingleSkillBox
                 name={rec.followUpSkill.name}
                 type={rec.followUpSkill.type}
@@ -1067,9 +1067,11 @@ export function RecommendationPanel({
             />
           )}
 
-          <SectionHeader color={colors.gold} compact={compactMode}>
-            {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
-          </SectionHeader>
+          <Box sx={{ pr: compactMode ? '40px' : '132px' }}>
+            <SectionHeader color={colors.gold} compact={compactMode}>
+              {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
+            </SectionHeader>
+          </Box>
 
           {/* Progress display */}
           <ProgressSection

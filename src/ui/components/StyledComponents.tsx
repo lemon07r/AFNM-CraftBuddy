@@ -83,11 +83,13 @@ export const PanelContainer = memo(function PanelContainer({
       elevation={0}
       sx={{
         position: 'relative',
+        display: 'inline-block',
         p: compact ? 1.5 : 2,
-        // Avoid CSS min()/viewport math here. The game's embedded browser can
-        // treat unsupported expressions as invalid and collapse the fixed
-        // overlay into a shrink-to-fit column.
-        width: widePanelWidthPx,
+        // Keep the overlay content-sized so paired recommendation cards can
+        // expand the panel when needed, but avoid CSS min() which the game's
+        // embedded browser may treat as invalid.
+        width: 'auto',
+        minWidth: widePanelWidthPx,
         maxWidth: 'calc(100vw - 24px)',
         boxSizing: 'border-box',
         backgroundImage: gradients.panelBackground,
@@ -97,7 +99,7 @@ export const PanelContainer = memo(function PanelContainer({
         overflow: allowOverflowVisible ? 'visible' : 'hidden',
         animation: animate ? `${slideInRight} 0.3s ease-out` : 'none',
         '@media (max-aspect-ratio: 16/9)': {
-          width: narrowPanelWidthPx,
+          minWidth: narrowPanelWidthPx,
         },
         // Decorative corner accents
         '&::before': {
