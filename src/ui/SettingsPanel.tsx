@@ -96,11 +96,11 @@ const SEARCH_PRESETS: SearchPreset[] = [
   {
     id: 'fast',
     label: 'Fast',
-    description: 'More depth without widening into unstable mid-budget search',
+    description: 'Midpoint preset with lower wait than Balanced',
     values: {
-      lookaheadDepth: 40,
-      searchTimeBudgetMs: 1200,
-      searchMaxNodes: 800000,
+      lookaheadDepth: 48,
+      searchTimeBudgetMs: 2000,
+      searchMaxNodes: 1000000,
       searchBeamWidth: 5,
     },
   },
