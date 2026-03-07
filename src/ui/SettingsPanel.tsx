@@ -34,6 +34,12 @@ import {
   saveSettings,
   DEFAULT_SEARCH_SETTINGS,
 } from '../settings';
+import {
+  formatSearchGoalPriorityBias,
+  SEARCH_GOAL_PRIORITY_BIAS_MAX,
+  SEARCH_GOAL_PRIORITY_BIAS_MIN,
+  SEARCH_GOAL_PRIORITY_BIAS_STEP,
+} from '../utils/searchGoalPriority';
 import { colors } from './theme';
 import { FlexRow } from './components';
 import {
@@ -102,7 +108,12 @@ const SEARCH_PRESETS: SearchPreset[] = [
     id: 'balanced',
     label: 'Balanced',
     description: 'Recommended default for most real crafts',
-    values: { ...DEFAULT_SEARCH_SETTINGS },
+    values: {
+      lookaheadDepth: DEFAULT_SEARCH_SETTINGS.lookaheadDepth,
+      searchTimeBudgetMs: DEFAULT_SEARCH_SETTINGS.searchTimeBudgetMs,
+      searchMaxNodes: DEFAULT_SEARCH_SETTINGS.searchMaxNodes,
+      searchBeamWidth: DEFAULT_SEARCH_SETTINGS.searchBeamWidth,
+    },
   },
   {
     id: 'high_accuracy',
@@ -164,12 +175,18 @@ const SEARCH_BEAM_WIDTH_HELP: SettingHelpContent = {
   note: 'Keep beam width moderate unless you also have enough depth, time, and nodes to support it.',
 };
 
-const GUARANTEED_COMPLETION_HELP: SettingHelpContent = {
-  title: 'Guaranteed Completion Priority',
+const SEARCH_GOAL_PRIORITY_HELP: SettingHelpContent = {
+  title: 'Goal Priority Bias',
   description:
-    'When enabled, CraftBuddy will not recommend a partial-success Finish Craft unless the current completion chance is already 100%.',
-  note: 'Disabled by default. Leave this off to allow expected-value finish recommendations on impossible or low-runway crafts.',
+    'Shifts the optimizer between perfection-first and completion-first scoring. Balanced keeps the search on the mathematically neutral need-weighted policy.',
+  note: 'Negative values favor perfection, positive values favor completion, and 0 keeps the default balanced policy.',
 };
+
+const SEARCH_GOAL_PRIORITY_MARKS = [
+  { value: SEARCH_GOAL_PRIORITY_BIAS_MIN, label: 'Perfection' },
+  { value: 0, label: 'Balanced' },
+  { value: SEARCH_GOAL_PRIORITY_BIAS_MAX, label: 'Completion' },
+];
 
 const MAX_ALTERNATIVES_HELP: SettingHelpContent = {
   title: 'Max Alternatives',
@@ -386,7 +403,7 @@ const SliderSetting = memo(function SliderSetting({
   min: number;
   max: number;
   step: number;
-  marks?: boolean;
+  marks?: boolean | Array<{ value: number; label?: React.ReactNode }>;
   hint?: string;
   tip?: string;
   tooltip?: SettingHelpContent;
@@ -529,10 +546,9 @@ export const SettingsPanel = memo(function SettingsPanel({
     | 'searchTimeBudgetMs'
     | 'searchMaxNodes'
     | 'searchBeamWidth'
+    | 'searchGoalPriorityBias'
     | 'maxAlternatives';
-  type SearchSettingKey =
-    | SliderSettingKey
-    | 'prioritizeGuaranteedCompletion';
+  type SearchSettingKey = SliderSettingKey;
 
   const handleSettingChange = useCallback(
     <K extends keyof CraftBuddySettings>(
@@ -561,7 +577,7 @@ export const SettingsPanel = memo(function SettingsPanel({
     'searchTimeBudgetMs',
     'searchMaxNodes',
     'searchBeamWidth',
-    'prioritizeGuaranteedCompletion',
+    'searchGoalPriorityBias',
   ];
 
   const handleSliderCommit = useCallback(
@@ -1108,17 +1124,23 @@ export const SettingsPanel = memo(function SettingsPanel({
                       }
                     />
 
-                    <ToggleSetting
-                      label="Prioritize 100% Completion"
-                      checked={settings.prioritizeGuaranteedCompletion}
-                      tooltip={GUARANTEED_COMPLETION_HELP}
-                      onChange={(v) => {
-                        const newSettings = handleSettingChange(
-                          'prioritizeGuaranteedCompletion',
-                          v,
-                        );
-                        onSearchSettingsChange?.(newSettings);
-                      }}
+                    <SliderSetting
+                      label="Goal Priority Bias"
+                      draftValue={draftSettings.searchGoalPriorityBias}
+                      min={SEARCH_GOAL_PRIORITY_BIAS_MIN}
+                      max={SEARCH_GOAL_PRIORITY_BIAS_MAX}
+                      step={SEARCH_GOAL_PRIORITY_BIAS_STEP}
+                      marks={SEARCH_GOAL_PRIORITY_MARKS}
+                      tooltip={SEARCH_GOAL_PRIORITY_HELP}
+                      valueFormatter={formatSearchGoalPriorityBias}
+                      hint="Balanced is the default and most mathematically neutral search policy."
+                      tip="Move left to favor perfection-first lines or right to favor completion-first lines."
+                      onChange={(v) =>
+                        handleSliderDraftChange('searchGoalPriorityBias', v)
+                      }
+                      onCommit={(v) =>
+                        handleSliderCommit('searchGoalPriorityBias', v)
+                      }
                     />
                   </Box>
                 </SettingsGroup>

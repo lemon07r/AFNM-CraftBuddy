@@ -192,7 +192,7 @@ interface LastSearchSettings {
   searchTimeBudgetMs: number;
   searchMaxNodes: number;
   searchBeamWidth: number;
-  prioritizeGuaranteedCompletion: boolean;
+  searchGoalPriorityBias: number;
 }
 let lastSearchSettings: LastSearchSettings | null = null;
 
@@ -207,8 +207,8 @@ function areSearchSettingsStale(): boolean {
       lastSearchSettings.searchTimeBudgetMs ||
     currentSettings.searchMaxNodes !== lastSearchSettings.searchMaxNodes ||
     currentSettings.searchBeamWidth !== lastSearchSettings.searchBeamWidth ||
-    currentSettings.prioritizeGuaranteedCompletion !==
-      lastSearchSettings.prioritizeGuaranteedCompletion
+    currentSettings.searchGoalPriorityBias !==
+      lastSearchSettings.searchGoalPriorityBias
   );
 }
 
@@ -221,8 +221,7 @@ function snapshotSearchSettings(): void {
     searchTimeBudgetMs: currentSettings.searchTimeBudgetMs,
     searchMaxNodes: currentSettings.searchMaxNodes,
     searchBeamWidth: currentSettings.searchBeamWidth,
-    prioritizeGuaranteedCompletion:
-      currentSettings.prioritizeGuaranteedCompletion,
+    searchGoalPriorityBias: currentSettings.searchGoalPriorityBias,
   };
 }
 
@@ -467,16 +466,14 @@ function buildOptimizerReplayInputSnapshot(params: {
       timeBudgetMs: params.searchConfig.timeBudgetMs,
       maxNodes: params.searchConfig.maxNodes,
       beamWidth: params.searchConfig.beamWidth,
-      prioritizeGuaranteedCompletion:
-        params.searchConfig.prioritizeGuaranteedCompletion,
+      goalPriorityBias: params.searchConfig.goalPriorityBias,
     },
     settings: {
       lookaheadDepth: currentSettings.lookaheadDepth,
       searchTimeBudgetMs: currentSettings.searchTimeBudgetMs,
       searchMaxNodes: currentSettings.searchMaxNodes,
       searchBeamWidth: currentSettings.searchBeamWidth,
-      prioritizeGuaranteedCompletion:
-        currentSettings.prioritizeGuaranteedCompletion,
+      searchGoalPriorityBias: currentSettings.searchGoalPriorityBias,
       compactMode: currentSettings.compactMode,
       panelVisible: currentSettings.panelVisible,
     },

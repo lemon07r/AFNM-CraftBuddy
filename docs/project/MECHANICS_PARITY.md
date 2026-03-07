@@ -38,7 +38,7 @@ related_files:
 - guarded native condition transition provider (`getNextCondition` path probing), with fallback
 - native max toxicity getter (`getMaxToxicity`) for alchemy crafts
 - internal effective action-cost modeling (buff/harmony/condition aware) used by recommendation and follow-up previews
-- voluntary `Finish Craft` modeling as a search-local action, with EV-based partial-completion recommendations enabled by default and a persisted guaranteed-completion-first override for users who want to suppress sub-100% finish recommendations
+- voluntary `Finish Craft` modeling as a search-local action, with EV-based partial-completion recommendations enabled by default and a persisted completion/perfection goal-priority bias slider (`-100` perfection to `100` completion, `0` balanced default) that affects the same underlying search scorer
 - optimizer replay snapshots now include serialized `harmonyData` plus a `harmonyDataSource` tag so bug reports can distinguish authoritative harmony state from verified fallbacks
 - installed runtime extraction from the current game bundle is the tiebreaker when UI/help text or older notes drift from executable behavior; forge low-control penalties are verified against the live bundle at heat `2-3`, not `1-3`
 

@@ -9,7 +9,7 @@ import type { HarmonyDataSource } from './harmonyState';
 
 export interface OptimizerReplaySearchConfigSnapshot extends Pick<
   SearchConfig,
-  'timeBudgetMs' | 'maxNodes' | 'beamWidth' | 'prioritizeGuaranteedCompletion'
+  'timeBudgetMs' | 'maxNodes' | 'beamWidth' | 'goalPriorityBias'
 > {}
 
 export interface OptimizerReplayInputSnapshot {
@@ -36,7 +36,7 @@ export interface OptimizerReplayInputSnapshot {
     searchTimeBudgetMs: number;
     searchMaxNodes: number;
     searchBeamWidth: number;
-    prioritizeGuaranteedCompletion: boolean;
+    searchGoalPriorityBias: number;
     compactMode: boolean;
     panelVisible: boolean;
   };

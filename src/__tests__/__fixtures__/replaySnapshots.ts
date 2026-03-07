@@ -7,6 +7,7 @@ import {
   reviveStateSnapshot,
   type OptimizerReplaySnapshot,
 } from '../../modContent/replaySnapshot';
+import { DEFAULT_SEARCH_GOAL_PRIORITY_BIAS } from '../../utils/searchGoalPriority';
 
 export { replayOptimizerSnapshot };
 export {
@@ -33,6 +34,14 @@ export function getReplaySearchInput(snapshot: OptimizerReplaySnapshot): {
   lookaheadDepth: number;
   searchConfig: typeof snapshot.input.searchConfig;
 } {
+  const searchConfig =
+    snapshot.input.searchConfig.goalPriorityBias === undefined
+      ? {
+          ...snapshot.input.searchConfig,
+          goalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
+        }
+      : snapshot.input.searchConfig;
+
   return {
     config: reviveConfigSnapshot(snapshot.input.config),
     state: reviveStateSnapshot(snapshot.input.state),
@@ -44,6 +53,6 @@ export function getReplaySearchInput(snapshot: OptimizerReplaySnapshot): {
     targetCompletion: snapshot.input.targets.completion,
     targetPerfection: snapshot.input.targets.perfection,
     lookaheadDepth: snapshot.input.lookaheadDepth,
-    searchConfig: snapshot.input.searchConfig,
+    searchConfig,
   };
 }

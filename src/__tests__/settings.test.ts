@@ -7,6 +7,10 @@ import {
   setSearchMaxNodes,
   setSearchTimeBudget,
 } from '../settings';
+import {
+  SEARCH_GOAL_PRIORITY_BIAS_MAX,
+  SEARCH_GOAL_PRIORITY_BIAS_MIN,
+} from '../utils/searchGoalPriority';
 
 describe('settings search budget', () => {
   let warnSpy: jest.SpyInstance;
@@ -56,11 +60,11 @@ describe('settings search budget', () => {
     expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(4500);
     expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(2000000);
     expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(5);
-    expect(DEFAULT_SETTINGS.prioritizeGuaranteedCompletion).toBe(false);
+    expect(DEFAULT_SETTINGS.searchGoalPriorityBias).toBe(0);
     expect(getSearchConfig().timeBudgetMs).toBe(4500);
     expect(getSearchConfig().maxNodes).toBe(2000000);
     expect(getSearchConfig().beamWidth).toBe(5);
-    expect(getSearchConfig().prioritizeGuaranteedCompletion).toBe(false);
+    expect(getSearchConfig().goalPriorityBias).toBe(0);
   });
 
   it('clamps search time budget to 100-10000ms', () => {
@@ -79,6 +83,21 @@ describe('settings search budget', () => {
     expect(getSearchConfig().maxNodes).toBe(1000);
   });
 
+  it('clamps goal priority bias to the supported range and step size', () => {
+    const clampedHigh = saveSettings({ searchGoalPriorityBias: 170 });
+    expect(clampedHigh.searchGoalPriorityBias).toBe(
+      SEARCH_GOAL_PRIORITY_BIAS_MAX,
+    );
+
+    const clampedLow = saveSettings({ searchGoalPriorityBias: -170 });
+    expect(clampedLow.searchGoalPriorityBias).toBe(
+      SEARCH_GOAL_PRIORITY_BIAS_MIN,
+    );
+
+    const rounded = saveSettings({ searchGoalPriorityBias: 63 });
+    expect(rounded.searchGoalPriorityBias).toBe(75);
+  });
+
   it('resets stored search budgets to the balanced preset once while preserving display prefs', () => {
     saveSettings({
       compactMode: true,
@@ -87,7 +106,7 @@ describe('settings search budget', () => {
       searchTimeBudgetMs: 1000,
       searchMaxNodes: 400000,
       searchBeamWidth: 8,
-      prioritizeGuaranteedCompletion: true,
+      searchGoalPriorityBias: SEARCH_GOAL_PRIORITY_BIAS_MAX,
     });
 
     const migrated = loadSettings();
@@ -98,8 +117,8 @@ describe('settings search budget', () => {
     );
     expect(migrated.searchMaxNodes).toBe(DEFAULT_SETTINGS.searchMaxNodes);
     expect(migrated.searchBeamWidth).toBe(DEFAULT_SETTINGS.searchBeamWidth);
-    expect(migrated.prioritizeGuaranteedCompletion).toBe(
-      DEFAULT_SETTINGS.prioritizeGuaranteedCompletion,
+    expect(migrated.searchGoalPriorityBias).toBe(
+      DEFAULT_SETTINGS.searchGoalPriorityBias,
     );
     expect(migrated.compactMode).toBe(true);
     expect(migrated.maxAlternatives).toBe(4);
@@ -109,7 +128,7 @@ describe('settings search budget', () => {
       searchTimeBudgetMs: 10000,
       searchMaxNodes: 5000000,
       searchBeamWidth: 12,
-      prioritizeGuaranteedCompletion: true,
+      searchGoalPriorityBias: SEARCH_GOAL_PRIORITY_BIAS_MAX,
     });
 
     const reloaded = loadSettings();
@@ -117,6 +136,21 @@ describe('settings search budget', () => {
     expect(reloaded.searchTimeBudgetMs).toBe(10000);
     expect(reloaded.searchMaxNodes).toBe(5000000);
     expect(reloaded.searchBeamWidth).toBe(12);
-    expect(reloaded.prioritizeGuaranteedCompletion).toBe(true);
+    expect(reloaded.searchGoalPriorityBias).toBe(
+      SEARCH_GOAL_PRIORITY_BIAS_MAX,
+    );
+  });
+
+  it('migrates the legacy guaranteed-completion toggle to full completion bias', () => {
+    storageData['craftbuddy_settings'] = JSON.stringify({
+      prioritizeGuaranteedCompletion: true,
+    });
+    storageData['craftbuddy_search_defaults_reset_version'] = '2';
+
+    const migrated = loadSettings();
+
+    expect(migrated.searchGoalPriorityBias).toBe(
+      SEARCH_GOAL_PRIORITY_BIAS_MAX,
+    );
   });
 });

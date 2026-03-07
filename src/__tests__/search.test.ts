@@ -1172,27 +1172,71 @@ describe('finish craft policy', () => {
     expect(result.recommendation!.projectedSuccessChance).toBeUndefined();
   });
 
-  it('suppresses sub-100% Finish Craft when guaranteed completion is prioritized', () => {
+  it('shifts completion vs perfection lines according to the goal priority bias', () => {
     const config = createTestConfig({
       minStability: 0,
-      baseIntensity: 51,
-      baseControl: 23,
-      skills: [energizedFusion, simpleRefine],
+      baseIntensity: 20,
+      baseControl: 20,
+      skills: [
+        createCustomSkill({
+          name: 'Focused Fusion',
+          key: 'focused_fusion_priority_bias',
+          type: 'fusion',
+          qiCost: 0,
+          stabilityCost: 1,
+          baseCompletionGain: 1.5,
+          scalesWithIntensity: true,
+        }),
+        createCustomSkill({
+          name: 'Focused Refine',
+          key: 'focused_refine_priority_bias',
+          type: 'refine',
+          qiCost: 0,
+          stabilityCost: 1,
+          basePerfectionGain: 1,
+          scalesWithControl: true,
+        }),
+      ],
     });
     const state = new CraftingState({
       qi: 100,
-      stability: 17,
+      stability: 40,
       initialMaxStability: 60,
-      completion: 90,
+      completion: 70,
       perfection: 40,
     });
 
-    const result = lookaheadSearch(state, config, 130, 130, 4, 'neutral', [], {
-      prioritizeGuaranteedCompletion: true,
-    });
+    const balanced = lookaheadSearch(state, config, 100, 100, 1);
+    const completionBiased = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      1,
+      'neutral',
+      [],
+      { goalPriorityBias: 100 },
+    );
+    const perfectionBiased = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      1,
+      'neutral',
+      [],
+      { goalPriorityBias: -100 },
+    );
 
-    expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.name).not.toBe('Finish Craft');
+    expect(balanced.recommendation?.skill.key).toBe(
+      'focused_refine_priority_bias',
+    );
+    expect(completionBiased.recommendation?.skill.key).toBe(
+      'focused_fusion_priority_bias',
+    );
+    expect(perfectionBiased.recommendation?.skill.key).toBe(
+      'focused_refine_priority_bias',
+    );
   });
 
   it('keeps Finish Craft available when no skill can be used but the craft is still alive', () => {

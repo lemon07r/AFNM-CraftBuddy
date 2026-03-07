@@ -51,7 +51,7 @@ Status: `Implemented and covered`
 Status: `Chosen product behavior`
 
 - Search now models `Finish Craft` directly as a voluntary action with EV based on base completion success chance.
-- A persisted setting, `prioritizeGuaranteedCompletion`, can suppress sub-100% finish recommendations for users who prefer guaranteed lines.
+- A persisted `searchGoalPriorityBias` slider now lets users bias the same underlying scorer toward perfection (`-100`) or completion (`100`), with balanced (`0`) as the default neutral policy.
 - Coverage: `src/__tests__/search.test.ts`, `src/__tests__/craftSimulation.test.ts`, `src/__tests__/modContentHarmonyState.test.ts`
 
 ## 5. Toxicity Vs. Detoxification Math

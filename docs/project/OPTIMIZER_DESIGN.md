@@ -74,11 +74,12 @@ No skills are hard-filtered out of the search tree before evaluation. If a move 
 
 Recommendation budget is reserved for ranking first moves. Follow-up suggestions are generated only after a root frontier is accepted, using cached `bestMove` entries first and shallow fallback only when needed. Auxiliary UI data must not consume the search budget that determines the actual recommendation.
 
-## User policy toggle
+## User goal-priority bias
 
-- `prioritizeGuaranteedCompletion` is a persisted search-policy setting, default `false`.
-- When `false`, sub-100% `Finish Craft` is eligible if its EV beats continuing.
-- When `true`, CraftBuddy suppresses sub-100% finish recommendations but still allows guaranteed finish recommendations, including “stop short of sublime target” cases.
+- `searchGoalPriorityBias` is a persisted search-policy setting, default `0`.
+- Range: `-100` = perfection priority, `0` = balanced, `100` = completion priority.
+- Balanced is the mathematically neutral default: completion/perfection weights still follow remaining-work need share.
+- Non-zero bias shifts both ongoing-state scoring and `Finish Craft` outcome scoring through the same weight function, so the preference affects real search evaluation rather than a separate UI-only heuristic.
 
 ## Determinism expectations
 
@@ -92,7 +93,7 @@ Identical state + config inputs should produce stable recommendations within the
 - `searchTimeBudgetMs` (`100-10,000`, default `4,500`)
 - `searchMaxNodes` (`1,000-5,000,000`, default `2,000,000`)
 - `searchBeamWidth` (`3-20`, default `5`)
-- `prioritizeGuaranteedCompletion` (`false` by default)
+- `searchGoalPriorityBias` (`0` by default)
 - Settings sliders persist on commit (not every drag event) to reduce UI churn.
 - Preset tuning now keeps the beam narrower through mid-budget tiers; replay benchmarking showed widening too early can produce worse partial-frontier recommendations than a deeper narrow-beam search, including forge turns where a wider beam strands the search on a shallow terminal frontier and drifts into avoidable heat overshoot.
 - Manual tuning is coupled: over-raising one slider while starving the others can reduce effective frontier quality. Presets exist to keep the budget ratios in a safer range.

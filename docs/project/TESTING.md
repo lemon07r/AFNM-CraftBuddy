@@ -50,7 +50,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 - condition exploitation: positive conditions steer toward the right skills
 - buff utilization: buff setup → payoff sequences preferred over raw progress
 - survivability: stabilize when critical, skip when a finisher is available
-- finish policy: impossible-craft or no-action-alive scenarios can end with `Finish Craft`; the guaranteed-completion preference setting must keep pursuing 100% lines instead
+- finish policy: impossible-craft or no-action-alive scenarios can end with `Finish Craft`; goal-priority bias tests should prove balanced mode stays neutral while completion/perfection bias steers the chosen line in the expected direction
 - probabilistic survivability: when chance-based stability recovery exists, the optimizer should still prefer a guaranteed stabilize over a proc-dependent line if both keep goals alive
 - mixed conditions: varied/all-negative sequences don't cause craft death
 - harmony sub-systems: forge works crafts use fusion to raise heat before refining, complete without wasting turns on zero-gain skills

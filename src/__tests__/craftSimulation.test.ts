@@ -553,33 +553,73 @@ describe('craft simulation — finish craft policy', () => {
     expect(sim.targetsMet).toBe(false);
   });
 
-  it('keeps pursuing 100% completion when the preference setting is enabled', () => {
+  it('honors the completion vs perfection goal priority bias', () => {
     const config = fullConfig({
       minStability: 0,
-      baseIntensity: 51,
-      baseControl: 23,
-      skills: [energizedFusion, simpleRefine],
+      baseIntensity: 20,
+      baseControl: 20,
+      skills: [
+        createCustomSkill({
+          name: 'Focused Fusion',
+          key: 'focused_fusion_priority_bias',
+          type: 'fusion',
+          qiCost: 0,
+          stabilityCost: 1,
+          baseCompletionGain: 1.5,
+          scalesWithIntensity: true,
+        }),
+        createCustomSkill({
+          name: 'Focused Refine',
+          key: 'focused_refine_priority_bias',
+          type: 'refine',
+          qiCost: 0,
+          stabilityCost: 1,
+          basePerfectionGain: 1,
+          scalesWithControl: true,
+        }),
+      ],
     });
     const state = new CraftingState({
       qi: 100,
-      stability: 17,
+      stability: 40,
       initialMaxStability: 60,
-      completion: 90,
+      completion: 70,
       perfection: 40,
     });
 
-    const sim = simulateCraft(
+    const balanced = simulateCraft(
       state,
       config,
-      130,
-      130,
+      100,
+      100,
       ['neutral'],
-      5,
-      4,
-      { prioritizeGuaranteedCompletion: true },
+      1,
+      1,
+    );
+    const completionBiased = simulateCraft(
+      state,
+      config,
+      100,
+      100,
+      ['neutral'],
+      1,
+      1,
+      { goalPriorityBias: 100 },
+    );
+    const perfectionBiased = simulateCraft(
+      state,
+      config,
+      100,
+      100,
+      ['neutral'],
+      1,
+      1,
+      { goalPriorityBias: -100 },
     );
 
-    expect(sim.history[0]).not.toBe('Finish Craft');
+    expect(balanced.history[0]).toBe('Focused Refine');
+    expect(completionBiased.history[0]).toBe('Focused Fusion');
+    expect(perfectionBiased.history[0]).toBe('Focused Refine');
   });
 });
 

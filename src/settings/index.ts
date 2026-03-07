@@ -5,6 +5,12 @@
  * Settings are persisted to localStorage.
  */
 
+import {
+  clampSearchGoalPriorityBias,
+  DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
+  SEARCH_GOAL_PRIORITY_BIAS_MAX,
+} from '../utils/searchGoalPriority';
+
 export interface CraftBuddySettings {
   /** Lookahead search depth (1-96, default: 64) */
   lookaheadDepth: number;
@@ -30,8 +36,11 @@ export interface CraftBuddySettings {
   searchMaxNodes: number;
   /** Beam width - max branches to explore at each level (3-20, default: 8) */
   searchBeamWidth: number;
-  /** Prefer guaranteed-completion lines over partial-success finish recommendations */
-  prioritizeGuaranteedCompletion: boolean;
+  /**
+   * Completion/perfection search bias.
+   * -100 = perfection priority, 0 = balanced, 100 = completion priority.
+   */
+  searchGoalPriorityBias: number;
 }
 
 const STORAGE_KEY = 'craftbuddy_settings';
@@ -45,7 +54,7 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   | 'searchTimeBudgetMs'
   | 'searchMaxNodes'
   | 'searchBeamWidth'
-  | 'prioritizeGuaranteedCompletion'
+  | 'searchGoalPriorityBias'
 > = {
   lookaheadDepth: 64,
   searchTimeBudgetMs: 4500,
@@ -53,7 +62,7 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   // Replay regression showed beam 8 can strand long forge turns on a
   // shallow partial frontier; beam 5 reaches a deeper, safer frontier.
   searchBeamWidth: 5,
-  prioritizeGuaranteedCompletion: false,
+  searchGoalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
 };
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
@@ -71,6 +80,10 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
 
+type StoredCraftBuddySettings = Partial<CraftBuddySettings> & {
+  prioritizeGuaranteedCompletion?: unknown;
+};
+
 function getStorage(): Storage | null {
   if (typeof localStorage === 'undefined') {
     return null;
@@ -86,7 +99,7 @@ function getStorage(): Storage | null {
 }
 
 function clampInteger(
-  value: number,
+  value: number | undefined,
   min: number,
   max: number,
   fallback: number,
@@ -96,8 +109,21 @@ function clampInteger(
   return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
-function normalizeSettings(settings: CraftBuddySettings): CraftBuddySettings {
+function normalizeSettings(
+  settings: StoredCraftBuddySettings,
+): CraftBuddySettings {
+  const searchGoalPriorityBias =
+    settings.searchGoalPriorityBias !== undefined
+      ? clampSearchGoalPriorityBias(
+          settings.searchGoalPriorityBias,
+          DEFAULT_SETTINGS.searchGoalPriorityBias,
+        )
+      : settings.prioritizeGuaranteedCompletion === true
+        ? SEARCH_GOAL_PRIORITY_BIAS_MAX
+        : DEFAULT_SETTINGS.searchGoalPriorityBias;
+
   return {
+    ...DEFAULT_SETTINGS,
     ...settings,
     lookaheadDepth: clampInteger(
       settings.lookaheadDepth,
@@ -123,7 +149,7 @@ function normalizeSettings(settings: CraftBuddySettings): CraftBuddySettings {
       20,
       DEFAULT_SETTINGS.searchBeamWidth,
     ),
-    prioritizeGuaranteedCompletion: !!settings.prioritizeGuaranteedCompletion,
+    searchGoalPriorityBias,
     maxAlternatives: clampInteger(
       settings.maxAlternatives,
       0,
@@ -151,8 +177,7 @@ export function loadSettings(): CraftBuddySettings {
     const stored = storage?.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      // Merge with defaults to handle new settings added in updates
-      currentSettings = normalizeSettings({ ...DEFAULT_SETTINGS, ...parsed });
+      currentSettings = normalizeSettings(parsed);
     } else {
       currentSettings = { ...DEFAULT_SETTINGS };
     }
@@ -275,14 +300,13 @@ export function getSearchConfig(): {
   timeBudgetMs: number;
   maxNodes: number;
   beamWidth: number;
-  prioritizeGuaranteedCompletion: boolean;
+  goalPriorityBias: number;
 } {
   return {
     timeBudgetMs: currentSettings.searchTimeBudgetMs,
     maxNodes: currentSettings.searchMaxNodes,
     beamWidth: currentSettings.searchBeamWidth,
-    prioritizeGuaranteedCompletion:
-      currentSettings.prioritizeGuaranteedCompletion,
+    goalPriorityBias: currentSettings.searchGoalPriorityBias,
   };
 }
 

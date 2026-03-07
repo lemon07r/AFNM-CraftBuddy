@@ -28,6 +28,11 @@ import {
   getConditionEffectsForConfig,
 } from './skills';
 import { getHarmonyStatModifiers } from './harmony';
+import {
+  clampSearchGoalPriorityBias,
+  DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
+  SEARCH_GOAL_PRIORITY_BIAS_MAX,
+} from '../utils/searchGoalPriority';
 
 interface GainPreview {
   completion: number;
@@ -117,8 +122,11 @@ export interface SearchConfig {
   maxNodes: number;
   /** Beam width - max branches to explore at each level (default: 8) */
   beamWidth: number;
-  /** Prefer guaranteed-completion paths over partial-success Finish Craft. */
-  prioritizeGuaranteedCompletion: boolean;
+  /**
+   * Completion/perfection search bias.
+   * -100 = perfection priority, 0 = balanced, 100 = completion priority.
+   */
+  goalPriorityBias: number;
   /** Whether to use alpha-beta pruning (default: true) */
   useAlphaBeta: boolean;
   /** Progress bucket size for cache key normalization (default: 100) */
@@ -160,7 +168,7 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   timeBudgetMs: 2000,
   maxNodes: 750000,
   beamWidth: 10,
-  prioritizeGuaranteedCompletion: false,
+  goalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   useAlphaBeta: true,
   progressBucketSize: 100,
   useIterativeDeepening: true,
@@ -230,6 +238,10 @@ const SCORING = {
   // Base floor for buff need-share weighting.  Ensures buffs retain
   // some value even when the corresponding target is nearly met.
   BUFF_NEED_FLOOR: 0.5,
+  // Full user bias shifts half a weight point from one goal to the other
+  // while preserving the overall score scale. This is strong enough to
+  // steer close calls without overwhelming the remaining-work model.
+  GOAL_PRIORITY_WEIGHT_SHIFT: 0.5,
   // Qi value when targets not yet met: qi enables future progress actions.
   // 0.05 per qi ≈ 10 points at full qi (194), meaningful but secondary.
   QI_RESOURCE_WEIGHT: 0.05,
@@ -890,6 +902,37 @@ function evaluateHarmonySubsystemQuality(
   return 0;
 }
 
+function getGoalPriorityWeights(
+  completionNeedShare: number,
+  perfectionNeedShare: number,
+  completionGoal: number,
+  perfectionGoal: number,
+  goalPriorityBias: number = DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
+): {
+  completionWeight: number;
+  perfectionWeight: number;
+} {
+  let completionWeight = 1 + completionNeedShare;
+  let perfectionWeight = 1 + perfectionNeedShare;
+
+  if (!(completionGoal > 0 && perfectionGoal > 0)) {
+    return { completionWeight, perfectionWeight };
+  }
+
+  const normalizedBias = clampSearchGoalPriorityBias(goalPriorityBias);
+  if (normalizedBias === 0) {
+    return { completionWeight, perfectionWeight };
+  }
+
+  const shift =
+    (normalizedBias / SEARCH_GOAL_PRIORITY_BIAS_MAX) *
+    SCORING.GOAL_PRIORITY_WEIGHT_SHIFT;
+  completionWeight = Math.max(0.25, completionWeight + shift);
+  perfectionWeight = Math.max(0.25, perfectionWeight - shift);
+
+  return { completionWeight, perfectionWeight };
+}
+
 /**
  * Score a state based on progress toward targets.
  *
@@ -922,6 +965,7 @@ function scoreState(
   maxCompletionCap?: number,
   maxPerfectionCap?: number,
   ctx: ScoringContext = DEFAULT_SCORING_CONTEXT,
+  goalPriorityBias: number = DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
     return Math.min(state.completion, state.perfection);
@@ -982,9 +1026,20 @@ function scoreState(
     effectiveCompGoal > 0 ? Math.min(state.completion, effectiveCompGoal) : 0;
   const perfProgress =
     effectivePerfGoal > 0 ? Math.min(state.perfection, effectivePerfGoal) : 0;
-  const compWeight = 1 + compNeedShare;
-  const perfWeight = 1 + perfNeedShare;
-  let score = compProgress * compWeight + perfProgress * perfWeight;
+  const { completionWeight, perfectionWeight } = getGoalPriorityWeights(
+    compNeedShare,
+    perfNeedShare,
+    effectiveCompGoal,
+    effectivePerfGoal,
+    goalPriorityBias,
+  );
+  const totalPriorityWeight = completionWeight + perfectionWeight;
+  const completionPriorityShare =
+    totalPriorityWeight > 0 ? completionWeight / totalPriorityWeight : 0.5;
+  const perfectionPriorityShare =
+    totalPriorityWeight > 0 ? perfectionWeight / totalPriorityWeight : 0.5;
+  let score =
+    compProgress * completionWeight + perfProgress * perfectionWeight;
 
   // ── 2. target-met bonus (scaled to target magnitude) ─────────────────
   const totalTargetMagnitude = Math.max(
@@ -1026,7 +1081,7 @@ function scoreState(
       score +=
         state.controlBuffTurns *
         controlBuffBoost *
-        (SCORING.BUFF_NEED_FLOOR + perfNeedShare) *
+        (SCORING.BUFF_NEED_FLOOR + perfectionPriorityShare) *
         remainingWorkPct;
     }
     if (state.hasIntensityBuff()) {
@@ -1036,7 +1091,7 @@ function scoreState(
       score +=
         state.intensityBuffTurns *
         intensityBuffBoost *
-        (SCORING.BUFF_NEED_FLOOR + compNeedShare) *
+        (SCORING.BUFF_NEED_FLOOR + completionPriorityShare) *
         remainingWorkPct;
     }
 
@@ -1207,6 +1262,7 @@ function scoreFinishedOutcome(
   maxCompletionCap?: number,
   maxPerfectionCap?: number,
   ctx: ScoringContext = DEFAULT_SCORING_CONTEXT,
+  goalPriorityBias: number = DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
 ): number {
   const effectiveCompTarget = isSublimeCraft
     ? targetCompletion * targetMultiplier
@@ -1233,8 +1289,13 @@ function scoreFinishedOutcome(
     totalRemaining > 0 ? remainingCompletion / totalRemaining : 0.5;
   const perfNeedShare =
     totalRemaining > 0 ? remainingPerfection / totalRemaining : 0.5;
-  const compWeight = 1 + compNeedShare;
-  const perfWeight = 1 + perfNeedShare;
+  const { completionWeight, perfectionWeight } = getGoalPriorityWeights(
+    compNeedShare,
+    perfNeedShare,
+    effectiveCompGoal,
+    effectivePerfGoal,
+    goalPriorityBias,
+  );
   const stepPenaltyWeight = Math.max(
     SCORING.STEP_PENALTY,
     ctx.avgGainPerTurn * 0.25,
@@ -1242,9 +1303,9 @@ function scoreFinishedOutcome(
 
   let score =
     Math.min(Math.max(0, state.completion), Math.max(0, effectiveCompGoal)) *
-      compWeight +
+      completionWeight +
     Math.min(Math.max(0, state.perfection), Math.max(0, effectivePerfGoal)) *
-      perfWeight;
+      perfectionWeight;
 
   const targetMetBonus = totalTargetMagnitude * SCORING.TARGET_MET_MULTIPLIER;
   const baseTargetsMet =
@@ -1606,7 +1667,10 @@ export function greedySearch(
   const getFinishAction = (
     candidate: CraftingState,
   ): (SkillRecommendation & UnsafeCandidateClassification) | null => {
-    if (candidate.stability <= 0 || goalsMet(candidate, modeCompGoal, modePerfGoal)) {
+    if (
+      candidate.stability <= 0 ||
+      goalsMet(candidate, modeCompGoal, modePerfGoal)
+    ) {
       return null;
     }
     const projectedSuccessChance = calculateFinishSuccessChance(
@@ -1614,12 +1678,6 @@ export function greedySearch(
       targetCompletion,
     );
     if (projectedSuccessChance <= 0) {
-      return null;
-    }
-    if (
-      cfg.prioritizeGuaranteedCompletion &&
-      projectedSuccessChance < 1
-    ) {
       return null;
     }
 
@@ -1639,6 +1697,7 @@ export function greedySearch(
           config.maxCompletion,
           config.maxPerfection,
           scoringCtx,
+          cfg.goalPriorityBias,
         ),
       reasoning: generateFinishReasoning(projectedSuccessChance),
       projectedSuccessChance,
@@ -1732,6 +1791,7 @@ export function greedySearch(
       config.maxCompletion,
       config.maxPerfection,
       scoringCtx,
+      cfg.goalPriorityBias,
     );
     const terminalState = classifyTerminalState(
       newState,
@@ -1913,6 +1973,7 @@ export function lookaheadSearch(
       config.maxCompletion,
       config.maxPerfection,
       scoringCtx,
+      cfg.goalPriorityBias,
     );
     const remainingCompletion = Math.max(
       0,
@@ -1926,6 +1987,18 @@ export function lookaheadSearch(
     if (totalRemaining > 0) {
       const compNeedShare = remainingCompletion / totalRemaining;
       const perfNeedShare = remainingPerfection / totalRemaining;
+      const { completionWeight, perfectionWeight } = getGoalPriorityWeights(
+        compNeedShare,
+        perfNeedShare,
+        modeCompGoal,
+        modePerfGoal,
+        cfg.goalPriorityBias,
+      );
+      const totalPriorityWeight = completionWeight + perfectionWeight;
+      const completionPriorityShare =
+        totalPriorityWeight > 0 ? completionWeight / totalPriorityWeight : 0.5;
+      const perfectionPriorityShare =
+        totalPriorityWeight > 0 ? perfectionWeight / totalPriorityWeight : 0.5;
       const conditionEffects = getConditionEffectsForConfig(
         config,
         conditionAtDepth,
@@ -1941,8 +2014,10 @@ export function lookaheadSearch(
         }
       }
       const conditionedPotential =
-        compNeedShare * intensityScale + perfNeedShare * controlScale;
-      const neutralPotential = compNeedShare + perfNeedShare;
+        completionPriorityShare * intensityScale +
+        perfectionPriorityShare * controlScale;
+      const neutralPotential =
+        completionPriorityShare + perfectionPriorityShare;
       baseScore +=
         (conditionedPotential - neutralPotential) * scoringCtx.avgGainPerTurn;
     }
@@ -2017,12 +2092,6 @@ export function lookaheadSearch(
     if (projectedSuccessChance <= 0) {
       return null;
     }
-    if (
-      cfg.prioritizeGuaranteedCompletion &&
-      projectedSuccessChance < 1
-    ) {
-      return null;
-    }
 
     return {
       skill: FINISH_CRAFT_SKILL,
@@ -2039,6 +2108,7 @@ export function lookaheadSearch(
           config.maxCompletion,
           config.maxPerfection,
           scoringCtx,
+          cfg.goalPriorityBias,
         ),
       immediateProgress: 0,
       requiresProbabilisticSurvival: false,
@@ -2376,6 +2446,7 @@ export function lookaheadSearch(
         config.maxCompletion,
         config.maxPerfection,
         scoringCtx,
+        cfg.goalPriorityBias,
       );
     }
 
