@@ -44,7 +44,7 @@ import {
 
 interface SettingsPanelProps {
   onSettingsChange?: (settings: CraftBuddySettings) => void;
-  /** Called when a search-affecting setting changes (lookahead, time budget, nodes, beam width) */
+  /** Called when a search-affecting setting changes */
   onSearchSettingsChange?: (settings: CraftBuddySettings) => void;
   /** Called when settings panel open state changes */
   onOpenChange?: (isOpen: boolean) => void;
@@ -162,6 +162,13 @@ const SEARCH_BEAM_WIDTH_HELP: SettingHelpContent = {
   description:
     'Controls how many candidate branches survive at each layer. Wider is not automatically better because it spreads the budget across more lines.',
   note: 'Keep beam width moderate unless you also have enough depth, time, and nodes to support it.',
+};
+
+const GUARANTEED_COMPLETION_HELP: SettingHelpContent = {
+  title: 'Guaranteed Completion Priority',
+  description:
+    'When enabled, CraftBuddy will not recommend a partial-success Finish Craft unless the current completion chance is already 100%.',
+  note: 'Disabled by default. Leave this off to allow expected-value finish recommendations on impossible or low-runway crafts.',
 };
 
 const MAX_ALTERNATIVES_HELP: SettingHelpContent = {
@@ -523,6 +530,9 @@ export const SettingsPanel = memo(function SettingsPanel({
     | 'searchMaxNodes'
     | 'searchBeamWidth'
     | 'maxAlternatives';
+  type SearchSettingKey =
+    | SliderSettingKey
+    | 'prioritizeGuaranteedCompletion';
 
   const handleSettingChange = useCallback(
     <K extends keyof CraftBuddySettings>(
@@ -546,11 +556,12 @@ export const SettingsPanel = memo(function SettingsPanel({
   );
 
   // Search-affecting settings that should trigger recalculation
-  const SEARCH_SETTINGS: SliderSettingKey[] = [
+  const SEARCH_SETTINGS: SearchSettingKey[] = [
     'lookaheadDepth',
     'searchTimeBudgetMs',
     'searchMaxNodes',
     'searchBeamWidth',
+    'prioritizeGuaranteedCompletion',
   ];
 
   const handleSliderCommit = useCallback(
@@ -1095,6 +1106,19 @@ export const SettingsPanel = memo(function SettingsPanel({
                       onCommit={(v) =>
                         handleSliderCommit('searchBeamWidth', v)
                       }
+                    />
+
+                    <ToggleSetting
+                      label="Prioritize 100% Completion"
+                      checked={settings.prioritizeGuaranteedCompletion}
+                      tooltip={GUARANTEED_COMPLETION_HELP}
+                      onChange={(v) => {
+                        const newSettings = handleSettingChange(
+                          'prioritizeGuaranteedCompletion',
+                          v,
+                        );
+                        onSearchSettingsChange?.(newSettings);
+                      }}
                     />
                   </Box>
                 </SettingsGroup>

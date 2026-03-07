@@ -58,11 +58,15 @@ export interface SkillRecommendation {
   followUpSkill?: {
     name: string;
     type: string;
+    actionKind?: SkillDefinition['actionKind'];
     icon?: string;
     expectedGains: GainPreview;
     immediateGains: GainPreview;
     effectiveCosts: ActionCostPreview;
+    projectedSuccessChance?: number;
   };
+  /** Success chance if this recommendation ends the craft immediately. */
+  projectedSuccessChance?: number;
 }
 
 /** Diagnostic info for why skills are unavailable */
@@ -89,6 +93,7 @@ export interface SearchResult {
     maxStability: number;
     qi: number;
     turnsRemaining: number;
+    projectedSuccessChance?: number;
   };
   /** Search performance metrics */
   searchMetrics?: {
@@ -112,6 +117,8 @@ export interface SearchConfig {
   maxNodes: number;
   /** Beam width - max branches to explore at each level (default: 8) */
   beamWidth: number;
+  /** Prefer guaranteed-completion paths over partial-success Finish Craft. */
+  prioritizeGuaranteedCompletion: boolean;
   /** Whether to use alpha-beta pruning (default: true) */
   useAlphaBeta: boolean;
   /** Progress bucket size for cache key normalization (default: 100) */
@@ -153,6 +160,7 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   timeBudgetMs: 2000,
   maxNodes: 750000,
   beamWidth: 10,
+  prioritizeGuaranteedCompletion: false,
   useAlphaBeta: true,
   progressBucketSize: 100,
   useIterativeDeepening: true,
@@ -165,6 +173,33 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
 
 const TERMINAL_UNMET_PENALTY_MULTIPLIER = 4;
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
+const FINISH_CRAFT_KEY = '__finish_craft__';
+const FINISH_CRAFT_NAME = 'Finish Craft';
+const ZERO_GAINS: GainPreview = Object.freeze({
+  completion: 0,
+  perfection: 0,
+  stability: 0,
+});
+const ZERO_COSTS: ActionCostPreview = Object.freeze({
+  qi: 0,
+  stability: 0,
+});
+const FINISH_CRAFT_SKILL: SkillDefinition = Object.freeze({
+  name: FINISH_CRAFT_NAME,
+  key: FINISH_CRAFT_KEY,
+  qiCost: 0,
+  stabilityCost: 0,
+  baseCompletionGain: 0,
+  basePerfectionGain: 0,
+  stabilityGain: 0,
+  maxStabilityChange: 0,
+  buffType: BuffType.NONE,
+  buffDuration: 0,
+  buffMultiplier: 1,
+  type: 'support',
+  actionKind: 'finish',
+  consumesTurn: false,
+});
 
 // ── Scoring weights ─────────────────────────────────────────────────────────
 // Each constant documents its magnitude relative to other scoring layers.
@@ -630,10 +665,17 @@ export function normalizeForecastConditionQueue(
 }
 
 function actionConsumesTurn(skill: SkillDefinition): boolean {
+  if (skill.actionKind === 'finish') {
+    return false;
+  }
   if (skill.consumesTurn !== undefined) {
     return skill.consumesTurn;
   }
   return skill.actionKind !== 'item';
+}
+
+function isFinishAction(skill: SkillDefinition): boolean {
+  return skill.actionKind === 'finish' || skill.key === FINISH_CRAFT_KEY;
 }
 
 /**
@@ -1156,6 +1198,126 @@ function scoreState(
   return score;
 }
 
+function scoreFinishedOutcome(
+  state: CraftingState,
+  targetCompletion: number,
+  targetPerfection: number,
+  isSublimeCraft: boolean = false,
+  targetMultiplier: number = 2.0,
+  maxCompletionCap?: number,
+  maxPerfectionCap?: number,
+  ctx: ScoringContext = DEFAULT_SCORING_CONTEXT,
+): number {
+  const effectiveCompTarget = isSublimeCraft
+    ? targetCompletion * targetMultiplier
+    : targetCompletion;
+  const effectivePerfTarget = isSublimeCraft
+    ? targetPerfection * targetMultiplier
+    : targetPerfection;
+  const effectiveCompGoal =
+    maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
+      ? Math.min(effectiveCompTarget, maxCompletionCap)
+      : effectiveCompTarget;
+  const effectivePerfGoal =
+    maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
+      ? Math.min(effectivePerfTarget, maxPerfectionCap)
+      : effectivePerfTarget;
+  const totalTargetMagnitude = Math.max(
+    1,
+    effectiveCompGoal + effectivePerfGoal,
+  );
+  const remainingCompletion = Math.max(0, effectiveCompGoal - state.completion);
+  const remainingPerfection = Math.max(0, effectivePerfGoal - state.perfection);
+  const totalRemaining = remainingCompletion + remainingPerfection;
+  const compNeedShare =
+    totalRemaining > 0 ? remainingCompletion / totalRemaining : 0.5;
+  const perfNeedShare =
+    totalRemaining > 0 ? remainingPerfection / totalRemaining : 0.5;
+  const compWeight = 1 + compNeedShare;
+  const perfWeight = 1 + perfNeedShare;
+  const stepPenaltyWeight = Math.max(
+    SCORING.STEP_PENALTY,
+    ctx.avgGainPerTurn * 0.25,
+  );
+
+  let score =
+    Math.min(Math.max(0, state.completion), Math.max(0, effectiveCompGoal)) *
+      compWeight +
+    Math.min(Math.max(0, state.perfection), Math.max(0, effectivePerfGoal)) *
+      perfWeight;
+
+  const targetMetBonus = totalTargetMagnitude * SCORING.TARGET_MET_MULTIPLIER;
+  const baseTargetsMet =
+    (targetCompletion <= 0 || state.completion >= targetCompletion) &&
+    (targetPerfection <= 0 || state.perfection >= targetPerfection);
+  const sublimeTargetsMet =
+    isSublimeCraft &&
+    (effectiveCompTarget <= 0 || state.completion >= effectiveCompTarget) &&
+    (effectivePerfTarget <= 0 || state.perfection >= effectivePerfTarget);
+
+  if (sublimeTargetsMet) {
+    score += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
+  } else if (baseTargetsMet) {
+    score += targetMetBonus;
+    if (isSublimeCraft) {
+      score +=
+        (Math.max(0, state.completion - targetCompletion) +
+          Math.max(0, state.perfection - targetPerfection)) *
+        SCORING.SUBLIME_BEYOND_BASE_WEIGHT;
+    }
+  }
+
+  if (!isSublimeCraft) {
+    const normalCompLimit =
+      maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
+        ? Math.min(targetCompletion, maxCompletionCap)
+        : targetCompletion;
+    const normalPerfLimit =
+      maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
+        ? Math.min(targetPerfection, maxPerfectionCap)
+        : targetPerfection;
+    score -=
+      Math.max(0, state.completion - Math.max(0, normalCompLimit)) *
+        SCORING.OVERSHOOT_PENALTY_WEIGHT +
+      Math.max(0, state.perfection - Math.max(0, normalPerfLimit)) *
+        SCORING.OVERSHOOT_PENALTY_WEIGHT;
+  } else {
+    score -=
+      Math.max(0, state.completion - Math.max(0, effectiveCompGoal)) *
+        SCORING.OVERSHOOT_PENALTY_WEIGHT +
+      Math.max(0, state.perfection - Math.max(0, effectivePerfGoal)) *
+        SCORING.OVERSHOOT_PENALTY_WEIGHT;
+  }
+
+  if (maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)) {
+    score -=
+      Math.max(0, state.completion - maxCompletionCap) *
+      SCORING.HARD_CAP_PENALTY_WEIGHT;
+  }
+  if (maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)) {
+    score -=
+      Math.max(0, state.perfection - maxPerfectionCap) *
+      SCORING.HARD_CAP_PENALTY_WEIGHT;
+  }
+
+  score -= state.step * stepPenaltyWeight;
+
+  return score;
+}
+
+function calculateFinishSuccessChance(
+  state: CraftingState,
+  targetCompletion: number,
+): number {
+  if (!Number.isFinite(targetCompletion) || targetCompletion <= 0) {
+    return 1;
+  }
+  if (!Number.isFinite(state.completion) || state.completion <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, state.completion / targetCompletion));
+}
+
 function calculateRecommendationGains(
   state: CraftingState,
   skill: SkillDefinition,
@@ -1207,6 +1369,7 @@ interface SearchMoveCandidate {
   orderingScore: number;
   immediateProgress: number;
   requiresProbabilisticSurvival: boolean;
+  projectedSuccessChance?: number;
 }
 
 function applySurvivabilityFloorToState(
@@ -1331,6 +1494,10 @@ function generateReasoning(
   targetCompletion: number,
   targetPerfection: number,
 ): string {
+  if (isFinishAction(skill)) {
+    return 'Best available option';
+  }
+
   const reasons: string[] = [];
 
   // Check if we need stability
@@ -1387,6 +1554,14 @@ function generateReasoning(
   return reasons.length > 0 ? reasons.join('; ') : 'Best available option';
 }
 
+function generateFinishReasoning(successChance: number): string {
+  const successPct = Math.round(successChance * 100);
+  if (successPct >= 100) {
+    return 'Guaranteed craft success available now';
+  }
+  return `End the craft now for ${successPct}% success chance`;
+}
+
 /**
  * Greedy search - evaluates each skill's immediate impact.
  * Fast but may not find optimal solution.
@@ -1399,7 +1574,9 @@ export function greedySearch(
   targetCompletion: number = 0,
   targetPerfection: number = 0,
   currentConditionType?: CraftingConditionType,
+  searchConfig: Partial<SearchConfig> = {},
 ): SearchResult {
+  const cfg: SearchConfig = { ...DEFAULT_SEARCH_CONFIG, ...searchConfig };
   // Extract settings from config
   const isSublime = config.isSublimeCraft || false;
   const targetMult = config.targetMultiplier || 2.0;
@@ -1426,6 +1603,50 @@ export function greedySearch(
   );
   const normalizedCurrentCondition =
     normalizeConditionType(currentConditionType);
+  const getFinishAction = (
+    candidate: CraftingState,
+  ): (SkillRecommendation & UnsafeCandidateClassification) | null => {
+    if (candidate.stability <= 0 || goalsMet(candidate, modeCompGoal, modePerfGoal)) {
+      return null;
+    }
+    const projectedSuccessChance = calculateFinishSuccessChance(
+      candidate,
+      targetCompletion,
+    );
+    if (projectedSuccessChance <= 0) {
+      return null;
+    }
+    if (
+      cfg.prioritizeGuaranteedCompletion &&
+      projectedSuccessChance < 1
+    ) {
+      return null;
+    }
+
+    return {
+      skill: FINISH_CRAFT_SKILL,
+      expectedGains: { ...ZERO_GAINS },
+      immediateGains: { ...ZERO_GAINS },
+      effectiveCosts: { ...ZERO_COSTS },
+      score:
+        projectedSuccessChance *
+        scoreFinishedOutcome(
+          candidate,
+          targetCompletion,
+          targetPerfection,
+          isSublime,
+          targetMult,
+          config.maxCompletion,
+          config.maxPerfection,
+          scoringCtx,
+        ),
+      reasoning: generateFinishReasoning(projectedSuccessChance),
+      projectedSuccessChance,
+      isTerminal: false,
+      isTerminalUnmet: false,
+      requiresProbabilisticSurvival: false,
+    };
+  };
 
   // Check if active goals are already met.
   if (goalsMet(state, modeCompGoal, modePerfGoal)) {
@@ -1437,8 +1658,13 @@ export function greedySearch(
     };
   }
 
+  const finishAction = getFinishAction(state);
+
   // Check if terminal state
-  if (isTerminalState(state, config, normalizedCurrentCondition)) {
+  if (
+    isTerminalState(state, config, normalizedCurrentCondition) &&
+    !finishAction
+  ) {
     return {
       recommendation: null,
       alternativeSkills: [],
@@ -1532,6 +1758,10 @@ export function greedySearch(
       requiresProbabilisticSurvival,
       ...terminalState,
     });
+  }
+
+  if (finishAction) {
+    evaluatedMoves.push(finishAction);
   }
 
   const scoredSkills: SkillRecommendation[] =
@@ -1741,6 +1971,13 @@ export function lookaheadSearch(
     searchState: CraftingState;
     requiresProbabilisticSurvival: boolean;
   } => {
+    if (isFinishAction(skill)) {
+      return {
+        searchState: displayState,
+        requiresProbabilisticSurvival: false,
+      };
+    }
+
     const goalsMetAfterAction = targetsMetForCurrentMode(displayState);
     const survivabilityFloor = calculateActionSurvivabilityFloor(
       currentState,
@@ -1762,6 +1999,65 @@ export function lookaheadSearch(
         : displayState,
       requiresProbabilisticSurvival,
     };
+  };
+  const getFinishAction = (
+    candidate: CraftingState,
+  ): SearchMoveCandidate | null => {
+    if (
+      candidate.stability <= 0 ||
+      goalsMet(candidate, modeCompGoal, modePerfGoal)
+    ) {
+      return null;
+    }
+
+    const projectedSuccessChance = calculateFinishSuccessChance(
+      candidate,
+      targetCompletion,
+    );
+    if (projectedSuccessChance <= 0) {
+      return null;
+    }
+    if (
+      cfg.prioritizeGuaranteedCompletion &&
+      projectedSuccessChance < 1
+    ) {
+      return null;
+    }
+
+    return {
+      skill: FINISH_CRAFT_SKILL,
+      nextState: candidate,
+      searchState: candidate,
+      orderingScore:
+        projectedSuccessChance *
+        scoreFinishedOutcome(
+          candidate,
+          targetCompletion,
+          targetPerfection,
+          isSublime,
+          targetMult,
+          config.maxCompletion,
+          config.maxPerfection,
+          scoringCtx,
+        ),
+      immediateProgress: 0,
+      requiresProbabilisticSurvival: false,
+      projectedSuccessChance,
+    };
+  };
+  const scoreStateConsideringFinish = (
+    candidate: CraftingState,
+    conditionAtDepth: CraftingConditionType,
+  ): number => {
+    const continuationScore = scoreStateWithTerminalPenalty(
+      candidate,
+      conditionAtDepth,
+    );
+    const finishCandidate = getFinishAction(candidate);
+    if (!finishCandidate) {
+      return continuationScore;
+    }
+    return Math.max(continuationScore, finishCandidate.orderingScore);
   };
   let cache: TranspositionCache = new Map();
   let acceptedCache: TranspositionCache = new Map();
@@ -1821,7 +2117,7 @@ export function lookaheadSearch(
     )?.score;
     return typeof cachedScore === 'number' && Number.isFinite(cachedScore)
       ? cachedScore
-      : scoreStateWithTerminalPenalty(candidate, conditionAtDepth);
+      : scoreStateConsideringFinish(candidate, conditionAtDepth);
   };
 
   function estimatePostMoveStateScore(
@@ -1923,6 +2219,11 @@ export function lookaheadSearch(
       });
     }
 
+    const finishCandidate = getFinishAction(currentState);
+    if (finishCandidate) {
+      candidates.push(finishCandidate);
+    }
+
     const filteredCandidates = filterUnfinishedTerminalCandidates(
       candidates.map((candidate) => ({
         ...candidate,
@@ -1970,8 +2271,13 @@ export function lookaheadSearch(
     };
   }
 
+  const rootFinishAction = getFinishAction(state);
+
   // Check if terminal state (use current condition type for filtering)
-  if (isTerminalState(state, config, normalizedCurrentCondition)) {
+  if (
+    isTerminalState(state, config, normalizedCurrentCondition) &&
+    !rootFinishAction
+  ) {
     return {
       recommendation: null,
       alternativeSkills: [],
@@ -2049,18 +2355,13 @@ export function lookaheadSearch(
       );
     }
 
-    const stateIsTerminal = isTerminalState(
-      currentState,
-      config,
-      currentConditionAtDepth,
-    );
+    const stateIsTerminal =
+      isTerminalState(currentState, config, currentConditionAtDepth) &&
+      !getFinishAction(currentState);
 
     // Base case: depth exhausted or terminal
     if (remainingDepth === 0 || stateIsTerminal) {
-      return scoreStateWithTerminalPenalty(
-        currentState,
-        currentConditionAtDepth,
-      );
+      return scoreStateConsideringFinish(currentState, currentConditionAtDepth);
     }
 
     // Check if active goals are met - early termination with score.
@@ -2115,10 +2416,7 @@ export function lookaheadSearch(
       conditionEffectsAtDepth,
     );
     if (orderedCandidates.length === 0) {
-      return scoreStateWithTerminalPenalty(
-        currentState,
-        currentConditionAtDepth,
-      );
+      return scoreStateConsideringFinish(currentState, currentConditionAtDepth);
     }
 
     // Apply adaptive beam search: use narrower beam for deep searches
@@ -2135,7 +2433,9 @@ export function lookaheadSearch(
       const { skill, searchState: newState } = candidate;
 
       let score = 0;
-      if (!actionConsumesTurn(skill)) {
+      if (isFinishAction(skill)) {
+        score = candidate.orderingScore;
+      } else if (!actionConsumesTurn(skill)) {
         score = search(
           newState,
           remainingDepth,
@@ -2189,10 +2489,7 @@ export function lookaheadSearch(
     }
 
     if (!Number.isFinite(bestScore)) {
-      bestScore = scoreStateWithTerminalPenalty(
-        currentState,
-        currentConditionAtDepth,
-      );
+      bestScore = scoreStateConsideringFinish(currentState, currentConditionAtDepth);
       bestMoveKey = '';
     }
 
@@ -2208,6 +2505,13 @@ export function lookaheadSearch(
     conditionQueueAtDepth: CraftingConditionType[],
     skill: SkillDefinition,
   ): number {
+    if (isFinishAction(skill)) {
+      return (
+        getFinishAction(newState)?.orderingScore ??
+        scoreStateConsideringFinish(newState, conditionAtDepth)
+      );
+    }
+
     if (!actionConsumesTurn(skill)) {
       return search(
         newState,
@@ -2247,7 +2551,7 @@ export function lookaheadSearch(
     nextCondition: CraftingConditionType;
     nextQueue: CraftingConditionType[];
   } {
-    if (!actionConsumesTurn(skill)) {
+    if (isFinishAction(skill) || !actionConsumesTurn(skill)) {
       return {
         nextCondition: conditionAtDepth,
         nextQueue: conditionQueueAtDepth,
@@ -2291,16 +2595,20 @@ export function lookaheadSearch(
     startDepthIndex: number = 0,
     startConditionAtDepth: CraftingConditionType = normalizedCurrentCondition,
     startConditionQueueAtDepth: CraftingConditionType[] = initialConditionQueue,
-  ): { path: string[]; finalState: CraftingState } {
+  ): { path: string[]; finalState: CraftingState; finishedByChoice: boolean } {
     const path: string[] = [];
     let currentState = startState;
     let currentDepth = 0;
     let conditionAtDepth = startConditionAtDepth;
     let conditionQueueAtDepth = startConditionQueueAtDepth;
+    let finishedByChoice = false;
 
     while (
       currentDepth < maxDepth &&
-      !isTerminalState(currentState, config, conditionAtDepth)
+      !(
+        isTerminalState(currentState, config, conditionAtDepth) &&
+        !getFinishAction(currentState)
+      )
     ) {
       if (targetsMetForCurrentMode(currentState)) {
         break;
@@ -2330,28 +2638,36 @@ export function lookaheadSearch(
         remainingDepth,
       );
       if (cachedBestMove) {
-        const cachedSkill = skills.find(
-          (skill) => skill.key === cachedBestMove,
-        );
-        if (cachedSkill) {
-          const nextState = applySkill(
-            currentState,
-            cachedSkill,
-            config,
-            conditionEffectsAtDepth,
-            targetCompletion,
-            conditionAtDepth,
+        if (cachedBestMove === FINISH_CRAFT_KEY) {
+          const finishAction = getFinishAction(currentState);
+          if (finishAction) {
+            chosenSkill = finishAction.skill;
+            chosenNextState = finishAction.searchState;
+          }
+        } else {
+          const cachedSkill = skills.find(
+            (skill) => skill.key === cachedBestMove,
           );
-          if (nextState !== null) {
-            const { searchState } = buildSearchStateForContinuation(
+          if (cachedSkill) {
+            const nextState = applySkill(
               currentState,
               cachedSkill,
-              nextState,
+              config,
               conditionEffectsAtDepth,
+              targetCompletion,
               conditionAtDepth,
             );
-            chosenSkill = cachedSkill;
-            chosenNextState = searchState;
+            if (nextState !== null) {
+              const { searchState } = buildSearchStateForContinuation(
+                currentState,
+                cachedSkill,
+                nextState,
+                conditionEffectsAtDepth,
+                conditionAtDepth,
+              );
+              chosenSkill = cachedSkill;
+              chosenNextState = searchState;
+            }
           }
         }
       }
@@ -2408,6 +2724,12 @@ export function lookaheadSearch(
         break;
       }
 
+      path.push(chosenSkill.name);
+      if (isFinishAction(chosenSkill)) {
+        finishedByChoice = true;
+        break;
+      }
+
       const nextConditionState = getMostLikelyConditionStateAfterSkill(
         chosenNextState,
         conditionAtDepth,
@@ -2415,14 +2737,13 @@ export function lookaheadSearch(
         chosenSkill,
       );
 
-      path.push(chosenSkill.name);
       currentState = chosenNextState;
       conditionAtDepth = nextConditionState.nextCondition;
       conditionQueueAtDepth = nextConditionState.nextQueue;
       currentDepth++;
     }
 
-    return { path, finalState: currentState };
+    return { path, finalState: currentState, finishedByChoice };
   }
 
   /**
@@ -2470,7 +2791,10 @@ export function lookaheadSearch(
     if (targetsMetForCurrentMode(stateAfterSkill)) {
       return undefined;
     }
-    if (isTerminalState(stateAfterSkill, config, conditionAtDepth)) {
+    if (
+      isTerminalState(stateAfterSkill, config, conditionAtDepth) &&
+      !getFinishAction(stateAfterSkill)
+    ) {
       return undefined;
     }
 
@@ -2492,6 +2816,22 @@ export function lookaheadSearch(
       maxRemainingDepth,
     );
     if (cachedBestMove) {
+      if (cachedBestMove === FINISH_CRAFT_KEY) {
+        const finishAction = getFinishAction(stateAfterSkill);
+        if (finishAction) {
+          return {
+            name: finishAction.skill.name,
+            type: finishAction.skill.type,
+            actionKind: finishAction.skill.actionKind,
+            icon: finishAction.skill.icon,
+            expectedGains: { ...ZERO_GAINS },
+            immediateGains: { ...ZERO_GAINS },
+            effectiveCosts: { ...ZERO_COSTS },
+            projectedSuccessChance: finishAction.projectedSuccessChance,
+          };
+        }
+      }
+
       const cachedSkill = skills.find((skill) => skill.key === cachedBestMove);
       if (cachedSkill) {
         const { expectedGains, immediateGains, effectiveCosts } =
@@ -2504,6 +2844,7 @@ export function lookaheadSearch(
         return {
           name: cachedSkill.name,
           type: cachedSkill.type,
+          actionKind: cachedSkill.actionKind,
           icon: cachedSkill.icon,
           expectedGains,
           immediateGains,
@@ -2525,20 +2866,32 @@ export function lookaheadSearch(
 
     if (!useDeepLookahead || maxRemainingDepth <= 0) {
       const fallbackCandidate = orderedFollowUpCandidates[0];
+      const followUpSkill = fallbackCandidate.skill;
+      const finishProjectedSuccessChance = isFinishAction(followUpSkill)
+        ? fallbackCandidate.projectedSuccessChance
+        : undefined;
       const { expectedGains, immediateGains, effectiveCosts } =
-        calculateRecommendationGains(
-          stateAfterSkill,
-          fallbackCandidate.skill,
-          config,
-          followUpConditionEffects,
-        );
+        isFinishAction(followUpSkill)
+          ? {
+              expectedGains: { ...ZERO_GAINS },
+              immediateGains: { ...ZERO_GAINS },
+              effectiveCosts: { ...ZERO_COSTS },
+            }
+          : calculateRecommendationGains(
+              stateAfterSkill,
+              followUpSkill,
+              config,
+              followUpConditionEffects,
+            );
       return {
-        name: fallbackCandidate.skill.name,
-        type: fallbackCandidate.skill.type,
-        icon: fallbackCandidate.skill.icon,
+        name: followUpSkill.name,
+        type: followUpSkill.type,
+        actionKind: followUpSkill.actionKind,
+        icon: followUpSkill.icon,
         expectedGains,
         immediateGains,
         effectiveCosts,
+        projectedSuccessChance: finishProjectedSuccessChance,
       };
     }
 
@@ -2559,18 +2912,25 @@ export function lookaheadSearch(
       qi: 0,
       stability: 0,
     };
+    let bestFollowUpSuccessChance: number | undefined = undefined;
 
     for (const candidate of orderedFollowUpCandidates) {
       const followUp = candidate.skill;
       const nextState = candidate.searchState;
 
       const { expectedGains, immediateGains, effectiveCosts } =
-        calculateRecommendationGains(
-          stateAfterSkill,
-          followUp,
-          config,
-          followUpConditionEffects,
-        );
+        isFinishAction(followUp)
+          ? {
+              expectedGains: { ...ZERO_GAINS },
+              immediateGains: { ...ZERO_GAINS },
+              effectiveCosts: { ...ZERO_COSTS },
+            }
+          : calculateRecommendationGains(
+              stateAfterSkill,
+              followUp,
+              config,
+              followUpConditionEffects,
+            );
       const followUpScore = evaluateFutureScoreAfterSkill(
         nextState,
         Math.max(0, depthToSearch - 1 - depthIndex),
@@ -2599,6 +2959,7 @@ export function lookaheadSearch(
         bestFollowUpExpectedGains = expectedGains;
         bestFollowUpImmediateGains = immediateGains;
         bestFollowUpEffectiveCosts = effectiveCosts;
+        bestFollowUpSuccessChance = candidate.projectedSuccessChance;
       }
     }
 
@@ -2609,10 +2970,12 @@ export function lookaheadSearch(
     return {
       name: bestFollowUp.name,
       type: bestFollowUp.type,
+      actionKind: bestFollowUp.actionKind,
       icon: bestFollowUp.icon,
       expectedGains: bestFollowUpExpectedGains,
       immediateGains: bestFollowUpImmediateGains,
       effectiveCosts: bestFollowUpEffectiveCosts,
+      projectedSuccessChance: bestFollowUpSuccessChance,
     };
   }
 
@@ -2646,39 +3009,51 @@ export function lookaheadSearch(
       const newState = candidate.searchState;
 
       const { expectedGains, immediateGains, effectiveCosts } =
-        calculateRecommendationGains(
-          state,
-          skill,
-          config,
-          currentConditionEffects,
-        );
-      const reasoning = generateReasoning(
-        skill,
-        state,
-        immediateGains,
-        targetCompletion,
-        targetPerfection,
-      );
+        isFinishAction(skill)
+          ? {
+              expectedGains: { ...ZERO_GAINS },
+              immediateGains: { ...ZERO_GAINS },
+              effectiveCosts: { ...ZERO_COSTS },
+            }
+          : calculateRecommendationGains(
+              state,
+              skill,
+              config,
+              currentConditionEffects,
+            );
+      const reasoning = isFinishAction(skill)
+        ? generateFinishReasoning(candidate.projectedSuccessChance ?? 0)
+        : generateReasoning(
+            skill,
+            state,
+            immediateGains,
+            targetCompletion,
+            targetPerfection,
+          );
       const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
         newState,
         normalizedCurrentCondition,
         initialConditionQueue,
         skill,
       );
-      const terminalState = classifyTerminalState(
-        newState,
-        config,
-        firstMoveConditionState.nextCondition,
-        modeCompGoal,
-        modePerfGoal,
-      );
+      const terminalState = isFinishAction(skill)
+        ? { isTerminal: false, isTerminalUnmet: false }
+        : classifyTerminalState(
+            newState,
+            config,
+            firstMoveConditionState.nextCondition,
+            modeCompGoal,
+            modePerfGoal,
+          );
 
-      const immediateScore = estimatePostMoveStateScore(
-        newState,
-        skill,
-        normalizedCurrentCondition,
-        initialConditionQueue,
-      );
+      const immediateScore = isFinishAction(skill)
+        ? candidate.orderingScore
+        : estimatePostMoveStateScore(
+            newState,
+            skill,
+            normalizedCurrentCondition,
+            initialConditionQueue,
+          );
 
       evaluatedFirstMoves.push({
         skill,
@@ -2689,6 +3064,7 @@ export function lookaheadSearch(
         reasoning,
         consumesBuff: skill.isDisciplinedTouch === true,
         followUpSkill: undefined,
+        projectedSuccessChance: candidate.projectedSuccessChance,
         requiresProbabilisticSurvival: candidate.requiresProbabilisticSurvival,
         ...terminalState,
       });
@@ -2782,6 +3158,10 @@ export function lookaheadSearch(
       index++
     ) {
       const rec = recommendations[index];
+      if (isFinishAction(rec.skill)) {
+        rec.followUpSkill = undefined;
+        continue;
+      }
       const displayStateAfterSkill = applySkill(
         state,
         rec.skill,
@@ -2915,14 +3295,16 @@ export function lookaheadSearch(
     config,
     normalizedCurrentCondition,
   );
-  const stateAfterFirstMoveDisplay = applySkill(
-    state,
-    bestFirstMove,
-    config,
-    currentConditionEffects,
-    targetCompletion,
-    normalizedCurrentCondition,
-  );
+  const stateAfterFirstMoveDisplay = isFinishAction(bestFirstMove)
+    ? state
+    : applySkill(
+        state,
+        bestFirstMove,
+        config,
+        currentConditionEffects,
+        targetCompletion,
+        normalizedCurrentCondition,
+      );
 
   let optimalRotation: string[] = [bestFirstMove.name];
   let expectedFinalState: SearchResult['expectedFinalState'] = undefined;
@@ -2941,14 +3323,21 @@ export function lookaheadSearch(
       initialConditionQueue,
       bestFirstMove,
     );
-    // Find the rest of the optimal path, starting from depth index 1 (after first move)
-    const { path, finalState } = findOptimalPath(
-      stateAfterFirstMove,
-      Math.max(0, usedDepth - 1),
-      1,
-      firstMoveConditionState.nextCondition,
-      firstMoveConditionState.nextQueue,
-    );
+    const finishedByChoice = isFinishAction(bestFirstMove);
+    const { path, finalState, finishedByChoice: pathFinishedByChoice } =
+      finishedByChoice
+        ? {
+            path: [] as string[],
+            finalState: stateAfterFirstMove,
+            finishedByChoice: true,
+          }
+        : findOptimalPath(
+            stateAfterFirstMove,
+            Math.max(0, usedDepth - 1),
+            1,
+            firstMoveConditionState.nextCondition,
+            firstMoveConditionState.nextQueue,
+          );
     optimalRotation = [bestFirstMove.name, ...path];
 
     // Ensure the top recommendation's follow-up matches the rotation.
@@ -2968,7 +3357,19 @@ export function lookaheadSearch(
         const secondSkill = config.skills.find(
           (s) => s.name === rotationSecondSkillName,
         );
-        if (secondSkill) {
+        if (rotationSecondSkillName === FINISH_CRAFT_NAME) {
+          topRec.followUpSkill = {
+            name: FINISH_CRAFT_NAME,
+            type: FINISH_CRAFT_SKILL.type,
+            actionKind: FINISH_CRAFT_SKILL.actionKind,
+            icon: FINISH_CRAFT_SKILL.icon,
+            expectedGains: { ...ZERO_GAINS },
+            immediateGains: { ...ZERO_GAINS },
+            effectiveCosts: { ...ZERO_COSTS },
+            projectedSuccessChance:
+              getFinishAction(stateAfterFirstMove)?.projectedSuccessChance,
+          };
+        } else if (secondSkill) {
           const secondConditionEffects = getConditionEffectsForConfig(
             config,
             firstMoveConditionState.nextCondition,
@@ -2983,6 +3384,7 @@ export function lookaheadSearch(
           topRec.followUpSkill = {
             name: secondSkill.name,
             type: secondSkill.type,
+            actionKind: secondSkill.actionKind,
             icon: secondSkill.icon,
             expectedGains,
             immediateGains,
@@ -2993,18 +3395,17 @@ export function lookaheadSearch(
     }
 
     // Calculate turns remaining (estimate based on progress needed)
-    const compRemaining = Math.max(
-      0,
-      effectiveCompGoal - finalState.completion,
-    );
-    const perfRemaining = Math.max(
-      0,
-      effectivePerfGoal - finalState.perfection,
-    );
+    const compRemaining = Math.max(0, effectiveCompGoal - finalState.completion);
+    const perfRemaining = Math.max(0, effectivePerfGoal - finalState.perfection);
     const avgGainPerTurn = scoringCtx.avgGainPerTurn;
-    const turnsRemaining = Math.ceil(
-      (compRemaining + perfRemaining) / avgGainPerTurn,
-    );
+    const projectedSuccessChance =
+      finalState.stability > 0
+        ? calculateFinishSuccessChance(finalState, targetCompletion)
+        : 0;
+    const turnsRemaining =
+      finishedByChoice || pathFinishedByChoice
+        ? 0
+        : Math.ceil((compRemaining + perfRemaining) / avgGainPerTurn);
 
     expectedFinalState = {
       completion: finalState.completion,
@@ -3013,6 +3414,7 @@ export function lookaheadSearch(
       maxStability: finalState.maxStability,
       qi: finalState.qi,
       turnsRemaining: turnsRemaining > 0 ? turnsRemaining : 0,
+      projectedSuccessChance,
     };
   }
 
@@ -3066,6 +3468,7 @@ export function findBestSkill(
       targetCompletion,
       targetPerfection,
       currentConditionType,
+      searchConfig,
     );
   }
 

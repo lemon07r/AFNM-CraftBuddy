@@ -19,6 +19,7 @@ related_files:
 - State defensively clones tracked buff entries to preserve immutability boundaries.
 - Integration seeds only canonical supplemental `nativeVariables`; state/buff/harmony mirrors are re-derived on demand from `CraftingState` during native availability checks instead of being persisted into cache keys.
 - Actions: crafting techniques + mapped item actions (when provided by integration layer).
+- Search also exposes a local pseudo-action, `Finish Craft`, so bounded lookahead can compare voluntary finish EV against continuing lines.
 - Transition engine: `calculateSkillGains(...)` + `applySkill(...)` in `src/optimizer/skills.ts`.
 
 ## Search modes
@@ -43,6 +44,7 @@ related_files:
 
 - Success/crit modeled as expected value in gains.
 - Immediate survival is not flattened entirely into EV: `calculateActionSurvivabilityFloor(...)` computes a guaranteed post-action stability/max-stability floor, and search treats proc-dependent survival lines as unsafe when a guaranteed-safe alternative exists.
+- Partial completion is modeled explicitly through the `Finish Craft` branch. Success chance uses the base completion threshold (`completion / targetCompletion`, clamped to `[0,1]`) rather than sublime/overcraft goals, while finished-outcome scoring values final output and ignores post-finish runway concerns.
 - Condition queue is normalized to fixed length `3` (matches game UI/runtime visibility).
 - Beyond forecast queue, condition transitions are probability-weighted (`enableConditionBranchingAfterForecast`, `conditionBranchLimit`, `conditionBranchMinProbability`).
 - Non-turn item actions do not consume lookahead turn-depth/index.
@@ -72,6 +74,12 @@ No skills are hard-filtered out of the search tree before evaluation. If a move 
 
 Recommendation budget is reserved for ranking first moves. Follow-up suggestions are generated only after a root frontier is accepted, using cached `bestMove` entries first and shallow fallback only when needed. Auxiliary UI data must not consume the search budget that determines the actual recommendation.
 
+## User policy toggle
+
+- `prioritizeGuaranteedCompletion` is a persisted search-policy setting, default `false`.
+- When `false`, sub-100% `Finish Craft` is eligible if its EV beats continuing.
+- When `true`, CraftBuddy suppresses sub-100% finish recommendations but still allows guaranteed finish recommendations, including “stop short of sublime target” cases.
+
 ## Determinism expectations
 
 Identical state + config inputs should produce stable recommendations within the deterministic EV model when the search reaches the same effective frontier under the configured limits. Because lookahead is bounded by wall-clock time, node caps, beam width, and iterative deepening, the same slider values can explore different depths on faster vs slower machines; `searchTimeBudgetMs`, `searchMaxNodes`, `searchBeamWidth`, and `lookaheadDepth` define a budget envelope, not a cross-machine determinism guarantee. Condition normalization lowercases unknown labels to avoid cache-key casing drift. When a deeper pass does not fully complete, the optimizer keeps the last fully completed frontier (or the fully-evaluated immediate root frontier if no recursive pass completed) instead of mixing partial deep scores into the final ranking.
@@ -84,6 +92,7 @@ Identical state + config inputs should produce stable recommendations within the
 - `searchTimeBudgetMs` (`100-10,000`, default `4,500`)
 - `searchMaxNodes` (`1,000-5,000,000`, default `2,000,000`)
 - `searchBeamWidth` (`3-20`, default `5`)
+- `prioritizeGuaranteedCompletion` (`false` by default)
 - Settings sliders persist on commit (not every drag event) to reduce UI churn.
 - Preset tuning now keeps the beam narrower through mid-budget tiers; replay benchmarking showed widening too early can produce worse partial-frontier recommendations than a deeper narrow-beam search, including forge turns where a wider beam strands the search on a shallow terminal frontier and drifts into avoidable heat overshoot.
 - Manual tuning is coupled: over-raising one slider while starving the others can reduce effective frontier quality. Presets exist to keep the budget ratios in a safer range.

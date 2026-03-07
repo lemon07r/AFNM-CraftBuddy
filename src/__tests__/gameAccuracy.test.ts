@@ -331,6 +331,160 @@ describe('Game-Accurate Mechanics', () => {
       const result = evaluateScaling(scaling, variables, 0);
       expect(result).toBe(50); // Capped at 50
     });
+
+    it('applies runtime-shaped percent buffs to base stats only, not flat in-craft bonuses', () => {
+      const config: OptimizerConfig = {
+        ...DEFAULT_CONFIG,
+        baseIntensity: 100,
+        baseControl: 80,
+        minStability: 0,
+        skills: [],
+      };
+      const state = new CraftingState({
+        buffs: new Map([
+          [
+            'flat_bonus',
+            {
+              name: 'Flat Bonus',
+              stacks: 1,
+              definition: {
+                name: 'Flat Bonus',
+                canStack: false,
+                stats: {
+                  intensity: {
+                    value: 30,
+                  },
+                },
+                effects: [],
+              } as any,
+            },
+          ],
+          [
+            'empower_intensity',
+            {
+              name: 'Empower Intensity',
+              stacks: 1,
+              definition: {
+                name: 'Empower Intensity',
+                canStack: false,
+                stats: {
+                  intensity: {
+                    value: 0.5,
+                    stat: 'intensity',
+                  },
+                },
+                effects: [],
+              } as any,
+            },
+          ],
+        ]),
+      });
+      const skill: SkillDefinition = {
+        name: 'Test Fusion',
+        key: 'test_fusion',
+        qiCost: 0,
+        stabilityCost: 0,
+        baseCompletionGain: 1,
+        basePerfectionGain: 0,
+        stabilityGain: 0,
+        maxStabilityChange: 0,
+        buffType: BuffType.NONE,
+        buffDuration: 0,
+        buffMultiplier: 1,
+        type: 'fusion',
+        scalesWithIntensity: true,
+      };
+
+      const gains = calculateSkillGains(state, skill, config);
+
+      expect(gains.completion).toBe(180);
+    });
+
+    it('adds multiple runtime-shaped percent buffs off the same base instead of compounding through flat bonuses', () => {
+      const config: OptimizerConfig = {
+        ...DEFAULT_CONFIG,
+        baseIntensity: 100,
+        baseControl: 80,
+        minStability: 0,
+        skills: [],
+      };
+      const state = new CraftingState({
+        buffs: new Map([
+          [
+            'flat_bonus',
+            {
+              name: 'Flat Bonus',
+              stacks: 1,
+              definition: {
+                name: 'Flat Bonus',
+                canStack: false,
+                stats: {
+                  intensity: {
+                    value: 30,
+                  },
+                },
+                effects: [],
+              } as any,
+            },
+          ],
+          [
+            'empower_intensity',
+            {
+              name: 'Empower Intensity',
+              stacks: 1,
+              definition: {
+                name: 'Empower Intensity',
+                canStack: false,
+                stats: {
+                  intensity: {
+                    value: 0.5,
+                    stat: 'intensity',
+                  },
+                },
+                effects: [],
+              } as any,
+            },
+          ],
+          [
+            'echo_intensity',
+            {
+              name: 'Echo Intensity',
+              stacks: 1,
+              definition: {
+                name: 'Echo Intensity',
+                canStack: false,
+                stats: {
+                  intensity: {
+                    value: 0.25,
+                    stat: 'intensity',
+                  },
+                },
+                effects: [],
+              } as any,
+            },
+          ],
+        ]),
+      });
+      const skill: SkillDefinition = {
+        name: 'Test Fusion',
+        key: 'test_fusion_double_percent',
+        qiCost: 0,
+        stabilityCost: 0,
+        baseCompletionGain: 1,
+        basePerfectionGain: 0,
+        stabilityGain: 0,
+        maxStabilityChange: 0,
+        buffType: BuffType.NONE,
+        buffDuration: 0,
+        buffMultiplier: 1,
+        type: 'fusion',
+        scalesWithIntensity: true,
+      };
+
+      const gains = calculateSkillGains(state, skill, config);
+
+      expect(gains.completion).toBe(205);
+    });
   });
 
   describe('High-Realm Scenario (90+ rounds)', () => {

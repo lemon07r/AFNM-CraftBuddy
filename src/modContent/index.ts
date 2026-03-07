@@ -188,6 +188,7 @@ interface LastSearchSettings {
   searchTimeBudgetMs: number;
   searchMaxNodes: number;
   searchBeamWidth: number;
+  prioritizeGuaranteedCompletion: boolean;
 }
 let lastSearchSettings: LastSearchSettings | null = null;
 
@@ -201,7 +202,9 @@ function areSearchSettingsStale(): boolean {
     currentSettings.searchTimeBudgetMs !==
       lastSearchSettings.searchTimeBudgetMs ||
     currentSettings.searchMaxNodes !== lastSearchSettings.searchMaxNodes ||
-    currentSettings.searchBeamWidth !== lastSearchSettings.searchBeamWidth
+    currentSettings.searchBeamWidth !== lastSearchSettings.searchBeamWidth ||
+    currentSettings.prioritizeGuaranteedCompletion !==
+      lastSearchSettings.prioritizeGuaranteedCompletion
   );
 }
 
@@ -214,6 +217,8 @@ function snapshotSearchSettings(): void {
     searchTimeBudgetMs: currentSettings.searchTimeBudgetMs,
     searchMaxNodes: currentSettings.searchMaxNodes,
     searchBeamWidth: currentSettings.searchBeamWidth,
+    prioritizeGuaranteedCompletion:
+      currentSettings.prioritizeGuaranteedCompletion,
   };
 }
 
@@ -457,12 +462,16 @@ function buildOptimizerReplayInputSnapshot(params: {
       timeBudgetMs: params.searchConfig.timeBudgetMs,
       maxNodes: params.searchConfig.maxNodes,
       beamWidth: params.searchConfig.beamWidth,
+      prioritizeGuaranteedCompletion:
+        params.searchConfig.prioritizeGuaranteedCompletion,
     },
     settings: {
       lookaheadDepth: currentSettings.lookaheadDepth,
       searchTimeBudgetMs: currentSettings.searchTimeBudgetMs,
       searchMaxNodes: currentSettings.searchMaxNodes,
       searchBeamWidth: currentSettings.searchBeamWidth,
+      prioritizeGuaranteedCompletion:
+        currentSettings.prioritizeGuaranteedCompletion,
       compactMode: currentSettings.compactMode,
       panelVisible: currentSettings.panelVisible,
     },

@@ -56,9 +56,11 @@ describe('settings search budget', () => {
     expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(4500);
     expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(2000000);
     expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(5);
+    expect(DEFAULT_SETTINGS.prioritizeGuaranteedCompletion).toBe(false);
     expect(getSearchConfig().timeBudgetMs).toBe(4500);
     expect(getSearchConfig().maxNodes).toBe(2000000);
     expect(getSearchConfig().beamWidth).toBe(5);
+    expect(getSearchConfig().prioritizeGuaranteedCompletion).toBe(false);
   });
 
   it('clamps search time budget to 100-10000ms', () => {
@@ -85,6 +87,7 @@ describe('settings search budget', () => {
       searchTimeBudgetMs: 1000,
       searchMaxNodes: 400000,
       searchBeamWidth: 8,
+      prioritizeGuaranteedCompletion: true,
     });
 
     const migrated = loadSettings();
@@ -95,6 +98,9 @@ describe('settings search budget', () => {
     );
     expect(migrated.searchMaxNodes).toBe(DEFAULT_SETTINGS.searchMaxNodes);
     expect(migrated.searchBeamWidth).toBe(DEFAULT_SETTINGS.searchBeamWidth);
+    expect(migrated.prioritizeGuaranteedCompletion).toBe(
+      DEFAULT_SETTINGS.prioritizeGuaranteedCompletion,
+    );
     expect(migrated.compactMode).toBe(true);
     expect(migrated.maxAlternatives).toBe(4);
 
@@ -103,6 +109,7 @@ describe('settings search budget', () => {
       searchTimeBudgetMs: 10000,
       searchMaxNodes: 5000000,
       searchBeamWidth: 12,
+      prioritizeGuaranteedCompletion: true,
     });
 
     const reloaded = loadSettings();
@@ -110,5 +117,6 @@ describe('settings search budget', () => {
     expect(reloaded.searchTimeBudgetMs).toBe(10000);
     expect(reloaded.searchMaxNodes).toBe(5000000);
     expect(reloaded.searchBeamWidth).toBe(12);
+    expect(reloaded.prioritizeGuaranteedCompletion).toBe(true);
   });
 });

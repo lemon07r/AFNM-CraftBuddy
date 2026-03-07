@@ -484,7 +484,7 @@ describe('lookaheadSearch', () => {
   });
 
   it('should use forecasted conditions in search', () => {
-    const perfectableConfig = createTestConfig({
+    const perfectableConfig = createTutorialConfig({
       conditionEffectType: 'perfectable' as any,
     });
     const state = new CraftingState({
@@ -498,7 +498,7 @@ describe('lookaheadSearch', () => {
     const posResult = lookaheadSearch(
       state,
       perfectableConfig,
-      100,
+      0,
       100,
       3,
       'neutral',
@@ -507,7 +507,7 @@ describe('lookaheadSearch', () => {
     const negResult = lookaheadSearch(
       state,
       perfectableConfig,
-      100,
+      0,
       100,
       3,
       'neutral',
@@ -515,14 +515,11 @@ describe('lookaheadSearch', () => {
     );
     expect(posResult.recommendation).not.toBeNull();
     expect(negResult.recommendation).not.toBeNull();
-    // Perfectable recipe: positive boosts control, negative reduces it.
-    // Different forecasts should produce different scores or recommendations.
-    const posBest = posResult.recommendation!;
-    const negBest = negResult.recommendation!;
-    expect(
-      posBest.skill.name !== negBest.skill.name ||
-        posBest.score !== negBest.score,
-    ).toBe(true);
+    expect(posResult.recommendation!.skill.name).toBe('Simple Refine');
+    expect(negResult.recommendation!.skill.name).toBe('Simple Refine');
+    expect(posResult.recommendation!.score).toBeGreaterThan(
+      negResult.recommendation!.score,
+    );
   });
 
   it('should handle different lookahead depths', () => {
@@ -730,7 +727,7 @@ describe('lookaheadSearch', () => {
         useIterativeDeepening: true,
         iterativeDeepeningMinDepth: 3,
         timeBudgetMs: 100000,
-        maxNodes: 30,
+        maxNodes: 20,
         beamWidth: 6,
       },
     );
@@ -1112,6 +1109,168 @@ describe('lookaheadSearch', () => {
   });
 });
 
+describe('finish craft policy', () => {
+  const energizedFusion = createCustomSkill({
+    name: 'Energised Fusion',
+    key: 'energized_fusion',
+    type: 'fusion',
+    qiCost: 0,
+    stabilityCost: 17,
+    baseCompletionGain: 3.5,
+    scalesWithIntensity: true,
+  });
+  const simpleRefine = createCustomSkill({
+    name: 'Simple Refine',
+    key: 'simple_refine_finish_policy',
+    type: 'refine',
+    qiCost: 18,
+    stabilityCost: 17,
+    basePerfectionGain: 1,
+    scalesWithControl: true,
+  });
+
+  it('recommends Finish Craft when continuing is lower EV than stopping', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 51,
+      baseControl: 23,
+      skills: [energizedFusion, simpleRefine],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 17,
+      initialMaxStability: 60,
+      completion: 90,
+      perfection: 40,
+    });
+
+    const result = lookaheadSearch(state, config, 130, 130, 4);
+
+    expect(result.recommendation?.skill.name).toBe('Finish Craft');
+    expect(result.recommendation?.skill.actionKind).toBe('finish');
+    expect(result.recommendation?.projectedSuccessChance).toBeCloseTo(
+      90 / 130,
+    );
+  });
+
+  it('keeps pursuing a guaranteed completion line when it is better than finishing early', () => {
+    const config = createTutorialConfig({
+      conditionEffectType: 'perfectable' as any,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 45,
+      perfection: 45,
+    });
+
+    const result = lookaheadSearch(state, config, 50, 50, 3);
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).not.toBe('Finish Craft');
+    expect(result.recommendation!.projectedSuccessChance).toBeUndefined();
+  });
+
+  it('suppresses sub-100% Finish Craft when guaranteed completion is prioritized', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 51,
+      baseControl: 23,
+      skills: [energizedFusion, simpleRefine],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 17,
+      initialMaxStability: 60,
+      completion: 90,
+      perfection: 40,
+    });
+
+    const result = lookaheadSearch(state, config, 130, 130, 4, 'neutral', [], {
+      prioritizeGuaranteedCompletion: true,
+    });
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).not.toBe('Finish Craft');
+  });
+
+  it('keeps Finish Craft available when no skill can be used but the craft is still alive', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [
+        createCustomSkill({
+          name: 'Costly Refine',
+          key: 'costly_refine',
+          type: 'refine',
+          qiCost: 20,
+          stabilityCost: 10,
+          basePerfectionGain: 1,
+          scalesWithControl: true,
+        }),
+      ],
+    });
+    const state = new CraftingState({
+      qi: 0,
+      stability: 1,
+      initialMaxStability: 60,
+      completion: 60,
+      perfection: 10,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 3);
+
+    expect(result.isTerminal).toBe(false);
+    expect(result.recommendation?.skill.name).toBe('Finish Craft');
+    expect(result.recommendation?.projectedSuccessChance).toBeCloseTo(0.6);
+  });
+
+  it('does not offer Finish Craft after the craft is already dead', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [energizedFusion, simpleRefine],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 0,
+      initialMaxStability: 60,
+      completion: 90,
+      perfection: 40,
+    });
+
+    const result = lookaheadSearch(state, config, 130, 130, 4);
+
+    expect(result.isTerminal).toBe(true);
+    expect(result.recommendation).toBeNull();
+  });
+
+  it('can recommend a guaranteed finish below the sublime target', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 51,
+      baseControl: 23,
+      skills: [energizedFusion, simpleRefine],
+      isSublimeCraft: true,
+      targetMultiplier: 2,
+      maxCompletion: 260,
+      maxPerfection: 260,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 17,
+      initialMaxStability: 60,
+      completion: 130,
+      perfection: 110,
+    });
+
+    const result = lookaheadSearch(state, config, 130, 130, 4);
+
+    expect(result.targetsMet).toBe(false);
+    expect(result.recommendation?.skill.name).toBe('Finish Craft');
+    expect(result.recommendation?.projectedSuccessChance).toBe(1);
+  });
+});
+
 describe('findBestSkill', () => {
   const config = createTestConfig();
 
@@ -1208,7 +1367,7 @@ describe('findBestSkill', () => {
   });
 
   it('should pass forecasted conditions to lookahead', () => {
-    const perfectableConfig = createTestConfig({
+    const perfectableConfig = createTutorialConfig({
       conditionEffectType: 'perfectable' as any,
     });
     const state = new CraftingState({
@@ -1222,7 +1381,7 @@ describe('findBestSkill', () => {
     const posResult = findBestSkill(
       state,
       perfectableConfig,
-      100,
+      0,
       100,
       false,
       3,
@@ -1232,7 +1391,7 @@ describe('findBestSkill', () => {
     const negResult = findBestSkill(
       state,
       perfectableConfig,
-      100,
+      0,
       100,
       false,
       3,
@@ -1241,12 +1400,11 @@ describe('findBestSkill', () => {
     );
     expect(posResult.recommendation).not.toBeNull();
     expect(negResult.recommendation).not.toBeNull();
-    // Perfectable recipe: different forecasts should influence the result
-    expect(
-      posResult.recommendation!.skill.name !==
-        negResult.recommendation!.skill.name ||
-        posResult.recommendation!.score !== negResult.recommendation!.score,
-    ).toBe(true);
+    expect(posResult.recommendation!.skill.name).toBe('Simple Refine');
+    expect(negResult.recommendation!.skill.name).toBe('Simple Refine');
+    expect(posResult.recommendation!.score).toBeGreaterThan(
+      negResult.recommendation!.score,
+    );
   });
 });
 
@@ -1254,6 +1412,45 @@ describe('search algorithm correctness', () => {
   const config = createTestConfig();
 
   it('should prefer buff setup when far from targets', () => {
+    const setup = createCustomSkill({
+      name: 'Setup',
+      key: 'setup',
+      type: 'support',
+      qiCost: 0,
+      stabilityCost: 10,
+      effects: [
+        {
+          kind: 'createBuff',
+          buff: { name: 'charge', canStack: true, effects: [] },
+          stacks: { value: 1 },
+        },
+      ],
+    });
+    const payoff = createCustomSkill({
+      name: 'Payoff',
+      key: 'payoff',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 8,
+      scalesWithControl: true,
+      buffRequirement: { buffName: 'charge', amount: 1 },
+    });
+    const immediate = createCustomSkill({
+      name: 'Immediate',
+      key: 'immediate',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 3,
+      scalesWithControl: true,
+    });
+    const buffSetupConfig = createTestConfig({
+      minStability: 0,
+      baseControl: 16,
+      baseIntensity: 16,
+      skills: [setup, payoff, immediate],
+    });
     const state = new CraftingState({
       qi: 150,
       stability: 50,
@@ -1262,16 +1459,14 @@ describe('search algorithm correctness', () => {
       perfection: 0,
     });
 
-    const result = findBestSkill(state, config, 100, 100, false, 4);
+    const result = findBestSkill(state, buffSetupConfig, 0, 100, false, 4);
 
     expect(result.recommendation).not.toBeNull();
     const rec = result.recommendation!.skill;
     const rotation = result.optimalRotation!;
     expect(rotation.length).toBeGreaterThan(0);
-    // With full resources and far from targets, the first move should be a buff setup (Cycling skill)
-    expect(rec.buffDuration > 0 || rotation[0].startsWith('Cycling')).toBe(
-      true,
-    );
+    expect(rec.key).toBe('setup');
+    expect(rotation[0]).toBe('Setup');
   });
 
   it('should prefer direct gains when close to targets', () => {
@@ -1687,15 +1882,13 @@ describe('survivability-first recommendation gate', () => {
       4,
     );
     expect(lookaheadResult.recommendation).not.toBeNull();
-    expect(['Energised Fusion', 'Simple Refine']).toContain(
-      lookaheadResult.recommendation!.skill.name,
-    );
+    expect(lookaheadResult.recommendation!.skill.name).toBe('Finish Craft');
+    expect(lookaheadResult.recommendation!.skill.actionKind).toBe('finish');
 
     const greedyResult = greedySearch(baseState(), allEndingConfig, 130, 130);
     expect(greedyResult.recommendation).not.toBeNull();
-    expect(['Energised Fusion', 'Simple Refine']).toContain(
-      greedyResult.recommendation!.skill.name,
-    );
+    expect(greedyResult.recommendation!.skill.name).toBe('Finish Craft');
+    expect(greedyResult.recommendation!.skill.actionKind).toBe('finish');
   });
 });
 

@@ -120,7 +120,7 @@ function Harness() {
             settings={settings}
             onSettingsChange={setSettings}
             onSearchSettingsChange={setSettings}
-            version="3.5.30"
+            version="3.6.0"
           />
         </div>
       </div>

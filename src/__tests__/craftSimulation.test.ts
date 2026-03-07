@@ -25,6 +25,7 @@ import {
   lookaheadSearch,
   SearchResult,
   CraftingConditionType,
+  SearchConfig,
 } from '../optimizer/search';
 import {
   getReplaySearchInput,
@@ -188,6 +189,7 @@ function simulateCraft(
   conditions: CraftingConditionType[],
   maxTurns: number = 30,
   depth: number = 6,
+  searchConfig: Partial<SearchConfig> = {},
 ): SimulationResult {
   let state = initialState;
   const history: string[] = [];
@@ -239,7 +241,12 @@ function simulateCraft(
       depth,
       condition,
       forecast,
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+      {
+        timeBudgetMs: 500,
+        maxNodes: 200000,
+        beamWidth: 8,
+        ...searchConfig,
+      },
     );
 
     if (!result.recommendation) {
@@ -255,6 +262,35 @@ function simulateCraft(
     }
 
     const skill = result.recommendation.skill;
+    if (skill.actionKind === 'finish') {
+      history.push(skill.name);
+      log.push({
+        turn,
+        condition,
+        skillChosen: skill.name,
+        stateBefore: {
+          qi: state.qi,
+          stability: state.stability,
+          completion: state.completion,
+          perfection: state.perfection,
+        },
+        stateAfter: {
+          qi: state.qi,
+          stability: state.stability,
+          completion: state.completion,
+          perfection: state.perfection,
+        },
+      });
+      turnsUsed = turn + 1;
+      return {
+        history,
+        finalState: state,
+        targetsMet: false,
+        turnsUsed,
+        craftDied: false,
+        log,
+      };
+    }
     const conditionEffects = getConditionEffectsForConfig(config, condition);
     const nextState = applySkill(
       state,
@@ -472,6 +508,78 @@ describe('craft simulation — beginner skills, condition exploitation', () => {
         positiveTurns.length;
       expect(fusionRate).toBeGreaterThanOrEqual(0.5);
     }
+  });
+});
+
+describe('craft simulation — finish craft policy', () => {
+  const energizedFusion = createCustomSkill({
+    name: 'Energised Fusion',
+    key: 'energized_fusion',
+    type: 'fusion',
+    qiCost: 0,
+    stabilityCost: 17,
+    baseCompletionGain: 3.5,
+    scalesWithIntensity: true,
+  });
+  const simpleRefine = createCustomSkill({
+    name: 'Simple Refine',
+    key: 'simple_refine_finish_policy',
+    type: 'refine',
+    qiCost: 18,
+    stabilityCost: 17,
+    basePerfectionGain: 1,
+    scalesWithControl: true,
+  });
+
+  it('ends with Finish Craft instead of walking into a dead-end action', () => {
+    const config = fullConfig({
+      minStability: 0,
+      baseIntensity: 51,
+      baseControl: 23,
+      skills: [energizedFusion, simpleRefine],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 17,
+      initialMaxStability: 60,
+      completion: 90,
+      perfection: 40,
+    });
+
+    const sim = simulateCraft(state, config, 130, 130, ['neutral'], 5, 4);
+
+    expect(sim.history[0]).toBe('Finish Craft');
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(false);
+  });
+
+  it('keeps pursuing 100% completion when the preference setting is enabled', () => {
+    const config = fullConfig({
+      minStability: 0,
+      baseIntensity: 51,
+      baseControl: 23,
+      skills: [energizedFusion, simpleRefine],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 17,
+      initialMaxStability: 60,
+      completion: 90,
+      perfection: 40,
+    });
+
+    const sim = simulateCraft(
+      state,
+      config,
+      130,
+      130,
+      ['neutral'],
+      5,
+      4,
+      { prioritizeGuaranteedCompletion: true },
+    );
+
+    expect(sim.history[0]).not.toBe('Finish Craft');
   });
 });
 

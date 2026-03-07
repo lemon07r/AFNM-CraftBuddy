@@ -34,6 +34,12 @@ Fast, low-noise onboarding for implementation work on AFNM-CraftBuddy.
 - testing + harness + installed runtime oracle + optional live UI verification: `docs/project/TESTING.md`
 - release/version bump/tag/workshop flow: `docs/project/RELEASE_PROCESS.md`
 
+## Community guide context
+
+- `docs/reference/afnm-crafting-guide/` is available as a hypothesis source for optimizer and parity work.
+- Treat `docs/reference/afnm-crafting-guide/agent_considerations.md` as triage input only; it labels each claim as implemented, under-tested, product policy, or unverified.
+- Before acting on any guide claim, confirm its status in `docs/project/MECHANICS_PARITY.md` and the matching tests.
+
 ## Key code entrypoints
 
 - integration: `src/modContent/index.ts`

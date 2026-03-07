@@ -50,6 +50,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 - condition exploitation: positive conditions steer toward the right skills
 - buff utilization: buff setup → payoff sequences preferred over raw progress
 - survivability: stabilize when critical, skip when a finisher is available
+- finish policy: impossible-craft or no-action-alive scenarios can end with `Finish Craft`; the guaranteed-completion preference setting must keep pursuing 100% lines instead
 - probabilistic survivability: when chance-based stability recovery exists, the optimizer should still prefer a guaranteed stabilize over a proc-dependent line if both keep goals alive
 - mixed conditions: varied/all-negative sequences don't cause craft death
 - harmony sub-systems: forge works crafts use fusion to raise heat before refining, complete without wasting turns on zero-gain skills
@@ -66,6 +67,7 @@ Exported optimizer snapshots are only useful for bug reproduction if they preser
 - active buff definitions when current-state buffs change stats/costs
 - craft-context provenance (`craftingTypeSource`, sublime-detection signals, raw recipe/recipeStats fields) when a bug may be caused by hydration/integration drift
 - replay parity: round-tripped snapshot input should be exercised through the canonical replay helpers in `src/modContent/replaySnapshot.ts` so tests share the same serializer/reviver contract as production
+- result snapshots should preserve `actionKind` and `projectedSuccessChance` for finish recommendations so bug reports stay explainable
 - real-user regressions should prefer full exported snapshots checked into `src/__tests__/__fixtures__/replay-snapshots/`; use reduced hand-shaped fixtures only when the raw export is unavailable
 
 Because search is wall-clock-budgeted, CI/browser/live runs can reach different frontiers before cutoff. Real-user regressions should use exported snapshot fixtures or explicit constrained budgets instead of assuming one machine's timing behavior generalizes.
@@ -76,6 +78,12 @@ For chance-based survivability bugs, cover both layers:
 
 - `skills.test.ts`: unit-test the guaranteed survivability floor (`calculateActionSurvivabilityFloor(...)`) so probabilistic stability recovery does not masquerade as guaranteed runway
 - `search.test.ts` / `craftSimulation.test.ts`: add replay or simulation regressions proving the optimizer chooses the guaranteed-safe line when one exists
+
+For community-guide parity claims:
+
+- add `gameAccuracy.test.ts` coverage for runtime-shaped stat math before changing formulas
+- add `skills.test.ts` coverage for multi-turn buff/effect behavior before changing transition logic
+- document the outcome in `docs/project/MECHANICS_PARITY.md` and, if still useful, label it in `docs/reference/afnm-crafting-guide/agent_considerations.md`
 
 ## UI checks with `agent-browser`
 

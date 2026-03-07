@@ -3,7 +3,7 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-06
+last_verified: 2026-03-07
 source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/search.ts
 review_cycle_days: 14
 related_files:
@@ -38,8 +38,18 @@ related_files:
 - guarded native condition transition provider (`getNextCondition` path probing), with fallback
 - native max toxicity getter (`getMaxToxicity`) for alchemy crafts
 - internal effective action-cost modeling (buff/harmony/condition aware) used by recommendation and follow-up previews
+- voluntary `Finish Craft` modeling as a search-local action, with EV-based partial-completion recommendations enabled by default and a persisted guaranteed-completion-first override for users who want to suppress sub-100% finish recommendations
 - optimizer replay snapshots now include serialized `harmonyData` plus a `harmonyDataSource` tag so bug reports can distinguish authoritative harmony state from verified fallbacks
 - installed runtime extraction from the current game bundle is the tiebreaker when UI/help text or older notes drift from executable behavior; forge low-control penalties are verified against the live bundle at heat `2-3`, not `1-3`
+
+## Community guide validation status
+
+- percentage-buff order-of-operations: implemented and explicitly covered in `gameAccuracy.test.ts`
+  runtime-shaped percent buffs (`stat: 'intensity'` / `stat: 'control'`) scale the pre-craft base stat and do not multiply flat in-craft reagent/pill-style bonuses
+- Inscribed Patterns stack-halving penalty: implemented and covered in `harmony.test.ts`
+- Spiritual Resonance double-switch target shifting: implemented and covered in `harmony.test.ts`
+- partial completion / chance-based finish: chosen product behavior and now implemented directly in search rather than left as an undocumented edge case
+- toxicity detox per-turn handling: implemented in `skills.ts` and explicitly covered for multi-turn active-buff cleansing in `skills.test.ts`
 
 ## Dependency-gated
 

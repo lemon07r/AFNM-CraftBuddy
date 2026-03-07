@@ -30,6 +30,8 @@ export interface CraftBuddySettings {
   searchMaxNodes: number;
   /** Beam width - max branches to explore at each level (3-20, default: 8) */
   searchBeamWidth: number;
+  /** Prefer guaranteed-completion lines over partial-success finish recommendations */
+  prioritizeGuaranteedCompletion: boolean;
 }
 
 const STORAGE_KEY = 'craftbuddy_settings';
@@ -43,6 +45,7 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   | 'searchTimeBudgetMs'
   | 'searchMaxNodes'
   | 'searchBeamWidth'
+  | 'prioritizeGuaranteedCompletion'
 > = {
   lookaheadDepth: 64,
   searchTimeBudgetMs: 4500,
@@ -50,6 +53,7 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   // Replay regression showed beam 8 can strand long forge turns on a
   // shallow partial frontier; beam 5 reaches a deeper, safer frontier.
   searchBeamWidth: 5,
+  prioritizeGuaranteedCompletion: false,
 };
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
@@ -119,6 +123,7 @@ function normalizeSettings(settings: CraftBuddySettings): CraftBuddySettings {
       20,
       DEFAULT_SETTINGS.searchBeamWidth,
     ),
+    prioritizeGuaranteedCompletion: !!settings.prioritizeGuaranteedCompletion,
     maxAlternatives: clampInteger(
       settings.maxAlternatives,
       0,
@@ -270,11 +275,14 @@ export function getSearchConfig(): {
   timeBudgetMs: number;
   maxNodes: number;
   beamWidth: number;
+  prioritizeGuaranteedCompletion: boolean;
 } {
   return {
     timeBudgetMs: currentSettings.searchTimeBudgetMs,
     maxNodes: currentSettings.searchMaxNodes,
     beamWidth: currentSettings.searchBeamWidth,
+    prioritizeGuaranteedCompletion:
+      currentSettings.prioritizeGuaranteedCompletion,
   };
 }
 

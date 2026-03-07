@@ -9,7 +9,7 @@ import type { HarmonyDataSource } from './harmonyState';
 
 export interface OptimizerReplaySearchConfigSnapshot extends Pick<
   SearchConfig,
-  'timeBudgetMs' | 'maxNodes' | 'beamWidth'
+  'timeBudgetMs' | 'maxNodes' | 'beamWidth' | 'prioritizeGuaranteedCompletion'
 > {}
 
 export interface OptimizerReplayInputSnapshot {
@@ -36,6 +36,7 @@ export interface OptimizerReplayInputSnapshot {
     searchTimeBudgetMs: number;
     searchMaxNodes: number;
     searchBeamWidth: number;
+    prioritizeGuaranteedCompletion: boolean;
     compactMode: boolean;
     panelVisible: boolean;
   };
@@ -295,11 +296,13 @@ function summarizeRecommendation(
       name: recommendation.skill.name,
       key: recommendation.skill.key,
       type: recommendation.skill.type,
+      actionKind: recommendation.skill.actionKind || 'skill',
     },
     score: recommendation.score,
     qualityRating: recommendation.qualityRating ?? null,
     expectedGains: recommendation.expectedGains,
     immediateGains: recommendation.immediateGains,
+    projectedSuccessChance: recommendation.projectedSuccessChance ?? null,
     effectiveCosts: recommendation.effectiveCosts ?? null,
     followUpSkill: recommendation.followUpSkill ?? null,
     consumesBuff: recommendation.consumesBuff ?? false,
@@ -320,11 +323,14 @@ export function buildResultSnapshot(
           name: recommendation.skill.name,
           key: recommendation.skill.key,
           type: recommendation.skill.type,
+          actionKind: recommendation.skill.actionKind || 'skill',
         },
         score: recommendation.score,
         qualityRating: recommendation.qualityRating ?? null,
         expectedGains: recommendation.expectedGains,
         immediateGains: recommendation.immediateGains,
+        projectedSuccessChance:
+          recommendation.projectedSuccessChance ?? null,
         effectiveCosts: recommendation.effectiveCosts ?? null,
         followUpSkill: recommendation.followUpSkill ?? null,
         consumesBuff: recommendation.consumesBuff ?? false,

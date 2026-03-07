@@ -1335,6 +1335,50 @@ describe('applySkill', () => {
     expect(newState!.toxicity).toBe(30); // 50 - 20
   });
 
+  it('should apply multi-turn toxicity cleansing from active buff effects and expire the buff', () => {
+    const detoxBuff = {
+      name: 'Detoxifying',
+      canStack: true,
+      effects: [
+        { kind: 'changeToxicity' as const, amount: { value: -5 } },
+        { kind: 'addStack' as const, stacks: { value: -1 } },
+      ],
+    };
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      toxicity: 50,
+      buffs: new Map([
+        [
+          'detoxifying',
+          {
+            name: 'Detoxifying',
+            stacks: 2,
+            definition: detoxBuff,
+          },
+        ],
+      ]),
+    });
+    const skill = createTestSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      scalesWithIntensity: false,
+      type: 'support',
+    });
+
+    const firstTurn = applySkill(state, skill, config);
+    expect(firstTurn).not.toBeNull();
+    expect(firstTurn!.toxicity).toBe(45);
+    expect(firstTurn!.getBuffStacks('detoxifying')).toBe(1);
+
+    const secondTurn = applySkill(firstTurn!, skill, config);
+    expect(secondTurn).not.toBeNull();
+    expect(secondTurn!.toxicity).toBe(40);
+    expect(secondTurn!.getBuffStacks('detoxifying')).toBe(0);
+  });
+
   it('should set cooldown when skill has one', () => {
     const state = new CraftingState({
       qi: 100,

@@ -78,6 +78,10 @@ function formatGain(value: number): string {
   return value.toLocaleString();
 }
 
+function formatSuccessChance(value: number): string {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+}
+
 function formatGainSummary(gains: {
   completion: number;
   perfection: number;
@@ -296,8 +300,10 @@ const PanelVersionBadge = memo(function PanelVersionBadge({
 const SingleSkillBox = memo(function SingleSkillBox({
   name,
   type,
+  actionKind,
   gains,
   projectedGains,
+  projectedSuccessChance,
   icon,
   qiCost = 0,
   stabilityCost = 0,
@@ -310,12 +316,14 @@ const SingleSkillBox = memo(function SingleSkillBox({
 }: {
   name: string;
   type: string;
+  actionKind?: 'skill' | 'item' | 'finish';
   gains: { completion: number; perfection: number; stability: number };
   projectedGains?: {
     completion: number;
     perfection: number;
     stability: number;
   };
+  projectedSuccessChance?: number;
   icon?: string;
   qiCost?: number;
   stabilityCost?: number;
@@ -326,14 +334,15 @@ const SingleSkillBox = memo(function SingleSkillBox({
   consumesBuff?: boolean;
   reasoning?: string;
 }) {
-  const typeColor = getSkillTypeColor(type);
+  const visualType = actionKind === 'finish' ? 'finish' : type;
+  const typeColor = getSkillTypeColor(visualType);
   const iconSize = isFollowUp ? 'small' : isPrimary ? 'large' : 'medium';
 
   return (
     <SkillCardContainer
       isPrimary={isPrimary}
       isFollowUp={isFollowUp}
-      skillType={type}
+      skillType={visualType}
       animate={isPrimary && !isFollowUp}
     >
       <FlexRow gap={1.5} align="flex-start">
@@ -371,6 +380,20 @@ const SingleSkillBox = memo(function SingleSkillBox({
               }}
             >
               Projected EV: {formatGainSummary(projectedGains)}
+            </Typography>
+          )}
+          {projectedSuccessChance != null && (
+            <Typography
+              variant="caption"
+              sx={{
+                color: colors.gold,
+                display: 'block',
+                mt: 0.25,
+                lineHeight: 1.2,
+                fontWeight: 600,
+              }}
+            >
+              Success chance: {formatSuccessChance(projectedSuccessChance)}
             </Typography>
           )}
 
@@ -458,8 +481,10 @@ const SkillCard = memo(function SkillCard({
           <SingleSkillBox
             name={rec.skill.name}
             type={rec.skill.type}
+            actionKind={rec.skill.actionKind}
             gains={rec.immediateGains}
             projectedGains={rec.expectedGains}
+            projectedSuccessChance={rec.projectedSuccessChance}
             icon={rec.skill.icon}
             qiCost={qiCost}
             stabilityCost={stabilityCost}
@@ -480,8 +505,10 @@ const SkillCard = memo(function SkillCard({
               <SingleSkillBox
                 name={rec.followUpSkill.name}
                 type={rec.followUpSkill.type}
+                actionKind={rec.followUpSkill.actionKind}
                 gains={rec.followUpSkill.immediateGains}
                 projectedGains={rec.followUpSkill.expectedGains}
+                projectedSuccessChance={rec.followUpSkill.projectedSuccessChance}
                 icon={rec.followUpSkill.icon}
                 qiCost={rec.followUpSkill.effectiveCosts?.qi ?? 0}
                 stabilityCost={rec.followUpSkill.effectiveCosts?.stability ?? 0}
@@ -703,6 +730,7 @@ const FinalStateSection = memo(function FinalStateSection({
     stability: number;
     maxStability?: number;
     turnsRemaining: number;
+    projectedSuccessChance?: number;
   };
   targetCompletion: number;
   targetPerfection: number;
@@ -759,6 +787,12 @@ const FinalStateSection = memo(function FinalStateSection({
             Targets will be met!
           </Typography>
         </FlexRow>
+      )}
+
+      {state.projectedSuccessChance != null && (
+        <Typography variant="body2" sx={{ color: colors.gold, mt: 0.5 }}>
+          Finish chance: {formatSuccessChance(state.projectedSuccessChance)}
+        </Typography>
       )}
 
       {state.turnsRemaining > 0 && (
