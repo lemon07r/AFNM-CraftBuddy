@@ -959,12 +959,15 @@ export function RecommendationPanel({
   // No result yet - Loading state
   if (!result || isCalculating) {
     const timeBudgetMs = settings?.searchTimeBudgetMs ?? 2000;
+    const versionFooterPadding = version && !isSettingsOpen ? 2.25 : 0;
 
     return (
       <PanelContainer compact={compactMode}>
-        <LoadingHeader compact={compactMode} />
-        <LoadingSkeletonCard />
-        <SearchProgressBar durationMs={timeBudgetMs} />
+        <Box sx={{ pb: versionFooterPadding }}>
+          <LoadingHeader compact={compactMode} />
+          <LoadingSkeletonCard compact={compactMode} />
+          <SearchProgressBar durationMs={timeBudgetMs} />
+        </Box>
         <PanelVersionBadge version={version} visible={!isSettingsOpen} />
       </PanelContainer>
     );

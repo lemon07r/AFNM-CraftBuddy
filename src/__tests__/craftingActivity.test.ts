@@ -1,5 +1,6 @@
 import {
   hasReliableCraftingActivity,
+  shouldPrimeCraftSessionFromRecipeDifficultyHook,
   shouldAcceptReduxCraftingState,
 } from '../modContent/craftingActivity';
 
@@ -84,6 +85,35 @@ describe('crafting activity guards', () => {
           hasVisibleCraftingUi: true,
           hasConfirmedCraftSession: false,
           isCraftStartPending: false,
+        }),
+      ).toBe(true);
+    });
+  });
+
+  describe('shouldPrimeCraftSessionFromRecipeDifficultyHook', () => {
+    it('rejects recipe difficulty hooks before crafting UI is visible', () => {
+      expect(
+        shouldPrimeCraftSessionFromRecipeDifficultyHook({
+          hasVisibleCraftingUi: false,
+          hasConfirmedCraftSession: false,
+        }),
+      ).toBe(false);
+    });
+
+    it('accepts recipe difficulty hooks once crafting UI is visible', () => {
+      expect(
+        shouldPrimeCraftSessionFromRecipeDifficultyHook({
+          hasVisibleCraftingUi: true,
+          hasConfirmedCraftSession: false,
+        }),
+      ).toBe(true);
+    });
+
+    it('accepts recipe difficulty hooks for an already confirmed craft session', () => {
+      expect(
+        shouldPrimeCraftSessionFromRecipeDifficultyHook({
+          hasVisibleCraftingUi: false,
+          hasConfirmedCraftSession: true,
         }),
       ).toBe(true);
     });

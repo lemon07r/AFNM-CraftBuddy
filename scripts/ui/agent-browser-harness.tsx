@@ -83,10 +83,23 @@ const fixtureResult = {
   },
 } as any;
 
+const harnessParams = new URLSearchParams(window.location.search);
+const harnessState = harnessParams.get('state') || 'default';
+const harnessCompactMode = harnessParams.get('compact');
+
 function Harness() {
-  const [settings, setSettings] = React.useState<CraftBuddySettings>(() =>
-    loadSettings(),
-  );
+  const [settings, setSettings] = React.useState<CraftBuddySettings>(() => {
+    const baseSettings = loadSettings();
+    return {
+      ...baseSettings,
+      compactMode:
+        harnessCompactMode === '1'
+          ? true
+          : harnessCompactMode === '0'
+            ? false
+            : baseSettings.compactMode,
+    };
+  });
 
   return (
     <CraftBuddyThemeProvider>
@@ -103,7 +116,7 @@ function Harness() {
       >
         <div style={{ width: 530 }}>
           <RecommendationPanel
-            result={fixtureResult}
+            result={harnessState === 'loading' ? null : fixtureResult}
             currentCompletion={20}
             currentPerfection={10}
             targetCompletion={60}
@@ -120,7 +133,8 @@ function Harness() {
             settings={settings}
             onSettingsChange={setSettings}
             onSearchSettingsChange={setSettings}
-            version="3.7.3"
+            isCalculating={harnessState === 'loading'}
+            version="3.7.4"
           />
         </div>
       </div>

@@ -59,3 +59,21 @@ export function shouldAcceptReduxCraftingState({
     hasVisibleCraftingUi || hasConfirmedCraftSession || isCraftStartPending
   );
 }
+
+export interface RecipeDifficultyHookCraftStartParams {
+  hasVisibleCraftingUi: boolean;
+  hasConfirmedCraftSession: boolean;
+}
+
+/**
+ * Recipe difficulty hooks can fire before the player is actually inside the
+ * crafting minigame. Only let that hook prime the live overlay once the
+ * session has already been confirmed by visible crafting UI (or a currently
+ * tracked craft session).
+ */
+export function shouldPrimeCraftSessionFromRecipeDifficultyHook({
+  hasVisibleCraftingUi,
+  hasConfirmedCraftSession,
+}: RecipeDifficultyHookCraftStartParams): boolean {
+  return hasVisibleCraftingUi || hasConfirmedCraftSession;
+}

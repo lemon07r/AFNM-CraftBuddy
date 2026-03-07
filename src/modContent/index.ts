@@ -59,6 +59,7 @@ import {
 } from './craftingContext';
 import {
   hasReliableCraftingActivity as hasReliableCraftingActivityState,
+  shouldPrimeCraftSessionFromRecipeDifficultyHook,
   shouldAcceptReduxCraftingState,
 } from './craftingActivity';
 import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
@@ -3419,6 +3420,19 @@ try {
       debugLog(
         `[CraftBuddy] Craft context: type=${currentCraftingType} (${integrationDiagnostics.lastCraftingTypeDetectionSource}), sublime=${isSublimeCraft} [${integrationDiagnostics.lastSublimeDetectionSignals.join(', ') || 'none'}], multiplier=${sublimeTargetMultiplier}`,
       );
+
+      const hasVisibleCraftingUi = detectVisibleCraftingUi();
+      if (
+        !shouldPrimeCraftSessionFromRecipeDifficultyHook({
+          hasVisibleCraftingUi,
+          hasConfirmedCraftSession,
+        })
+      ) {
+        debugLog(
+          '[CraftBuddy] Recipe difficulty hook fired before crafting UI was visible; cached targets without priming the overlay',
+        );
+        return recipeStats;
+      }
 
       // Reset state
       currentRecommendation = null;

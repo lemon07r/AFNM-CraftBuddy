@@ -706,62 +706,94 @@ export const HotkeyHints = memo(function HotkeyHints({
  * Loading skeleton card - shimmer placeholder for skill cards.
  * Uses GPU-accelerated transform animation for performance.
  */
-export const LoadingSkeletonCard = memo(function LoadingSkeletonCard() {
+export const LoadingSkeletonCard = memo(function LoadingSkeletonCard({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
   return (
     <Box
       sx={{
-        p: 1,
+        p: compact ? 0.875 : 1,
         borderRadius: 1.5,
         background: 'rgba(35, 38, 48, 0.6)',
         border: '1px solid rgba(80, 85, 100, 0.35)',
         borderLeft: `3px solid ${colors.goldDark}40`,
         position: 'relative',
         overflow: 'hidden',
-        minHeight: 72,
+        minHeight: compact ? 'auto' : 72,
       }}
     >
-      {/* Content placeholders */}
-      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-        {/* Icon placeholder */}
-        <Box
-          sx={{
-            width: 56,
-            height: 56,
-            borderRadius: 1,
-            backgroundColor: 'rgba(60, 65, 80, 0.5)',
-            flexShrink: 0,
-          }}
-        />
-        {/* Text placeholders */}
-        <Box sx={{ flex: 1, pt: 0.5 }}>
+      {compact ? (
+        <Box sx={{ display: 'grid', gap: 0.75 }}>
           <Box
             sx={{
-              width: '60%',
-              height: 14,
+              width: '68%',
+              height: 10,
               borderRadius: 0.5,
               backgroundColor: 'rgba(60, 65, 80, 0.5)',
-              mb: 1,
             }}
           />
           <Box
             sx={{
-              width: '40%',
-              height: 10,
+              width: '92%',
+              height: 8,
               borderRadius: 0.5,
               backgroundColor: 'rgba(60, 65, 80, 0.4)',
-              mb: 0.75,
             }}
           />
           <Box
             sx={{
-              width: '75%',
-              height: 10,
+              width: '58%',
+              height: 8,
               borderRadius: 0.5,
-              backgroundColor: 'rgba(60, 65, 80, 0.4)',
+              backgroundColor: 'rgba(60, 65, 80, 0.36)',
             }}
           />
         </Box>
-      </Box>
+      ) : (
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+          {/* Icon placeholder */}
+          <Box
+            sx={{
+              width: 56,
+              height: 56,
+              borderRadius: 1,
+              backgroundColor: 'rgba(60, 65, 80, 0.5)',
+              flexShrink: 0,
+            }}
+          />
+          {/* Text placeholders */}
+          <Box sx={{ flex: 1, minWidth: 0, pt: 0.5 }}>
+            <Box
+              sx={{
+                width: '60%',
+                height: 14,
+                borderRadius: 0.5,
+                backgroundColor: 'rgba(60, 65, 80, 0.5)',
+                mb: 1,
+              }}
+            />
+            <Box
+              sx={{
+                width: '40%',
+                height: 10,
+                borderRadius: 0.5,
+                backgroundColor: 'rgba(60, 65, 80, 0.4)',
+                mb: 0.75,
+              }}
+            />
+            <Box
+              sx={{
+                width: '75%',
+                height: 10,
+                borderRadius: 0.5,
+                backgroundColor: 'rgba(60, 65, 80, 0.4)',
+              }}
+            />
+          </Box>
+        </Box>
+      )}
 
       {/* Shimmer overlay - GPU-accelerated */}
       <Box
