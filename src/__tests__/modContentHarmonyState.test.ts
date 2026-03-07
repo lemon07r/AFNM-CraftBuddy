@@ -1,7 +1,9 @@
 import { BuffType, CraftingState } from '../optimizer/state';
 import { findBestSkill, lookaheadSearch } from '../optimizer/search';
 import {
+  applySkill,
   calculateSkillGains,
+  getConditionEffectsForConfig,
   type OptimizerConfig,
   type SkillDefinition,
 } from '../optimizer/skills';
@@ -12,6 +14,7 @@ import {
   buildConfigSnapshot,
   buildStateSnapshot,
 } from '../modContent/replaySnapshot';
+import { loadSkyfallBowHeatRegressionFixture } from './__fixtures__/skyfallBowHeatRegression';
 
 function createSkill(
   overrides: Partial<SkillDefinition> = {},
@@ -814,6 +817,72 @@ describe('integration regression - forge heat parity', () => {
     ).toBe(0);
   });
 
+  it('does not flatten late forge overcraft branches into a heat-overshooting fusion tie', () => {
+    const fixture = loadSkyfallBowHeatRegressionFixture();
+    const state = reviveStateSnapshot(fixture.state as Record<string, any>);
+    const config = reviveConfigSnapshot(fixture.config as Record<string, any>);
+    const currentCondition = fixture.conditions.current || 'neutral';
+    const forecastConditions = fixture.conditions.forecast || [
+      'neutral',
+      'negative',
+      'neutral',
+    ];
+
+    const result = findBestSkill(
+      state,
+      config,
+      fixture.targets.completion,
+      fixture.targets.perfection,
+      false,
+      64,
+      currentCondition,
+      forecastConditions as any,
+      {
+        timeBudgetMs: 4500,
+        maxNodes: 2000000,
+        beamWidth: 8,
+      },
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const explosiveFusionRecommendation = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === 'explosive_fusion',
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(state.harmonyData?.forgeWorks?.heat).toBe(6);
+    expect(state.harmonyData?.recommendedTechniqueTypes).toEqual([
+      'refine',
+      'support',
+      'stabilize',
+    ]);
+    expect(result.recommendation?.skill.type).not.toBe('fusion');
+    expect(explosiveFusionRecommendation).toBeDefined();
+    expect(result.recommendation!.score).toBeGreaterThan(
+      explosiveFusionRecommendation!.score,
+    );
+
+    const nextState = applySkill(
+      state,
+      result.recommendation!.skill,
+      config,
+      getConditionEffectsForConfig(config, currentCondition),
+      fixture.targets.completion,
+      currentCondition,
+    );
+
+    expect(nextState).not.toBeNull();
+    expect(nextState?.harmonyData?.forgeWorks?.heat).toBeLessThanOrEqual(6);
+  });
+
   it('replays the reported skyfall bow forge opener with fusion before invasive refine', () => {
     // Regression from the 2026-03-07 live snapshot: a forge sublime craft at
     // authoritative heat=0 was reported as opening with Invasive Refine even
@@ -1241,4 +1310,5 @@ describe('integration regression - forge heat parity', () => {
     expect(result.recommendation?.skill.key).toBe('invasive_fusion');
     expect(result.recommendation?.skill.type).toBe('fusion');
   });
+
 });

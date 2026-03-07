@@ -35,7 +35,7 @@ export interface CraftBuddySettings {
 const STORAGE_KEY = 'craftbuddy_settings';
 const SEARCH_DEFAULTS_RESET_VERSION_KEY =
   'craftbuddy_search_defaults_reset_version';
-const SEARCH_DEFAULTS_RESET_VERSION = '1';
+const SEARCH_DEFAULTS_RESET_VERSION = '2';
 
 export const DEFAULT_SEARCH_SETTINGS: Pick<
   CraftBuddySettings,
@@ -47,7 +47,9 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   lookaheadDepth: 64,
   searchTimeBudgetMs: 4500,
   searchMaxNodes: 2000000,
-  searchBeamWidth: 8,
+  // Replay regression showed beam 8 can strand long forge turns on a
+  // shallow partial frontier; beam 5 reaches a deeper, safer frontier.
+  searchBeamWidth: 5,
 };
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {

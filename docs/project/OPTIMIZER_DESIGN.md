@@ -76,9 +76,9 @@ Identical state + config inputs should produce stable recommendations within the
 - `lookaheadDepth` (`1-96`, default `64`)
 - `searchTimeBudgetMs` (`100-10,000`, default `4,500`)
 - `searchMaxNodes` (`1,000-5,000,000`, default `2,000,000`)
-- `searchBeamWidth` (`3-20`, default `8`)
+- `searchBeamWidth` (`3-20`, default `5`)
 - Settings sliders persist on commit (not every drag event) to reduce UI churn.
-- Preset tuning now keeps the beam narrower through mid-budget tiers; replay benchmarking showed widening too early can produce worse partial-frontier recommendations than a deeper narrow-beam search.
+- Preset tuning now keeps the beam narrower through mid-budget tiers; replay benchmarking showed widening too early can produce worse partial-frontier recommendations than a deeper narrow-beam search, including forge turns where a wider beam strands the search on a shallow terminal frontier and drifts into avoidable heat overshoot.
 - Manual tuning is coupled: over-raising one slider while starving the others can reduce effective frontier quality. Presets exist to keep the budget ratios in a safer range.
 
 ### Internal search defaults

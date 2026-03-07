@@ -159,8 +159,7 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   conditionBranchMinProbability: 0.15,
 };
 
-const TERMINAL_UNMET_SCORE_FLOOR = -1_000_000;
-const TERMINAL_UNMET_SCORE_TIEBREAK_WINDOW = 100_000;
+const TERMINAL_UNMET_PENALTY_MULTIPLIER = 4;
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
 
 // ── Scoring weights ─────────────────────────────────────────────────────────
@@ -748,12 +747,17 @@ function filterUnfinishedTerminalCandidates<
   return filtered.length > 0 ? filtered : candidates;
 }
 
-function applyTerminalUnmetPenalty(baseScore: number): number {
-  const tieBreak = Math.max(
-    -TERMINAL_UNMET_SCORE_TIEBREAK_WINDOW,
-    Math.min(TERMINAL_UNMET_SCORE_TIEBREAK_WINDOW, baseScore),
+function applyTerminalUnmetPenalty(
+  baseScore: number,
+  totalTargetMagnitude: number,
+): number {
+  // Preserve meaningful differences between unfinished terminal branches,
+  // especially on large-target sublime crafts, while still making any
+  // "craft ended before goals were met" state materially worse.
+  return (
+    baseScore -
+    totalTargetMagnitude * TERMINAL_UNMET_PENALTY_MULTIPLIER
   );
-  return TERMINAL_UNMET_SCORE_FLOOR + tieBreak;
 }
 
 /**
@@ -1643,7 +1647,12 @@ export function lookaheadSearch(
       modeCompGoal,
       modePerfGoal,
     );
-    return isTerminalUnmet ? applyTerminalUnmetPenalty(baseScore) : baseScore;
+    return isTerminalUnmet
+      ? applyTerminalUnmetPenalty(
+          baseScore,
+          Math.max(1, effectiveCompGoal + effectivePerfGoal),
+        )
+      : baseScore;
   };
   function estimatePostMoveStateScore(
     newState: CraftingState,

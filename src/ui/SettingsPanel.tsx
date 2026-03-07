@@ -84,7 +84,7 @@ const SEARCH_PRESETS: SearchPreset[] = [
       lookaheadDepth: 32,
       searchTimeBudgetMs: 1000,
       searchMaxNodes: 400000,
-      searchBeamWidth: 8,
+      searchBeamWidth: 5,
     },
   },
   {
@@ -95,7 +95,7 @@ const SEARCH_PRESETS: SearchPreset[] = [
       lookaheadDepth: 40,
       searchTimeBudgetMs: 1200,
       searchMaxNodes: 800000,
-      searchBeamWidth: 8,
+      searchBeamWidth: 5,
     },
   },
   {
