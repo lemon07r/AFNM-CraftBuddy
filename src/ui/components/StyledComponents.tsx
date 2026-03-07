@@ -54,7 +54,7 @@ export const PanelContainer = memo(function PanelContainer({
   allowOverflowVisible = false,
 }: PanelContainerProps) {
   const widePanelWidthPx = compact ? 280 : 350;
-  const narrowPanelWidthPx = compact ? 266 : 330;
+  const narrowPanelWidthPx = compact ? 272 : 340;
 
   const getBorderColor = () => {
     switch (variant) {
@@ -84,8 +84,12 @@ export const PanelContainer = memo(function PanelContainer({
       sx={{
         position: 'relative',
         p: compact ? 1.5 : 2,
-        width: `min(${widePanelWidthPx}px, calc(100vw - 24px))`,
-        minWidth: `min(${widePanelWidthPx}px, calc(100vw - 24px))`,
+        // Avoid CSS min()/viewport math here. The game's embedded browser can
+        // treat unsupported expressions as invalid and collapse the fixed
+        // overlay into a shrink-to-fit column.
+        width: widePanelWidthPx,
+        maxWidth: 'calc(100vw - 24px)',
+        boxSizing: 'border-box',
         backgroundImage: gradients.panelBackground,
         border: `1px solid ${getBorderColor()}`,
         borderRadius: 2,
@@ -93,8 +97,7 @@ export const PanelContainer = memo(function PanelContainer({
         overflow: allowOverflowVisible ? 'visible' : 'hidden',
         animation: animate ? `${slideInRight} 0.3s ease-out` : 'none',
         '@media (max-aspect-ratio: 16/9)': {
-          width: `min(${narrowPanelWidthPx}px, calc(100vw - 24px))`,
-          minWidth: `min(${narrowPanelWidthPx}px, calc(100vw - 24px))`,
+          width: narrowPanelWidthPx,
         },
         // Decorative corner accents
         '&::before': {
