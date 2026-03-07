@@ -57,6 +57,10 @@ import {
   type CraftingTypeDetectionSource,
   type SublimeDetectionSignal,
 } from './craftingContext';
+import {
+  hasReliableCraftingActivity as hasReliableCraftingActivityState,
+  shouldAcceptReduxCraftingState,
+} from './craftingActivity';
 import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
 import {
   buildConfigSnapshot,
@@ -279,6 +283,7 @@ let craftStartPendingUntil = 0;
 let overlayForcedByActiveCraft = false;
 let missingVisibleCraftingUiPolls = 0;
 let hasLoggedMissingHostFlushSync = false;
+let hasConfirmedCraftSession = false;
 
 // Polling interval for crafting state detection
 let pollingInterval: number | null = null;
@@ -2409,11 +2414,16 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
   // Show overlay only while crafting is active and panel visibility is enabled.
   // Also show when a craft just started (craftStartPending) or when actively
   // calculating, so the loading skeleton is visible before entity data arrives.
-  const isCraftingActive = lastEntity !== null && lastProgressState !== null;
+  const isCraftingActive =
+    hasConfirmedCraftSession &&
+    lastEntity !== null &&
+    lastProgressState !== null;
   const isPendingCraftStart = isCraftStartPendingActive();
   const shouldShow =
     currentSettings.panelVisible &&
-    (isCraftingActive || isCalculating || isPendingCraftStart);
+    (isCraftingActive ||
+      isPendingCraftStart ||
+      (isCalculating && hasConfirmedCraftSession));
 
   if (!reactRoot || !shouldShow) {
     if (reactRoot && overlayContainer) {
@@ -2533,6 +2543,7 @@ function clearActiveCraftingRuntimeState(): void {
   isCalculating = false;
   clearCraftStartPending();
   currentStep = 0;
+  hasConfirmedCraftSession = false;
 }
 
 /**
@@ -2666,6 +2677,27 @@ function processCraftingStateFromStore(store: any): void {
   try {
     const state = store.getState();
     const craftingState = extractActiveCraftingState(state);
+    if (!craftingState) {
+      processCraftingState(craftingState);
+      return;
+    }
+
+    const hasVisibleCraftingUi = detectVisibleCraftingUi();
+    if (hasVisibleCraftingUi) {
+      hasConfirmedCraftSession = true;
+    }
+
+    if (
+      !shouldAcceptReduxCraftingState({
+        hasCraftingState: true,
+        hasVisibleCraftingUi,
+        hasConfirmedCraftSession,
+        isCraftStartPending: isCraftStartPendingActive(),
+      })
+    ) {
+      return;
+    }
+
     processCraftingState(craftingState);
   } catch (error) {
     console.warn(
@@ -3046,6 +3078,9 @@ function pollCraftingState(): void {
   } = detectCraftingState();
   const enteredVisibleCraftingUi =
     hasVisibleCraftingUi && !wasVisibleCraftingUiLastPoll;
+  if (hasVisibleCraftingUi) {
+    hasConfirmedCraftSession = true;
+  }
 
   // Only consider crafting truly active if we have actual entity/progress data from Redux.
   // DOM-based detection alone is not reliable (can false-positive on result screens).
@@ -3086,11 +3121,13 @@ function pollCraftingState(): void {
     missingVisibleCraftingUiPolls = 0;
   }
 
-  const hasReliableCraftingActivity =
-    hasCraftingData &&
-    (hasVisibleCraftingUi ||
-      missingVisibleCraftingUiPolls <
-        MISSING_VISIBLE_CRAFTING_UI_POLLS_BEFORE_END);
+  const hasReliableCraftingActivity = hasReliableCraftingActivityState({
+    hasCraftingData,
+    hasVisibleCraftingUi,
+    missingVisibleCraftingUiPolls,
+    hiddenUiGracePolls: MISSING_VISIBLE_CRAFTING_UI_POLLS_BEFORE_END,
+    hasConfirmedCraftSession,
+  });
   const shouldInitializeFromPolling =
     hasReliableCraftingActivity && !!entity && !!progress && !lastEntity;
   const isPendingCraftStart = isCraftStartPendingActive();
@@ -3404,6 +3441,7 @@ try {
       const wasVisibleBeforeCraft = isOverlayVisible;
       overlayForcedByActiveCraft = !wasVisibleBeforeCraft;
       wasCraftingActive = true;
+      hasConfirmedCraftSession = true;
       markCraftStartPending();
       isOverlayVisible = false; // Reset so showOverlay will work
       debugLog('[CraftBuddy] Crafting starting, syncing panel visibility');
