@@ -3401,4 +3401,87 @@ describe('scoreState (isolated)', () => {
     expect(invasiveRefine).toBeUndefined();
     expect(forcefulStabilize).toBeDefined();
   });
+
+  it('replays the forge heat runway snapshot at heat two and prioritizes heat recovery over support setup', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'forge-heat-runway-step-2.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      input.searchConfig,
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const focus = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === 'focus',
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe('focus');
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('fusion');
+    expect(result.recommendation!.skill.key).not.toBe('focus');
+    expect(focus).toBeDefined();
+    expect(result.recommendation!.score).toBeGreaterThan(focus!.score);
+  });
+
+  it('replays the forge heat runway snapshot at heat one and no longer walks forge heat to zero', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'forge-heat-runway-step-3.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      input.searchConfig,
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const unstableReEnergisation = allRecommendations.find(
+      (recommendation) =>
+        recommendation.skill.key === 'unstable_re-energisation',
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      'unstable_re-energisation',
+    );
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('fusion');
+    expect(result.recommendation!.skill.key).not.toBe(
+      'unstable_re-energisation',
+    );
+    expect(unstableReEnergisation).toBeDefined();
+    expect(result.recommendation!.score).toBeGreaterThan(
+      unstableReEnergisation!.score,
+    );
+  });
 });

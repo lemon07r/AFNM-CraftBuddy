@@ -78,6 +78,7 @@ For chance-based survivability bugs, cover both layers:
 
 - `skills.test.ts`: unit-test the guaranteed survivability floor (`calculateActionSurvivabilityFloor(...)`) so probabilistic stability recovery does not masquerade as guaranteed runway
 - `search.test.ts` / `craftSimulation.test.ts`: add replay or simulation regressions proving the optimizer chooses the guaranteed-safe line when one exists
+- For sublime/overcraft regressions, pair those with replay fixtures that confirm base-success continuation still values heat/harmony recovery instead of collapsing into shallow “safe” support loops once the base craft is already secured
 
 For community-guide parity claims:
 

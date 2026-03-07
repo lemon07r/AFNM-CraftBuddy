@@ -26,6 +26,7 @@ import {
   SearchResult,
   CraftingConditionType,
   SearchConfig,
+  normalizeForecastConditionQueue,
 } from '../optimizer/search';
 import {
   getReplaySearchInput,
@@ -1699,5 +1700,61 @@ describe('craft simulation — sublime crafts', () => {
         regressionInput.currentCondition,
       ),
     ).toBe(false);
+  });
+
+  it('should keep forge heat above collapse while continuing a sublime craft after base success is secured', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'forge-heat-runway-step-2.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    let state = input.state;
+    let currentCondition = input.currentCondition as CraftingConditionType;
+    let forecast = normalizeForecastConditionQueue(
+      currentCondition,
+      input.forecastConditions as CraftingConditionType[],
+      state.harmony,
+    );
+    const chosenTypes: string[] = [];
+
+    for (let turn = 0; turn < 2; turn++) {
+      const result = findBestSkill(
+        state,
+        input.config,
+        input.targetCompletion,
+        input.targetPerfection,
+        false,
+        input.lookaheadDepth,
+        currentCondition,
+        forecast,
+        input.searchConfig,
+      );
+
+      expect(result.recommendation).not.toBeNull();
+      const skill = result.recommendation!.skill;
+      chosenTypes.push(skill.type);
+
+      const nextState = applySkill(
+        state,
+        skill,
+        input.config,
+        getConditionEffectsForConfig(input.config, currentCondition),
+        input.targetCompletion,
+        currentCondition,
+      );
+
+      expect(nextState).not.toBeNull();
+      state = nextState!;
+      currentCondition = forecast[0] || 'neutral';
+      forecast = normalizeForecastConditionQueue(
+        currentCondition,
+        forecast.slice(1),
+        state.harmony,
+      );
+    }
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe('focus');
+    expect(chosenTypes[0]).toBe('fusion');
+    expect(state.harmonyData?.forgeWorks?.heat).toBeGreaterThanOrEqual(3);
+    expect(state.harmony).toBeGreaterThan(0);
   });
 });

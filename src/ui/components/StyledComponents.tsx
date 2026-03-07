@@ -53,6 +53,9 @@ export const PanelContainer = memo(function PanelContainer({
   animate = true,
   allowOverflowVisible = false,
 }: PanelContainerProps) {
+  const widePanelWidthPx = compact ? 280 : 350;
+  const narrowPanelWidthPx = compact ? 266 : 330;
+
   const getBorderColor = () => {
     switch (variant) {
       case 'success':
@@ -81,13 +84,18 @@ export const PanelContainer = memo(function PanelContainer({
       sx={{
         position: 'relative',
         p: compact ? 1.5 : 2,
-        minWidth: compact ? 280 : 350,
+        width: `min(${widePanelWidthPx}px, calc(100vw - 24px))`,
+        minWidth: `min(${widePanelWidthPx}px, calc(100vw - 24px))`,
         backgroundImage: gradients.panelBackground,
         border: `1px solid ${getBorderColor()}`,
         borderRadius: 2,
         boxShadow: shadows.panel,
         overflow: allowOverflowVisible ? 'visible' : 'hidden',
         animation: animate ? `${slideInRight} 0.3s ease-out` : 'none',
+        '@media (max-aspect-ratio: 16/9)': {
+          width: `min(${narrowPanelWidthPx}px, calc(100vw - 24px))`,
+          minWidth: `min(${narrowPanelWidthPx}px, calc(100vw - 24px))`,
+        },
         // Decorative corner accents
         '&::before': {
           content: '""',

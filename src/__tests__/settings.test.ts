@@ -13,6 +13,11 @@ import {
 } from '../utils/searchGoalPriority';
 
 describe('settings search budget', () => {
+  const SEARCH_DEFAULTS_RESET_VERSION_KEY =
+    'craftbuddy_search_defaults_reset_version';
+  const DISPLAY_DEFAULTS_RESET_VERSION_KEY =
+    'craftbuddy_display_defaults_reset_version';
+  const DISPLAY_DEFAULTS_RESET_VERSION = '1';
   let warnSpy: jest.SpyInstance;
   let logSpy: jest.SpyInstance;
   let storageData: Record<string, string>;
@@ -61,6 +66,7 @@ describe('settings search budget', () => {
     expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(2000000);
     expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(5);
     expect(DEFAULT_SETTINGS.searchGoalPriorityBias).toBe(0);
+    expect(DEFAULT_SETTINGS.maxAlternatives).toBe(1);
     expect(getSearchConfig().timeBudgetMs).toBe(4500);
     expect(getSearchConfig().maxNodes).toBe(2000000);
     expect(getSearchConfig().beamWidth).toBe(5);
@@ -101,13 +107,15 @@ describe('settings search budget', () => {
   it('resets stored search budgets to the balanced preset once while preserving display prefs', () => {
     saveSettings({
       compactMode: true,
-      maxAlternatives: 4,
+      maxAlternatives: 1,
       lookaheadDepth: 32,
       searchTimeBudgetMs: 1000,
       searchMaxNodes: 400000,
       searchBeamWidth: 8,
       searchGoalPriorityBias: SEARCH_GOAL_PRIORITY_BIAS_MAX,
     });
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
 
     const migrated = loadSettings();
 
@@ -121,7 +129,7 @@ describe('settings search budget', () => {
       DEFAULT_SETTINGS.searchGoalPriorityBias,
     );
     expect(migrated.compactMode).toBe(true);
-    expect(migrated.maxAlternatives).toBe(4);
+    expect(migrated.maxAlternatives).toBe(1);
 
     saveSettings({
       lookaheadDepth: 96,
@@ -136,21 +144,51 @@ describe('settings search budget', () => {
     expect(reloaded.searchTimeBudgetMs).toBe(10000);
     expect(reloaded.searchMaxNodes).toBe(5000000);
     expect(reloaded.searchBeamWidth).toBe(12);
-    expect(reloaded.searchGoalPriorityBias).toBe(
-      SEARCH_GOAL_PRIORITY_BIAS_MAX,
-    );
+    expect(reloaded.searchGoalPriorityBias).toBe(SEARCH_GOAL_PRIORITY_BIAS_MAX);
   });
 
   it('migrates the legacy guaranteed-completion toggle to full completion bias', () => {
     storageData['craftbuddy_settings'] = JSON.stringify({
       prioritizeGuaranteedCompletion: true,
     });
-    storageData['craftbuddy_search_defaults_reset_version'] = '2';
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] = '2';
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
 
     const migrated = loadSettings();
 
-    expect(migrated.searchGoalPriorityBias).toBe(
-      SEARCH_GOAL_PRIORITY_BIAS_MAX,
+    expect(migrated.searchGoalPriorityBias).toBe(SEARCH_GOAL_PRIORITY_BIAS_MAX);
+  });
+
+  it('migrates stored max alternatives above 1 down to 1 once on load', () => {
+    storageData['craftbuddy_settings'] = JSON.stringify({
+      maxAlternatives: 4,
+    });
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] = '2';
+
+    const migrated = loadSettings();
+
+    expect(migrated.maxAlternatives).toBe(1);
+    expect(storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY]).toBe(
+      DISPLAY_DEFAULTS_RESET_VERSION,
     );
+    expect(JSON.parse(storageData['craftbuddy_settings']).maxAlternatives).toBe(
+      1,
+    );
+  });
+
+  it('allows max alternatives above 1 after the migration has run', () => {
+    storageData['craftbuddy_settings'] = JSON.stringify({
+      maxAlternatives: 4,
+    });
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] = '2';
+
+    expect(loadSettings().maxAlternatives).toBe(1);
+
+    const updated = saveSettings({ maxAlternatives: 4 });
+    expect(updated.maxAlternatives).toBe(4);
+
+    const reloaded = loadSettings();
+    expect(reloaded.maxAlternatives).toBe(4);
   });
 });

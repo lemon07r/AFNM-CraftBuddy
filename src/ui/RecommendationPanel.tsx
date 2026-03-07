@@ -508,7 +508,9 @@ const SkillCard = memo(function SkillCard({
                 actionKind={rec.followUpSkill.actionKind}
                 gains={rec.followUpSkill.immediateGains}
                 projectedGains={rec.followUpSkill.expectedGains}
-                projectedSuccessChance={rec.followUpSkill.projectedSuccessChance}
+                projectedSuccessChance={
+                  rec.followUpSkill.projectedSuccessChance
+                }
                 icon={rec.followUpSkill.icon}
                 qiCost={rec.followUpSkill.effectiveCosts?.qi ?? 0}
                 stabilityCost={rec.followUpSkill.effectiveCosts?.stability ?? 0}
@@ -519,7 +521,6 @@ const SkillCard = memo(function SkillCard({
           </>
         )}
       </FlexRow>
-
     </Box>
   );
 });
@@ -947,7 +948,7 @@ export function RecommendationPanel({
   const showOptimalRotation = settings?.showOptimalRotation ?? true;
   const showExpectedFinalState = settings?.showExpectedFinalState ?? true;
   const showForecastedConditions = settings?.showForecastedConditions ?? true;
-  const maxAlternatives = settings?.maxAlternatives ?? 2;
+  const maxAlternatives = settings?.maxAlternatives ?? 1;
   const maxRotationDisplay = settings?.maxRotationDisplay ?? 5;
 
   // Panel not visible
@@ -1035,7 +1036,9 @@ export function RecommendationPanel({
           version={version}
           compact={compactMode}
           leadingControls={
-            !compactMode ? <CommunityLinks isOpen={isSettingsOpen} /> : undefined
+            !compactMode ? (
+              <CommunityLinks isOpen={isSettingsOpen} />
+            ) : undefined
           }
         />
 
@@ -1058,7 +1061,10 @@ export function RecommendationPanel({
         >
           {/* Recalculate button when search settings changed */}
           {onRecalculate && (
-            <RecalculateButton visible={settingsStale} onClick={onRecalculate} />
+            <RecalculateButton
+              visible={settingsStale}
+              onClick={onRecalculate}
+            />
           )}
 
           <SectionHeader color={colors.gold} compact={compactMode}>
@@ -1100,14 +1106,16 @@ export function RecommendationPanel({
           )}
 
           {/* Expected final state */}
-          {showExpectedFinalState && result.expectedFinalState && !compactMode && (
-            <FinalStateSection
-              state={result.expectedFinalState}
-              targetCompletion={targetCompletion}
-              targetPerfection={targetPerfection}
-              turnsCount={result.optimalRotation?.length || 1}
-            />
-          )}
+          {showExpectedFinalState &&
+            result.expectedFinalState &&
+            !compactMode && (
+              <FinalStateSection
+                state={result.expectedFinalState}
+                targetCompletion={targetCompletion}
+                targetPerfection={targetPerfection}
+                turnsCount={result.optimalRotation?.length || 1}
+              />
+            )}
 
           {/* Alternative skills */}
           {maxAlternatives > 0 &&

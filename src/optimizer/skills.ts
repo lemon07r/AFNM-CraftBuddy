@@ -284,6 +284,7 @@ export interface SkillGains {
 export interface ActionSurvivabilityFloor {
   stability: number;
   maxStability: number;
+  survivalProbability: number;
 }
 
 export interface SkillGainOptions {
@@ -1872,6 +1873,112 @@ export function calculateActionSurvivabilityFloor(
     }
   };
 
+  interface SurvivalEvent {
+    probability: number;
+    stabilityDelta: number;
+    maxStabilityDelta: number;
+  }
+
+  const survivalEvents: SurvivalEvent[] = [];
+
+  const queueSurvivalEvent = (
+    probability: number,
+    stabilityDelta: number,
+    maxStabilityDelta: number,
+  ): void => {
+    if (!Number.isFinite(probability) || probability <= 0 || probability >= 1) {
+      return;
+    }
+    if (
+      !Number.isFinite(stabilityDelta) ||
+      !Number.isFinite(maxStabilityDelta)
+    ) {
+      return;
+    }
+    if (stabilityDelta <= 0 && maxStabilityDelta <= 0) {
+      return;
+    }
+
+    survivalEvents.push({
+      probability,
+      stabilityDelta,
+      maxStabilityDelta,
+    });
+  };
+
+  const calculateSurvivalProbability = (
+    baseStability: number,
+    baseMaxStability: number,
+  ): number => {
+    type SurvivalOutcome = {
+      probability: number;
+      stability: number;
+      maxStability: number;
+    };
+
+    const addOutcome = (
+      outcomes: Map<string, SurvivalOutcome>,
+      outcome: SurvivalOutcome,
+    ): void => {
+      if (outcome.probability <= 0) return;
+      const key = `${outcome.stability}|${outcome.maxStability}`;
+      const existing = outcomes.get(key);
+      if (existing) {
+        existing.probability += outcome.probability;
+        return;
+      }
+      outcomes.set(key, outcome);
+    };
+
+    let outcomes = new Map<string, SurvivalOutcome>();
+    addOutcome(outcomes, {
+      probability: 1,
+      stability: Math.max(0, Math.floor(baseStability)),
+      maxStability: Math.max(0, Math.floor(baseMaxStability)),
+    });
+
+    for (const event of survivalEvents) {
+      const nextOutcomes = new Map<string, SurvivalOutcome>();
+      for (const outcome of Array.from(outcomes.values())) {
+        addOutcome(nextOutcomes, {
+          probability: outcome.probability * (1 - event.probability),
+          stability: outcome.stability,
+          maxStability: outcome.maxStability,
+        });
+
+        const nextMaxStability = Math.max(
+          0,
+          Math.min(
+            state.initialMaxStability,
+            Math.floor(outcome.maxStability + event.maxStabilityDelta),
+          ),
+        );
+        const nextStability = Math.max(
+          0,
+          Math.min(
+            nextMaxStability,
+            Math.floor(outcome.stability + event.stabilityDelta),
+          ),
+        );
+        addOutcome(nextOutcomes, {
+          probability: outcome.probability * event.probability,
+          stability: nextStability,
+          maxStability: nextMaxStability,
+        });
+      }
+      outcomes = nextOutcomes;
+    }
+
+    let survivalProbability = 0;
+    for (const outcome of Array.from(outcomes.values())) {
+      if (outcome.stability > 0) {
+        survivalProbability += outcome.probability;
+      }
+    }
+
+    return Math.max(0, Math.min(1, survivalProbability));
+  };
+
   const harmonyMods = getHarmonyStatModifiers(
     state.harmonyData,
     config.craftingType,
@@ -1945,26 +2052,36 @@ export function calculateActionSurvivabilityFloor(
             actionMasteryUpgrades,
             actionVars,
             0,
-          );
-          guaranteedTechniqueStabilityDelta += resolveGuaranteedContribution(
-            amount,
-            actionSuccessChance * conditionResult.probability,
-          );
-          break;
-        }
-        case 'maxStability': {
+        );
+        guaranteedTechniqueStabilityDelta += resolveGuaranteedContribution(
+          amount,
+          actionSuccessChance * conditionResult.probability,
+        );
+        queueSurvivalEvent(
+          actionSuccessChance * conditionResult.probability,
+          amount,
+          0,
+        );
+        break;
+      }
+      case 'maxStability': {
           const amount = evaluateScalingWithMasteryUpgrades(
             effect.amount,
             actionMasteryUpgrades,
             actionVars,
             0,
           );
-          guaranteedTechniqueMaxStabilityDelta += resolveGuaranteedContribution(
-            amount,
-            actionSuccessChance * conditionResult.probability,
-          );
-          break;
-        }
+        guaranteedTechniqueMaxStabilityDelta += resolveGuaranteedContribution(
+          amount,
+          actionSuccessChance * conditionResult.probability,
+        );
+        queueSurvivalEvent(
+          actionSuccessChance * conditionResult.probability,
+          0,
+          amount,
+        );
+        break;
+      }
         case 'pool': {
           const amount = evaluateScalingWithMasteryUpgrades(
             effect.amount,
@@ -2075,6 +2192,7 @@ export function calculateActionSurvivabilityFloor(
           amount,
           conditionResult.probability,
         );
+        queueSurvivalEvent(conditionResult.probability, amount, 0);
         break;
       }
       case 'maxStability': {
@@ -2088,6 +2206,7 @@ export function calculateActionSurvivabilityFloor(
           amount,
           conditionResult.probability,
         );
+        queueSurvivalEvent(conditionResult.probability, 0, amount);
         break;
       }
       case 'pool': {
@@ -2251,9 +2370,16 @@ export function calculateActionSurvivabilityFloor(
     }
   }
 
+  const finalStability = Math.max(0, Math.floor(newStability));
+  const finalMaxStability = Math.max(0, Math.floor(newMaxStability));
+
   return {
-    stability: Math.max(0, Math.floor(newStability)),
-    maxStability: Math.max(0, Math.floor(newMaxStability)),
+    stability: finalStability,
+    maxStability: finalMaxStability,
+    survivalProbability: calculateSurvivalProbability(
+      finalStability,
+      finalMaxStability,
+    ),
   };
 }
 

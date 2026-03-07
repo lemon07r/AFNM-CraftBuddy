@@ -862,25 +862,39 @@ function getNormalizedCacheKey(
  */
 function evaluateHarmonySubsystemQuality(
   harmonyData: NonNullable<CraftingState['harmonyData']>,
+  completionPriorityShare: number = 0.5,
+  perfectionPriorityShare: number = 0.5,
 ): number {
+  const clampQuality = (value: number): number =>
+    Math.max(-1, Math.min(1, value));
+  const normalizeMultiplierQuality = (multiplier: number): number => {
+    if (multiplier >= 1.5) return 1;
+    if (multiplier <= 0) return -1;
+    return (multiplier - 1) / 0.5;
+  };
+
   // Forge works: use heat-based modifiers directly.
   if (harmonyData.forgeWorks) {
     const heat = harmonyData.forgeWorks.heat;
     const mods = getHarmonyStatModifiers(harmonyData, 'forge');
-    // Average the two key multipliers.  At heat 4-6 both are 1.5,
-    // at heat 0 control is -9 (intensity 1), at heat 10 intensity is -9.
-    const avgMult = (mods.controlMultiplier + mods.intensityMultiplier) / 2;
-    // Map: avgMult=1.5 → +1, avgMult=1.0 → 0, avgMult≤0 → -1
-    if (avgMult >= 1.5) return 1;
-    if (avgMult <= 0) return -1;
-    // Linear interpolation between 0 and 1.5
-    return (avgMult - 1) / 0.5; // 1.0→0, 1.25→0.5, 1.5→1.0
+    const weightedMultiplierQuality =
+      completionPriorityShare *
+        normalizeMultiplierQuality(mods.intensityMultiplier) +
+      perfectionPriorityShare *
+        normalizeMultiplierQuality(mods.controlMultiplier);
+    const turnsToSweetSpot =
+      heat < 4 ? Math.ceil((4 - heat) / 2) : heat > 6 ? heat - 6 : 0;
+    const correctionPressure =
+      heat < 4
+        ? turnsToSweetSpot * perfectionPriorityShare
+        : turnsToSweetSpot * completionPriorityShare;
+    return clampQuality(weightedMultiplierQuality - correctionPressure);
   }
 
   // Inscription: stacks provide a scaling bonus.
   if (harmonyData.inscribedPatterns) {
     const mods = getHarmonyStatModifiers(harmonyData, 'inscription');
-    return Math.min(1, (mods.controlMultiplier - 1) * 5);
+    return clampQuality((mods.controlMultiplier - 1) * 5);
   }
 
   // Alchemical / Resonance: use generic modifier averaging.
@@ -893,10 +907,12 @@ function evaluateHarmonySubsystemQuality(
       : undefined;
   if (harmonyType) {
     const mods = getHarmonyStatModifiers(harmonyData, harmonyType);
-    const avgMult = (mods.controlMultiplier + mods.intensityMultiplier) / 2;
-    if (avgMult >= 1.5) return 1;
-    if (avgMult <= 0) return -1;
-    return (avgMult - 1) / 0.5;
+    return clampQuality(
+      completionPriorityShare *
+        normalizeMultiplierQuality(mods.intensityMultiplier) +
+      perfectionPriorityShare *
+        normalizeMultiplierQuality(mods.controlMultiplier),
+    );
   }
 
   return 0;
@@ -1055,6 +1071,7 @@ function scoreState(
     isSublimeCraft &&
     (effectiveCompTarget <= 0 || state.completion >= effectiveCompTarget) &&
     (effectivePerfTarget <= 0 || state.perfection >= effectivePerfTarget);
+  const modeTargetsMet = isSublimeCraft ? sublimeTargetsMet : baseTargetsMet;
 
   if (sublimeTargetsMet) {
     score += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
@@ -1072,7 +1089,9 @@ function scoreState(
       score +=
         (compBeyondBase + perfBeyondBase) * SCORING.SUBLIME_BEYOND_BASE_WEIGHT;
     }
-  } else {
+  }
+
+  if (!modeTargetsMet) {
     // ── 3. buff valuation (when targets not yet met) ──────────────────
     if (state.hasControlBuff()) {
       const controlBuffBoost =
@@ -1117,6 +1136,9 @@ function scoreState(
     // Without this, the tree search sees no cost to "stabilize now,
     // progress later" vs "progress now", which can cause stabilize
     // spirals where the optimizer delays progress indefinitely.
+  }
+
+  if (!modeTargetsMet) {
     score -= state.step * stepPenaltyWeight;
   }
 
@@ -1232,7 +1254,17 @@ function scoreState(
     score -= totalTargetMagnitude * SCORING.TOXICITY_PENALTY_FRACTION;
   }
   if (isSublimeCraft) {
-    score += state.harmony * SCORING.HARMONY_BONUS_WEIGHT;
+    if (!modeTargetsMet) {
+      const normalizedHarmony = Math.max(
+        -1,
+        Math.min(1, state.harmony / 100),
+      );
+      score +=
+        normalizedHarmony *
+        remainingWorkPct *
+        totalTargetMagnitude *
+        SCORING.HARMONY_BONUS_WEIGHT;
+    }
 
     // Harmony sub-system quality: value being in a productive harmony
     // state (e.g., forge heat 4-6 where both stats get 1.5×) vs a
@@ -1240,8 +1272,12 @@ function scoreState(
     // intensity is -9×).  This lets the tree search see that fusion
     // now (raising heat from 0→2) enables future refine, even though
     // fusion itself doesn't advance perfection.
-    if (!baseTargetsMet && state.harmonyData) {
-      const quality = evaluateHarmonySubsystemQuality(state.harmonyData);
+    if (!modeTargetsMet && state.harmonyData) {
+      const quality = evaluateHarmonySubsystemQuality(
+        state.harmonyData,
+        completionPriorityShare,
+        perfectionPriorityShare,
+      );
       score +=
         quality *
         remainingWorkPct *
@@ -1762,7 +1798,16 @@ export function greedySearch(
       normalizedCurrentCondition,
     );
     if (displayState === null) continue;
-    const goalsMetAfterAction = goalsMet(displayState, modeCompGoal, modePerfGoal);
+    const goalsMetAfterAction = goalsMet(
+      displayState,
+      modeCompGoal,
+      modePerfGoal,
+    );
+    const baseSuccessSecuredAfterAction = goalsMet(
+      displayState,
+      targetCompletion,
+      targetPerfection,
+    );
     const survivabilityFloor = calculateActionSurvivabilityFloor(
       state,
       skill,
@@ -1770,11 +1815,18 @@ export function greedySearch(
       conditionEffects,
       normalizedCurrentCondition,
     );
+    const floorStability = survivabilityFloor?.stability ?? displayState.stability;
+    const hasProbabilisticRunwayGap = floorStability < displayState.stability;
+    const mustGuaranteeImmediateSurvival =
+      !baseSuccessSecuredAfterAction || state.stability <= 1;
     const requiresProbabilisticSurvival =
       !goalsMetAfterAction &&
       state.stability <= SCORING.NEAR_DEATH_STABILITY &&
       displayState.stability > 0 &&
-      (survivabilityFloor?.stability ?? displayState.stability) <= 0;
+      ((mustGuaranteeImmediateSurvival && floorStability <= 0) ||
+        (!baseSuccessSecuredAfterAction &&
+          state.stability <= 1 &&
+          hasProbabilisticRunwayGap));
     const newState = requiresProbabilisticSurvival
       ? applySurvivabilityFloorToState(displayState, survivabilityFloor)
       : displayState;
@@ -2054,6 +2106,11 @@ export function lookaheadSearch(
     }
 
     const goalsMetAfterAction = targetsMetForCurrentMode(displayState);
+    const baseSuccessSecuredAfterAction = goalsMet(
+      displayState,
+      targetCompletion,
+      targetPerfection,
+    );
     const survivabilityFloor = calculateActionSurvivabilityFloor(
       currentState,
       skill,
@@ -2062,11 +2119,17 @@ export function lookaheadSearch(
       currentConditionAtDepth,
     );
     const floorStability = survivabilityFloor?.stability ?? displayState.stability;
+    const hasProbabilisticRunwayGap = floorStability < displayState.stability;
+    const mustGuaranteeImmediateSurvival =
+      !baseSuccessSecuredAfterAction || currentState.stability <= 1;
     const requiresProbabilisticSurvival =
       !goalsMetAfterAction &&
       currentState.stability <= SCORING.NEAR_DEATH_STABILITY &&
       displayState.stability > 0 &&
-      floorStability <= 0;
+      ((mustGuaranteeImmediateSurvival && floorStability <= 0) ||
+        (!baseSuccessSecuredAfterAction &&
+          currentState.stability <= 1 &&
+          hasProbabilisticRunwayGap));
 
     return {
       searchState: requiresProbabilisticSurvival

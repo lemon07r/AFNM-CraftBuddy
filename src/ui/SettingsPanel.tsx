@@ -129,8 +129,7 @@ const SEARCH_PRESETS: SearchPreset[] = [
   {
     id: 'max',
     label: 'Max',
-    description:
-      'Largest budget; best for the hardest turns and long crafts',
+    description: 'Largest budget; best for the hardest turns and long crafts',
     values: {
       lookaheadDepth: 96,
       searchTimeBudgetMs: 10000,
@@ -192,7 +191,7 @@ const MAX_ALTERNATIVES_HELP: SettingHelpContent = {
   title: 'Max Alternatives',
   description:
     'Sets how many backup moves are shown under the top recommendation.',
-  note: 'This affects panel output only and does not improve or reduce search accuracy.',
+  note: 'Display-only setting. Defaults to 1 alternative and can be raised later without changing search accuracy.',
 };
 
 const COMPACT_MODE_HELP: SettingHelpContent = {
@@ -676,13 +675,7 @@ export const SettingsPanel = memo(function SettingsPanel({
 
   useLayoutEffect(() => {
     setPanelLayoutPhase('base');
-  }, [
-    isOpen,
-    settings,
-    draftSettings,
-    snapshotCopied,
-    versionLabel,
-  ]);
+  }, [isOpen, settings, draftSettings, snapshotCopied, versionLabel]);
 
   useLayoutEffect(() => {
     if (
@@ -695,7 +688,9 @@ export const SettingsPanel = memo(function SettingsPanel({
 
     const maxHeight = Math.max(0, window.innerHeight - 24);
     const baseHeight = Math.min(
-      Math.ceil(hostRef.current.getBoundingClientRect().height + panelInset * 2),
+      Math.ceil(
+        hostRef.current.getBoundingClientRect().height + panelInset * 2,
+      ),
       maxHeight || Number.MAX_SAFE_INTEGER,
     );
 
@@ -822,8 +817,7 @@ export const SettingsPanel = memo(function SettingsPanel({
           top: -panelInset,
           left: -panelInset,
           right: -panelInset,
-          height:
-            panelHeight ?? `calc(100% + ${panelInset * 2}px)`,
+          height: panelHeight ?? `calc(100% + ${panelInset * 2}px)`,
           zIndex: 8,
           pointerEvents: isOpen ? 'auto' : 'none',
           visibility: isOpen ? 'visible' : 'hidden',
@@ -1119,9 +1113,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                       onChange={(v) =>
                         handleSliderDraftChange('searchBeamWidth', v)
                       }
-                      onCommit={(v) =>
-                        handleSliderCommit('searchBeamWidth', v)
-                      }
+                      onCommit={(v) => handleSliderCommit('searchBeamWidth', v)}
                     />
 
                     <SliderSetting

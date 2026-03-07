@@ -1,0 +1,5790 @@
+{
+  "input": {
+    "createdAt": "2026-03-07T12:31:09.070Z",
+    "searchEpoch": 52,
+    "lookaheadDepth": 64,
+    "targets": {
+      "completion": 2590,
+      "perfection": 2590,
+      "stability": 60
+    },
+    "caps": {
+      "maxCompletionCap": 45537,
+      "maxPerfectionCap": 45537
+    },
+    "conditions": {
+      "current": "neutral",
+      "forecast": [
+        "positive",
+        "neutral",
+        "neutral"
+      ],
+      "normalizedForecast": [
+        "positive",
+        "neutral",
+        "neutral"
+      ]
+    },
+    "searchConfig": {
+      "timeBudgetMs": 4500,
+      "maxNodes": 2000000,
+      "beamWidth": 5
+    },
+    "settings": {
+      "lookaheadDepth": 64,
+      "searchTimeBudgetMs": 4500,
+      "searchMaxNodes": 2000000,
+      "searchBeamWidth": 5,
+      "compactMode": true,
+      "panelVisible": true
+    },
+    "state": {
+      "qi": 6,
+      "stability": 8,
+      "maxStability": 52,
+      "initialMaxStability": 60,
+      "stabilityPenalty": 8,
+      "completion": 4753,
+      "perfection": 4760,
+      "critChance": 8,
+      "critMultiplier": 135,
+      "successChanceBonus": 0,
+      "poolCostPercentage": 100,
+      "stabilityCostPercentage": 100,
+      "controlBuffTurns": 0,
+      "intensityBuffTurns": 0,
+      "controlBuffMultiplier": 1.4,
+      "intensityBuffMultiplier": 1.4,
+      "toxicity": 0,
+      "maxToxicity": 160,
+      "harmony": 20,
+      "harmonyData": {
+        "recommendedTechniqueTypes": [
+          "fusion"
+        ],
+        "forgeWorks": {
+          "heat": 1
+        }
+      },
+      "harmonyDataSource": "progressState",
+      "step": 11,
+      "completionBonus": 0,
+      "consumedPillsThisTurn": 0,
+      "cooldowns": {
+        "corrupted_stabilization": 7,
+        "focus": 1
+      },
+      "items": {},
+      "buffs": {
+        "heat": {
+          "name": "Heat",
+          "stacks": 1,
+          "definition": {
+            "name": "Heat",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/bifangFlame.webp",
+            "canStack": false,
+            "stats": {
+              "control": {
+                "value": -0.5,
+                "stat": "control"
+              }
+            },
+            "effects": [],
+            "onFusion": [],
+            "onRefine": [],
+            "stacks": 1,
+            "displayLocation": "none",
+            "animations": []
+          }
+        },
+        "tidal_current": {
+          "name": "Tidal Current",
+          "stacks": 1,
+          "definition": {
+            "name": "Tidal Current",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/tidalHarvestCauldron.webp",
+            "canStack": false,
+            "effects": [],
+            "onFusion": [],
+            "onRefine": [
+              {
+                "kind": "createBuff",
+                "buff": {
+                  "name": "Tidal Pressure",
+                  "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/tidalHarvestCauldron.webp",
+                  "canStack": true,
+                  "stats": {
+                    "control": {
+                      "value": 0.092,
+                      "stat": "control",
+                      "scaling": "stacks"
+                    },
+                    "intensity": {
+                      "value": 0.092,
+                      "stat": "intensity",
+                      "scaling": "stacks"
+                    }
+                  },
+                  "effects": [],
+                  "onFusion": [],
+                  "onRefine": [],
+                  "onStabilize": [
+                    {
+                      "kind": "negate"
+                    }
+                  ],
+                  "stacks": 1,
+                  "displayLocation": "none"
+                },
+                "stacks": {
+                  "value": 1
+                }
+              }
+            ],
+            "stacks": 1,
+            "displayLocation": "none",
+            "animations": [
+              "buff",
+              "buff",
+              "buff",
+              "buff"
+            ]
+          }
+        },
+        "refinement_invasion": {
+          "name": "Refinement Invasion",
+          "stacks": 1,
+          "definition": {
+            "name": "Refinement Invasion",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/invasiveRefine.webp",
+            "canStack": false,
+            "stats": {
+              "control": {
+                "value": -0.3,
+                "stat": "control",
+                "upgradeKey": "debuffControl"
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "displayLocation": "avatar",
+            "animations": []
+          }
+        },
+        "corrupted_stabilization": {
+          "name": "Corrupted Stabilization",
+          "stacks": 7,
+          "definition": {
+            "name": "Corrupted Stabilization",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/corruptedStabilization.webp",
+            "canStack": true,
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              },
+              {
+                "kind": "stability",
+                "condition": {
+                  "kind": "chance",
+                  "percentage": 75
+                },
+                "amount": {
+                  "value": 7,
+                  "upgradeKey": "stability"
+                }
+              }
+            ],
+            "onFusion": [],
+            "onRefine": [],
+            "stacks": 7,
+            "displayLocation": "stabilityLeft"
+          }
+        },
+        "focus": {
+          "name": "Focus",
+          "stacks": 1,
+          "definition": {
+            "name": "Focus",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/focus.webp",
+            "canStack": true,
+            "effectHint": "Used to activate certain crafting actions.",
+            "effects": [],
+            "onFusion": [],
+            "onRefine": [],
+            "stacks": 1,
+            "displayLocation": "avatar"
+          }
+        }
+      },
+      "nativeVariables": {
+        "resistance": 5,
+        "itemEffectiveness": 10,
+        "control": 55,
+        "intensity": 255,
+        "critchance": 8,
+        "critmultiplier": 135,
+        "successChanceBonus": 0
+      }
+    },
+    "config": {
+      "maxQi": 266.9,
+      "maxStability": 60,
+      "maxCompletion": 45537,
+      "maxPerfection": 45537,
+      "baseIntensity": 255,
+      "baseControl": 272,
+      "minStability": 0,
+      "defaultBuffMultiplier": 1.1,
+      "pillsPerRound": 1,
+      "maxToxicity": 160,
+      "craftingType": "forge",
+      "conditionEffectType": null,
+      "conditionEffectsData": {
+        "neutral": [],
+        "positive": [
+          {
+            "kind": "control",
+            "multiplier": 0.5
+          }
+        ],
+        "negative": [
+          {
+            "kind": "control",
+            "multiplier": -0.5
+          }
+        ],
+        "veryPositive": [
+          {
+            "kind": "control",
+            "multiplier": 1
+          }
+        ],
+        "veryNegative": [
+          {
+            "kind": "control",
+            "multiplier": -1
+          }
+        ]
+      },
+      "isSublimeCraft": true,
+      "targetMultiplier": 17.58185328185328,
+      "targetCompletion": 2590,
+      "targetPerfection": 2590,
+      "trainingMode": false,
+      "skills": [
+        {
+          "name": "Delayed Fusion",
+          "key": "delayed_fusion",
+          "type": "fusion",
+          "actionKind": "skill",
+          "qiCost": 8,
+          "stabilityCost": 5,
+          "successChance": 1,
+          "baseCompletionGain": 0.1,
+          "basePerfectionGain": 0,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 5,
+          "buffMultiplier": 1,
+          "scalesWithControl": false,
+          "scalesWithIntensity": true,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": true,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 4,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "completion",
+                  "amount": {
+                    "value": 0.1,
+                    "stat": "intensity"
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Heightening (10%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critmultiplier": {
+                        "value": 10
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "qitouched"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 10
+                  },
+                  "buff": {
+                    "name": "Energising Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/pool.webp",
+                    "canStack": true,
+                    "stats": {
+                      "poolCostPercentage": {
+                        "value": 90
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "qitouched"
+            }
+          ],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Delayed Fusion",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/delayedFusion.webp",
+                "canStack": true,
+                "tooltip": "After <num>4</num> actions increase completion by {completion.amount} and lose <num>1</num> maximum stability.",
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": 1
+                    }
+                  },
+                  {
+                    "kind": "completion",
+                    "condition": {
+                      "kind": "buff",
+                      "buff": "self",
+                      "count": 4,
+                      "mode": "more"
+                    },
+                    "amount": {
+                      "value": 2.2,
+                      "stat": "intensity",
+                      "upgradeKey": "completion"
+                    }
+                  },
+                  {
+                    "kind": "maxStability",
+                    "condition": {
+                      "kind": "buff",
+                      "buff": "self",
+                      "count": 4,
+                      "mode": "more"
+                    },
+                    "amount": {
+                      "value": -1
+                    }
+                  },
+                  {
+                    "kind": "negate",
+                    "condition": {
+                      "kind": "buff",
+                      "buff": "self",
+                      "count": 4,
+                      "mode": "more"
+                    }
+                  }
+                ],
+                "onFusion": [],
+                "onRefine": [],
+                "stacks": 1,
+                "baseScaling": 0.6,
+                "stacksScaling": 0.15,
+                "displayLocation": "completionLeft"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "completion",
+              "amount": {
+                "value": 0.1,
+                "stat": "intensity"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Heightening (10%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                "canStack": true,
+                "stats": {
+                  "critmultiplier": {
+                    "value": 10
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 10
+              },
+              "buff": {
+                "name": "Energising Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/pool.webp",
+                "canStack": true,
+                "stats": {
+                  "poolCostPercentage": {
+                    "value": 90
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Delayed Fusion",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/delayedFusion.webp",
+            "canStack": true,
+            "tooltip": "After <num>4</num> actions increase completion by {completion.amount} and lose <num>1</num> maximum stability.",
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": 1
+                }
+              },
+              {
+                "kind": "completion",
+                "condition": {
+                  "kind": "buff",
+                  "buff": "self",
+                  "count": 4,
+                  "mode": "more"
+                },
+                "amount": {
+                  "value": 2.2,
+                  "stat": "intensity",
+                  "upgradeKey": "completion"
+                }
+              },
+              {
+                "kind": "maxStability",
+                "condition": {
+                  "kind": "buff",
+                  "buff": "self",
+                  "count": 4,
+                  "mode": "more"
+                },
+                "amount": {
+                  "value": -1
+                }
+              },
+              {
+                "kind": "negate",
+                "condition": {
+                  "kind": "buff",
+                  "buff": "self",
+                  "count": 4,
+                  "mode": "more"
+                }
+              }
+            ],
+            "onFusion": [],
+            "onRefine": [],
+            "stacks": 1,
+            "baseScaling": 0.6,
+            "stacksScaling": 0.15,
+            "displayLocation": "completionLeft"
+          },
+          "nativeTechnique": {
+            "name": "Delayed Fusion",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/delayedFusion.webp",
+            "poolCost": 8,
+            "stabilityCost": 5,
+            "successChance": 1,
+            "noMaxStabilityLoss": true,
+            "maxStabilityLossTooltip": "This action delays its maximum stability loss.",
+            "cooldown": 4,
+            "effects": [
+              {
+                "kind": "createBuff",
+                "buff": {
+                  "name": "Delayed Fusion",
+                  "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/delayedFusion.webp",
+                  "canStack": true,
+                  "tooltip": "After <num>4</num> actions increase completion by {completion.amount} and lose <num>1</num> maximum stability.",
+                  "effects": [
+                    {
+                      "kind": "addStack",
+                      "stacks": {
+                        "value": 1
+                      }
+                    },
+                    {
+                      "kind": "completion",
+                      "condition": {
+                        "kind": "buff",
+                        "buff": "self",
+                        "count": 4,
+                        "mode": "more"
+                      },
+                      "amount": {
+                        "value": 2.2,
+                        "stat": "intensity",
+                        "upgradeKey": "completion"
+                      }
+                    },
+                    {
+                      "kind": "maxStability",
+                      "condition": {
+                        "kind": "buff",
+                        "buff": "self",
+                        "count": 4,
+                        "mode": "more"
+                      },
+                      "amount": {
+                        "value": -1
+                      }
+                    },
+                    {
+                      "kind": "negate",
+                      "condition": {
+                        "kind": "buff",
+                        "buff": "self",
+                        "count": 4,
+                        "mode": "more"
+                      }
+                    }
+                  ],
+                  "onFusion": [],
+                  "onRefine": [],
+                  "stacks": 1,
+                  "baseScaling": 0.6,
+                  "stacksScaling": 0.15,
+                  "displayLocation": "completionLeft"
+                },
+                "stacks": {
+                  "value": 1
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "fusion",
+            "realm": "meridianOpening",
+            "upgradeMasteries": {
+              "completion": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.05,
+                  "tooltip": "Increase completion gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.1,
+                  "tooltip": "Increase completion gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.15,
+                  "tooltip": "Increase completion gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.2,
+                  "tooltip": "Increase completion gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.25,
+                  "tooltip": "Increase completion gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.3,
+                  "tooltip": "Increase completion gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "completion",
+                    "amount": {
+                      "value": 0.1,
+                      "stat": "intensity"
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Heightening (10%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critmultiplier": {
+                          "value": 10
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "qitouched"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 10
+                    },
+                    "buff": {
+                      "name": "Energising Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/pool.webp",
+                      "canStack": true,
+                      "stats": {
+                        "poolCostPercentage": {
+                          "value": 90
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "qitouched"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Delayed Refine",
+          "key": "delayed_refine",
+          "type": "refine",
+          "actionKind": "skill",
+          "qiCost": 18,
+          "stabilityCost": 5,
+          "successChance": 1,
+          "baseCompletionGain": 0.8,
+          "basePerfectionGain": 0,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 5,
+          "buffMultiplier": 1,
+          "scalesWithControl": false,
+          "scalesWithIntensity": true,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": true,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 4,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "completion",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 10
+                  },
+                  "amount": {
+                    "value": 0.8,
+                    "stat": "intensity"
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Heightening (15%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critmultiplier": {
+                        "value": 15
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "empowered"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 20
+                  },
+                  "buff": {
+                    "name": "Heightening Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critmultiplier": {
+                        "value": 25
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            }
+          ],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Delayed Refine",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/delayedRefine.webp",
+                "canStack": true,
+                "tooltip": "After <num>4</num> actions increase perfection by {perfection.amount} and lose <num>1</num> maximum stability.",
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": 1
+                    }
+                  },
+                  {
+                    "kind": "perfection",
+                    "condition": {
+                      "kind": "buff",
+                      "buff": "self",
+                      "count": 4,
+                      "mode": "more"
+                    },
+                    "amount": {
+                      "value": 1.5,
+                      "stat": "control",
+                      "upgradeKey": "perfection"
+                    }
+                  },
+                  {
+                    "kind": "maxStability",
+                    "condition": {
+                      "kind": "buff",
+                      "buff": "self",
+                      "count": 4,
+                      "mode": "more"
+                    },
+                    "amount": {
+                      "value": -1
+                    }
+                  },
+                  {
+                    "kind": "negate",
+                    "condition": {
+                      "kind": "buff",
+                      "buff": "self",
+                      "count": 4,
+                      "mode": "more"
+                    }
+                  }
+                ],
+                "onFusion": [],
+                "onRefine": [],
+                "stacks": 1,
+                "baseScaling": 0.6,
+                "stacksScaling": 0.15,
+                "displayLocation": "perfectionLeft"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "completion",
+              "condition": {
+                "kind": "chance",
+                "percentage": 10
+              },
+              "amount": {
+                "value": 0.8,
+                "stat": "intensity"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Heightening (15%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                "canStack": true,
+                "stats": {
+                  "critmultiplier": {
+                    "value": 15
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 20
+              },
+              "buff": {
+                "name": "Heightening Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                "canStack": true,
+                "stats": {
+                  "critmultiplier": {
+                    "value": 25
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Delayed Refine",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/delayedRefine.webp",
+            "canStack": true,
+            "tooltip": "After <num>4</num> actions increase perfection by {perfection.amount} and lose <num>1</num> maximum stability.",
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": 1
+                }
+              },
+              {
+                "kind": "perfection",
+                "condition": {
+                  "kind": "buff",
+                  "buff": "self",
+                  "count": 4,
+                  "mode": "more"
+                },
+                "amount": {
+                  "value": 1.5,
+                  "stat": "control",
+                  "upgradeKey": "perfection"
+                }
+              },
+              {
+                "kind": "maxStability",
+                "condition": {
+                  "kind": "buff",
+                  "buff": "self",
+                  "count": 4,
+                  "mode": "more"
+                },
+                "amount": {
+                  "value": -1
+                }
+              },
+              {
+                "kind": "negate",
+                "condition": {
+                  "kind": "buff",
+                  "buff": "self",
+                  "count": 4,
+                  "mode": "more"
+                }
+              }
+            ],
+            "onFusion": [],
+            "onRefine": [],
+            "stacks": 1,
+            "baseScaling": 0.6,
+            "stacksScaling": 0.15,
+            "displayLocation": "perfectionLeft"
+          },
+          "nativeTechnique": {
+            "name": "Delayed Refine",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/delayedRefine.webp",
+            "poolCost": 18,
+            "stabilityCost": 5,
+            "successChance": 1,
+            "noMaxStabilityLoss": true,
+            "maxStabilityLossTooltip": "This action delays its maximum stability loss.",
+            "cooldown": 4,
+            "effects": [
+              {
+                "kind": "createBuff",
+                "buff": {
+                  "name": "Delayed Refine",
+                  "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/delayedRefine.webp",
+                  "canStack": true,
+                  "tooltip": "After <num>4</num> actions increase perfection by {perfection.amount} and lose <num>1</num> maximum stability.",
+                  "effects": [
+                    {
+                      "kind": "addStack",
+                      "stacks": {
+                        "value": 1
+                      }
+                    },
+                    {
+                      "kind": "perfection",
+                      "condition": {
+                        "kind": "buff",
+                        "buff": "self",
+                        "count": 4,
+                        "mode": "more"
+                      },
+                      "amount": {
+                        "value": 1.5,
+                        "stat": "control",
+                        "upgradeKey": "perfection"
+                      }
+                    },
+                    {
+                      "kind": "maxStability",
+                      "condition": {
+                        "kind": "buff",
+                        "buff": "self",
+                        "count": 4,
+                        "mode": "more"
+                      },
+                      "amount": {
+                        "value": -1
+                      }
+                    },
+                    {
+                      "kind": "negate",
+                      "condition": {
+                        "kind": "buff",
+                        "buff": "self",
+                        "count": 4,
+                        "mode": "more"
+                      }
+                    }
+                  ],
+                  "onFusion": [],
+                  "onRefine": [],
+                  "stacks": 1,
+                  "baseScaling": 0.6,
+                  "stacksScaling": 0.15,
+                  "displayLocation": "perfectionLeft"
+                },
+                "stacks": {
+                  "value": 1
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "refine",
+            "realm": "meridianOpening",
+            "upgradeMasteries": {
+              "perfection": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.05,
+                  "tooltip": "Increase perfection gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.1,
+                  "tooltip": "Increase perfection gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.15,
+                  "tooltip": "Increase perfection gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.2,
+                  "tooltip": "Increase perfection gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.25,
+                  "tooltip": "Increase perfection gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.3,
+                  "tooltip": "Increase perfection gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "completion",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 10
+                    },
+                    "amount": {
+                      "value": 0.8,
+                      "stat": "intensity"
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Heightening (15%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critmultiplier": {
+                          "value": 15
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "empowered"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 20
+                    },
+                    "buff": {
+                      "name": "Heightening Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critmultiplier": {
+                          "value": 25
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Invasive Fusion",
+          "key": "invasive_fusion",
+          "type": "fusion",
+          "actionKind": "skill",
+          "qiCost": 12,
+          "stabilityCost": 17,
+          "successChance": 1,
+          "baseCompletionGain": 3.5,
+          "basePerfectionGain": 0,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 1,
+          "buffDuration": 5,
+          "buffMultiplier": 1.1,
+          "scalesWithControl": false,
+          "scalesWithIntensity": true,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": false,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 0,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "pool",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 15
+                  },
+                  "amount": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Intensifying (6%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/intensity.webp",
+                    "canStack": true,
+                    "stats": {
+                      "intensity": {
+                        "value": 0.06,
+                        "stat": "intensity"
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "completionRight"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "empowered"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 20
+                  },
+                  "buff": {
+                    "name": "Controlling Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                    "canStack": true,
+                    "stats": {
+                      "control": {
+                        "value": 0.1,
+                        "stat": "control"
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "perfectionRight",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            }
+          ],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": true,
+          "qiRestore": 5,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "completion",
+              "amount": {
+                "value": 3.5,
+                "stat": "intensity",
+                "upgradeKey": "completion"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 25
+              },
+              "buff": {
+                "name": "Fusion Invasion",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/invasiveFusion.webp",
+                "canStack": false,
+                "stats": {
+                  "intensity": {
+                    "value": -0.3,
+                    "stat": "intensity",
+                    "upgradeKey": "debuffIntensity"
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "displayLocation": "avatar"
+              },
+              "stacks": {
+                "value": 3
+              }
+            },
+            {
+              "kind": "pool",
+              "condition": {
+                "kind": "chance",
+                "percentage": 15
+              },
+              "amount": {
+                "value": 5
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Intensifying (6%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/intensity.webp",
+                "canStack": true,
+                "stats": {
+                  "intensity": {
+                    "value": 0.06,
+                    "stat": "intensity"
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "completionRight"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 20
+              },
+              "buff": {
+                "name": "Controlling Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                "canStack": true,
+                "stats": {
+                  "control": {
+                    "value": 0.1,
+                    "stat": "control"
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "perfectionRight",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Fusion Invasion",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/invasiveFusion.webp",
+            "canStack": false,
+            "stats": {
+              "intensity": {
+                "value": -0.3,
+                "stat": "intensity",
+                "upgradeKey": "debuffIntensity"
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "displayLocation": "avatar"
+          },
+          "nativeTechnique": {
+            "name": "Invasive Fusion",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/invasiveFusion.webp",
+            "poolCost": 12,
+            "stabilityCost": 17,
+            "successChance": 1,
+            "cooldown": 0,
+            "tooltip": "Increase completion by {completion.amount}.<br><num>25%</num> chance to gain <num>3</num> stacks of {buff}.",
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 3.5,
+                  "stat": "intensity",
+                  "upgradeKey": "completion"
+                }
+              },
+              {
+                "kind": "createBuff",
+                "condition": {
+                  "kind": "chance",
+                  "percentage": 25
+                },
+                "buff": {
+                  "name": "Fusion Invasion",
+                  "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/invasiveFusion.webp",
+                  "canStack": false,
+                  "stats": {
+                    "intensity": {
+                      "value": -0.3,
+                      "stat": "intensity",
+                      "upgradeKey": "debuffIntensity"
+                    }
+                  },
+                  "effects": [
+                    {
+                      "kind": "addStack",
+                      "stacks": {
+                        "value": -1
+                      }
+                    }
+                  ],
+                  "stacks": 1,
+                  "displayLocation": "avatar"
+                },
+                "stacks": {
+                  "value": 3
+                }
+              }
+            ],
+            "type": "fusion",
+            "realm": "meridianOpening",
+            "currentCooldown": 0,
+            "upgradeMasteries": {
+              "completion": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.05,
+                  "tooltip": "Increase completion gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.1,
+                  "tooltip": "Increase completion gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.15,
+                  "tooltip": "Increase completion gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.2,
+                  "tooltip": "Increase completion gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.25,
+                  "tooltip": "Increase completion gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.3,
+                  "tooltip": "Increase completion gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              },
+              "debuffIntensity": {
+                "rarity": "resplendent",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffIntensity",
+                  "change": 0.02,
+                  "tooltip": "Reduce <name>Fusion Invasion</name> intensity by <num>2%</num>.",
+                  "shouldMultiply": false
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffIntensity",
+                  "change": 0.04,
+                  "tooltip": "Reduce <name>Fusion Invasion</name> intensity by <num>4%</num>.",
+                  "shouldMultiply": false
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffIntensity",
+                  "change": 0.06,
+                  "tooltip": "Reduce <name>Fusion Invasion</name> intensity by <num>6%</num>.",
+                  "shouldMultiply": false
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffIntensity",
+                  "change": 0.08,
+                  "tooltip": "Reduce <name>Fusion Invasion</name> intensity by <num>8%</num>.",
+                  "shouldMultiply": false
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffIntensity",
+                  "change": 0.1,
+                  "tooltip": "Reduce <name>Fusion Invasion</name> intensity by <num>10%</num>.",
+                  "shouldMultiply": false
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffIntensity",
+                  "change": 0.12,
+                  "tooltip": "Reduce <name>Fusion Invasion</name> intensity by <num>12%</num>.",
+                  "shouldMultiply": false
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "pool",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 15
+                    },
+                    "amount": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Intensifying (6%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/intensity.webp",
+                      "canStack": true,
+                      "stats": {
+                        "intensity": {
+                          "value": 0.06,
+                          "stat": "intensity"
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "completionRight"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "empowered"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 20
+                    },
+                    "buff": {
+                      "name": "Controlling Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                      "canStack": true,
+                      "stats": {
+                        "control": {
+                          "value": 0.1,
+                          "stat": "control"
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "perfectionRight",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Invasive Refine",
+          "key": "invasive_refine",
+          "type": "refine",
+          "actionKind": "skill",
+          "qiCost": 12,
+          "stabilityCost": 17,
+          "successChance": 1,
+          "baseCompletionGain": 0,
+          "basePerfectionGain": 0.8,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 1,
+          "buffDuration": 5,
+          "buffMultiplier": 1.1,
+          "scalesWithControl": true,
+          "scalesWithIntensity": false,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": false,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 0,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "perfection",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 10
+                  },
+                  "amount": {
+                    "value": 0.8,
+                    "stat": "control"
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Controlling (10%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                    "canStack": true,
+                    "stats": {
+                      "control": {
+                        "value": 0.1,
+                        "stat": "control"
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "perfectionRight"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 20
+                  },
+                  "buff": {
+                    "name": "Controlling Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                    "canStack": true,
+                    "stats": {
+                      "control": {
+                        "value": 0.1,
+                        "stat": "control"
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "perfectionRight",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            }
+          ],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "perfection",
+              "amount": {
+                "value": 3.5,
+                "stat": "control",
+                "upgradeKey": "perfection"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 25
+              },
+              "buff": {
+                "name": "Refinement Invasion",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/invasiveRefine.webp",
+                "canStack": false,
+                "stats": {
+                  "control": {
+                    "value": -0.3,
+                    "stat": "control",
+                    "upgradeKey": "debuffControl"
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "displayLocation": "avatar"
+              },
+              "stacks": {
+                "value": 3
+              }
+            },
+            {
+              "kind": "perfection",
+              "condition": {
+                "kind": "chance",
+                "percentage": 10
+              },
+              "amount": {
+                "value": 0.8,
+                "stat": "control"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Controlling (10%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                "canStack": true,
+                "stats": {
+                  "control": {
+                    "value": 0.1,
+                    "stat": "control"
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "perfectionRight"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 20
+              },
+              "buff": {
+                "name": "Controlling Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                "canStack": true,
+                "stats": {
+                  "control": {
+                    "value": 0.1,
+                    "stat": "control"
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "perfectionRight",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Refinement Invasion",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/invasiveRefine.webp",
+            "canStack": false,
+            "stats": {
+              "control": {
+                "value": -0.3,
+                "stat": "control",
+                "upgradeKey": "debuffControl"
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "displayLocation": "avatar"
+          },
+          "nativeTechnique": {
+            "name": "Invasive Refine",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/invasiveRefine.webp",
+            "poolCost": 12,
+            "stabilityCost": 17,
+            "successChance": 1,
+            "cooldown": 0,
+            "tooltip": "Increase perfection by {perfection.amount}.<br><num>25%</num> chance to gain <num>3</num> stacks of {buff}.",
+            "effects": [
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 3.5,
+                  "stat": "control",
+                  "upgradeKey": "perfection"
+                }
+              },
+              {
+                "kind": "createBuff",
+                "condition": {
+                  "kind": "chance",
+                  "percentage": 25
+                },
+                "buff": {
+                  "name": "Refinement Invasion",
+                  "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/invasiveRefine.webp",
+                  "canStack": false,
+                  "stats": {
+                    "control": {
+                      "value": -0.3,
+                      "stat": "control",
+                      "upgradeKey": "debuffControl"
+                    }
+                  },
+                  "effects": [
+                    {
+                      "kind": "addStack",
+                      "stacks": {
+                        "value": -1
+                      }
+                    }
+                  ],
+                  "stacks": 1,
+                  "displayLocation": "avatar"
+                },
+                "stacks": {
+                  "value": 3
+                }
+              }
+            ],
+            "type": "refine",
+            "realm": "meridianOpening",
+            "currentCooldown": 0,
+            "upgradeMasteries": {
+              "perfection": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.05,
+                  "tooltip": "Increase perfection gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.1,
+                  "tooltip": "Increase perfection gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.15,
+                  "tooltip": "Increase perfection gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.2,
+                  "tooltip": "Increase perfection gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.25,
+                  "tooltip": "Increase perfection gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.3,
+                  "tooltip": "Increase perfection gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              },
+              "debuffControl": {
+                "rarity": "resplendent",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffControl",
+                  "change": 0.02,
+                  "tooltip": "Reduce <name>Refinement Invasion</name> intensity by <num>2%</num>.",
+                  "shouldMultiply": false
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffControl",
+                  "change": 0.04,
+                  "tooltip": "Reduce <name>Refinement Invasion</name> intensity by <num>4%</num>.",
+                  "shouldMultiply": false
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffControl",
+                  "change": 0.06,
+                  "tooltip": "Reduce <name>Refinement Invasion</name> intensity by <num>6%</num>.",
+                  "shouldMultiply": false
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffControl",
+                  "change": 0.08,
+                  "tooltip": "Reduce <name>Refinement Invasion</name> intensity by <num>8%</num>.",
+                  "shouldMultiply": false
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffControl",
+                  "change": 0.1,
+                  "tooltip": "Reduce <name>Refinement Invasion</name> intensity by <num>10%</num>.",
+                  "shouldMultiply": false
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "debuffControl",
+                  "change": 0.12,
+                  "tooltip": "Reduce <name>Refinement Invasion</name> intensity by <num>12%</num>.",
+                  "shouldMultiply": false
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "perfection",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 10
+                    },
+                    "amount": {
+                      "value": 0.8,
+                      "stat": "control"
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Controlling (10%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                      "canStack": true,
+                      "stats": {
+                        "control": {
+                          "value": 0.1,
+                          "stat": "control"
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "perfectionRight"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 20
+                    },
+                    "buff": {
+                      "name": "Controlling Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                      "canStack": true,
+                      "stats": {
+                        "control": {
+                          "value": 0.1,
+                          "stat": "control"
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "perfectionRight",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Harmonious Fusion",
+          "key": "harmonious_fusion",
+          "type": "fusion",
+          "actionKind": "skill",
+          "qiCost": 7,
+          "stabilityCost": 10,
+          "successChance": 1,
+          "baseCompletionGain": 2,
+          "basePerfectionGain": 0,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 0,
+          "buffMultiplier": 1,
+          "scalesWithControl": false,
+          "scalesWithIntensity": true,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": false,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 0,
+          "mastery": null,
+          "masteryEntries": [],
+          "conditionRequirement": "positive",
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "completion",
+              "amount": {
+                "value": 2,
+                "stat": "intensity",
+                "upgradeKey": "completion"
+              }
+            }
+          ],
+          "grantedBuff": null,
+          "nativeTechnique": {
+            "name": "Harmonious Fusion",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/harmoniousFusion.webp",
+            "poolCost": 7,
+            "stabilityCost": 10,
+            "conditionRequirement": "positive",
+            "successChance": 1,
+            "cooldown": 0,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 2,
+                  "stat": "intensity",
+                  "upgradeKey": "completion"
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "fusion",
+            "realm": "bodyForging",
+            "upgradeMasteries": {
+              "completion": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.05,
+                  "tooltip": "Increase completion gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.1,
+                  "tooltip": "Increase completion gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.15,
+                  "tooltip": "Increase completion gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.2,
+                  "tooltip": "Increase completion gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.25,
+                  "tooltip": "Increase completion gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.3,
+                  "tooltip": "Increase completion gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Harmonious Refine",
+          "key": "harmonious_refine",
+          "type": "refine",
+          "actionKind": "skill",
+          "qiCost": 7,
+          "stabilityCost": 10,
+          "successChance": 1,
+          "baseCompletionGain": 0,
+          "basePerfectionGain": 2,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 0,
+          "buffMultiplier": 1,
+          "scalesWithControl": true,
+          "scalesWithIntensity": false,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": false,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 0,
+          "mastery": null,
+          "masteryEntries": [],
+          "conditionRequirement": "positive",
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "perfection",
+              "amount": {
+                "value": 2,
+                "stat": "control",
+                "upgradeKey": "perfection"
+              }
+            }
+          ],
+          "grantedBuff": null,
+          "nativeTechnique": {
+            "name": "Harmonious Refine",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/harmoniousRefine.webp",
+            "poolCost": 7,
+            "stabilityCost": 10,
+            "conditionRequirement": "positive",
+            "successChance": 1,
+            "cooldown": 0,
+            "effects": [
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 2,
+                  "stat": "control",
+                  "upgradeKey": "perfection"
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "refine",
+            "realm": "bodyForging",
+            "upgradeMasteries": {
+              "perfection": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.05,
+                  "tooltip": "Increase perfection gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.1,
+                  "tooltip": "Increase perfection gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.15,
+                  "tooltip": "Increase perfection gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.2,
+                  "tooltip": "Increase perfection gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.25,
+                  "tooltip": "Increase perfection gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.3,
+                  "tooltip": "Increase perfection gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Siphon Qi",
+          "key": "siphon_qi",
+          "type": "support",
+          "actionKind": "skill",
+          "qiCost": 0,
+          "stabilityCost": 5,
+          "successChance": 1,
+          "baseCompletionGain": 0,
+          "basePerfectionGain": 0,
+          "stabilityGain": 1,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 5,
+          "buffMultiplier": 1,
+          "scalesWithControl": false,
+          "scalesWithIntensity": false,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": false,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 5,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "stability",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 15
+                  },
+                  "amount": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Focusing (3%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critchance": {
+                        "value": 3
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "empowered"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 25
+                  },
+                  "buff": {
+                    "name": "Focusing Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critchance": {
+                        "value": 10
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            }
+          ],
+          "conditionRequirement": "positive",
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": true,
+          "qiRestore": 30,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "pool",
+              "amount": {
+                "value": 30,
+                "upgradeKey": "pool"
+              }
+            },
+            {
+              "kind": "stability",
+              "condition": {
+                "kind": "chance",
+                "percentage": 15
+              },
+              "amount": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Focusing (3%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                "canStack": true,
+                "stats": {
+                  "critchance": {
+                    "value": 3
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 25
+              },
+              "buff": {
+                "name": "Focusing Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                "canStack": true,
+                "stats": {
+                  "critchance": {
+                    "value": 10
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Focusing (3%)",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+            "canStack": true,
+            "stats": {
+              "critchance": {
+                "value": 3
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "maxStacks": 2,
+            "onFusion": [],
+            "onRefine": [],
+            "displayLocation": "none"
+          },
+          "nativeTechnique": {
+            "name": "Siphon Qi",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/siphonQi.webp",
+            "poolCost": 0,
+            "stabilityCost": 5,
+            "successChance": 1,
+            "conditionRequirement": "positive",
+            "cooldown": 5,
+            "effects": [
+              {
+                "kind": "pool",
+                "amount": {
+                  "value": 30,
+                  "upgradeKey": "pool"
+                }
+              }
+            ],
+            "type": "support",
+            "realm": "bodyForging",
+            "currentCooldown": 0,
+            "upgradeMasteries": {
+              "pool": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.05,
+                  "tooltip": "Increase qi pool restoration by <num>5%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.1,
+                  "tooltip": "Increase qi pool restoration by <num>10%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.15,
+                  "tooltip": "Increase qi pool restoration by <num>15%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.2,
+                  "tooltip": "Increase qi pool restoration by <num>20%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.25,
+                  "tooltip": "Increase qi pool restoration by <num>25%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.3,
+                  "tooltip": "Increase qi pool restoration by <num>30%</num> multiplicatively.",
+                  "shouldMultiply": true
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "stability",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 15
+                    },
+                    "amount": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Focusing (3%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critchance": {
+                          "value": 3
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "empowered"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 25
+                    },
+                    "buff": {
+                      "name": "Focusing Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critchance": {
+                          "value": 10
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Harmonious Stabilize",
+          "key": "harmonious_stabilize",
+          "type": "stabilize",
+          "actionKind": "skill",
+          "qiCost": 0,
+          "stabilityCost": 0,
+          "successChance": 1,
+          "baseCompletionGain": 1,
+          "basePerfectionGain": 0,
+          "stabilityGain": 20,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 5,
+          "buffMultiplier": 1,
+          "scalesWithControl": false,
+          "scalesWithIntensity": true,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": true,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 5,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "completion",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 10
+                  },
+                  "amount": {
+                    "value": 1,
+                    "stat": "intensity"
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Focusing (2%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critchance": {
+                        "value": 2
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "qitouched"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 15
+                  },
+                  "buff": {
+                    "name": "Stabilising Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/stability.webp",
+                    "canStack": true,
+                    "stats": {
+                      "stabilityCostPercentage": {
+                        "value": 90
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "stabilityRight",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "empowered"
+            }
+          ],
+          "conditionRequirement": "positive",
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "stability",
+              "amount": {
+                "value": 20,
+                "upgradeKey": "stability"
+              }
+            },
+            {
+              "kind": "completion",
+              "condition": {
+                "kind": "chance",
+                "percentage": 10
+              },
+              "amount": {
+                "value": 1,
+                "stat": "intensity"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Focusing (2%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                "canStack": true,
+                "stats": {
+                  "critchance": {
+                    "value": 2
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 15
+              },
+              "buff": {
+                "name": "Stabilising Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/stability.webp",
+                "canStack": true,
+                "stats": {
+                  "stabilityCostPercentage": {
+                    "value": 90
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "stabilityRight",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Focusing (2%)",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+            "canStack": true,
+            "stats": {
+              "critchance": {
+                "value": 2
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "maxStacks": 2,
+            "onFusion": [],
+            "onRefine": [],
+            "displayLocation": "none"
+          },
+          "nativeTechnique": {
+            "name": "Harmonious Stabilize",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/harmoniousStabilize.webp",
+            "poolCost": 0,
+            "stabilityCost": 0,
+            "successChance": 1,
+            "cooldown": 5,
+            "conditionRequirement": "positive",
+            "noMaxStabilityLoss": true,
+            "effects": [
+              {
+                "kind": "stability",
+                "amount": {
+                  "value": 20,
+                  "upgradeKey": "stability"
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "stabilize",
+            "realm": "meridianOpening",
+            "upgradeMasteries": {
+              "stability": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.05,
+                  "tooltip": "Increase stability gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.1,
+                  "tooltip": "Increase stability gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.15,
+                  "tooltip": "Increase stability gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.2,
+                  "tooltip": "Increase stability gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.25,
+                  "tooltip": "Increase stability gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.3,
+                  "tooltip": "Increase stability gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "completion",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 10
+                    },
+                    "amount": {
+                      "value": 1,
+                      "stat": "intensity"
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Focusing (2%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critchance": {
+                          "value": 2
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "qitouched"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 15
+                    },
+                    "buff": {
+                      "name": "Stabilising Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/stability.webp",
+                      "canStack": true,
+                      "stats": {
+                        "stabilityCostPercentage": {
+                          "value": 90
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "stabilityRight",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "empowered"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Forceful Stabilize",
+          "key": "forceful_stabilize",
+          "type": "stabilize",
+          "actionKind": "skill",
+          "qiCost": 88,
+          "stabilityCost": 0,
+          "successChance": 1,
+          "baseCompletionGain": 0,
+          "basePerfectionGain": 0.1,
+          "stabilityGain": 40,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 5,
+          "buffMultiplier": 1,
+          "scalesWithControl": true,
+          "scalesWithIntensity": false,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": true,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 0,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "perfection",
+                  "amount": {
+                    "value": 0.1,
+                    "stat": "control"
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Heightening (25%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critmultiplier": {
+                        "value": 25
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 15
+                  },
+                  "buff": {
+                    "name": "Luck Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/chance.webp",
+                    "canStack": true,
+                    "stats": {
+                      "successChanceBonus": {
+                        "value": 0.1
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "empowered"
+            }
+          ],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "stability",
+              "amount": {
+                "value": 40,
+                "upgradeKey": "stability"
+              }
+            },
+            {
+              "kind": "perfection",
+              "amount": {
+                "value": 0.1,
+                "stat": "control"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Heightening (25%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                "canStack": true,
+                "stats": {
+                  "critmultiplier": {
+                    "value": 25
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 15
+              },
+              "buff": {
+                "name": "Luck Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/chance.webp",
+                "canStack": true,
+                "stats": {
+                  "successChanceBonus": {
+                    "value": 0.1
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Heightening (25%)",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+            "canStack": true,
+            "stats": {
+              "critmultiplier": {
+                "value": 25
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "maxStacks": 2,
+            "onFusion": [],
+            "onRefine": [],
+            "displayLocation": "none"
+          },
+          "nativeTechnique": {
+            "name": "Forceful Stabilize",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/forcefulStabilize.webp",
+            "poolCost": 88,
+            "stabilityCost": 0,
+            "successChance": 1,
+            "cooldown": 0,
+            "noMaxStabilityLoss": true,
+            "effects": [
+              {
+                "kind": "stability",
+                "amount": {
+                  "value": 40,
+                  "upgradeKey": "stability"
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "stabilize",
+            "realm": "bodyForging",
+            "upgradeMasteries": {
+              "stability": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.05,
+                  "tooltip": "Increase stability gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.1,
+                  "tooltip": "Increase stability gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.15,
+                  "tooltip": "Increase stability gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.2,
+                  "tooltip": "Increase stability gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.25,
+                  "tooltip": "Increase stability gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.3,
+                  "tooltip": "Increase stability gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "perfection",
+                    "amount": {
+                      "value": 0.1,
+                      "stat": "control"
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Heightening (25%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critmultiplier": {
+                          "value": 25
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 15
+                    },
+                    "buff": {
+                      "name": "Luck Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/chance.webp",
+                      "canStack": true,
+                      "stats": {
+                        "successChanceBonus": {
+                          "value": 0.1
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "empowered"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Corrupted Stabilization",
+          "key": "corrupted_stabilization",
+          "type": "stabilize",
+          "actionKind": "skill",
+          "qiCost": 88,
+          "stabilityCost": 0,
+          "successChance": 1,
+          "baseCompletionGain": 0,
+          "basePerfectionGain": 0,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 8,
+          "buffMultiplier": 1,
+          "scalesWithControl": false,
+          "scalesWithIntensity": false,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": true,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 8,
+          "mastery": null,
+          "masteryEntries": [],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Corrupted Stabilization",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/corruptedStabilization.webp",
+                "canStack": true,
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  },
+                  {
+                    "kind": "stability",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 75
+                    },
+                    "amount": {
+                      "value": 7,
+                      "upgradeKey": "stability"
+                    }
+                  }
+                ],
+                "onFusion": [],
+                "onRefine": [],
+                "stacks": 1,
+                "displayLocation": "stabilityLeft"
+              },
+              "stacks": {
+                "value": 8,
+                "upgradeKey": "stacks"
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Corrupted Stabilization",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/corruptedStabilization.webp",
+            "canStack": true,
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              },
+              {
+                "kind": "stability",
+                "condition": {
+                  "kind": "chance",
+                  "percentage": 75
+                },
+                "amount": {
+                  "value": 7,
+                  "upgradeKey": "stability"
+                }
+              }
+            ],
+            "onFusion": [],
+            "onRefine": [],
+            "stacks": 1,
+            "displayLocation": "stabilityLeft"
+          },
+          "nativeTechnique": {
+            "name": "Corrupted Stabilization",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/corruptedStabilization.webp",
+            "poolCost": 88,
+            "stabilityCost": 0,
+            "successChance": 1,
+            "cooldown": 8,
+            "upgradeKey": "stacks",
+            "noMaxStabilityLoss": true,
+            "effects": [
+              {
+                "kind": "createBuff",
+                "buff": {
+                  "name": "Corrupted Stabilization",
+                  "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/corruptedStabilization.webp",
+                  "canStack": true,
+                  "effects": [
+                    {
+                      "kind": "addStack",
+                      "stacks": {
+                        "value": -1
+                      }
+                    },
+                    {
+                      "kind": "stability",
+                      "condition": {
+                        "kind": "chance",
+                        "percentage": 75
+                      },
+                      "amount": {
+                        "value": 7,
+                        "upgradeKey": "stability"
+                      }
+                    }
+                  ],
+                  "onFusion": [],
+                  "onRefine": [],
+                  "stacks": 1,
+                  "displayLocation": "stabilityLeft"
+                },
+                "stacks": {
+                  "value": 8,
+                  "upgradeKey": "stacks"
+                }
+              }
+            ],
+            "currentCooldown": 7,
+            "type": "stabilize",
+            "realm": "qiCondensation",
+            "upgradeMasteries": {
+              "stacks": {
+                "rarity": "resplendent",
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stacks",
+                  "change": 1,
+                  "tooltip": "Increase the <name>Corrupted Stabilization</name> stacks gained by <num>1</num>.",
+                  "shouldMultiply": false
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stacks",
+                  "change": 2,
+                  "tooltip": "Increase the <name>Corrupted Stabilization</name> stacks gained by <num>2</num>.",
+                  "shouldMultiply": false
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stacks",
+                  "change": 3,
+                  "tooltip": "Increase the <name>Corrupted Stabilization</name> stacks gained by <num>3</num>.",
+                  "shouldMultiply": false
+                }
+              },
+              "stability": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.05,
+                  "tooltip": "Increase stability gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.1,
+                  "tooltip": "Increase stability gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.15,
+                  "tooltip": "Increase stability gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.2,
+                  "tooltip": "Increase stability gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.25,
+                  "tooltip": "Increase stability gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.3,
+                  "tooltip": "Increase stability gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Explosive Fusion",
+          "key": "explosive_fusion",
+          "type": "fusion",
+          "actionKind": "skill",
+          "qiCost": 0,
+          "stabilityCost": 10,
+          "successChance": 0.5,
+          "baseCompletionGain": 0.1,
+          "basePerfectionGain": 0,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 1,
+          "buffDuration": 5,
+          "buffMultiplier": 1.08,
+          "scalesWithControl": false,
+          "scalesWithIntensity": true,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": false,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 0,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "completion",
+                  "amount": {
+                    "value": 0.1,
+                    "stat": "intensity"
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Controlling (8%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                    "canStack": true,
+                    "stats": {
+                      "control": {
+                        "value": 0.08,
+                        "stat": "control"
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "perfectionRight"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 20
+                  },
+                  "buff": {
+                    "name": "Focusing Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critchance": {
+                        "value": 10
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            }
+          ],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "completion",
+              "amount": {
+                "value": 5,
+                "stat": "intensity",
+                "upgradeKey": "completion"
+              }
+            },
+            {
+              "kind": "completion",
+              "amount": {
+                "value": 0.1,
+                "stat": "intensity"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Controlling (8%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                "canStack": true,
+                "stats": {
+                  "control": {
+                    "value": 0.08,
+                    "stat": "control"
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "perfectionRight"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 20
+              },
+              "buff": {
+                "name": "Focusing Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                "canStack": true,
+                "stats": {
+                  "critchance": {
+                    "value": 10
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Controlling (8%)",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+            "canStack": true,
+            "stats": {
+              "control": {
+                "value": 0.08,
+                "stat": "control"
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "maxStacks": 2,
+            "onFusion": [],
+            "onRefine": [],
+            "displayLocation": "perfectionRight"
+          },
+          "nativeTechnique": {
+            "name": "Explosive Fusion",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/explosiveFusion.webp",
+            "poolCost": 0,
+            "stabilityCost": 10,
+            "successChance": 0.5,
+            "cooldown": 0,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 5,
+                  "stat": "intensity",
+                  "upgradeKey": "completion"
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "fusion",
+            "realm": "meridianOpening",
+            "upgradeMasteries": {
+              "completion": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.05,
+                  "tooltip": "Increase completion gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.1,
+                  "tooltip": "Increase completion gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.15,
+                  "tooltip": "Increase completion gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.2,
+                  "tooltip": "Increase completion gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.25,
+                  "tooltip": "Increase completion gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "completion",
+                  "change": 0.3,
+                  "tooltip": "Increase completion gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "completion",
+                    "amount": {
+                      "value": 0.1,
+                      "stat": "intensity"
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Controlling (8%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                      "canStack": true,
+                      "stats": {
+                        "control": {
+                          "value": 0.08,
+                          "stat": "control"
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "perfectionRight"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 20
+                    },
+                    "buff": {
+                      "name": "Focusing Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critchance": {
+                          "value": 10
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Explosive Refinement",
+          "key": "explosive_refinement",
+          "type": "refine",
+          "actionKind": "skill",
+          "qiCost": 0,
+          "stabilityCost": 10,
+          "successChance": 0.4,
+          "baseCompletionGain": 1,
+          "basePerfectionGain": 3,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 1,
+          "buffDuration": 5,
+          "buffMultiplier": 1.08,
+          "scalesWithControl": true,
+          "scalesWithIntensity": true,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": false,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 0,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "completion",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 10
+                  },
+                  "amount": {
+                    "value": 1,
+                    "stat": "intensity"
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Controlling (8%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                    "canStack": true,
+                    "stats": {
+                      "control": {
+                        "value": 0.08,
+                        "stat": "control"
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "perfectionRight"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 10
+                  },
+                  "buff": {
+                    "name": "Focusing Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critchance": {
+                        "value": 10
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "qitouched"
+            }
+          ],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "perfection",
+              "amount": {
+                "value": 3,
+                "stat": "control",
+                "upgradeKey": "perfection"
+              }
+            },
+            {
+              "kind": "completion",
+              "condition": {
+                "kind": "chance",
+                "percentage": 10
+              },
+              "amount": {
+                "value": 1,
+                "stat": "intensity"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Controlling (8%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                "canStack": true,
+                "stats": {
+                  "control": {
+                    "value": 0.08,
+                    "stat": "control"
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "perfectionRight"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 10
+              },
+              "buff": {
+                "name": "Focusing Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                "canStack": true,
+                "stats": {
+                  "critchance": {
+                    "value": 10
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Controlling (8%)",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+            "canStack": true,
+            "stats": {
+              "control": {
+                "value": 0.08,
+                "stat": "control"
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "maxStacks": 2,
+            "onFusion": [],
+            "onRefine": [],
+            "displayLocation": "perfectionRight"
+          },
+          "nativeTechnique": {
+            "name": "Explosive Refinement",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/explosiveRefinement.webp",
+            "poolCost": 0,
+            "stabilityCost": 10,
+            "successChance": 0.4,
+            "cooldown": 0,
+            "effects": [
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 3,
+                  "stat": "control",
+                  "upgradeKey": "perfection"
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "refine",
+            "realm": "meridianOpening",
+            "upgradeMasteries": {
+              "perfection": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.05,
+                  "tooltip": "Increase perfection gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.1,
+                  "tooltip": "Increase perfection gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.15,
+                  "tooltip": "Increase perfection gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.2,
+                  "tooltip": "Increase perfection gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.25,
+                  "tooltip": "Increase perfection gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "perfection",
+                  "change": 0.3,
+                  "tooltip": "Increase perfection gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "completion",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 10
+                    },
+                    "amount": {
+                      "value": 1,
+                      "stat": "intensity"
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Controlling (8%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                      "canStack": true,
+                      "stats": {
+                        "control": {
+                          "value": 0.08,
+                          "stat": "control"
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "perfectionRight"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 10
+                    },
+                    "buff": {
+                      "name": "Focusing Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critchance": {
+                          "value": 10
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "qitouched"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Desperate Stabilize",
+          "key": "desperate_stabilize",
+          "type": "stabilize",
+          "actionKind": "skill",
+          "qiCost": 0,
+          "stabilityCost": 10,
+          "successChance": 0.5,
+          "baseCompletionGain": 0,
+          "basePerfectionGain": 0.06,
+          "stabilityGain": 30,
+          "maxStabilityChange": 0,
+          "buffType": 1,
+          "buffDuration": 5,
+          "buffMultiplier": 1.1,
+          "scalesWithControl": true,
+          "scalesWithIntensity": false,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": true,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 20,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "perfection",
+                  "amount": {
+                    "value": 0.06,
+                    "stat": "control"
+                  }
+                }
+              ],
+              "rarity": "empowered"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Heightening (25%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critmultiplier": {
+                        "value": 25
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 25
+                  },
+                  "buff": {
+                    "name": "Controlling Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                    "canStack": true,
+                    "stats": {
+                      "control": {
+                        "value": 0.1,
+                        "stat": "control"
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "perfectionRight",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "incandescent"
+            }
+          ],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "stability",
+              "amount": {
+                "value": 30,
+                "upgradeKey": "stability"
+              }
+            },
+            {
+              "kind": "perfection",
+              "amount": {
+                "value": 0.06,
+                "stat": "control"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Heightening (25%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                "canStack": true,
+                "stats": {
+                  "critmultiplier": {
+                    "value": 25
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 25
+              },
+              "buff": {
+                "name": "Controlling Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                "canStack": true,
+                "stats": {
+                  "control": {
+                    "value": 0.1,
+                    "stat": "control"
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "perfectionRight",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Heightening (25%)",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+            "canStack": true,
+            "stats": {
+              "critmultiplier": {
+                "value": 25
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "maxStacks": 2,
+            "onFusion": [],
+            "onRefine": [],
+            "displayLocation": "none"
+          },
+          "nativeTechnique": {
+            "name": "Desperate Stabilize",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/desperateStabilize.webp",
+            "poolCost": 0,
+            "stabilityCost": 10,
+            "successChance": 0.5,
+            "cooldown": 20,
+            "noMaxStabilityLoss": true,
+            "effects": [
+              {
+                "kind": "stability",
+                "amount": {
+                  "value": 30,
+                  "upgradeKey": "stability"
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "stabilize",
+            "realm": "meridianOpening",
+            "upgradeMasteries": {
+              "stability": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.05,
+                  "tooltip": "Increase stability gained by <num>5%</num>.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.1,
+                  "tooltip": "Increase stability gained by <num>10%</num>.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.15,
+                  "tooltip": "Increase stability gained by <num>15%</num>.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.2,
+                  "tooltip": "Increase stability gained by <num>20%</num>.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.25,
+                  "tooltip": "Increase stability gained by <num>25%</num>.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "stability",
+                  "change": 0.3,
+                  "tooltip": "Increase stability gained by <num>30%</num>.",
+                  "shouldMultiply": true
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "perfection",
+                    "amount": {
+                      "value": 0.06,
+                      "stat": "control"
+                    }
+                  }
+                ],
+                "rarity": "empowered"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Heightening (25%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critmultiplier": {
+                          "value": 25
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 25
+                    },
+                    "buff": {
+                      "name": "Controlling Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/control.webp",
+                      "canStack": true,
+                      "stats": {
+                        "control": {
+                          "value": 0.1,
+                          "stat": "control"
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "perfectionRight",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "incandescent"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Unstable Re-energisation",
+          "key": "unstable_re-energisation",
+          "type": "support",
+          "actionKind": "skill",
+          "qiCost": 0,
+          "stabilityCost": 5,
+          "successChance": 0.5,
+          "baseCompletionGain": 0.6000000000000001,
+          "basePerfectionGain": 0,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 5,
+          "buffMultiplier": 1,
+          "scalesWithControl": false,
+          "scalesWithIntensity": true,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": false,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 10,
+          "mastery": null,
+          "masteryEntries": [
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "completion",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 10
+                  },
+                  "amount": {
+                    "value": 0.6000000000000001,
+                    "stat": "intensity"
+                  }
+                }
+              ],
+              "rarity": "empowered"
+            },
+            {
+              "kind": "effect",
+              "tooltip": "For this and the next action, gain {createBuff.buff}",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "buff": {
+                    "name": "Heightening (20%)",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critmultiplier": {
+                        "value": 20
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "maxStacks": 2,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none"
+                  },
+                  "stacks": {
+                    "value": 1
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            },
+            {
+              "kind": "effect",
+              "effects": [
+                {
+                  "kind": "createBuff",
+                  "condition": {
+                    "kind": "chance",
+                    "percentage": 20
+                  },
+                  "buff": {
+                    "name": "Focusing Enhancement",
+                    "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                    "canStack": true,
+                    "stats": {
+                      "critchance": {
+                        "value": 10
+                      }
+                    },
+                    "effects": [
+                      {
+                        "kind": "addStack",
+                        "stacks": {
+                          "value": -1
+                        }
+                      }
+                    ],
+                    "stacks": 1,
+                    "onFusion": [],
+                    "onRefine": [],
+                    "displayLocation": "none",
+                    "maxStacks": 5
+                  },
+                  "stacks": {
+                    "value": 5
+                  }
+                }
+              ],
+              "rarity": "resplendent"
+            }
+          ],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": true,
+          "qiRestore": 50,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "pool",
+              "amount": {
+                "value": 50,
+                "upgradeKey": "pool"
+              }
+            },
+            {
+              "kind": "completion",
+              "condition": {
+                "kind": "chance",
+                "percentage": 10
+              },
+              "amount": {
+                "value": 0.6000000000000001,
+                "stat": "intensity"
+              }
+            },
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Heightening (20%)",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                "canStack": true,
+                "stats": {
+                  "critmultiplier": {
+                    "value": 20
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "maxStacks": 2,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none"
+              },
+              "stacks": {
+                "value": 1
+              }
+            },
+            {
+              "kind": "createBuff",
+              "condition": {
+                "kind": "chance",
+                "percentage": 20
+              },
+              "buff": {
+                "name": "Focusing Enhancement",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                "canStack": true,
+                "stats": {
+                  "critchance": {
+                    "value": 10
+                  }
+                },
+                "effects": [
+                  {
+                    "kind": "addStack",
+                    "stacks": {
+                      "value": -1
+                    }
+                  }
+                ],
+                "stacks": 1,
+                "onFusion": [],
+                "onRefine": [],
+                "displayLocation": "none",
+                "maxStacks": 5
+              },
+              "stacks": {
+                "value": 5
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Heightening (20%)",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+            "canStack": true,
+            "stats": {
+              "critmultiplier": {
+                "value": 20
+              }
+            },
+            "effects": [
+              {
+                "kind": "addStack",
+                "stacks": {
+                  "value": -1
+                }
+              }
+            ],
+            "stacks": 1,
+            "maxStacks": 2,
+            "onFusion": [],
+            "onRefine": [],
+            "displayLocation": "none"
+          },
+          "nativeTechnique": {
+            "name": "Unstable Re-energisation",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/unstableReenergisation.webp",
+            "poolCost": 0,
+            "stabilityCost": 5,
+            "successChance": 0.5,
+            "cooldown": 10,
+            "effects": [
+              {
+                "kind": "pool",
+                "amount": {
+                  "value": 50,
+                  "upgradeKey": "pool"
+                }
+              }
+            ],
+            "currentCooldown": 0,
+            "type": "support",
+            "realm": "qiCondensation",
+            "upgradeMasteries": {
+              "pool": {
+                "rarity": "empowered",
+                "mundane": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.05,
+                  "tooltip": "Increase qi pool restoration by <num>5%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "qitouched": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.1,
+                  "tooltip": "Increase qi pool restoration by <num>10%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "empowered": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.15,
+                  "tooltip": "Increase qi pool restoration by <num>15%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "resplendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.2,
+                  "tooltip": "Increase qi pool restoration by <num>20%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "incandescent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.25,
+                  "tooltip": "Increase qi pool restoration by <num>25%</num> multiplicatively.",
+                  "shouldMultiply": true
+                },
+                "transcendent": {
+                  "kind": "upgrade",
+                  "upgradeKey": "pool",
+                  "change": 0.3,
+                  "tooltip": "Increase qi pool restoration by <num>30%</num> multiplicatively.",
+                  "shouldMultiply": true
+                }
+              }
+            },
+            "mastery": [
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "completion",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 10
+                    },
+                    "amount": {
+                      "value": 0.6000000000000001,
+                      "stat": "intensity"
+                    }
+                  }
+                ],
+                "rarity": "empowered"
+              },
+              {
+                "kind": "effect",
+                "tooltip": "For this and the next action, gain {createBuff.buff}",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "buff": {
+                      "name": "Heightening (20%)",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/critDam.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critmultiplier": {
+                          "value": 20
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "maxStacks": 2,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none"
+                    },
+                    "stacks": {
+                      "value": 1
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              },
+              {
+                "kind": "effect",
+                "effects": [
+                  {
+                    "kind": "createBuff",
+                    "condition": {
+                      "kind": "chance",
+                      "percentage": 20
+                    },
+                    "buff": {
+                      "name": "Focusing Enhancement",
+                      "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/cutting.webp",
+                      "canStack": true,
+                      "stats": {
+                        "critchance": {
+                          "value": 10
+                        }
+                      },
+                      "effects": [
+                        {
+                          "kind": "addStack",
+                          "stacks": {
+                            "value": -1
+                          }
+                        }
+                      ],
+                      "stacks": 1,
+                      "onFusion": [],
+                      "onRefine": [],
+                      "displayLocation": "none",
+                      "maxStacks": 5
+                    },
+                    "stacks": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "rarity": "resplendent"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Focus",
+          "key": "focus",
+          "type": "support",
+          "actionKind": "skill",
+          "qiCost": 10,
+          "stabilityCost": 1,
+          "successChance": 1,
+          "baseCompletionGain": 0,
+          "basePerfectionGain": 0,
+          "stabilityGain": 0,
+          "maxStabilityChange": 0,
+          "buffType": 0,
+          "buffDuration": 1,
+          "buffMultiplier": 1,
+          "scalesWithControl": false,
+          "scalesWithIntensity": false,
+          "isDisciplinedTouch": false,
+          "preventsMaxStabilityDecay": true,
+          "toxicityCost": 0,
+          "toxicityCleanse": 0,
+          "cooldown": 1,
+          "mastery": null,
+          "masteryEntries": [],
+          "conditionRequirement": null,
+          "buffRequirement": null,
+          "buffCost": null,
+          "restoresQi": false,
+          "qiRestore": 0,
+          "restoresMaxStabilityToFull": false,
+          "itemName": null,
+          "reagentOnlyAtStepZero": false,
+          "effects": [
+            {
+              "kind": "createBuff",
+              "buff": {
+                "name": "Focus",
+                "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/focus.webp",
+                "canStack": true,
+                "effectHint": "Used to activate certain crafting actions.",
+                "effects": [],
+                "onFusion": [],
+                "onRefine": [],
+                "stacks": 1,
+                "displayLocation": "avatar"
+              },
+              "stacks": {
+                "value": 1
+              }
+            }
+          ],
+          "grantedBuff": {
+            "name": "Focus",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/focus.webp",
+            "canStack": true,
+            "effectHint": "Used to activate certain crafting actions.",
+            "effects": [],
+            "onFusion": [],
+            "onRefine": [],
+            "stacks": 1,
+            "displayLocation": "avatar"
+          },
+          "nativeTechnique": {
+            "name": "Focus",
+            "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/focus.webp",
+            "poolCost": 10,
+            "stabilityCost": 1,
+            "noMaxStabilityLoss": true,
+            "successChance": 1,
+            "cooldown": 1,
+            "showCreatesBuff": true,
+            "effects": [
+              {
+                "kind": "createBuff",
+                "buff": {
+                  "name": "Focus",
+                  "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/focus.webp",
+                  "canStack": true,
+                  "effectHint": "Used to activate certain crafting actions.",
+                  "effects": [],
+                  "onFusion": [],
+                  "onRefine": [],
+                  "stacks": 1,
+                  "displayLocation": "avatar"
+                },
+                "stacks": {
+                  "value": 1
+                }
+              }
+            ],
+            "type": "support",
+            "realm": "qiCondensation",
+            "currentCooldown": 1
+          }
+        }
+      ]
+    },
+    "context": {
+      "recipeName": "Skyfall Bow Recipe",
+      "craftingType": "forge",
+      "craftingTypeSource": "recipeStats.harmonyType",
+      "isSublimeCraft": true,
+      "sublimeTargetMultiplier": 17.58185328185328,
+      "sublimeDetectionSignals": [
+        "explicitTrue",
+        "sublimeOutput",
+        "capMultiplier"
+      ],
+      "targetStabilityAtSearchStart": 52,
+      "integration": {
+        "nativeProviders": [
+          "overcrit",
+          "canUseAction",
+          "capGetters",
+          "variableResolver",
+          "maxToxicity",
+          "itemTypeHarmony"
+        ],
+        "fallbackProviders": [
+          "scaling",
+          "conditionTransition"
+        ],
+        "canUseActionStats": {
+          "calls": 22051223,
+          "blocked": 0,
+          "errors": 0,
+          "errorRate": 0
+        },
+        "conditionProvider": {
+          "used": 0,
+          "failures": 0,
+          "fallbacks": 0
+        },
+        "completionBonus": {
+          "source": "computed",
+          "mismatches": 0
+        },
+        "conditionQueue": {
+          "normalized": 0,
+          "trimmed": 0,
+          "padded": 0
+        },
+        "craftingType": {
+          "source": "recipeStats.harmonyType",
+          "mappedItemKind": null,
+          "detectedFromItemKind": 0
+        },
+        "sublimeDetection": {
+          "signals": [
+            "explicitTrue",
+            "sublimeOutput",
+            "capMultiplier"
+          ]
+        },
+        "harmonyData": {
+          "lastSource": "progressState",
+          "progressState": 49,
+          "nativeVariables": 0,
+          "buffs": 0,
+          "missing": 0
+        }
+      },
+      "rawCraftContext": {
+        "recipe": {
+          "harmonyType": null,
+          "harmonyTypeOverride": null,
+          "type": null,
+          "kind": "recipe",
+          "craftingMode": null,
+          "usesHarmony": null,
+          "isSublimeCraft": true,
+          "isSublime": null,
+          "sublime": null,
+          "canOvercraft": true,
+          "baseItemKind": "artefact",
+          "perfectItemKind": "artefact",
+          "sublimeItemKind": null
+        },
+        "recipeStats": {
+          "harmonyType": "forge",
+          "harmonyBased": null,
+          "isSublime": null,
+          "sublime": null,
+          "maxToxicity": null,
+          "conditionTypeName": "Flowing"
+        }
+      }
+    }
+  },
+  "output": {
+    "isTerminal": false,
+    "targetsMet": false,
+    "recommendation": {
+      "skill": {
+        "name": "Unstable Re-energisation",
+        "key": "unstable_re-energisation",
+        "type": "support"
+      },
+      "score": 207223.6766083063,
+      "qualityRating": 100,
+      "expectedGains": {
+        "completion": 7,
+        "perfection": 0,
+        "stability": 0
+      },
+      "immediateGains": {
+        "completion": 15,
+        "perfection": 0,
+        "stability": 0
+      },
+      "effectiveCosts": {
+        "qi": 0,
+        "stability": 5
+      },
+      "followUpSkill": {
+        "name": "Harmonious Stabilize",
+        "type": "stabilize",
+        "icon": "file:///D:/Steam/steamapps/common/Ascend%20From%20Nine%20Mountains/resources/app.asar/dist-electron/harmoniousStabilize.webp",
+        "expectedGains": {
+          "completion": 23,
+          "perfection": 0,
+          "stability": 20
+        },
+        "immediateGains": {
+          "completion": 25,
+          "perfection": 0,
+          "stability": 20
+        },
+        "effectiveCosts": {
+          "qi": 0,
+          "stability": 0
+        }
+      },
+      "consumesBuff": false,
+      "reasoning": "Best available option"
+    },
+    "alternatives": [],
+    "blockedReasons": [],
+    "optimalRotation": [
+      "Unstable Re-energisation",
+      "Harmonious Stabilize",
+      "Delayed Fusion",
+      "Explosive Fusion",
+      "Invasive Refine",
+      "Explosive Fusion",
+      "Explosive Fusion"
+    ],
+    "expectedFinalState": {
+      "completion": 7645,
+      "perfection": 6212,
+      "stability": 6.25,
+      "maxStability": 46,
+      "qi": 11,
+      "turnsRemaining": 284
+    },
+    "searchMetrics": {
+      "nodesExplored": 6100,
+      "cacheHits": 460,
+      "timeTakenMs": 4503,
+      "depthReached": 7,
+      "pruned": 0
+    }
+  },
+  "completedAt": "2026-03-07T12:31:13.636Z"
+}

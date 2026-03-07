@@ -47,6 +47,9 @@ const STORAGE_KEY = 'craftbuddy_settings';
 const SEARCH_DEFAULTS_RESET_VERSION_KEY =
   'craftbuddy_search_defaults_reset_version';
 const SEARCH_DEFAULTS_RESET_VERSION = '2';
+const DISPLAY_DEFAULTS_RESET_VERSION_KEY =
+  'craftbuddy_display_defaults_reset_version';
+const DISPLAY_DEFAULTS_RESET_VERSION = '1';
 
 export const DEFAULT_SEARCH_SETTINGS: Pick<
   CraftBuddySettings,
@@ -71,7 +74,7 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   ...DEFAULT_SEARCH_SETTINGS,
   compactMode: false,
   panelVisible: true,
-  maxAlternatives: 2,
+  maxAlternatives: 1,
   maxRotationDisplay: 5,
   showForecastedConditions: true,
   showExpectedFinalState: true,
@@ -168,6 +171,18 @@ function applyDefaultSearchSettings(
   });
 }
 
+function applyDisplayDefaultsForV371(
+  settings: CraftBuddySettings,
+): CraftBuddySettings {
+  return normalizeSettings({
+    ...settings,
+    maxAlternatives:
+      settings.maxAlternatives > 1
+        ? DEFAULT_SETTINGS.maxAlternatives
+        : settings.maxAlternatives,
+  });
+}
+
 /**
  * Load settings from localStorage
  */
@@ -182,16 +197,34 @@ export function loadSettings(): CraftBuddySettings {
       currentSettings = { ...DEFAULT_SETTINGS };
     }
 
+    let settingsChanged = false;
+
     const needsSearchReset =
       storage?.getItem(SEARCH_DEFAULTS_RESET_VERSION_KEY) !==
       SEARCH_DEFAULTS_RESET_VERSION;
     if (needsSearchReset) {
       currentSettings = applyDefaultSearchSettings(currentSettings);
-      storage?.setItem(STORAGE_KEY, JSON.stringify(currentSettings));
+      settingsChanged = true;
       storage?.setItem(
         SEARCH_DEFAULTS_RESET_VERSION_KEY,
         SEARCH_DEFAULTS_RESET_VERSION,
       );
+    }
+
+    const needsDisplayReset =
+      storage?.getItem(DISPLAY_DEFAULTS_RESET_VERSION_KEY) !==
+      DISPLAY_DEFAULTS_RESET_VERSION;
+    if (needsDisplayReset) {
+      currentSettings = applyDisplayDefaultsForV371(currentSettings);
+      settingsChanged = true;
+      storage?.setItem(
+        DISPLAY_DEFAULTS_RESET_VERSION_KEY,
+        DISPLAY_DEFAULTS_RESET_VERSION,
+      );
+    }
+
+    if (settingsChanged) {
+      storage?.setItem(STORAGE_KEY, JSON.stringify(currentSettings));
     }
   } catch (e) {
     console.warn('[CraftBuddy] Failed to load settings:', e);
@@ -233,6 +266,7 @@ export function resetSettings(): CraftBuddySettings {
   try {
     storage?.removeItem(STORAGE_KEY);
     storage?.removeItem(SEARCH_DEFAULTS_RESET_VERSION_KEY);
+    storage?.removeItem(DISPLAY_DEFAULTS_RESET_VERSION_KEY);
   } catch (e) {
     // Ignore
   }
