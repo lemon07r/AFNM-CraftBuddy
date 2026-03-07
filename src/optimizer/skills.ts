@@ -515,6 +515,48 @@ function normalizeBuffName(name: string | undefined): string {
     .replace(/\s+/g, '_');
 }
 
+function isDerivedForgeHeatBuff(
+  state: CraftingState,
+  config: OptimizerConfig | undefined,
+  buffKey: string,
+  tracked: { name: string; stacks: number; definition?: BuffDefinition },
+): boolean {
+  if (config?.craftingType !== 'forge' || !state.harmonyData?.forgeWorks) {
+    return false;
+  }
+
+  const normalizedKey = normalizeBuffName(buffKey);
+  if (normalizedKey === 'heat') {
+    return true;
+  }
+
+  return normalizeBuffName(tracked.name || buffKey) === 'heat';
+}
+
+function stripDerivedForgeHeatBuff(
+  state: CraftingState,
+  config: OptimizerConfig | undefined,
+  buffs: ActiveBuffMap,
+): ActiveBuffMap {
+  if (config?.craftingType !== 'forge' || !state.harmonyData?.forgeWorks) {
+    return buffs;
+  }
+
+  let stripped: ActiveBuffMap | undefined;
+  buffs.forEach((tracked, buffKey) => {
+    if (!isDerivedForgeHeatBuff(state, config, buffKey, tracked)) {
+      return;
+    }
+
+    if (!stripped) {
+      stripped = new Map(buffs);
+    }
+    stripped.delete(buffKey);
+  });
+
+  return stripped ?? buffs;
+}
+
 function normalizeRuntimeCostPercentage(raw: number | undefined): number {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) {
@@ -582,7 +624,7 @@ function getResolvedActiveBuffs(
     }
   });
   if (!hasMissingDefinition) {
-    return state.buffs;
+    return stripDerivedForgeHeatBuff(state, config, state.buffs);
   }
 
   const lookup = getBuffDefinitionLookup(config);
@@ -605,7 +647,7 @@ function getResolvedActiveBuffs(
     });
   });
 
-  return resolved ?? state.buffs;
+  return stripDerivedForgeHeatBuff(state, config, resolved ?? state.buffs);
 }
 
 function buildNativeAvailabilityVariables(
@@ -808,6 +850,10 @@ function buildTechniqueScalingVariables(
     if (!(normalized in vars)) {
       vars[normalized] = tracked.stacks;
     }
+  });
+
+  applyDerivedNativeVariableAliases(vars, {
+    harmonyData: state.harmonyData,
   });
 
   return vars;

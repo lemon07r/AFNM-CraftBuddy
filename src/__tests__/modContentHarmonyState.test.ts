@@ -1,6 +1,10 @@
 import { BuffType, CraftingState } from '../optimizer/state';
 import { findBestSkill, lookaheadSearch } from '../optimizer/search';
-import type { OptimizerConfig, SkillDefinition } from '../optimizer/skills';
+import {
+  calculateSkillGains,
+  type OptimizerConfig,
+  type SkillDefinition,
+} from '../optimizer/skills';
 import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
 import { setNativeCraftingUtils } from '../optimizer/gameTypes';
 import { hydrateHarmonyData } from '../modContent/harmonyState';
@@ -1121,8 +1125,70 @@ describe('integration regression - forge heat parity', () => {
         recommendedTechniqueTypes: ['fusion'],
       },
       buffs: new Map([
-        ['heat', { name: 'Heat', stacks: 1 }],
-        ['tidal_current', { name: 'Tidal Current', stacks: 1 }],
+        [
+          'heat',
+          {
+            name: 'Heat',
+            stacks: 1,
+            definition: {
+              name: 'Heat',
+              canStack: false,
+              stats: {
+                control: {
+                  value: -10,
+                  stat: 'control',
+                },
+              },
+              effects: [],
+              onFusion: [],
+              onRefine: [],
+              stacks: 1,
+            },
+          },
+        ],
+        [
+          'tidal_current',
+          {
+            name: 'Tidal Current',
+            stacks: 1,
+            definition: {
+              name: 'Tidal Current',
+              canStack: false,
+              effects: [],
+              onFusion: [],
+              onRefine: [
+                {
+                  kind: 'createBuff',
+                  buff: {
+                    name: 'Tidal Pressure',
+                    canStack: true,
+                    stats: {
+                      control: {
+                        value: 0.092,
+                        stat: 'control',
+                        scaling: 'stacks',
+                      },
+                      intensity: {
+                        value: 0.092,
+                        stat: 'intensity',
+                        scaling: 'stacks',
+                      },
+                    },
+                    effects: [],
+                    onFusion: [],
+                    onRefine: [],
+                    onStabilize: [{ kind: 'negate' }],
+                    stacks: 1,
+                  },
+                  stacks: {
+                    value: 1,
+                  },
+                },
+              ],
+              stacks: 1,
+            },
+          },
+        ],
       ]),
       nativeVariables: {
         resistance: 5,
@@ -1135,6 +1201,14 @@ describe('integration regression - forge heat parity', () => {
       },
       step: 0,
     });
+
+    const directRefineGains = calculateSkillGains(
+      state,
+      invasiveRefine,
+      config,
+      [],
+      { includeExpectedValue: false },
+    );
 
     const result = findBestSkill(
       state,
@@ -1160,6 +1234,7 @@ describe('integration regression - forge heat parity', () => {
       )
       .find((recommendation) => recommendation.skill.key === 'invasive_refine');
 
+    expect(directRefineGains.perfection).toBe(0);
     expect(refineRecommendation?.immediateGains.perfection).toBe(0);
     expect(refineRecommendation?.expectedGains.perfection).toBe(0);
     expect(result.recommendation).not.toBeNull();
