@@ -664,6 +664,8 @@ Sublime crafts use special harmony mechanics. There are 4 types:
 ### 1. Forge Works
 Maintain heat between 4-6 for bonuses.
 
+Note: installed runtime verification on March 6, 2026 showed the executable low-control band is heat `2-3`; older UI/help text and earlier notes that said `1-3` were stale.
+
 **Mechanics:**
 - Fusion actions: +2 heat
 - All other actions: -1 heat
@@ -673,7 +675,7 @@ Maintain heat between 4-6 for bonuses.
 | Heat | Harmony | Stat Effect |
 |------|---------|-------------|
 | 0 | -20 | -1000% Control |
-| 1-3 | -10 | -50% Control |
+| 2-3 | -10 | -50% Control |
 | **4-6** | **+10** | **+50% Control & Intensity** |
 | 7-9 | -10 | -50% Intensity |
 | 10 | -20 | -1000% Intensity |

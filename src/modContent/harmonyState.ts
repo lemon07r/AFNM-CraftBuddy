@@ -4,6 +4,10 @@ import {
   TechniqueType,
   TrackedBuff,
 } from '../optimizer';
+import {
+  clampForgeHeat,
+  getForgeRecommendedTechniqueTypes,
+} from '../optimizer/harmony';
 
 export type HarmonyDataSource =
   | 'progressState'
@@ -58,14 +62,6 @@ function cloneHarmonyData(harmonyData: HarmonyData): HarmonyData {
   }
 
   return clone;
-}
-
-function clampForgeHeat(value: number): number {
-  return Math.max(0, Math.min(10, Math.floor(value)));
-}
-
-function getForgeRecommendedTechniqueTypes(heat: number): TechniqueType[] {
-  return heat <= 4 ? ['fusion'] : ['refine', 'support', 'stabilize'];
 }
 
 function normalizeBuffKey(name: string | undefined): string {

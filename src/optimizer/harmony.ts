@@ -63,19 +63,70 @@ const DEFAULT_MODIFIERS: HarmonyStatModifiers = {
 // Forge Works
 // ============================================================
 
+type ForgeHeatBand =
+  | 'controlCollapse'
+  | 'controlPenalty'
+  | 'neutral'
+  | 'optimal'
+  | 'intensityPenalty'
+  | 'intensityCollapse';
+
+export function clampForgeHeat(value: number): number {
+  return Math.max(0, Math.min(10, Math.floor(value)));
+}
+
+/**
+ * Installed runtime verification (2026-03-06) shows the low-control band is
+ * heat 2-3, even though some older UI/reference text still says 1-3.
+ */
+function getForgeHeatBand(heat: number): ForgeHeatBand {
+  if (heat >= 4 && heat <= 6) {
+    return 'optimal';
+  }
+  if (heat >= 2 && heat <= 3) {
+    return 'controlPenalty';
+  }
+  if (heat >= 7 && heat <= 9) {
+    return 'intensityPenalty';
+  }
+  if (heat === 0) {
+    return 'controlCollapse';
+  }
+  if (heat === 10) {
+    return 'intensityCollapse';
+  }
+  return 'neutral';
+}
+
+export function getForgeRecommendedTechniqueTypes(
+  heat: number,
+): TechniqueType[] {
+  return clampForgeHeat(heat) <= 4
+    ? ['fusion']
+    : ['refine', 'support', 'stabilize'];
+}
+
 function getForgeWorksStatModifiers(heat: number): HarmonyStatModifiers {
   const mods = { ...DEFAULT_MODIFIERS };
-  if (heat >= 4 && heat <= 6) {
-    mods.controlMultiplier = 1.5;
-    mods.intensityMultiplier = 1.5;
-  } else if (heat >= 1 && heat <= 3) {
-    mods.controlMultiplier = 0.5;
-  } else if (heat >= 7 && heat <= 9) {
-    mods.intensityMultiplier = 0.5;
-  } else if (heat === 0) {
-    mods.controlMultiplier = -9; // -1000% = 1 + (-10) = -9 (effectively zeroes out)
-  } else if (heat === 10) {
-    mods.intensityMultiplier = -9;
+  switch (getForgeHeatBand(heat)) {
+    case 'optimal':
+      mods.controlMultiplier = 1.5;
+      mods.intensityMultiplier = 1.5;
+      break;
+    case 'controlPenalty':
+      mods.controlMultiplier = 0.5;
+      break;
+    case 'intensityPenalty':
+      mods.intensityMultiplier = 0.5;
+      break;
+    case 'controlCollapse':
+      mods.controlMultiplier = -9; // -1000% = 1 + (-10) = -9 (effectively zeroes out)
+      break;
+    case 'intensityCollapse':
+      mods.intensityMultiplier = -9;
+      break;
+    case 'neutral':
+      break;
   }
   return mods;
 }
@@ -93,20 +144,26 @@ function processForgeWorks(
   } else {
     fw.heat -= 1;
   }
-  fw.heat = Math.max(0, Math.min(10, fw.heat));
+  fw.heat = clampForgeHeat(fw.heat);
 
   let harmonyDelta = 0;
-  if (fw.heat >= 4 && fw.heat <= 6) {
-    harmonyDelta = 10;
-  } else if ((fw.heat >= 1 && fw.heat <= 3) || (fw.heat >= 7 && fw.heat <= 9)) {
-    harmonyDelta = -10;
-  } else if (fw.heat === 0 || fw.heat === 10) {
-    harmonyDelta = -20;
+  switch (getForgeHeatBand(fw.heat)) {
+    case 'optimal':
+      harmonyDelta = 10;
+      break;
+    case 'controlPenalty':
+    case 'intensityPenalty':
+      harmonyDelta = -10;
+      break;
+    case 'controlCollapse':
+    case 'intensityCollapse':
+      harmonyDelta = -20;
+      break;
+    case 'neutral':
+      break;
   }
 
-  const recommended: TechniqueType[] = fw.heat <= 4
-    ? ['fusion']
-    : ['refine', 'support', 'stabilize'];
+  const recommended = getForgeRecommendedTechniqueTypes(fw.heat);
 
   return {
     harmonyData: { ...harmonyData, forgeWorks: fw, recommendedTechniqueTypes: recommended },

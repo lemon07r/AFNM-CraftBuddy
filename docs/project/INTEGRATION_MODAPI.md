@@ -21,6 +21,7 @@ All fallback extraction and game-object adaptation logic is centralized here —
 ## Responsibilities
 
 - read live crafting state and recipe data
+- resolve crafting type/sublime context from live recipe fields plus `modAPI.gameData.itemTypeToHarmonyType` when explicit harmony fields are missing
 - normalize techniques/masteries/buffs into optimizer action definitions
 - collect condition effects and forecasted conditions
 - seed optimizer state with native variable snapshots when available
@@ -40,7 +41,9 @@ All fallback extraction and game-object adaptation logic is centralized here —
 
 Fallback handling exists for targets/progress extraction, condition transitions, optional payload fields when game objects are incomplete, and local scaling evaluation. `modAPI.utils.evaluateScaling` is not used by optimizer simulation because the live provider can drift from hypothetical future-state variables and already-upgraded payloads.
 
-Replay snapshots are expected to be parity-grade bug reports, not just light debug summaries. They should preserve runtime-shaped skill fields (including mastery/granted-buff payloads) and active buff definitions when those change optimizer gains or costs.
+Replay snapshots are expected to be parity-grade bug reports, not just light debug summaries. They should preserve runtime-shaped skill fields (including mastery/granted-buff payloads), active buff definitions when those change optimizer gains or costs, and craft-context provenance (crafting-type source, sublime-detection signals, integration diagnostics, raw recipe/recipeStats fields).
+
+When the runtime UI/help text, older reference notes, and executable behavior disagree, the installed game bundle is authoritative. Use the extraction flow in `docs/project/TESTING.md` before changing mechanics constants or parity tests.
 
 ## Migration targets
 

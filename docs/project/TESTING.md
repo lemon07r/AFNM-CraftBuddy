@@ -60,6 +60,7 @@ Exported optimizer snapshots are only useful for bug reproduction if they preser
 
 - runtime-shaped config fields that affect gains/search (`mastery`, `masteryEntries`, granted buff payloads)
 - active buff definitions when current-state buffs change stats/costs
+- craft-context provenance (`craftingTypeSource`, sublime-detection signals, raw recipe/recipeStats fields) when a bug may be caused by hydration/integration drift
 - replay parity: round-tripped snapshot input should keep the same first recommendation as the direct in-memory config/state for the same search budget
 
 Because search is wall-clock-budgeted, CI/browser/live runs can reach different frontiers before cutoff. Real-user regressions should use exported snapshot fixtures or explicit constrained budgets instead of assuming one machine's timing behavior generalizes.
@@ -126,6 +127,24 @@ Notes:
 - The game launcher already forwards extra Chromium/Electron flags, so `--remote-debugging-port=9222` works with `launch-native.sh`.
 - `README.md` documents the `devMode` file for opening in-game devtools manually.
 - The live runtime externalizes React/ReactDOM globals differently from the harness/browser build. When touching mount timing, validate in the live game, not only in the harness.
+
+## Installed runtime oracle
+
+When UI text, historical notes, and live behavior disagree, verify against the installed Electron bundle before changing mechanics or tests. The executable is authoritative.
+
+1. Extract the current game bundle:
+
+   ```bash
+   npx -y @electron/asar extract "/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains/resources/app.asar" /tmp/afnm-app
+   ```
+
+2. Inspect the compiled runtime:
+
+   ```bash
+   rg -n "forgeWorks\\.heat>=2&&t\\.forgeWorks\\.heat<=3|recommendedTechniqueTypes" /tmp/afnm-app/dist-electron/Game.js
+   ```
+
+This is the recommended parity check when older curated/history docs or on-screen text drift. Example: the installed runtime verified on March 6, 2026 uses Forge low-control penalties at heat `2-3`, not `1-3`.
 
 ## Validation requirements
 

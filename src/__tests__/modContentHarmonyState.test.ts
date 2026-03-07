@@ -469,7 +469,7 @@ describe('integration regression - forge heat parity', () => {
     expect(result.recommendation?.skill.type).toBe('fusion');
   });
 
-  it('still recommends fusion at heat=1 for snapshot-style invasive skills', () => {
+  it('still recommends fusion at heat=0 for snapshot-style invasive skills', () => {
     const invasiveFusion = createSkill({
       name: 'Invasive Fusion',
       key: 'invasive_fusion',
@@ -639,11 +639,11 @@ describe('integration regression - forge heat parity', () => {
       maxToxicity: 160,
       harmony: 0,
       harmonyData: {
-        forgeWorks: { heat: 1 },
+        forgeWorks: { heat: 0 },
         recommendedTechniqueTypes: ['fusion'],
       },
       buffs: new Map<string, { name: string; stacks: number }>([
-        ['heat', { name: 'Heat', stacks: 1 }],
+        ['heat', { name: 'Heat', stacks: 0 }],
       ]),
     });
 

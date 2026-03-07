@@ -22,6 +22,7 @@ related_files:
 - active-buff definition hydration from skill payloads when runtime snapshots omit buff definitions
 - harmony subsystem simulation (forge/alchemical/inscription/resonance)
 - authoritative harmony-data hydration from `progressState.harmonyTypeData`, with forge-only fallback recovery from verified runtime mirrors (`Heat` native variables / heat buff stacks) when the live payload omits forge heat
+- crafting-context resolution now uses live `modAPI.gameData.itemTypeToHarmonyType` mapping as a fallback when recipe harmony fields are absent, and replay snapshots capture detection provenance plus raw craft-context fields for parity triage
 - condition-effect handling from recipe condition config
 - integration guard against stale recipe condition-effect cache across craft transitions
 - fixed 3-condition forecast queue normalization with probability-weighted EV beyond forecast
@@ -38,6 +39,7 @@ related_files:
 - native max toxicity getter (`getMaxToxicity`) for alchemy crafts
 - internal effective action-cost modeling (buff/harmony/condition aware) used by recommendation and follow-up previews
 - optimizer replay snapshots now include serialized `harmonyData` plus a `harmonyDataSource` tag so bug reports can distinguish authoritative harmony state from verified fallbacks
+- installed runtime extraction from the current game bundle is the tiebreaker when UI/help text or older notes drift from executable behavior; forge low-control penalties are verified against the live bundle at heat `2-3`, not `1-3`
 
 ## Dependency-gated
 

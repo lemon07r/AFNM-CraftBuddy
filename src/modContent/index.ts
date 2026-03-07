@@ -49,6 +49,14 @@ import {
   getSearchConfig,
 } from '../settings';
 import { resolveBaseCraftingStats } from './configStats';
+import {
+  resolveCraftingType,
+  resolveSublimeCraftState,
+  sanitizeItemTypeHarmonyMap,
+  type CraftingType,
+  type CraftingTypeDetectionSource,
+  type SublimeDetectionSignal,
+} from './craftingContext';
 import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
 import { buildConfigSnapshot, buildStateSnapshot } from './replaySnapshot';
 import { debugLog } from '../utils/debug';
@@ -97,9 +105,19 @@ interface IntegrationDiagnostics {
   usingModApiCapGetters: boolean;
   usingModApiCraftingVariableResolver: boolean;
   usingModApiMaxToxicityGetter: boolean;
+  usingModApiItemTypeHarmonyMapping: boolean;
   nativeCanUseActionCalls: number;
   nativeCanUseActionBlocked: number;
   nativeCanUseActionErrors: number;
+  lastCraftingTypeDetectionSource: CraftingTypeDetectionSource;
+  lastCraftingTypeMappedItemKind?: string;
+  craftingTypeDetectedFromItemKindCount: number;
+  lastSublimeDetectionSignals: SublimeDetectionSignal[];
+  lastHarmonyDataSource: HarmonyDataSource;
+  harmonyDataFromProgressStateCount: number;
+  harmonyDataFromNativeVariablesCount: number;
+  harmonyDataFromBuffsCount: number;
+  harmonyDataMissingCount: number;
 }
 
 const integrationDiagnostics: IntegrationDiagnostics = {
@@ -119,9 +137,19 @@ const integrationDiagnostics: IntegrationDiagnostics = {
   usingModApiCapGetters: false,
   usingModApiCraftingVariableResolver: false,
   usingModApiMaxToxicityGetter: false,
+  usingModApiItemTypeHarmonyMapping: false,
   nativeCanUseActionCalls: 0,
   nativeCanUseActionBlocked: 0,
   nativeCanUseActionErrors: 0,
+  lastCraftingTypeDetectionSource: 'unchanged',
+  lastCraftingTypeMappedItemKind: undefined,
+  craftingTypeDetectedFromItemKindCount: 0,
+  lastSublimeDetectionSignals: [],
+  lastHarmonyDataSource: 'missing',
+  harmonyDataFromProgressStateCount: 0,
+  harmonyDataFromNativeVariablesCount: 0,
+  harmonyDataFromBuffsCount: 0,
+  harmonyDataMissingCount: 0,
 };
 
 // Toxicity tracking for alchemy crafting
@@ -132,8 +160,7 @@ let maxToxicity = 0;
 let currentCooldowns: Map<string, number> = new Map();
 
 // Current crafting type
-let currentCraftingType: 'forge' | 'alchemical' | 'inscription' | 'resonance' =
-  'forge';
+let currentCraftingType: CraftingType = 'forge';
 
 // Sublime crafting mode (harmony type crafting that allows exceeding normal targets)
 // - Standard sublime: 2x normal targets
@@ -209,6 +236,17 @@ function checkIntegrationHealth(): void {
         `[CraftBuddy] High condition provider failure rate: ${(failureRate * 100).toFixed(1)}%`,
       );
     }
+  }
+  const recoveredHarmonyCount =
+    d.harmonyDataFromNativeVariablesCount + d.harmonyDataFromBuffsCount;
+  if (
+    d.harmonyDataFromProgressStateCount === 0 &&
+    recoveredHarmonyCount >= 3 &&
+    d.harmonyDataMissingCount === 0
+  ) {
+    console.warn(
+      '[CraftBuddy] Harmony state is being recovered from fallback sources instead of progressState. Snapshot reports should include replay exports for parity triage.',
+    );
   }
 }
 
@@ -357,9 +395,13 @@ interface OptimizerReplayInputSnapshot {
   context: {
     recipeName?: string;
     craftingType: string;
+    craftingTypeSource: CraftingTypeDetectionSource;
     isSublimeCraft: boolean;
     sublimeTargetMultiplier: number;
+    sublimeDetectionSignals: SublimeDetectionSignal[];
     targetStabilityAtSearchStart: number;
+    integration: Record<string, unknown>;
+    rawCraftContext: Record<string, unknown>;
   };
 }
 
@@ -477,6 +519,48 @@ function buildResultSnapshot(result: SearchResult): Record<string, unknown> {
   };
 }
 
+function buildRawCraftContextSnapshot(
+  recipe: RecipeItem | undefined,
+  recipeStats: CraftingRecipeStats | undefined,
+): Record<string, unknown> {
+  const recipeAny = recipe as Record<string, unknown> | undefined;
+  const recipeStatsAny = recipeStats as Record<string, unknown> | undefined;
+
+  return {
+    recipe: {
+      harmonyType: recipeAny?.harmonyType ?? null,
+      harmonyTypeOverride: recipeAny?.harmonyTypeOverride ?? null,
+      type: recipeAny?.type ?? null,
+      kind: recipeAny?.kind ?? null,
+      craftingMode: recipeAny?.craftingMode ?? null,
+      usesHarmony: recipeAny?.usesHarmony ?? null,
+      isSublimeCraft: recipeAny?.isSublimeCraft ?? null,
+      isSublime: recipeAny?.isSublime ?? null,
+      sublime: recipeAny?.sublime ?? null,
+      canOvercraft: recipeAny?.canOvercraft ?? null,
+      baseItemKind:
+        (recipeAny?.baseItem as Record<string, unknown> | undefined)?.kind ??
+        null,
+      perfectItemKind:
+        (recipeAny?.perfectItem as Record<string, unknown> | undefined)?.kind ??
+        null,
+      sublimeItemKind:
+        (recipeAny?.sublimeItem as Record<string, unknown> | undefined)?.kind ??
+        null,
+    },
+    recipeStats: {
+      harmonyType: recipeStatsAny?.harmonyType ?? null,
+      harmonyBased: recipeStatsAny?.harmonyBased ?? null,
+      isSublime: recipeStatsAny?.isSublime ?? null,
+      sublime: recipeStatsAny?.sublime ?? null,
+      maxToxicity: recipeStatsAny?.maxToxicity ?? null,
+      conditionTypeName:
+        (recipeStatsAny?.conditionType as Record<string, unknown> | undefined)
+          ?.name ?? null,
+    },
+  };
+}
+
 function buildOptimizerReplayInputSnapshot(params: {
   state: CraftingState;
   harmonyDataSource: HarmonyDataSource;
@@ -533,9 +617,13 @@ function buildOptimizerReplayInputSnapshot(params: {
     context: {
       recipeName: (lastRecipe as any)?.name ?? (lastRecipeStats as any)?.name,
       craftingType: currentCraftingType,
+      craftingTypeSource: integrationDiagnostics.lastCraftingTypeDetectionSource,
       isSublimeCraft,
       sublimeTargetMultiplier,
+      sublimeDetectionSignals: integrationDiagnostics.lastSublimeDetectionSignals,
       targetStabilityAtSearchStart: params.maxStabilityAtSearchStart,
+      integration: buildIntegrationDiagnosticsSummary(),
+      rawCraftContext: buildRawCraftContextSnapshot(lastRecipe, lastRecipeStats),
     },
   };
 }
@@ -1227,21 +1315,98 @@ function pickPositiveGameNumber(
   return fallback;
 }
 
-type CraftingType = 'forge' | 'alchemical' | 'inscription' | 'resonance';
+function getLiveItemTypeHarmonyMapping(): Partial<Record<string, CraftingType>> {
+  const raw = (window as any)?.modAPI?.gameData?.itemTypeToHarmonyType;
+  const mapping = sanitizeItemTypeHarmonyMap(raw);
+  integrationDiagnostics.usingModApiItemTypeHarmonyMapping =
+    Object.keys(mapping).length > 0;
+  return mapping;
+}
 
-function normalizeCraftingType(value: unknown): CraftingType | undefined {
-  const normalized = String(value || '')
-    .toLowerCase()
-    .trim();
-  switch (normalized) {
-    case 'forge':
-    case 'alchemical':
-    case 'inscription':
-    case 'resonance':
-      return normalized as CraftingType;
-    default:
-      return undefined;
+function recordHarmonyDataSource(source: HarmonyDataSource): void {
+  integrationDiagnostics.lastHarmonyDataSource = source;
+  switch (source) {
+    case 'progressState':
+      integrationDiagnostics.harmonyDataFromProgressStateCount++;
+      break;
+    case 'nativeVariables':
+      integrationDiagnostics.harmonyDataFromNativeVariablesCount++;
+      break;
+    case 'buffs':
+      integrationDiagnostics.harmonyDataFromBuffsCount++;
+      break;
+    case 'missing':
+      integrationDiagnostics.harmonyDataMissingCount++;
+      break;
   }
+}
+
+function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
+  const d = integrationDiagnostics;
+  const nativeActive: string[] = [];
+  const fallbackActive: string[] = [];
+  if (d.usingModApiScalingEvaluator) nativeActive.push('scaling');
+  else fallbackActive.push('scaling');
+  if (d.usingModApiOvercritHelper) nativeActive.push('overcrit');
+  else fallbackActive.push('overcrit');
+  if (d.usingModApiCanUseActionPrecheck) nativeActive.push('canUseAction');
+  else fallbackActive.push('canUseAction');
+  if (d.usingModApiGetNextCondition) nativeActive.push('conditionTransition');
+  else fallbackActive.push('conditionTransition');
+  if (d.usingModApiCapGetters) nativeActive.push('capGetters');
+  else fallbackActive.push('capGetters');
+  if (d.usingModApiCraftingVariableResolver)
+    nativeActive.push('variableResolver');
+  else fallbackActive.push('variableResolver');
+  if (d.usingModApiMaxToxicityGetter) nativeActive.push('maxToxicity');
+  else fallbackActive.push('maxToxicity');
+  if (d.usingModApiItemTypeHarmonyMapping) nativeActive.push('itemTypeHarmony');
+  else fallbackActive.push('itemTypeHarmony');
+
+  const canUseActionErrorRate =
+    d.nativeCanUseActionCalls > 0
+      ? d.nativeCanUseActionErrors / d.nativeCanUseActionCalls
+      : 0;
+
+  return {
+    nativeProviders: nativeActive,
+    fallbackProviders: fallbackActive,
+    canUseActionStats: {
+      calls: d.nativeCanUseActionCalls,
+      blocked: d.nativeCanUseActionBlocked,
+      errors: d.nativeCanUseActionErrors,
+      errorRate: canUseActionErrorRate,
+    },
+    conditionProvider: {
+      used: d.conditionProviderUsedCount,
+      failures: d.conditionProviderFailureCount,
+      fallbacks: d.conditionProviderFallbackCount,
+    },
+    completionBonus: {
+      source: d.completionBonusSource,
+      mismatches: d.completionBonusMismatchCount,
+    },
+    conditionQueue: {
+      normalized: d.conditionQueueNormalizedCount,
+      trimmed: d.conditionQueueTrimmedCount,
+      padded: d.conditionQueuePaddedCount,
+    },
+    craftingType: {
+      source: d.lastCraftingTypeDetectionSource,
+      mappedItemKind: d.lastCraftingTypeMappedItemKind ?? null,
+      detectedFromItemKind: d.craftingTypeDetectedFromItemKindCount,
+    },
+    sublimeDetection: {
+      signals: d.lastSublimeDetectionSignals,
+    },
+    harmonyData: {
+      lastSource: d.lastHarmonyDataSource,
+      progressState: d.harmonyDataFromProgressStateCount,
+      nativeVariables: d.harmonyDataFromNativeVariablesCount,
+      buffs: d.harmonyDataFromBuffsCount,
+      missing: d.harmonyDataMissingCount,
+    },
+  };
 }
 
 /**
@@ -1255,64 +1420,35 @@ function syncCraftingContextFromState(
 ): void {
   const recipeAny = recipe as any;
   const recipeStatsAny = recipeStats as any;
-
-  const detectedCraftingType = normalizeCraftingType(
-    recipeStatsAny?.harmonyType ??
-      recipeAny?.harmonyType ??
-      recipeAny?.harmonyTypeOverride ??
-      recipeAny?.type,
-  );
-  if (detectedCraftingType) {
-    currentCraftingType = detectedCraftingType;
+  const typeResolution = resolveCraftingType({
+    recipe,
+    recipeStats,
+    itemTypeToHarmonyType: getLiveItemTypeHarmonyMapping(),
+    previousCraftingType: currentCraftingType,
+  });
+  if (typeResolution.craftingType) {
+    currentCraftingType = typeResolution.craftingType;
+  }
+  integrationDiagnostics.lastCraftingTypeDetectionSource =
+    typeResolution.source;
+  integrationDiagnostics.lastCraftingTypeMappedItemKind =
+    typeResolution.mappedItemKind;
+  if (typeResolution.mappedItemKind) {
+    integrationDiagnostics.craftingTypeDetectedFromItemKindCount++;
   }
 
-  const explicitSublimeSignal =
-    [recipeAny?.isSublimeCraft, recipeAny?.isSublime, recipeAny?.sublime].find(
-      (entry) => typeof entry === 'boolean',
-    ) ??
-    [recipeStatsAny?.isSublime, recipeStatsAny?.sublime].find(
-      (entry) => typeof entry === 'boolean',
-    );
-  const craftingMode = String(recipeAny?.craftingMode || '').toLowerCase();
-  const hasModeSignal =
-    craftingMode === 'sublime' || craftingMode === 'harmony';
-  const hasHarmonySignal =
-    !!recipeAny?.usesHarmony || !!recipeStatsAny?.harmonyBased;
-  const completionCapRatio =
-    targetCompletion > 0 && maxCompletionCap !== undefined
-      ? maxCompletionCap / targetCompletion
-      : 1;
-  const perfectionCapRatio =
-    targetPerfection > 0 && maxPerfectionCap !== undefined
-      ? maxPerfectionCap / targetPerfection
-      : 1;
-  const inferredCapMultiplier = Math.max(
-    1,
-    completionCapRatio,
-    perfectionCapRatio,
-  );
-  const capSuggestsSublime = inferredCapMultiplier >= 1.8;
-
-  const inferredSublimeCraft =
-    explicitSublimeSignal === true ||
-    (explicitSublimeSignal !== false &&
-      (hasModeSignal || hasHarmonySignal || capSuggestsSublime));
-  isSublimeCraft = inferredSublimeCraft;
-
-  if (isSublimeCraft) {
-    const isEquipmentCraft =
-      recipeAny?.isEquipment ||
-      recipeAny?.category === 'equipment' ||
-      recipeAny?.type === 'equipment' ||
-      recipeAny?.resultType === 'equipment';
-    const minimumMultiplier = isEquipmentCraft ? 3.0 : 2.0;
-    sublimeTargetMultiplier = Math.max(
-      minimumMultiplier,
-      inferredCapMultiplier,
-    );
-  } else {
-    sublimeTargetMultiplier = 1.0;
-  }
+  const sublimeResolution = resolveSublimeCraftState({
+    recipe,
+    recipeStats,
+    targetCompletion,
+    targetPerfection,
+    maxCompletionCap,
+    maxPerfectionCap,
+  });
+  isSublimeCraft = sublimeResolution.isSublimeCraft;
+  sublimeTargetMultiplier = sublimeResolution.sublimeTargetMultiplier;
+  integrationDiagnostics.lastSublimeDetectionSignals =
+    sublimeResolution.signals;
 
   const explicitMaxToxicity = toFinitePositiveNumber(
     recipeStatsAny?.maxToxicity,
@@ -2214,6 +2350,11 @@ function updateRecommendation(
     nativeVariables: rawNativeVariables,
     buffs: extractedBuffs,
   });
+  if (isSublimeCraft) {
+    recordHarmonyDataSource(harmonyDataSource);
+  } else {
+    integrationDiagnostics.lastHarmonyDataSource = 'missing';
+  }
   const nativeVariables = buildCanonicalNativeVariables({
     nativeVariables: rawNativeVariables,
     buffs: extractedBuffs,
@@ -3365,82 +3506,14 @@ try {
         cacheTargets(recipe?.name);
       }
 
-      // @ts-ignore
-      const recipeHarmonyType = recipe?.harmonyType || recipe?.type;
-      if (
-        recipeHarmonyType &&
-        ['forge', 'alchemical', 'inscription', 'resonance'].includes(
-          recipeHarmonyType,
-        )
-      ) {
-        currentCraftingType = recipeHarmonyType as typeof currentCraftingType;
-      }
-
-      // Detect sublime/harmony crafting mode
-      // Sublime crafting allows exceeding normal target limits
-      // Check various indicators that this might be sublime crafting:
-      // 1. Recipe explicitly marked as sublime
-      // 2. Harmony type crafting (usually sublime)
-      // 3. Equipment crafting (can have higher multipliers)
-      const recipeAny = recipe as any;
-      const recipeStatsAny = recipeStats as any;
-
-      // Check for sublime indicators
-      const isSublimeRecipe =
-        recipeAny?.isSublime ||
-        recipeAny?.sublime ||
-        recipeStatsAny?.isSublime ||
-        recipeStatsAny?.sublime ||
-        recipeAny?.craftingMode === 'sublime' ||
-        recipeAny?.craftingMode === 'harmony';
-
-      // Check if this is equipment crafting (higher multiplier potential)
-      const isEquipmentCraft =
-        recipeAny?.isEquipment ||
-        recipeAny?.category === 'equipment' ||
-        recipeAny?.type === 'equipment' ||
-        recipeAny?.resultType === 'equipment';
-
-      // Harmony type is usually used for sublime craft
-      const isHarmonyType =
-        recipeHarmonyType === 'resonance' ||
-        recipeAny?.usesHarmony ||
-        recipeStatsAny?.harmonyBased;
-
-      // Set sublime crafting mode
-      isSublimeCraft = isSublimeRecipe || isHarmonyType;
-
-      // Set target multiplier based on craft type
-      if (isEquipmentCraft) {
-        sublimeTargetMultiplier = 3.0; // Equipment can go even higher
-      } else if (isSublimeCraft) {
-        sublimeTargetMultiplier = 2.0; // Standard sublime is 2x
-      } else {
-        sublimeTargetMultiplier = 1.0; // Normal crafting
-      }
-
-      debugLog(
-        `[CraftBuddy] Sublime craft detection: isSublime=${isSublimeCraft}, isEquipment=${isEquipmentCraft}, isHarmony=${isHarmonyType}, multiplier=${sublimeTargetMultiplier}`,
-      );
-
-      const explicitMaxToxicity = toFinitePositiveNumber(
-        recipeStatsAny?.maxToxicity,
-      );
-      if (explicitMaxToxicity !== undefined) {
-        maxToxicity = explicitMaxToxicity;
-      } else if (currentCraftingType === 'alchemical') {
-        const realmForToxicity =
-          (lastEntity?.realm as string | undefined) ||
-          ((recipe as any)?.realm as string | undefined);
-        maxToxicity = resolveMaxToxicityCap(realmForToxicity, 100);
-      } else {
-        maxToxicity = 0;
-      }
-
       syncCraftingContextFromState(
         recipe as RecipeItem | undefined,
         recipeStats as CraftingRecipeStats | undefined,
         lastEntity || undefined,
+      );
+
+      debugLog(
+        `[CraftBuddy] Craft context: type=${currentCraftingType} (${integrationDiagnostics.lastCraftingTypeDetectionSource}), sublime=${isSublimeCraft} [${integrationDiagnostics.lastSublimeDetectionSignals.join(', ') || 'none'}], multiplier=${sublimeTargetMultiplier}`,
       );
 
       // Reset state
@@ -3503,53 +3576,7 @@ try {
   getConditionEffects: () => conditionEffectsCache,
   getSettings: () => currentSettings,
   getDiagnostics: () => ({ ...integrationDiagnostics }),
-  getDiagnosticsSummary: () => {
-    const d = integrationDiagnostics;
-    const nativeActive: string[] = [];
-    const fallbackActive: string[] = [];
-    if (d.usingModApiScalingEvaluator) nativeActive.push('scaling');
-    else fallbackActive.push('scaling');
-    if (d.usingModApiOvercritHelper) nativeActive.push('overcrit');
-    else fallbackActive.push('overcrit');
-    if (d.usingModApiCanUseActionPrecheck) nativeActive.push('canUseAction');
-    else fallbackActive.push('canUseAction');
-    if (d.usingModApiGetNextCondition) nativeActive.push('conditionTransition');
-    else fallbackActive.push('conditionTransition');
-    if (d.usingModApiCapGetters) nativeActive.push('capGetters');
-    else fallbackActive.push('capGetters');
-    if (d.usingModApiCraftingVariableResolver)
-      nativeActive.push('variableResolver');
-    else fallbackActive.push('variableResolver');
-    if (d.usingModApiMaxToxicityGetter) nativeActive.push('maxToxicity');
-    const canUseActionErrorRate =
-      d.nativeCanUseActionCalls > 0
-        ? d.nativeCanUseActionErrors / d.nativeCanUseActionCalls
-        : 0;
-    return {
-      nativeProviders: nativeActive,
-      fallbackProviders: fallbackActive,
-      canUseActionStats: {
-        calls: d.nativeCanUseActionCalls,
-        blocked: d.nativeCanUseActionBlocked,
-        errors: d.nativeCanUseActionErrors,
-        errorRate: canUseActionErrorRate,
-      },
-      conditionProvider: {
-        used: d.conditionProviderUsedCount,
-        failures: d.conditionProviderFailureCount,
-        fallbacks: d.conditionProviderFallbackCount,
-      },
-      completionBonus: {
-        source: d.completionBonusSource,
-        mismatches: d.completionBonusMismatchCount,
-      },
-      conditionQueue: {
-        normalized: d.conditionQueueNormalizedCount,
-        trimmed: d.conditionQueueTrimmedCount,
-        padded: d.conditionQueuePaddedCount,
-      },
-    };
-  },
+  getDiagnosticsSummary: () => buildIntegrationDiagnosticsSummary(),
   getLastEntity: () => lastEntity,
   getLastProgressState: () => lastProgressState,
   getLastRecipe: () => lastRecipe,
