@@ -3,8 +3,8 @@ title: Release Process
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-06
-source_of_truth: package.json, scripts/workshop-upload.ts, .github/workflows/release.yml, ../ModUploader-AFNM/package.json, ../ModUploader-AFNM/electron/main/cli.ts
+last_verified: 2026-03-07
+source_of_truth: package.json, scripts/workshop-upload.ts, scripts/installed-game-runtime.js, .github/workflows/release.yml, ../ModUploader-AFNM/package.json, ../ModUploader-AFNM/electron/main/cli.ts
 review_cycle_days: 30
 related_files:
   - AGENTS.md
@@ -44,7 +44,7 @@ bun run docs:check
 
 If the task changed behavior or workflow but the docs did not need edits after review, explicitly confirm that no authoritative docs became stale before continuing.
 
-If the change touched `src/modContent/`, UI integration, craft-entry behavior, or anything runtime-sensitive in the installed game, consider running the live game verification flow in [`docs/project/TESTING.md`](./TESTING.md) before publishing.
+If the change touched `src/modContent/`, UI integration, craft-entry behavior, or anything runtime-sensitive in the installed game, run the installed-runtime oracle flow in [`docs/project/TESTING.md`](./TESTING.md) before publishing. Use live UI verification only when explicitly requested or when a non-disruptive automated path exists.
 
 ## 3. Commit the release
 

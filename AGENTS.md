@@ -23,7 +23,10 @@
 - `bun run test:coverage`: generate coverage reports in `coverage/` (text, lcov, html).
 - `bun run ui:harness:build`: build the browser UI harness into `tmp/ui-harness/`.
 - `bun run ui:harness:serve`: serve the UI harness at `http://127.0.0.1:4173` for `agent-browser`.
-- `"/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains/launch-native.sh" --remote-debugging-port=9222`: launch the installed game with a CDP port for live `agent-browser` verification after staging the build into the game's `mods/` directory.
+- `bun run runtime:oracle`: extract/cache the installed game's `app.asar` and print a parity summary (version, forge bands, ModAPI exposures, Steam/settings behaviors).
+- `bun run runtime:extract`: print the cached extracted runtime directory for the installed game.
+- `bun run runtime:grep -- "<pattern>"`: grep the extracted installed runtime without launching the game UI.
+- `"/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains/launch-native.sh" --remote-debugging-port=9222`: optional manual live UI path only; do not use by default because it is disruptive and not standardized for headless automation in this repo.
 - `bun run docs:check`: validate docs links/freshness/authority.
 - `bun run docs:inventory`: regenerate `docs/DOC_INVENTORY.md`.
 - `bun run jest src/__tests__/search.test.ts`: run a focused test file.
@@ -53,6 +56,7 @@
 - For changes in `src/optimizer/`, include cases for target completion, stability/Qi limits, and condition or buff interactions.
 - Run `bun run test` before pushing; use coverage checks for larger refactors.
 - For `src/ui/` layout or interaction changes, also use the committed browser harness with `agent-browser`; see `docs/project/TESTING.md`.
+- For runtime/mechanics parity work, prefer the installed-runtime oracle in `docs/project/TESTING.md`; do not launch the installed game UI by default.
 - Any change to scoring or move ordering in `search.ts` must pass **both** the simulation tests (`craftSimulation.test.ts`) and the regression tests at the bottom of `search.test.ts`.
 - See `docs/project/TESTING.md` for simulation vs. unit test guidance, test ownership by area, and validation requirements.
 

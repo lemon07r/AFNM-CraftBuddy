@@ -3,8 +3,8 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-06
-source_of_truth: src/__tests__/*, package.json, scripts/docs/*
+last_verified: 2026-03-07
+source_of_truth: src/__tests__/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
 review_cycle_days: 30
 related_files:
   - AGENTS.md
@@ -22,6 +22,9 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 - `bun run jest src/__tests__/<file>.test.ts` — focused file
 - `bun run ui:harness:build` — build the committed browser harness into `tmp/ui-harness/`
 - `bun run ui:harness:serve` — serve the harness at `http://127.0.0.1:4173`
+- `bun run runtime:oracle` — cached extraction/parity summary for the installed game bundle
+- `bun run runtime:extract` — print the extracted installed-runtime directory
+- `bun run runtime:grep -- "<pattern>"` — grep the extracted installed runtime without launching the game UI
 
 ## Test ownership by area
 
@@ -80,69 +83,43 @@ The harness renders a stable recommendation/settings fixture that is good enough
 
 Keep `react` and `react-dom` on the same version. Standalone browser verification will fail fast on mismatched versions even if the mod webpack build still succeeds.
 
-When touching craft-entry loading behavior in `src/modContent/index.ts`, also verify in the live game by entering a craft from the main menu. The harness can cover layout, but it cannot reproduce the real `createRoot` mount/poll/search timing that decides whether the loading shell paints before the first recommendation.
+For `src/modContent/index.ts` and other runtime-sensitive work, the default validation path is the installed-runtime oracle below, not launching the installed game UI.
 
-## Live game verification
+## Optional live UI verification
 
-The installed game at `/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains` is an Electron app, so it can be exercised through Chrome DevTools Protocol.
+Live UI automation against the installed Electron app is currently **manual/opt-in only**, not part of the default validation flow.
 
-Recommended local flow:
+Reasons:
 
-1. Build CraftBuddy:
+- direct app launch is disruptive on the desktop unless a separate virtual display/Xvfb-style path is available
+- the installed app restarts through Steam by default unless a `disable_steam` sentinel file exists next to the binary
+- if launched from the repo as the current working directory, the game writes its own `./settings.json` there
 
-   ```bash
-   bun run build
-   ```
-
-2. Stage the current build into the game's `mods/` directory. A symlink works well for repeated local testing:
-
-   ```bash
-   ln -sfn "/home/lamim/Development/AFNM/AFNM - CraftBuddy/builds/afnm-craftbuddy.zip" "/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains/mods/afnm-craftbuddy.zip"
-   ```
-
-3. Optional but recommended for manual debugging: create `devMode` in the game directory so F12/devtools are available.
-
-4. Launch the game with a remote debugging port:
-
-   ```bash
-   "/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains/launch-native.sh" --remote-debugging-port=9222
-   ```
-
-5. Attach `agent-browser`:
-
-   ```bash
-   agent-browser connect 9222
-   agent-browser tab
-   agent-browser snapshot -i
-   ```
-
-6. Enter a craft from the main menu and verify:
-
-- the CraftBuddy panel appears
-- the loading shell renders before the first recommendation when craft state is still initializing
-- the settings panel still opens and closes correctly
-
-Notes:
-
-- The game launcher already forwards extra Chromium/Electron flags, so `--remote-debugging-port=9222` works with `launch-native.sh`.
-- `README.md` documents the `devMode` file for opening in-game devtools manually.
-- The live runtime externalizes React/ReactDOM globals differently from the harness/browser build. When touching mount timing, validate in the live game, not only in the harness.
+If live UI verification is explicitly requested in the future, use a non-repo working directory, prefer a hidden display/virtual display, and only proceed if the flow is actually automated and non-disruptive.
 
 ## Installed runtime oracle
 
-When UI text, historical notes, and live behavior disagree, verify against the installed Electron bundle before changing mechanics or tests. The executable is authoritative.
+When UI text, historical notes, and live behavior disagree, verify against the installed Electron bundle before changing mechanics or tests. The executable is authoritative, and this is the default parity path.
 
-1. Extract the current game bundle:
-
-   ```bash
-   npx -y @electron/asar extract "/home/lamim/.local/share/Steam/steamapps/common/Ascend From Nine Mountains/resources/app.asar" /tmp/afnm-app
-   ```
-
-2. Inspect the compiled runtime:
+1. Print the runtime summary:
 
    ```bash
-   rg -n "forgeWorks\\.heat>=2&&t\\.forgeWorks\\.heat<=3|recommendedTechniqueTypes" /tmp/afnm-app/dist-electron/Game.js
+   bun run runtime:oracle
    ```
+
+2. If needed, locate the cached extraction directory:
+
+   ```bash
+   bun run runtime:extract
+   ```
+
+3. Grep the compiled runtime for a mechanic or API symbol:
+
+   ```bash
+   bun run runtime:grep -- "forgeWorks\\.heat>=2&&t\\.forgeWorks\\.heat<=3|recommendedTechniqueTypes|itemTypeToHarmonyType"
+   ```
+
+The summary includes the installed game version, whether the app writes a relative `settings.json`, whether Steam restart can be disabled via sentinel file, forge heat-band signals, and key ModAPI crafting exposures.
 
 This is the recommended parity check when older curated/history docs or on-screen text drift. Example: the installed runtime verified on March 6, 2026 uses Forge low-control penalties at heat `2-3`, not `1-3`.
 

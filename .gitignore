@@ -48,6 +48,9 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# Local runtime artifact when the installed game is launched from the repo cwd
+settings.json
+
 # Temporary files
 tmp/
 temp/

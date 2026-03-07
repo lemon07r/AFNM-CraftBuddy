@@ -3,7 +3,7 @@ title: Start Here For Agents
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-28
+last_verified: 2026-03-07
 source_of_truth: src/modContent/index.ts, src/optimizer/*, src/__tests__/*
 review_cycle_days: 14
 related_files:
@@ -31,7 +31,7 @@ Fast, low-noise onboarding for implementation work on AFNM-CraftBuddy.
 
 ## Task-specific docs
 
-- testing + harness + live game verification: `docs/project/TESTING.md`
+- testing + harness + installed runtime oracle + optional live UI verification: `docs/project/TESTING.md`
 - release/version bump/tag/workshop flow: `docs/project/RELEASE_PROCESS.md`
 
 ## Key code entrypoints
