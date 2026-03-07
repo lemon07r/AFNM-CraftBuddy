@@ -87,9 +87,9 @@ describe('Forge Works', () => {
     expect(result.harmonyDelta).toBe(10);
   });
 
-  it('should give -10 harmony in suboptimal zones (2-3, 7-9)', () => {
-    const hd: HarmonyData = { forgeWorks: { heat: 4 }, recommendedTechniqueTypes: [] };
-    // refine: heat 4-1=3 (suboptimal)
+  it('should give -10 harmony in suboptimal zones (1-3, 7-9)', () => {
+    const hd: HarmonyData = { forgeWorks: { heat: 2 }, recommendedTechniqueTypes: [] };
+    // refine: heat 2-1=1 (suboptimal)
     const result = processHarmonyEffect(hd, 'forge', 'refine');
     expect(result.harmonyDelta).toBe(-10);
   });
@@ -113,9 +113,9 @@ describe('Forge Works', () => {
     expect(sweet.controlMultiplier).toBe(1.5);
     expect(sweet.intensityMultiplier).toBe(1.5);
 
-    // Low zone (2-3): -50% control
+    // Low zone (1-3): -50% control
     const low = getHarmonyStatModifiers(
-      { forgeWorks: { heat: 3 }, recommendedTechniqueTypes: [] }, 'forge'
+      { forgeWorks: { heat: 1 }, recommendedTechniqueTypes: [] }, 'forge'
     );
     expect(low.controlMultiplier).toBe(0.5);
     expect(low.intensityMultiplier).toBe(1);

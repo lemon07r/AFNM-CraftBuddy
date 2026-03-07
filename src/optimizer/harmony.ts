@@ -68,7 +68,7 @@ function getForgeWorksStatModifiers(heat: number): HarmonyStatModifiers {
   if (heat >= 4 && heat <= 6) {
     mods.controlMultiplier = 1.5;
     mods.intensityMultiplier = 1.5;
-  } else if (heat >= 2 && heat <= 3) {
+  } else if (heat >= 1 && heat <= 3) {
     mods.controlMultiplier = 0.5;
   } else if (heat >= 7 && heat <= 9) {
     mods.intensityMultiplier = 0.5;
@@ -98,7 +98,7 @@ function processForgeWorks(
   let harmonyDelta = 0;
   if (fw.heat >= 4 && fw.heat <= 6) {
     harmonyDelta = 10;
-  } else if ((fw.heat >= 2 && fw.heat <= 3) || (fw.heat >= 7 && fw.heat <= 9)) {
+  } else if ((fw.heat >= 1 && fw.heat <= 3) || (fw.heat >= 7 && fw.heat <= 9)) {
     harmonyDelta = -10;
   } else if (fw.heat === 0 || fw.heat === 10) {
     harmonyDelta = -20;

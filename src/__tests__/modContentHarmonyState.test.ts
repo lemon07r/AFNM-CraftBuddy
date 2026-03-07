@@ -1,5 +1,5 @@
 import { BuffType, CraftingState } from '../optimizer/state';
-import { lookaheadSearch } from '../optimizer/search';
+import { findBestSkill, lookaheadSearch } from '../optimizer/search';
 import type { OptimizerConfig, SkillDefinition } from '../optimizer/skills';
 import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
 import { setNativeCraftingUtils } from '../optimizer/gameTypes';
@@ -107,9 +107,7 @@ describe('modContent harmony hydration', () => {
 
     expect(result.source).toBe('buffs');
     expect(result.harmonyData?.forgeWorks?.heat).toBe(4);
-    expect(result.harmonyData?.recommendedTechniqueTypes).toEqual([
-      'fusion',
-    ]);
+    expect(result.harmonyData?.recommendedTechniqueTypes).toEqual(['fusion']);
   });
 
   it('preserves authoritative non-forge harmony data from progressState', () => {
@@ -471,10 +469,206 @@ describe('integration regression - forge heat parity', () => {
     expect(result.recommendation?.skill.type).toBe('fusion');
   });
 
-  it('ignores misbehaving native scaling for upgrade-bearing refine effects', () => {
-    const nativeEvaluateScaling = jest.fn((scaling: Record<string, unknown>) => {
-      return scaling.upgradeKey === 'perfection' ? 999999 : Number.NaN;
+  it('still recommends fusion at heat=1 for snapshot-style invasive skills', () => {
+    const invasiveFusion = createSkill({
+      name: 'Invasive Fusion',
+      key: 'invasive_fusion',
+      type: 'fusion',
+      qiCost: 12,
+      stabilityCost: 17,
+      successChance: 1,
+      baseCompletionGain: 3.5,
+      buffType: 1 as any,
+      buffDuration: 5,
+      buffMultiplier: 1.1,
+      scalesWithIntensity: true,
+      effects: [
+        {
+          kind: 'completion',
+          amount: {
+            value: 3.5,
+            stat: 'intensity',
+            upgradeKey: 'completion',
+          },
+        },
+        {
+          kind: 'createBuff',
+          condition: {
+            kind: 'chance',
+            percentage: 25,
+          },
+          buff: {
+            name: 'Fusion Invasion',
+            canStack: false,
+            stats: {
+              intensity: {
+                value: -0.3,
+                stat: 'intensity',
+                upgradeKey: 'debuffIntensity',
+              },
+            },
+            effects: [
+              {
+                kind: 'addStack',
+                stacks: { value: -1 },
+              },
+            ],
+            stacks: 1,
+            displayLocation: 'avatar',
+          },
+          stacks: { value: 3 },
+        },
+        {
+          kind: 'completion',
+          condition: {
+            kind: 'chance',
+            percentage: 10,
+          },
+          amount: {
+            value: 0.8,
+            stat: 'intensity',
+          },
+        },
+      ] as any,
     });
+    const invasiveRefine = createSkill({
+      name: 'Invasive Refine',
+      key: 'invasive_refine',
+      type: 'refine',
+      qiCost: 12,
+      stabilityCost: 17,
+      successChance: 1,
+      basePerfectionGain: 0.8,
+      buffType: 1 as any,
+      buffDuration: 5,
+      buffMultiplier: 1.1,
+      scalesWithControl: true,
+      effects: [
+        {
+          kind: 'perfection',
+          amount: {
+            value: 3.5,
+            stat: 'control',
+            upgradeKey: 'perfection',
+          },
+        },
+        {
+          kind: 'createBuff',
+          condition: {
+            kind: 'chance',
+            percentage: 25,
+          },
+          buff: {
+            name: 'Refinement Invasion',
+            canStack: false,
+            stats: {
+              control: {
+                value: -0.3,
+                stat: 'control',
+                upgradeKey: 'debuffControl',
+              },
+            },
+            effects: [
+              {
+                kind: 'addStack',
+                stacks: { value: -1 },
+              },
+            ],
+            stacks: 1,
+            displayLocation: 'avatar',
+          },
+          stacks: { value: 3 },
+        },
+        {
+          kind: 'perfection',
+          condition: {
+            kind: 'chance',
+            percentage: 10,
+          },
+          amount: {
+            value: 0.8,
+            stat: 'control',
+          },
+        },
+      ] as any,
+    });
+    const config = createForgeConfig([invasiveFusion, invasiveRefine], {
+      maxQi: 266.9,
+      maxCompletion: 45537,
+      maxPerfection: 45537,
+      maxToxicity: 160,
+      baseIntensity: 253,
+      baseControl: 269,
+      defaultBuffMultiplier: 1.1,
+      targetMultiplier: 17.58185328185328,
+      targetCompletion: 2590,
+      targetPerfection: 2590,
+      conditionEffectsData: {
+        neutral: [],
+        positive: [
+          { kind: 'intensity', multiplier: 0.25 },
+          { kind: 'control', multiplier: 0.25 },
+        ],
+        negative: [
+          { kind: 'intensity', multiplier: -0.25 },
+          { kind: 'control', multiplier: -0.25 },
+        ],
+        veryPositive: [
+          { kind: 'intensity', multiplier: 0.5 },
+          { kind: 'control', multiplier: 0.5 },
+        ],
+        veryNegative: [
+          { kind: 'intensity', multiplier: -0.5 },
+          { kind: 'control', multiplier: -0.5 },
+        ],
+      } as any,
+    });
+
+    const state = new CraftingState({
+      qi: 266.9,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+      critChance: 8,
+      critMultiplier: 135,
+      successChanceBonus: 0,
+      poolCostPercentage: 100,
+      stabilityCostPercentage: 100,
+      toxicity: 0,
+      maxToxicity: 160,
+      harmony: 0,
+      harmonyData: {
+        forgeWorks: { heat: 1 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+      buffs: new Map<string, { name: string; stacks: number }>([
+        ['heat', { name: 'Heat', stacks: 1 }],
+      ]),
+    });
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      2590,
+      2590,
+      24,
+      'neutral',
+      ['positive', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 7 },
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation?.skill.key).toBe('invasive_fusion');
+    expect(result.alternativeSkills[0]?.skill.key).toBe('invasive_refine');
+  });
+
+  it('ignores misbehaving native scaling for upgrade-bearing refine effects', () => {
+    const nativeEvaluateScaling = jest.fn(
+      (scaling: Record<string, unknown>) => {
+        return scaling.upgradeKey === 'perfection' ? 999999 : Number.NaN;
+      },
+    );
     setNativeCraftingUtils({
       evaluateScaling: nativeEvaluateScaling,
     });
@@ -610,8 +804,366 @@ describe('integration regression - forge heat parity', () => {
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation?.skill.key).toBe('simple_fusion');
     expect(
-      result.alternativeSkills.find((rec) => rec.skill.key === 'vulnerable_refine')
-        ?.immediateGains.perfection,
+      result.alternativeSkills.find(
+        (rec) => rec.skill.key === 'vulnerable_refine',
+      )?.immediateGains.perfection,
     ).toBe(0);
+  });
+
+  it('replays the reported skyfall bow forge opener with fusion before invasive refine', () => {
+    // Regression from the 2026-03-07 live snapshot: a forge sublime craft at
+    // authoritative heat=0 was reported as opening with Invasive Refine even
+    // though forge heat should zero all refine gains until fusion raises it.
+    const invasiveFusion = createSkill({
+      name: 'Invasive Fusion',
+      key: 'invasive_fusion',
+      type: 'fusion',
+      qiCost: 12,
+      stabilityCost: 17,
+      successChance: 1,
+      baseCompletionGain: 3.5,
+      buffType: BuffType.CONTROL,
+      buffDuration: 5,
+      buffMultiplier: 1.1,
+      scalesWithIntensity: true,
+      restoresQi: true,
+      qiRestore: 5,
+      effects: [
+        {
+          kind: 'completion',
+          amount: {
+            value: 3.5,
+            stat: 'intensity',
+            upgradeKey: 'completion',
+          },
+        },
+        {
+          kind: 'createBuff',
+          condition: {
+            kind: 'chance',
+            percentage: 25,
+          },
+          buff: {
+            name: 'Fusion Invasion',
+            canStack: false,
+            stats: {
+              intensity: {
+                value: -0.3,
+                stat: 'intensity',
+                upgradeKey: 'debuffIntensity',
+              },
+            },
+            effects: [
+              {
+                kind: 'addStack',
+                stacks: {
+                  value: -1,
+                },
+              },
+            ],
+            stacks: 1,
+            displayLocation: 'player',
+          },
+          stacks: {
+            value: 3,
+          },
+        },
+        {
+          kind: 'pool',
+          condition: {
+            kind: 'chance',
+            percentage: 15,
+          },
+          amount: {
+            value: 5,
+          },
+        } as any,
+        {
+          kind: 'createBuff',
+          buff: {
+            name: 'Intensifying (6%)',
+            canStack: true,
+            stats: {
+              intensity: {
+                value: 0.06,
+                stat: 'intensity',
+              },
+            },
+            effects: [
+              {
+                kind: 'addStack',
+                stacks: {
+                  value: -1,
+                },
+              },
+            ],
+            stacks: 1,
+            maxStacks: 2,
+            onFusion: [],
+            onRefine: [],
+            displayLocation: 'player',
+          },
+          stacks: {
+            value: 1,
+          },
+        },
+        {
+          kind: 'createBuff',
+          condition: {
+            kind: 'chance',
+            percentage: 20,
+          },
+          buff: {
+            name: 'Controlling Enhancement',
+            canStack: true,
+            stats: {
+              control: {
+                value: 0.1,
+                stat: 'control',
+              },
+            },
+            effects: [
+              {
+                kind: 'addStack',
+                stacks: {
+                  value: -1,
+                },
+              },
+            ],
+            stacks: 1,
+            onFusion: [],
+            onRefine: [],
+            displayLocation: 'player',
+            maxStacks: 5,
+          },
+          stacks: {
+            value: 5,
+          },
+        },
+      ] as any,
+    });
+    const invasiveRefine = createSkill({
+      name: 'Invasive Refine',
+      key: 'invasive_refine',
+      type: 'refine',
+      qiCost: 12,
+      stabilityCost: 17,
+      successChance: 1,
+      basePerfectionGain: 0.8,
+      buffType: BuffType.CONTROL,
+      buffDuration: 5,
+      buffMultiplier: 1.1,
+      scalesWithControl: true,
+      effects: [
+        {
+          kind: 'perfection',
+          amount: {
+            value: 3.5,
+            stat: 'control',
+            upgradeKey: 'perfection',
+          },
+        },
+        {
+          kind: 'createBuff',
+          condition: {
+            kind: 'chance',
+            percentage: 25,
+          },
+          buff: {
+            name: 'Refinement Invasion',
+            canStack: false,
+            stats: {
+              control: {
+                value: -0.3,
+                stat: 'control',
+                upgradeKey: 'debuffControl',
+              },
+            },
+            effects: [
+              {
+                kind: 'addStack',
+                stacks: {
+                  value: -1,
+                },
+              },
+            ],
+            stacks: 1,
+            displayLocation: 'player',
+          },
+          stacks: {
+            value: 3,
+          },
+        },
+        {
+          kind: 'perfection',
+          condition: {
+            kind: 'chance',
+            percentage: 10,
+          },
+          amount: {
+            value: 0.8,
+            stat: 'control',
+          },
+        },
+        {
+          kind: 'createBuff',
+          buff: {
+            name: 'Controlling (10%)',
+            canStack: true,
+            stats: {
+              control: {
+                value: 0.1,
+                stat: 'control',
+              },
+            },
+            effects: [
+              {
+                kind: 'addStack',
+                stacks: {
+                  value: -1,
+                },
+              },
+            ],
+            stacks: 1,
+            maxStacks: 2,
+            onFusion: [],
+            onRefine: [],
+            displayLocation: 'player',
+          },
+          stacks: {
+            value: 1,
+          },
+        },
+        {
+          kind: 'createBuff',
+          condition: {
+            kind: 'chance',
+            percentage: 20,
+          },
+          buff: {
+            name: 'Controlling Enhancement',
+            canStack: true,
+            stats: {
+              control: {
+                value: 0.1,
+                stat: 'control',
+              },
+            },
+            effects: [
+              {
+                kind: 'addStack',
+                stacks: {
+                  value: -1,
+                },
+              },
+            ],
+            stacks: 1,
+            onFusion: [],
+            onRefine: [],
+            displayLocation: 'player',
+            maxStacks: 5,
+          },
+          stacks: {
+            value: 5,
+          },
+        },
+      ] as any,
+    });
+    const config = createForgeConfig([invasiveFusion, invasiveRefine], {
+      maxQi: 266.9,
+      maxStability: 60,
+      maxCompletion: 45537,
+      maxPerfection: 45537,
+      baseIntensity: 253,
+      baseControl: 269,
+      defaultBuffMultiplier: 1.1,
+      maxToxicity: 160,
+      targetMultiplier: 17.58185328185328,
+      targetCompletion: 2590,
+      targetPerfection: 2590,
+      conditionEffectsData: {
+        neutral: [],
+        positive: [
+          { kind: 'intensity', multiplier: 0.25 },
+          { kind: 'control', multiplier: 0.25 },
+        ],
+        negative: [
+          { kind: 'intensity', multiplier: -0.25 },
+          { kind: 'control', multiplier: -0.25 },
+        ],
+        veryPositive: [
+          { kind: 'intensity', multiplier: 0.5 },
+          { kind: 'control', multiplier: 0.5 },
+        ],
+        veryNegative: [
+          { kind: 'intensity', multiplier: -0.5 },
+          { kind: 'control', multiplier: -0.5 },
+        ],
+      },
+    });
+    const state = new CraftingState({
+      qi: 266.9,
+      stability: 60,
+      initialMaxStability: 60,
+      stabilityPenalty: 0,
+      completion: 0,
+      perfection: 0,
+      critChance: 8,
+      critMultiplier: 135,
+      successChanceBonus: 0,
+      poolCostPercentage: 100,
+      stabilityCostPercentage: 100,
+      toxicity: 0,
+      maxToxicity: 160,
+      harmony: 0,
+      harmonyData: {
+        forgeWorks: { heat: 0 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+      buffs: new Map([
+        ['heat', { name: 'Heat', stacks: 1 }],
+        ['tidal_current', { name: 'Tidal Current', stacks: 1 }],
+      ]),
+      nativeVariables: {
+        resistance: 5,
+        itemEffectiveness: 10,
+        control: -2421,
+        intensity: 253,
+        critchance: 8,
+        critmultiplier: 135,
+        successChanceBonus: 0,
+      },
+      step: 0,
+    });
+
+    const result = findBestSkill(
+      state,
+      config,
+      2590,
+      2590,
+      false,
+      24,
+      'neutral',
+      ['positive', 'neutral', 'neutral'],
+      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 7 },
+    );
+
+    const refineRecommendation = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ]
+      .filter(
+        (
+          recommendation,
+        ): recommendation is NonNullable<typeof result.recommendation> =>
+          Boolean(recommendation),
+      )
+      .find((recommendation) => recommendation.skill.key === 'invasive_refine');
+
+    expect(refineRecommendation?.immediateGains.perfection).toBe(0);
+    expect(refineRecommendation?.expectedGains.perfection).toBe(0);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation?.skill.key).toBe('invasive_fusion');
+    expect(result.recommendation?.skill.type).toBe('fusion');
   });
 });
