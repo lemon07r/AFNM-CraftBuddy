@@ -30,11 +30,13 @@ related_files:
 ## Search characteristics
 
 - Transposition table: `Map<string, { score, bestMove }>` on normalized state keys (with adaptive bucket sizing near targets)
+- Iterative deepening reuses one shared transposition table; the adaptive beam profile is keyed only by local remaining depth so cached subproblems stay valid across passes
 - `findOptimalPath()` reconstructs the tree search's actual chosen path by walking the transposition table's `bestMove` entries, with greedy evaluation fallback for cache misses
 - beam-limited exploration
 - adaptive beam width at deeper layers
 - iterative deepening option (only fully completed deeper passes replace shallower results)
 - node/time budget constraints
+- node budget counts cache-miss frontier expansions rather than cache probes
 - terminal-state shortcuts
 
 ## Probability handling
@@ -61,13 +63,17 @@ related_files:
 
 ### Move ordering
 
-`buildOrderedMoveCandidates()` is the live beam-ordering path. It evaluates every currently legal move with `applySkill(...)`, scores the resulting state through `estimatePostMoveStateScore(...)`, and then uses `compareMoveCandidatesForTie(...)` plus immediate progress as tie-breakers. This keeps beam pruning aligned with the same post-move state evaluation that the tree search and first-move recommendation path use.
+`buildOrderedMoveCandidates()` is the live beam-ordering path. It evaluates every currently legal move with `applySkill(...)`, scores the resulting state through `estimatePostMoveStateScore(...)`, and then uses `compareMoveCandidatesForTie(...)` plus immediate progress as tie-breakers. When iterative deepening has already solved a shallower version of the same normalized subproblem, the cached `bestMove` is promoted before beam truncation so deeper passes continue from the previously validated principal variation instead of re-guessing move order from scratch.
 
 No skills are hard-filtered out of the search tree before evaluation. If a move class is being mis-ordered, fix the post-move state evaluation or the underlying transition/scoring model instead of introducing a second heuristic ordering lane.
 
+### Budget ownership
+
+Recommendation budget is reserved for ranking first moves. Follow-up suggestions are generated only after a root frontier is accepted, using cached `bestMove` entries first and shallow fallback only when needed. Auxiliary UI data must not consume the search budget that determines the actual recommendation.
+
 ## Determinism expectations
 
-Identical state + config inputs should produce stable recommendations within the deterministic EV model when the search reaches the same effective frontier under the configured limits. Because lookahead is bounded by wall-clock time, node caps, beam width, and iterative deepening, the same slider values can explore different depths on faster vs slower machines; `searchTimeBudgetMs`, `searchMaxNodes`, `searchBeamWidth`, and `lookaheadDepth` define a budget envelope, not a cross-machine determinism guarantee. Condition normalization lowercases unknown labels to avoid cache-key casing drift.
+Identical state + config inputs should produce stable recommendations within the deterministic EV model when the search reaches the same effective frontier under the configured limits. Because lookahead is bounded by wall-clock time, node caps, beam width, and iterative deepening, the same slider values can explore different depths on faster vs slower machines; `searchTimeBudgetMs`, `searchMaxNodes`, `searchBeamWidth`, and `lookaheadDepth` define a budget envelope, not a cross-machine determinism guarantee. Condition normalization lowercases unknown labels to avoid cache-key casing drift. When a deeper pass does not fully complete, the optimizer keeps the last fully completed frontier (or the fully-evaluated immediate root frontier if no recursive pass completed) instead of mixing partial deep scores into the final ranking.
 
 ## Performance tuning
 

@@ -91,9 +91,11 @@ export interface SearchResult {
   };
   /** Search performance metrics */
   searchMetrics?: {
+    /** Cache-miss frontier nodes that were actually expanded. */
     nodesExplored: number;
     cacheHits: number;
     timeTakenMs: number;
+    /** Deepest fully completed frontier kept for the returned result set. */
     depthReached: number;
     pruned: number;
   };
@@ -105,7 +107,7 @@ export interface SearchResult {
 export interface SearchConfig {
   /** Maximum time budget in milliseconds (default: 500ms) */
   timeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (default: 200000) */
+  /** Maximum cache-miss frontier nodes to expand before stopping (default: 200000) */
   maxNodes: number;
   /** Beam width - max branches to explore at each level (default: 8) */
   beamWidth: number;
@@ -123,8 +125,9 @@ export interface SearchConfig {
    */
   iterativeDeepeningMinDepth: number;
   /**
-   * Adaptive beam width based on remaining stability/rounds (default: true).
-   * Narrows beam for deeper searches to stay within budget.
+   * Adaptive beam width based on local remaining depth (default: true).
+   * Narrows short-horizon subproblems without making cache validity depend on
+   * the original root depth.
    */
   useAdaptiveBeamWidth: boolean;
   /**
@@ -305,29 +308,28 @@ function buildScoringContext(config: OptimizerConfig): ScoringContext {
 }
 
 /**
- * Calculate adaptive beam width based on remaining depth.
- * For deep searches (high realm), we narrow the beam to stay performant.
+ * Calculate adaptive beam width based only on local remaining depth.
+ * This keeps the search policy stationary for a given subproblem, so
+ * transposition-table entries remain reusable across iterative-deepening
+ * passes instead of depending on the original root depth.
  */
 function getAdaptiveBeamWidth(
   baseBeamWidth: number,
   remainingDepth: number,
-  totalDepth: number,
 ): number {
-  if (totalDepth <= 6) {
-    // Short crafts: use full beam
+  if (remainingDepth >= 12) {
     return baseBeamWidth;
   }
 
-  // For deep searches, reduce beam width progressively
-  // Early moves: wider exploration; deeper moves: narrower
-  const depthRatio = remainingDepth / totalDepth;
-  if (depthRatio > 0.7) {
-    return baseBeamWidth;
-  } else if (depthRatio > 0.4) {
-    return Math.max(3, Math.floor(baseBeamWidth * 0.75));
-  } else {
-    return Math.max(2, Math.floor(baseBeamWidth * 0.5));
+  if (remainingDepth >= 6) {
+    return Math.max(3, Math.ceil(baseBeamWidth * 0.8));
   }
+
+  if (remainingDepth >= 3) {
+    return Math.max(3, Math.ceil(baseBeamWidth * 0.6));
+  }
+
+  return Math.max(2, Math.ceil(baseBeamWidth * 0.5));
 }
 
 function normalizeConditionType(
@@ -754,10 +756,7 @@ function applyTerminalUnmetPenalty(
   // Preserve meaningful differences between unfinished terminal branches,
   // especially on large-target sublime crafts, while still making any
   // "craft ended before goals were met" state materially worse.
-  return (
-    baseScore -
-    totalTargetMagnitude * TERMINAL_UNMET_PENALTY_MULTIPLIER
-  );
+  return baseScore - totalTargetMagnitude * TERMINAL_UNMET_PENALTY_MULTIPLIER;
 }
 
 /**
@@ -829,9 +828,9 @@ function evaluateHarmonySubsystemQuality(
   // These systems have more complex state but the modifier quality
   // still captures whether the current state is productive.
   const harmonyType = harmonyData.alchemicalArts
-    ? 'alchemical' as const
+    ? ('alchemical' as const)
     : harmonyData.resonance
-      ? 'resonance' as const
+      ? ('resonance' as const)
       : undefined;
   if (harmonyType) {
     const mods = getHarmonyStatModifiers(harmonyData, harmonyType);
@@ -1202,6 +1201,14 @@ interface SearchMoveCandidate {
   orderingScore: number;
   immediateProgress: number;
 }
+
+interface TranspositionCacheEntry {
+  score: number;
+  bestMove: string;
+}
+
+type TranspositionCache = Map<string, TranspositionCacheEntry>;
+
 function computeScoreTieWindow(totalTargetMagnitude: number): number {
   // Treat sub-resource-tiebreak differences as effectively equal so tiny
   // floating-point noise does not flip move choices.
@@ -1420,12 +1427,7 @@ export function greedySearch(
     if (newState === null) continue;
 
     const { expectedGains, immediateGains, effectiveCosts } =
-      calculateRecommendationGains(
-        state,
-        skill,
-        config,
-        conditionEffects,
-      );
+      calculateRecommendationGains(state, skill, config, conditionEffects);
     const score = scoreState(
       newState,
       targetCompletion,
@@ -1654,6 +1656,67 @@ export function lookaheadSearch(
         )
       : baseScore;
   };
+  let cache: TranspositionCache = new Map();
+  let acceptedCache: TranspositionCache = new Map();
+
+  const getDeepestCachedEntry = (
+    cacheToProbe: TranspositionCache,
+    candidate: CraftingState,
+    conditionAtDepth: CraftingConditionType,
+    nextConditionQueueAtDepth: CraftingConditionType[],
+    maxRemainingDepth: number,
+  ): TranspositionCacheEntry | undefined => {
+    for (let probeDepth = maxRemainingDepth; probeDepth >= 1; probeDepth--) {
+      const probeCacheKey = getNormalizedCacheKey(
+        candidate,
+        effectiveCompGoal,
+        effectivePerfGoal,
+        probeDepth,
+        conditionAtDepth,
+        nextConditionQueueAtDepth,
+        cfg.progressBucketSize,
+      );
+      const probeEntry = cacheToProbe.get(probeCacheKey);
+      if (probeEntry) {
+        return probeEntry;
+      }
+    }
+    return undefined;
+  };
+
+  const getCachedBestMoveKey = (
+    cacheToProbe: TranspositionCache,
+    candidate: CraftingState,
+    conditionAtDepth: CraftingConditionType,
+    nextConditionQueueAtDepth: CraftingConditionType[],
+    maxRemainingDepth: number,
+  ): string | null =>
+    getDeepestCachedEntry(
+      cacheToProbe,
+      candidate,
+      conditionAtDepth,
+      nextConditionQueueAtDepth,
+      maxRemainingDepth,
+    )?.bestMove || null;
+
+  const scoreStateFromBestAvailableFrontier = (
+    candidate: CraftingState,
+    conditionAtDepth: CraftingConditionType,
+    nextConditionQueueAtDepth: CraftingConditionType[],
+    remainingDepth: number,
+  ): number => {
+    const cachedScore = getDeepestCachedEntry(
+      acceptedCache,
+      candidate,
+      conditionAtDepth,
+      nextConditionQueueAtDepth,
+      Math.max(0, remainingDepth - 1),
+    )?.score;
+    return typeof cachedScore === 'number' && Number.isFinite(cachedScore)
+      ? cachedScore
+      : scoreStateWithTerminalPenalty(candidate, conditionAtDepth);
+  };
+
   function estimatePostMoveStateScore(
     newState: CraftingState,
     skill: SkillDefinition,
@@ -1685,6 +1748,7 @@ export function lookaheadSearch(
 
   function buildOrderedMoveCandidates(
     currentState: CraftingState,
+    remainingDepth: number,
     currentConditionAtDepth: CraftingConditionType,
     nextConditionQueueAtDepth: CraftingConditionType[],
     conditionEffectsAtDepth: ReturnType<typeof getConditionEffectsForConfig>,
@@ -1749,6 +1813,24 @@ export function lookaheadSearch(
       }
       return compareMoveCandidatesForTie(b, a, currentState);
     });
+
+    const cachedBestMoveKey = getCachedBestMoveKey(
+      cache,
+      currentState,
+      currentConditionAtDepth,
+      nextConditionQueueAtDepth,
+      Math.max(0, remainingDepth - 1),
+    );
+    if (cachedBestMoveKey) {
+      const cachedIndex = candidates.findIndex(
+        (candidate) => candidate.skill.key === cachedBestMoveKey,
+      );
+      if (cachedIndex > 0) {
+        const [cachedCandidate] = candidates.splice(cachedIndex, 1);
+        candidates.unshift(cachedCandidate);
+      }
+    }
+
     return candidates;
   }
 
@@ -1774,14 +1856,8 @@ export function lookaheadSearch(
     };
   }
 
-  // Transposition table: cacheKey -> best score and best move found.
-  // Storing bestMove enables findOptimalPath() to reconstruct the tree
-  // search's actual chosen path instead of greedily re-deciding at each step.
-  let cache = new Map<string, { score: number; bestMove: string }>();
-
   // Flag to signal early termination due to time/node budget
   let shouldTerminate = false;
-  let activeDepth = depth;
 
   /**
    * Check if we should terminate search early due to budget constraints
@@ -1805,6 +1881,21 @@ export function lookaheadSearch(
   }
 
   /**
+   * Count only cache-miss expansions against the node budget.
+   * Cache hits are already solved subproblems and should not consume the same
+   * budget as exploring a new frontier node.
+   */
+  function consumeNodeBudget(): boolean {
+    if (metrics.nodesExplored >= cfg.maxNodes) {
+      shouldTerminate = true;
+      return false;
+    }
+
+    metrics.nodesExplored++;
+    return true;
+  }
+
+  /**
    * Recursive search function with alpha-beta pruning
    * Uses forecasted conditions at each depth level for more accurate simulation
    *
@@ -1823,13 +1914,13 @@ export function lookaheadSearch(
     alpha: number = -Infinity,
     beta: number = Infinity,
   ): number {
-    metrics.nodesExplored++;
-
     // Check budget constraints
     if (checkBudget()) {
-      return scoreStateWithTerminalPenalty(
+      return scoreStateFromBestAvailableFrontier(
         currentState,
         currentConditionAtDepth,
+        nextConditionQueueAtDepth,
+        remainingDepth,
       );
     }
 
@@ -1877,6 +1968,15 @@ export function lookaheadSearch(
       return cache.get(cacheKey)!.score;
     }
 
+    if (!consumeNodeBudget()) {
+      return scoreStateFromBestAvailableFrontier(
+        currentState,
+        currentConditionAtDepth,
+        nextConditionQueueAtDepth,
+        remainingDepth,
+      );
+    }
+
     // Get condition effects for this depth.
     const conditionEffectsAtDepth = getConditionEffectsForConfig(
       config,
@@ -1884,6 +1984,7 @@ export function lookaheadSearch(
     );
     const orderedCandidates = buildOrderedMoveCandidates(
       currentState,
+      remainingDepth,
       currentConditionAtDepth,
       nextConditionQueueAtDepth,
       conditionEffectsAtDepth,
@@ -1897,7 +1998,7 @@ export function lookaheadSearch(
 
     // Apply adaptive beam search: use narrower beam for deep searches
     const effectiveBeamWidth = cfg.useAdaptiveBeamWidth
-      ? getAdaptiveBeamWidth(cfg.beamWidth, remainingDepth, activeDepth)
+      ? getAdaptiveBeamWidth(cfg.beamWidth, remainingDepth)
       : cfg.beamWidth;
     const beamCandidates = orderedCandidates.slice(0, effectiveBeamWidth);
 
@@ -2096,33 +2197,29 @@ export function lookaheadSearch(
       let chosenSkill: SkillDefinition | null = null;
       let chosenNextState: CraftingState | null = null;
 
-      for (let probeDepth = remainingDepth; probeDepth >= 1; probeDepth--) {
-        const probeCacheKey = getNormalizedCacheKey(
-          currentState,
-          effectiveCompGoal,
-          effectivePerfGoal,
-          probeDepth,
-          conditionAtDepth,
-          conditionQueueAtDepth,
-          cfg.progressBucketSize,
+      const cachedBestMove = getCachedBestMoveKey(
+        cache,
+        currentState,
+        conditionAtDepth,
+        conditionQueueAtDepth,
+        remainingDepth,
+      );
+      if (cachedBestMove) {
+        const cachedSkill = skills.find(
+          (skill) => skill.key === cachedBestMove,
         );
-        const probeEntry = cache.get(probeCacheKey);
-        if (probeEntry && probeEntry.bestMove) {
-          const cachedSkill = skills.find((s) => s.key === probeEntry.bestMove);
-          if (cachedSkill) {
-            const nextState = applySkill(
-              currentState,
-              cachedSkill,
-              config,
-              conditionEffectsAtDepth,
-              targetCompletion,
-              conditionAtDepth,
-            );
-            if (nextState !== null) {
-              chosenSkill = cachedSkill;
-              chosenNextState = nextState;
-              break; // deepest available entry is most authoritative
-            }
+        if (cachedSkill) {
+          const nextState = applySkill(
+            currentState,
+            cachedSkill,
+            config,
+            conditionEffectsAtDepth,
+            targetCompletion,
+            conditionAtDepth,
+          );
+          if (nextState !== null) {
+            chosenSkill = cachedSkill;
+            chosenNextState = nextState;
           }
         }
       }
@@ -2220,214 +2317,216 @@ export function lookaheadSearch(
   /**
    * Evaluate all first moves at a specific depth.
    */
-  function evaluateFirstMoves(depthToSearch: number): {
+  const rootNeedsCompletion =
+    Number.isFinite(modeCompGoal) &&
+    modeCompGoal > 0 &&
+    state.completion < modeCompGoal;
+  const rootNeedsPerfection =
+    Number.isFinite(modePerfGoal) &&
+    modePerfGoal > 0 &&
+    state.perfection < modePerfGoal;
+  const compareRecommendations = (
+    a: SkillRecommendation,
+    b: SkillRecommendation,
+  ): number => {
+    const scoreDiff = b.score - a.score;
+    if (Math.abs(scoreDiff) > scoreTieWindow) {
+      return scoreDiff;
+    }
+
+    const aProgress =
+      (rootNeedsCompletion ? Math.max(0, a.immediateGains.completion) : 0) +
+      (rootNeedsPerfection ? Math.max(0, a.immediateGains.perfection) : 0);
+    const bProgress =
+      (rootNeedsCompletion ? Math.max(0, b.immediateGains.completion) : 0) +
+      (rootNeedsPerfection ? Math.max(0, b.immediateGains.perfection) : 0);
+    const progressDiff = bProgress - aProgress;
+    if (progressDiff !== 0) {
+      return progressDiff;
+    }
+
+    return a.skill.key.localeCompare(b.skill.key);
+  };
+
+  function findFollowUpSkill(
+    stateAfterSkill: CraftingState,
+    depthToSearch: number,
+    depthIndex: number,
+    conditionAtDepth: CraftingConditionType,
+    nextConditionQueueAtDepth: CraftingConditionType[],
+    useDeepLookahead: boolean = false,
+  ): SkillRecommendation['followUpSkill'] | undefined {
+    if (targetsMetForCurrentMode(stateAfterSkill)) {
+      return undefined;
+    }
+    if (isTerminalState(stateAfterSkill, config, conditionAtDepth)) {
+      return undefined;
+    }
+
+    const followUpConditionEffects = getConditionEffectsForConfig(
+      config,
+      conditionAtDepth,
+    );
+    const skills = getAvailableSkills(
+      stateAfterSkill,
+      config,
+      conditionAtDepth,
+    );
+    const maxRemainingDepth = Math.max(0, depthToSearch - depthIndex);
+    const cachedBestMove = getCachedBestMoveKey(
+      cache,
+      stateAfterSkill,
+      conditionAtDepth,
+      nextConditionQueueAtDepth,
+      maxRemainingDepth,
+    );
+    if (cachedBestMove) {
+      const cachedSkill = skills.find((skill) => skill.key === cachedBestMove);
+      if (cachedSkill) {
+        const { expectedGains, immediateGains, effectiveCosts } =
+          calculateRecommendationGains(
+            stateAfterSkill,
+            cachedSkill,
+            config,
+            followUpConditionEffects,
+          );
+        return {
+          name: cachedSkill.name,
+          type: cachedSkill.type,
+          icon: cachedSkill.icon,
+          expectedGains,
+          immediateGains,
+          effectiveCosts,
+        };
+      }
+    }
+
+    const orderedFollowUpCandidates = buildOrderedMoveCandidates(
+      stateAfterSkill,
+      Math.max(1, maxRemainingDepth),
+      conditionAtDepth,
+      nextConditionQueueAtDepth,
+      followUpConditionEffects,
+    );
+    if (orderedFollowUpCandidates.length === 0) {
+      return undefined;
+    }
+
+    if (!useDeepLookahead || maxRemainingDepth <= 0) {
+      const fallbackCandidate = orderedFollowUpCandidates[0];
+      const { expectedGains, immediateGains, effectiveCosts } =
+        calculateRecommendationGains(
+          stateAfterSkill,
+          fallbackCandidate.skill,
+          config,
+          followUpConditionEffects,
+        );
+      return {
+        name: fallbackCandidate.skill.name,
+        type: fallbackCandidate.skill.type,
+        icon: fallbackCandidate.skill.icon,
+        expectedGains,
+        immediateGains,
+        effectiveCosts,
+      };
+    }
+
+    let bestFollowUp: SkillDefinition | null = null;
+    let bestFollowUpCandidate: SearchMoveCandidate | null = null;
+    let bestFollowUpScore = -Infinity;
+    let bestFollowUpExpectedGains: GainPreview = {
+      completion: 0,
+      perfection: 0,
+      stability: 0,
+    };
+    let bestFollowUpImmediateGains: GainPreview = {
+      completion: 0,
+      perfection: 0,
+      stability: 0,
+    };
+    let bestFollowUpEffectiveCosts: ActionCostPreview = {
+      qi: 0,
+      stability: 0,
+    };
+
+    for (const candidate of orderedFollowUpCandidates) {
+      const followUp = candidate.skill;
+      const nextState = candidate.nextState;
+
+      const { expectedGains, immediateGains, effectiveCosts } =
+        calculateRecommendationGains(
+          stateAfterSkill,
+          followUp,
+          config,
+          followUpConditionEffects,
+        );
+      const followUpScore = evaluateFutureScoreAfterSkill(
+        nextState,
+        Math.max(0, depthToSearch - 1 - depthIndex),
+        depthIndex + 1,
+        conditionAtDepth,
+        nextConditionQueueAtDepth,
+        followUp,
+      );
+
+      const scoreDelta = followUpScore - bestFollowUpScore;
+      const isClearImprovement = scoreDelta > scoreTieWindow;
+      const isScoreTie =
+        Math.abs(scoreDelta) <= scoreTieWindow && bestFollowUpCandidate;
+      const winsTie =
+        isScoreTie &&
+        compareMoveCandidatesForTie(
+          candidate,
+          bestFollowUpCandidate!,
+          stateAfterSkill,
+        ) > 0;
+
+      if (isClearImprovement || winsTie || bestFollowUpCandidate === null) {
+        bestFollowUpScore = followUpScore;
+        bestFollowUp = followUp;
+        bestFollowUpCandidate = candidate;
+        bestFollowUpExpectedGains = expectedGains;
+        bestFollowUpImmediateGains = immediateGains;
+        bestFollowUpEffectiveCosts = effectiveCosts;
+      }
+    }
+
+    if (!bestFollowUp) {
+      return undefined;
+    }
+
+    return {
+      name: bestFollowUp.name,
+      type: bestFollowUp.type,
+      icon: bestFollowUp.icon,
+      expectedGains: bestFollowUpExpectedGains,
+      immediateGains: bestFollowUpImmediateGains,
+      effectiveCosts: bestFollowUpEffectiveCosts,
+    };
+  }
+
+  function evaluateFirstMoves(
+    depthToSearch: number,
+    useDeepSearch: boolean,
+  ): {
     recommendations: SkillRecommendation[];
     completed: boolean;
+    evaluatedDepth: number;
   } {
-    activeDepth = depthToSearch;
     const currentConditionEffects = getConditionEffectsForConfig(
       config,
       normalizedCurrentCondition,
     );
     const orderedCandidates = buildOrderedMoveCandidates(
       state,
+      depthToSearch,
       normalizedCurrentCondition,
       initialConditionQueue,
       currentConditionEffects,
     );
-    const rootNeedsCompletion =
-      Number.isFinite(modeCompGoal) &&
-      modeCompGoal > 0 &&
-      state.completion < modeCompGoal;
-    const rootNeedsPerfection =
-      Number.isFinite(modePerfGoal) &&
-      modePerfGoal > 0 &&
-      state.perfection < modePerfGoal;
-    const compareRecommendations = (
-      a: SkillRecommendation,
-      b: SkillRecommendation,
-    ): number => {
-      const scoreDiff = b.score - a.score;
-      if (Math.abs(scoreDiff) > scoreTieWindow) {
-        return scoreDiff;
-      }
-
-      const aProgress =
-        (rootNeedsCompletion ? Math.max(0, a.immediateGains.completion) : 0) +
-        (rootNeedsPerfection ? Math.max(0, a.immediateGains.perfection) : 0);
-      const bProgress =
-        (rootNeedsCompletion ? Math.max(0, b.immediateGains.completion) : 0) +
-        (rootNeedsPerfection ? Math.max(0, b.immediateGains.perfection) : 0);
-      const progressDiff = bProgress - aProgress;
-      if (progressDiff !== 0) {
-        return progressDiff;
-      }
-
-      return a.skill.key.localeCompare(b.skill.key);
-    };
     const evaluatedFirstMoves: Array<
       SkillRecommendation & TerminalStateClassification
     > = [];
-
-    function findFollowUpSkill(
-      stateAfterSkill: CraftingState,
-      depthIndex: number,
-      conditionAtDepth: CraftingConditionType,
-      nextConditionQueueAtDepth: CraftingConditionType[],
-      useDeepLookahead: boolean = true,
-    ): SkillRecommendation['followUpSkill'] | undefined {
-      if (targetsMetForCurrentMode(stateAfterSkill)) {
-        return undefined;
-      }
-      if (isTerminalState(stateAfterSkill, config, conditionAtDepth)) {
-        return undefined;
-      }
-
-      const followUpConditionEffects = getConditionEffectsForConfig(
-        config,
-        conditionAtDepth,
-      );
-
-      // Consult the transposition table first.  The tree search already
-      // evaluated this state and recorded its best move — using it here
-      // ensures the follow-up matches the tree search's verdict instead
-      // of diverging under budget pressure (see AGENTS.md anti-pattern #7).
-      //
-      // With iterative deepening, the exact remaining depth for this state
-      // may not have been searched at the current iteration (budget
-      // exhausted).  Walk backwards through depths to find the best
-      // available cache entry — deeper is more authoritative.
-      const skills = getAvailableSkills(
-        stateAfterSkill,
-        config,
-        conditionAtDepth,
-      );
-      const maxRemainingDepth = Math.max(0, depthToSearch - depthIndex);
-      let cachedBestMove: string | null = null;
-      for (let probeDepth = maxRemainingDepth; probeDepth >= 1; probeDepth--) {
-        const probeCacheKey = getNormalizedCacheKey(
-          stateAfterSkill,
-          effectiveCompGoal,
-          effectivePerfGoal,
-          probeDepth,
-          conditionAtDepth,
-          nextConditionQueueAtDepth,
-          cfg.progressBucketSize,
-        );
-        const probeEntry = cache.get(probeCacheKey);
-        if (probeEntry && probeEntry.bestMove) {
-          cachedBestMove = probeEntry.bestMove;
-          break; // deepest available entry is most authoritative
-        }
-      }
-      if (cachedBestMove) {
-        const cachedSkill = skills.find((s) => s.key === cachedBestMove);
-        if (cachedSkill) {
-          const { expectedGains, immediateGains, effectiveCosts } =
-            calculateRecommendationGains(
-              stateAfterSkill,
-              cachedSkill,
-              config,
-              followUpConditionEffects,
-            );
-          return {
-            name: cachedSkill.name,
-            type: cachedSkill.type,
-            icon: cachedSkill.icon,
-            expectedGains,
-            immediateGains,
-            effectiveCosts,
-          };
-        }
-      }
-
-      // Fallback: re-evaluate when the cache has no entry for this state
-      // (e.g., cache miss due to bucketing or the state was never searched).
-      const orderedFollowUpCandidates = buildOrderedMoveCandidates(
-        stateAfterSkill,
-        conditionAtDepth,
-        nextConditionQueueAtDepth,
-        followUpConditionEffects,
-      );
-      if (orderedFollowUpCandidates.length === 0) return undefined;
-
-      let bestFollowUp: SkillDefinition | null = null;
-      let bestFollowUpCandidate: SearchMoveCandidate | null = null;
-      let bestFollowUpScore = -Infinity;
-      let bestFollowUpExpectedGains: GainPreview = {
-        completion: 0,
-        perfection: 0,
-        stability: 0,
-      };
-      let bestFollowUpImmediateGains: GainPreview = {
-        completion: 0,
-        perfection: 0,
-        stability: 0,
-      };
-      let bestFollowUpEffectiveCosts: ActionCostPreview = {
-        qi: 0,
-        stability: 0,
-      };
-
-      for (const candidate of orderedFollowUpCandidates) {
-        const followUp = candidate.skill;
-        const nextState = candidate.nextState;
-
-        const { expectedGains, immediateGains, effectiveCosts } =
-          calculateRecommendationGains(
-            stateAfterSkill,
-            followUp,
-            config,
-            followUpConditionEffects,
-          );
-        const followUpScore = useDeepLookahead
-          ? evaluateFutureScoreAfterSkill(
-              nextState,
-              Math.max(0, depthToSearch - 1 - depthIndex),
-              depthIndex + 1,
-              conditionAtDepth,
-              nextConditionQueueAtDepth,
-              followUp,
-            )
-          : estimatePostMoveStateScore(
-              nextState,
-              followUp,
-              conditionAtDepth,
-              nextConditionQueueAtDepth,
-            );
-
-        const scoreDelta = followUpScore - bestFollowUpScore;
-        const isClearImprovement = scoreDelta > scoreTieWindow;
-        const isScoreTie =
-          Math.abs(scoreDelta) <= scoreTieWindow && bestFollowUpCandidate;
-        const winsTie =
-          isScoreTie &&
-          compareMoveCandidatesForTie(
-            candidate,
-            bestFollowUpCandidate!,
-            stateAfterSkill,
-          ) > 0;
-
-        if (isClearImprovement || winsTie || bestFollowUpCandidate === null) {
-          bestFollowUpScore = followUpScore;
-          bestFollowUp = followUp;
-          bestFollowUpCandidate = candidate;
-          bestFollowUpExpectedGains = expectedGains;
-          bestFollowUpImmediateGains = immediateGains;
-          bestFollowUpEffectiveCosts = effectiveCosts;
-        }
-      }
-
-      if (!bestFollowUp) return undefined;
-      return {
-        name: bestFollowUp.name,
-        type: bestFollowUp.type,
-        icon: bestFollowUp.icon,
-        expectedGains: bestFollowUpExpectedGains,
-        immediateGains: bestFollowUpImmediateGains,
-        effectiveCosts: bestFollowUpEffectiveCosts,
-      };
-    }
 
     // First pass: evaluate ALL first-level skills with basic scoring
     // This ensures we always have alternatives even if deep search times out
@@ -2478,7 +2577,7 @@ export function lookaheadSearch(
         score: immediateScore,
         reasoning,
         consumesBuff: skill.isDisciplinedTouch === true,
-        followUpSkill: undefined, // Will be filled in second pass if budget allows
+        followUpSkill: undefined,
         ...terminalState,
       });
     }
@@ -2487,13 +2586,25 @@ export function lookaheadSearch(
       evaluatedFirstMoves,
     ).map(({ isTerminal, isTerminalUnmet, ...rec }) => rec);
 
-    // Second pass: enhance scores with deep lookahead if budget allows
-    // Process skills in order of their immediate score (best first)
-    scored.sort(compareRecommendations);
-    const fallbackFollowUpCount = 3;
+    if (!useDeepSearch || depthToSearch <= 1) {
+      scored.sort(compareRecommendations);
+      return {
+        recommendations: scored,
+        completed: true,
+        evaluatedDepth: Math.min(1, depthToSearch),
+      };
+    }
 
-    for (let index = 0; index < scored.length; index++) {
-      const rec = scored[index];
+    // Second pass: enhance scores with deep lookahead if budget allows.
+    // Follow-up generation stays out of the critical path so recommendation
+    // budget is spent on first-move ranking, not auxiliary UI details.
+    scored.sort(compareRecommendations);
+    const deepenedRecommendations = scored.map((rec) => ({ ...rec }));
+
+    for (const rec of deepenedRecommendations) {
+      if (checkBudget()) {
+        break;
+      }
 
       const newState = applySkill(
         state,
@@ -2505,78 +2616,81 @@ export function lookaheadSearch(
       );
       if (newState === null) continue;
 
-      const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
+      rec.score = evaluateFutureScoreAfterSkill(
         newState,
+        Math.max(0, depthToSearch - 1),
+        1,
         normalizedCurrentCondition,
         initialConditionQueue,
         rec.skill,
       );
-
-      const hasBudgetForDeepSearch = !checkBudget();
-      if (hasBudgetForDeepSearch) {
-        rec.score = evaluateFutureScoreAfterSkill(
-          newState,
-          Math.max(0, depthToSearch - 1),
-          1,
-          normalizedCurrentCondition,
-          initialConditionQueue,
-          rec.skill,
-        );
-      }
-
-      // Always try to provide a follow-up suggestion for top-ranked skills.
-      // If budget is exhausted, fall back to immediate scoring instead of lookahead.
-      const hasBudgetForDeepFollowUp = !checkBudget();
-      const shouldApplyFallback = index < fallbackFollowUpCount;
-      if (hasBudgetForDeepFollowUp || shouldApplyFallback) {
-        rec.followUpSkill = findFollowUpSkill(
-          newState,
-          1,
-          firstMoveConditionState.nextCondition,
-          firstMoveConditionState.nextQueue,
-          hasBudgetForDeepFollowUp,
-        );
-      }
-
-      if (!hasBudgetForDeepFollowUp && !shouldApplyFallback) {
-        break;
-      }
     }
 
-    scored.sort(compareRecommendations);
+    if (shouldTerminate) {
+      return {
+        recommendations: scored,
+        completed: false,
+        evaluatedDepth: 1,
+      };
+    }
 
-    const topRecommendation = scored[0];
-    if (topRecommendation && !topRecommendation.followUpSkill) {
-      const stateAfterTopRecommendation = applySkill(
+    deepenedRecommendations.sort(compareRecommendations);
+
+    return {
+      recommendations: deepenedRecommendations,
+      completed: true,
+      evaluatedDepth: depthToSearch,
+    };
+  }
+
+  function populateFollowUpSkills(
+    recommendations: SkillRecommendation[],
+    depthToSearch: number,
+  ): void {
+    if (recommendations.length === 0) {
+      return;
+    }
+
+    const currentConditionEffects = getConditionEffectsForConfig(
+      config,
+      normalizedCurrentCondition,
+    );
+    const fallbackFollowUpCount = 3;
+
+    for (
+      let index = 0;
+      index < Math.min(fallbackFollowUpCount, recommendations.length);
+      index++
+    ) {
+      const rec = recommendations[index];
+      const stateAfterSkill = applySkill(
         state,
-        topRecommendation.skill,
+        rec.skill,
         config,
         currentConditionEffects,
         targetCompletion,
         normalizedCurrentCondition,
       );
-      if (stateAfterTopRecommendation !== null) {
-        const topConditionState = getMostLikelyConditionStateAfterSkill(
-          stateAfterTopRecommendation,
-          normalizedCurrentCondition,
-          initialConditionQueue,
-          topRecommendation.skill,
-        );
-        const canUseDeepTopFollowUp = !checkBudget();
-        topRecommendation.followUpSkill = findFollowUpSkill(
-          stateAfterTopRecommendation,
-          1,
-          topConditionState.nextCondition,
-          topConditionState.nextQueue,
-          canUseDeepTopFollowUp,
-        );
+      if (stateAfterSkill === null) {
+        continue;
       }
-    }
 
-    return {
-      recommendations: scored,
-      completed: !shouldTerminate,
-    };
+      const followUpConditionState = getMostLikelyConditionStateAfterSkill(
+        stateAfterSkill,
+        normalizedCurrentCondition,
+        initialConditionQueue,
+        rec.skill,
+      );
+      const canUseDeepLookahead = index === 0 && !checkBudget();
+      rec.followUpSkill = findFollowUpSkill(
+        stateAfterSkill,
+        depthToSearch,
+        1,
+        followUpConditionState.nextCondition,
+        followUpConditionState.nextQueue,
+        canUseDeepLookahead,
+      );
+    }
   }
 
   const depthPlan = (() => {
@@ -2594,43 +2708,39 @@ export function lookaheadSearch(
     return depths;
   })();
 
-  let usedDepth = depthPlan[0] ?? depth;
-  let scoredSkills: SkillRecommendation[] = [];
-  let acceptedCache = cache;
+  const baselineDepth = depth > 0 ? 1 : 0;
+  const baselineResult = evaluateFirstMoves(baselineDepth, false);
+  let usedDepth = baselineResult.evaluatedDepth;
+  let scoredSkills: SkillRecommendation[] = baselineResult.recommendations;
+
+  if (baselineResult.recommendations.length > 0) {
+    metrics.depthReached = baselineResult.evaluatedDepth;
+  }
+
   for (const candidateDepth of depthPlan) {
+    if (candidateDepth <= baselineDepth) {
+      continue;
+    }
     if (checkBudget()) break;
-    const iterationCache = new Map<string, { score: number; bestMove: string }>();
-    cache = iterationCache;
-    const candidateResult = evaluateFirstMoves(candidateDepth);
+    const candidateResult = evaluateFirstMoves(candidateDepth, true);
     const candidateSkills = candidateResult.recommendations;
     const iterationCompleted = candidateResult.completed;
+    const evaluatedDepth = candidateResult.evaluatedDepth;
 
     // Preserve the last fully completed iteration. A deeper pass that hits a
     // budget limit mid-evaluation is only a partial frontier and should not
     // overwrite a fully completed shallower pass.
-    if (candidateSkills.length > 0) {
-      if (iterationCompleted || scoredSkills.length === 0) {
-        scoredSkills = candidateSkills;
-        usedDepth = candidateDepth;
-        acceptedCache = iterationCache;
-      } else {
-        cache = acceptedCache;
-      }
-
-      if (iterationCompleted) {
-        metrics.depthReached = candidateDepth;
-      }
-    } else {
-      cache = acceptedCache;
+    if (iterationCompleted && candidateSkills.length > 0) {
+      scoredSkills = candidateSkills;
+      usedDepth = evaluatedDepth;
+      acceptedCache = new Map(cache);
+      metrics.depthReached = evaluatedDepth;
     }
 
     if (shouldTerminate) {
-      cache = acceptedCache;
       break;
     }
   }
-
-  cache = acceptedCache;
 
   if (metrics.depthReached === 0) {
     metrics.depthReached = usedDepth;
@@ -2652,10 +2762,6 @@ export function lookaheadSearch(
     };
   }
 
-  // Ensure subsequent path reconstruction uses the same depth profile
-  // as the depth that produced the selected recommendation set.
-  activeDepth = usedDepth;
-
   // Calculate quality ratings (0-100) based on score difference from best
   const bestScore = scoredSkills[0].score;
   const worstScore =
@@ -2674,8 +2780,11 @@ export function lookaheadSearch(
     }
   }
 
+  const rankedSkills = rankRecommendations(scoredSkills, scoreTieWindow);
+  populateFollowUpSkills(rankedSkills, usedDepth);
+
   // Find the optimal rotation starting from the best first move
-  const bestFirstMove = scoredSkills[0].skill;
+  const bestFirstMove = rankedSkills[0].skill;
   const currentConditionEffects = getConditionEffectsForConfig(
     config,
     normalizedCurrentCondition,
@@ -2716,7 +2825,7 @@ export function lookaheadSearch(
     // from the current follow-up, update it.
     if (path.length > 0) {
       const rotationSecondSkillName = path[0];
-      const topRec = scoredSkills[0];
+      const topRec = rankedSkills[0];
       if (
         topRec &&
         topRec.skill.key === bestFirstMove.key &&
@@ -2776,7 +2885,6 @@ export function lookaheadSearch(
 
   // Record final metrics
   metrics.timeTakenMs = Date.now() - startTime;
-  const rankedSkills = rankRecommendations(scoredSkills, scoreTieWindow);
 
   return {
     recommendation: rankedSkills[0],

@@ -20,6 +20,10 @@ import {
   VISIBLE_CONDITION_QUEUE_LENGTH,
   __testing,
 } from '../optimizer/search';
+import {
+  getReplaySearchInput,
+  loadOptimizerReplaySnapshot,
+} from './__fixtures__/replaySnapshots';
 
 const { scoreState, SCORING } = __testing;
 
@@ -568,13 +572,28 @@ describe('lookaheadSearch', () => {
       perfection: 0,
     });
 
-    // Depth 4 completes within this node budget, but depth 5 does not.
+    // With the shared iterative-deepening cache, this node budget now reaches
+    // the depth-5 frontier instead of stalling at depth 4.
     const stableDepthFour = lookaheadSearch(
       state,
       config,
       100,
       100,
       4,
+      undefined,
+      [],
+      {
+        useIterativeDeepening: false,
+        timeBudgetMs: 100000,
+        maxNodes: 10000000,
+      },
+    );
+    const stableDepthFive = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      5,
       undefined,
       [],
       {
@@ -600,15 +619,144 @@ describe('lookaheadSearch', () => {
     );
 
     expect(stableDepthFour.recommendation).not.toBeNull();
+    expect(stableDepthFive.recommendation).not.toBeNull();
     expect(interruptedDeepening.recommendation).not.toBeNull();
-    expect(interruptedDeepening.searchMetrics!.depthReached).toBe(4);
+    expect(
+      interruptedDeepening.searchMetrics!.depthReached,
+    ).toBeGreaterThanOrEqual(4);
+    expect(
+      interruptedDeepening.searchMetrics!.depthReached,
+    ).toBeLessThanOrEqual(6);
+    const stableAtReportedDepth = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      interruptedDeepening.searchMetrics!.depthReached,
+      undefined,
+      [],
+      {
+        useIterativeDeepening: false,
+        timeBudgetMs: 100000,
+        maxNodes: 10000000,
+      },
+    );
+    expect(stableAtReportedDepth.recommendation).not.toBeNull();
     expect(interruptedDeepening.recommendation!.skill.key).toBe(
-      stableDepthFour.recommendation!.skill.key,
+      stableAtReportedDepth.recommendation!.skill.key,
     );
     expect(interruptedDeepening.recommendation!.score).toBeCloseTo(
-      stableDepthFour.recommendation!.score,
+      stableAtReportedDepth.recommendation!.score,
       10,
     );
+  });
+
+  it('should report only the baseline completed depth when budget interrupts the first deep pass', () => {
+    const immediateA = createCustomSkill({
+      name: 'Immediate A',
+      key: 'immediate_a',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 0.8,
+      scalesWithControl: true,
+    });
+    const immediateB = createCustomSkill({
+      name: 'Immediate B',
+      key: 'immediate_b',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 0.7,
+      scalesWithControl: true,
+    });
+    const immediateC = createCustomSkill({
+      name: 'Immediate C',
+      key: 'immediate_c',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 0.6,
+      scalesWithControl: true,
+    });
+    const setup = createCustomSkill({
+      name: 'Setup',
+      key: 'setup',
+      type: 'support',
+      qiCost: 0,
+      stabilityCost: 10,
+      effects: [
+        {
+          kind: 'createBuff',
+          buff: { name: 'charge', canStack: true, effects: [] },
+          stacks: { value: 1 },
+        },
+      ],
+    });
+    const payoff = createCustomSkill({
+      name: 'Payoff',
+      key: 'payoff',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 8,
+      scalesWithControl: true,
+      buffRequirement: { buffName: 'charge', amount: 1 },
+    });
+
+    const focusedConfig = createTestConfig({
+      minStability: 0,
+      baseControl: 16,
+      baseIntensity: 16,
+      skills: [immediateA, immediateB, immediateC, setup, payoff],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(
+      state,
+      focusedConfig,
+      0,
+      100,
+      3,
+      'neutral',
+      [],
+      {
+        useIterativeDeepening: true,
+        iterativeDeepeningMinDepth: 3,
+        timeBudgetMs: 100000,
+        maxNodes: 30,
+        beamWidth: 6,
+      },
+    );
+
+    const baselineDepthOne = lookaheadSearch(
+      state,
+      focusedConfig,
+      0,
+      100,
+      1,
+      'neutral',
+      [],
+      {
+        useIterativeDeepening: false,
+        timeBudgetMs: 100000,
+        maxNodes: 100000,
+        beamWidth: 6,
+      },
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(baselineDepthOne.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe(
+      baselineDepthOne.recommendation!.skill.key,
+    );
+    expect(result.searchMetrics!.depthReached).toBe(1);
   });
 
   it('should avoid recommending stabilize at high stability when most gain would be wasted', () => {
@@ -2883,5 +3031,46 @@ describe('scoreState (isolated)', () => {
     });
     // perfectionTarget <= 0, so targets should be considered met at completion=100
     expect(scoreState(met, 100, 0)).toBeGreaterThan(scoreState(unmet, 100, 0));
+  });
+
+  it('replays the full skyfall bow snapshot contract without returning to fusion at heat six', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'skyfall-bow-heat-regression.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      input.searchConfig,
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const explosiveFusion = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === 'explosive_fusion',
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      'explosive_fusion',
+    );
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).not.toBe('fusion');
+    expect(explosiveFusion).toBeDefined();
+    expect(result.recommendation!.score).toBeGreaterThan(
+      explosiveFusion!.score,
+    );
   });
 });

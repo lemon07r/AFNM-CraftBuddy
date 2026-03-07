@@ -1,8 +1,82 @@
-import { CraftingState } from '../optimizer';
+import { CraftingState, findBestSkill } from '../optimizer';
+import type {
+  SearchConfig,
+  SearchResult,
+  SkillRecommendation,
+} from '../optimizer';
 import type { SkillDefinition, OptimizerConfig } from '../optimizer/skills';
 import type { HarmonyDataSource } from './harmonyState';
 
-function sanitizeForJson(
+export interface OptimizerReplaySearchConfigSnapshot extends Pick<
+  SearchConfig,
+  'timeBudgetMs' | 'maxNodes' | 'beamWidth'
+> {}
+
+export interface OptimizerReplayInputSnapshot {
+  createdAt: string;
+  searchEpoch: number;
+  lookaheadDepth: number;
+  targets: {
+    completion: number;
+    perfection: number;
+    stability: number;
+  };
+  caps: {
+    maxCompletionCap: number | null;
+    maxPerfectionCap: number | null;
+  };
+  conditions: {
+    current: string;
+    forecast: string[];
+    normalizedForecast: string[];
+  };
+  searchConfig: OptimizerReplaySearchConfigSnapshot;
+  settings: {
+    lookaheadDepth: number;
+    searchTimeBudgetMs: number;
+    searchMaxNodes: number;
+    searchBeamWidth: number;
+    compactMode: boolean;
+    panelVisible: boolean;
+  };
+  state: Record<string, unknown>;
+  config: Record<string, unknown>;
+  context: {
+    recipeName?: string;
+    craftingType: string;
+    craftingTypeSource: string;
+    isSublimeCraft: boolean;
+    sublimeTargetMultiplier: number;
+    sublimeDetectionSignals: unknown[];
+    targetStabilityAtSearchStart: number;
+    integration: Record<string, unknown>;
+    rawCraftContext: Record<string, unknown>;
+  };
+}
+
+export interface OptimizerReplaySnapshot {
+  input: OptimizerReplayInputSnapshot;
+  output?: {
+    recommendation?: {
+      skill?: {
+        key?: string;
+        name?: string;
+        type?: string;
+      } | null;
+    } | null;
+    [key: string]: unknown;
+  };
+  error?: string;
+  completedAt?: string;
+}
+
+export interface OptimizerReplayExecution {
+  config: OptimizerConfig;
+  result: SearchResult;
+  state: CraftingState;
+}
+
+export function sanitizeForJson(
   value: unknown,
   seen: WeakSet<object> = new WeakSet(),
 ): unknown {
@@ -187,5 +261,104 @@ export function buildStateSnapshot(
     nativeVariables: state.nativeVariables
       ? sanitizeForJson(state.nativeVariables)
       : null,
+  };
+}
+
+export function reviveConfigSnapshot(
+  snapshot: Record<string, unknown>,
+): OptimizerConfig {
+  return {
+    ...(snapshot as unknown as OptimizerConfig),
+    skills: ((snapshot.skills as SkillDefinition[]) || []).map((skill) => ({
+      ...skill,
+    })),
+  };
+}
+
+export function reviveStateSnapshot(
+  snapshot: Record<string, unknown>,
+): CraftingState {
+  return new CraftingState({
+    ...(snapshot as ConstructorParameters<typeof CraftingState>[0]),
+    cooldowns: new Map(Object.entries((snapshot.cooldowns as object) || {})),
+    items: new Map(Object.entries((snapshot.items as object) || {})),
+    buffs: new Map(Object.entries((snapshot.buffs as object) || {})),
+  });
+}
+
+function summarizeRecommendation(
+  recommendation: SearchResult['recommendation'],
+): Record<string, unknown> | null {
+  if (!recommendation) return null;
+  return {
+    skill: {
+      name: recommendation.skill.name,
+      key: recommendation.skill.key,
+      type: recommendation.skill.type,
+    },
+    score: recommendation.score,
+    qualityRating: recommendation.qualityRating ?? null,
+    expectedGains: recommendation.expectedGains,
+    immediateGains: recommendation.immediateGains,
+    effectiveCosts: recommendation.effectiveCosts ?? null,
+    followUpSkill: recommendation.followUpSkill ?? null,
+    consumesBuff: recommendation.consumesBuff ?? false,
+    reasoning: recommendation.reasoning,
+  };
+}
+
+export function buildResultSnapshot(
+  result: SearchResult,
+): Record<string, unknown> {
+  return {
+    isTerminal: result.isTerminal,
+    targetsMet: result.targetsMet,
+    recommendation: summarizeRecommendation(result.recommendation),
+    alternatives: result.alternativeSkills.map(
+      (recommendation: SkillRecommendation) => ({
+        skill: {
+          name: recommendation.skill.name,
+          key: recommendation.skill.key,
+          type: recommendation.skill.type,
+        },
+        score: recommendation.score,
+        qualityRating: recommendation.qualityRating ?? null,
+        expectedGains: recommendation.expectedGains,
+        immediateGains: recommendation.immediateGains,
+        effectiveCosts: recommendation.effectiveCosts ?? null,
+        followUpSkill: recommendation.followUpSkill ?? null,
+        consumesBuff: recommendation.consumesBuff ?? false,
+        reasoning: recommendation.reasoning,
+      }),
+    ),
+    blockedReasons: result.blockedReasons ?? [],
+    optimalRotation: result.optimalRotation ?? [],
+    expectedFinalState: result.expectedFinalState ?? null,
+    searchMetrics: result.searchMetrics ?? null,
+  };
+}
+
+export function replayOptimizerSnapshot(
+  snapshot: OptimizerReplaySnapshot,
+): OptimizerReplayExecution {
+  const config = reviveConfigSnapshot(snapshot.input.config);
+  const state = reviveStateSnapshot(snapshot.input.state);
+  const result = findBestSkill(
+    state,
+    config,
+    snapshot.input.targets.completion,
+    snapshot.input.targets.perfection,
+    false,
+    snapshot.input.lookaheadDepth,
+    snapshot.input.conditions.current,
+    snapshot.input.conditions.normalizedForecast ||
+      snapshot.input.conditions.forecast,
+    snapshot.input.searchConfig,
+  );
+
+  return {
+    config,
+    result,
+    state,
   };
 }

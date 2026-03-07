@@ -58,7 +58,14 @@ import {
   type SublimeDetectionSignal,
 } from './craftingContext';
 import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
-import { buildConfigSnapshot, buildStateSnapshot } from './replaySnapshot';
+import {
+  buildConfigSnapshot,
+  buildResultSnapshot,
+  buildStateSnapshot,
+  sanitizeForJson,
+  type OptimizerReplayInputSnapshot,
+  type OptimizerReplaySnapshot,
+} from './replaySnapshot';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 
@@ -306,8 +313,10 @@ function scheduleAfterNextPaint(callback: () => void): void {
 }
 
 function hostReactDomSupportsFlushSync(): boolean {
-  return typeof (ReactDOM as typeof ReactDOM & { flushSync?: unknown })
-    .flushSync === 'function';
+  return (
+    typeof (ReactDOM as typeof ReactDOM & { flushSync?: unknown }).flushSync ===
+    'function'
+  );
 }
 
 function scheduleSearchAfterLoadingShell(callback: () => void): void {
@@ -361,163 +370,8 @@ interface CachedTargets {
   timestamp: number;
 }
 
-type RuntimeSearchConfig = ReturnType<typeof getSearchConfig>;
-
-interface OptimizerReplayInputSnapshot {
-  createdAt: string;
-  searchEpoch: number;
-  lookaheadDepth: number;
-  targets: {
-    completion: number;
-    perfection: number;
-    stability: number;
-  };
-  caps: {
-    maxCompletionCap: number | null;
-    maxPerfectionCap: number | null;
-  };
-  conditions: {
-    current: string;
-    forecast: string[];
-    normalizedForecast: string[];
-  };
-  searchConfig: RuntimeSearchConfig;
-  settings: {
-    lookaheadDepth: number;
-    searchTimeBudgetMs: number;
-    searchMaxNodes: number;
-    searchBeamWidth: number;
-    compactMode: boolean;
-    panelVisible: boolean;
-  };
-  state: Record<string, unknown>;
-  config: Record<string, unknown>;
-  context: {
-    recipeName?: string;
-    craftingType: string;
-    craftingTypeSource: CraftingTypeDetectionSource;
-    isSublimeCraft: boolean;
-    sublimeTargetMultiplier: number;
-    sublimeDetectionSignals: SublimeDetectionSignal[];
-    targetStabilityAtSearchStart: number;
-    integration: Record<string, unknown>;
-    rawCraftContext: Record<string, unknown>;
-  };
-}
-
-interface OptimizerReplaySnapshot {
-  input: OptimizerReplayInputSnapshot;
-  output?: Record<string, unknown>;
-  error?: string;
-  completedAt?: string;
-}
-
 let lastOptimizerReplaySnapshot: OptimizerReplaySnapshot | null = null;
 let debugToastTimeout: number | null = null;
-
-function sanitizeForJson(
-  value: unknown,
-  seen: WeakSet<object> = new WeakSet(),
-): unknown {
-  if (value === undefined) return null;
-  if (value === null) return null;
-  const valueType = typeof value;
-  if (
-    valueType === 'number' ||
-    valueType === 'string' ||
-    valueType === 'boolean'
-  ) {
-    return value;
-  }
-  if (valueType === 'bigint') {
-    return value.toString();
-  }
-  if (valueType === 'symbol') {
-    return String(value);
-  }
-  if (valueType === 'function') {
-    return '[Function]';
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (value instanceof Map) {
-    const out: Record<string, unknown> = {};
-    value.forEach((v, k) => {
-      out[String(k)] = sanitizeForJson(v, seen);
-    });
-    return out;
-  }
-  if (value instanceof Set) {
-    return Array.from(value).map((entry) => sanitizeForJson(entry, seen));
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => sanitizeForJson(entry, seen));
-  }
-  if (valueType === 'object') {
-    const objectValue = value as Record<string, unknown>;
-    if (seen.has(objectValue)) {
-      return '[Circular]';
-    }
-    seen.add(objectValue);
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(objectValue)) {
-      if (entry === undefined) continue;
-      out[key] = sanitizeForJson(entry, seen);
-    }
-    seen.delete(objectValue);
-    return out;
-  }
-
-  return String(value);
-}
-function summarizeRecommendation(
-  recommendation: SearchResult['recommendation'],
-): Record<string, unknown> | null {
-  if (!recommendation) return null;
-  return {
-    skill: {
-      name: recommendation.skill.name,
-      key: recommendation.skill.key,
-      type: recommendation.skill.type,
-    },
-    score: recommendation.score,
-    qualityRating: recommendation.qualityRating ?? null,
-    expectedGains: recommendation.expectedGains,
-    immediateGains: recommendation.immediateGains,
-    effectiveCosts: recommendation.effectiveCosts ?? null,
-    followUpSkill: recommendation.followUpSkill ?? null,
-    consumesBuff: recommendation.consumesBuff ?? false,
-    reasoning: recommendation.reasoning,
-  };
-}
-
-function buildResultSnapshot(result: SearchResult): Record<string, unknown> {
-  return {
-    isTerminal: result.isTerminal,
-    targetsMet: result.targetsMet,
-    recommendation: summarizeRecommendation(result.recommendation),
-    alternatives: result.alternativeSkills.map((rec) => ({
-      skill: {
-        name: rec.skill.name,
-        key: rec.skill.key,
-        type: rec.skill.type,
-      },
-      score: rec.score,
-      qualityRating: rec.qualityRating ?? null,
-      expectedGains: rec.expectedGains,
-      immediateGains: rec.immediateGains,
-      effectiveCosts: rec.effectiveCosts ?? null,
-      followUpSkill: rec.followUpSkill ?? null,
-      consumesBuff: rec.consumesBuff ?? false,
-      reasoning: rec.reasoning,
-    })),
-    blockedReasons: result.blockedReasons ?? [],
-    optimalRotation: result.optimalRotation ?? [],
-    expectedFinalState: result.expectedFinalState ?? null,
-    searchMetrics: result.searchMetrics ?? null,
-  };
-}
 
 function buildRawCraftContextSnapshot(
   recipe: RecipeItem | undefined,
@@ -567,7 +421,7 @@ function buildOptimizerReplayInputSnapshot(params: {
   config: OptimizerConfig;
   lookaheadDepth: number;
   searchEpoch: number;
-  searchConfig: RuntimeSearchConfig;
+  searchConfig: ReturnType<typeof getSearchConfig>;
   currentConditionType?: string;
   forecastedConditionTypes: string[];
   targetCompletionAtSearchStart: number;
@@ -617,13 +471,18 @@ function buildOptimizerReplayInputSnapshot(params: {
     context: {
       recipeName: (lastRecipe as any)?.name ?? (lastRecipeStats as any)?.name,
       craftingType: currentCraftingType,
-      craftingTypeSource: integrationDiagnostics.lastCraftingTypeDetectionSource,
+      craftingTypeSource:
+        integrationDiagnostics.lastCraftingTypeDetectionSource,
       isSublimeCraft,
       sublimeTargetMultiplier,
-      sublimeDetectionSignals: integrationDiagnostics.lastSublimeDetectionSignals,
+      sublimeDetectionSignals:
+        integrationDiagnostics.lastSublimeDetectionSignals,
       targetStabilityAtSearchStart: params.maxStabilityAtSearchStart,
       integration: buildIntegrationDiagnosticsSummary(),
-      rawCraftContext: buildRawCraftContextSnapshot(lastRecipe, lastRecipeStats),
+      rawCraftContext: buildRawCraftContextSnapshot(
+        lastRecipe,
+        lastRecipeStats,
+      ),
     },
   };
 }
@@ -1315,7 +1174,9 @@ function pickPositiveGameNumber(
   return fallback;
 }
 
-function getLiveItemTypeHarmonyMapping(): Partial<Record<string, CraftingType>> {
+function getLiveItemTypeHarmonyMapping(): Partial<
+  Record<string, CraftingType>
+> {
   const raw = (window as any)?.modAPI?.gameData?.itemTypeToHarmonyType;
   const mapping = sanitizeItemTypeHarmonyMap(raw);
   integrationDiagnostics.usingModApiItemTypeHarmonyMapping =

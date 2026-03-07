@@ -13,8 +13,14 @@ import { hydrateHarmonyData } from '../modContent/harmonyState';
 import {
   buildConfigSnapshot,
   buildStateSnapshot,
+  replayOptimizerSnapshot,
+  reviveConfigSnapshot,
+  reviveStateSnapshot,
 } from '../modContent/replaySnapshot';
-import { loadSkyfallBowHeatRegressionFixture } from './__fixtures__/skyfallBowHeatRegression';
+import {
+  getReplaySearchInput,
+  loadOptimizerReplaySnapshot,
+} from './__fixtures__/replaySnapshots';
 
 function createSkill(
   overrides: Partial<SkillDefinition> = {},
@@ -55,22 +61,6 @@ function createForgeConfig(
     targetMultiplier: 2,
     ...overrides,
   };
-}
-
-function reviveConfigSnapshot(snapshot: Record<string, any>): OptimizerConfig {
-  return {
-    ...snapshot,
-    skills: (snapshot.skills || []) as SkillDefinition[],
-  } as OptimizerConfig;
-}
-
-function reviveStateSnapshot(snapshot: Record<string, any>): CraftingState {
-  return new CraftingState({
-    ...snapshot,
-    cooldowns: new Map(Object.entries(snapshot.cooldowns || {})),
-    items: new Map(Object.entries(snapshot.items || {})),
-    buffs: new Map(Object.entries(snapshot.buffs || {})),
-  });
 }
 
 afterEach(() => {
@@ -818,31 +808,19 @@ describe('integration regression - forge heat parity', () => {
   });
 
   it('does not flatten late forge overcraft branches into a heat-overshooting fusion tie', () => {
-    const fixture = loadSkyfallBowHeatRegressionFixture();
-    const state = reviveStateSnapshot(fixture.state as Record<string, any>);
-    const config = reviveConfigSnapshot(fixture.config as Record<string, any>);
-    const currentCondition = fixture.conditions.current || 'neutral';
-    const forecastConditions = fixture.conditions.forecast || [
-      'neutral',
-      'negative',
-      'neutral',
-    ];
-
-    const result = findBestSkill(
+    const fixture = loadOptimizerReplaySnapshot(
+      'skyfall-bow-heat-regression.snapshot.json',
+    );
+    const replayed = replayOptimizerSnapshot(fixture);
+    const {
       state,
       config,
-      fixture.targets.completion,
-      fixture.targets.perfection,
-      false,
-      64,
       currentCondition,
-      forecastConditions as any,
-      {
-        timeBudgetMs: 4500,
-        maxNodes: 2000000,
-        beamWidth: 8,
-      },
-    );
+      forecastConditions,
+      targetCompletion,
+      targetPerfection,
+    } = getReplaySearchInput(fixture);
+    const { result } = replayed;
 
     const allRecommendations = [
       result.recommendation,
@@ -858,6 +836,7 @@ describe('integration regression - forge heat parity', () => {
     );
 
     expect(result.recommendation).not.toBeNull();
+    expect(fixture.output?.recommendation?.skill?.key).toBe('explosive_fusion');
     expect(state.harmonyData?.forgeWorks?.heat).toBe(6);
     expect(state.harmonyData?.recommendedTechniqueTypes).toEqual([
       'refine',
@@ -875,7 +854,7 @@ describe('integration regression - forge heat parity', () => {
       result.recommendation!.skill,
       config,
       getConditionEffectsForConfig(config, currentCondition),
-      fixture.targets.completion,
+      targetCompletion,
       currentCondition,
     );
 
@@ -1310,5 +1289,4 @@ describe('integration regression - forge heat parity', () => {
     expect(result.recommendation?.skill.key).toBe('invasive_fusion');
     expect(result.recommendation?.skill.type).toBe('fusion');
   });
-
 });

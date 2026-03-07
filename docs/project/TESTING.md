@@ -64,11 +64,12 @@ Exported optimizer snapshots are only useful for bug reproduction if they preser
 - runtime-shaped config fields that affect gains/search (`mastery`, `masteryEntries`, granted buff payloads)
 - active buff definitions when current-state buffs change stats/costs
 - craft-context provenance (`craftingTypeSource`, sublime-detection signals, raw recipe/recipeStats fields) when a bug may be caused by hydration/integration drift
-- replay parity: round-tripped snapshot input should keep the same first recommendation as the direct in-memory config/state for the same search budget
+- replay parity: round-tripped snapshot input should be exercised through the canonical replay helpers in `src/modContent/replaySnapshot.ts` so tests share the same serializer/reviver contract as production
+- real-user regressions should prefer full exported snapshots checked into `src/__tests__/__fixtures__/replay-snapshots/`; use reduced hand-shaped fixtures only when the raw export is unavailable
 
 Because search is wall-clock-budgeted, CI/browser/live runs can reach different frontiers before cutoff. Real-user regressions should use exported snapshot fixtures or explicit constrained budgets instead of assuming one machine's timing behavior generalizes.
 
-For search-budget regressions, prefer deterministic node-budget cutoffs over wall-clock-only assertions when the behavior under test is iterative-deepening stability rather than raw responsiveness.
+For search-budget regressions, prefer deterministic node-budget cutoffs over wall-clock-only assertions when the behavior under test is iterative-deepening stability rather than raw responsiveness. Assert against the last fully completed depth/frontier, not mixed partial-pass results.
 
 ## UI checks with `agent-browser`
 

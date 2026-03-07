@@ -16,20 +16,20 @@ Generated on: 2026-03-07
 
 ## Summary
 
-| Category | Count |
-|---|---|
-| project | 9 |
-| dev-request | 2 |
-| project-meta | 1 |
-| history | 6 |
-| reference | 13 |
-| root-or-other | 2 |
-| total | 33 |
+| Category      | Count |
+| ------------- | ----- |
+| project       | 9     |
+| dev-request   | 2     |
+| project-meta  | 1     |
+| history       | 6     |
+| reference     | 13    |
+| root-or-other | 2     |
+| total         | 33    |
 
 ## Authoritative Docs
 
 | Path | Category | Status | Authoritative | Owner | Decision |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | `docs/dev-requests/API_EXPOSURE_REQUESTS.md` | dev-request | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/dev-requests/STATUS.md` | dev-request | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/DOC_INVENTORY.md` | project-meta | active | true | craftbuddy-maintainers | keep-authoritative |
@@ -46,7 +46,7 @@ Generated on: 2026-03-07
 ## Historical Docs
 
 | Path | Status | Authoritative | Owner | Decision |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `docs/history/AFNM_Mod_Guide.md` | historical | false | craftbuddy-maintainers | keep-historical |
 | `docs/history/AFNM_V2_BRANCH_PROMPTS.md` | historical | false | craftbuddy-maintainers | keep-historical |
 | `docs/history/CHANGELOG_v2.0.md` | historical | false | craftbuddy-maintainers | keep-historical |
@@ -56,21 +56,21 @@ Generated on: 2026-03-07
 
 ## Root/Other Markdown
 
-| Path | Status | Authoritative | Owner | Decision |
-|---|---|---|---|---|
-| `AGENTS.md` | - | - | - | keep-authoritative-root |
-| `README.md` | - | - | - | keep-authoritative-root |
+| Path        | Status | Authoritative | Owner | Decision                |
+| ----------- | ------ | ------------- | ----- | ----------------------- |
+| `AGENTS.md` | -      | -             | -     | keep-authoritative-root |
+| `README.md` | -      | -             | -     | keep-authoritative-root |
 
 ## Reference Corpus Summary
 
 _Reference files are summarized by subtree to keep this inventory compact._
 
-| Reference Group | File Count |
-|---|---|
-| `docs/reference/afnm-modding/combat` | 3 |
-| `docs/reference/afnm-modding/concepts` | 3 |
-| `docs/reference/afnm-modding/crafting` | 3 |
-| `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` | 1 |
-| `docs/reference/afnm-modding/index.md` | 1 |
-| `docs/reference/afnm-modding/README.md` | 1 |
-| `docs/reference/index.md` | 1 |
+| Reference Group                                     | File Count |
+| --------------------------------------------------- | ---------- |
+| `docs/reference/afnm-modding/combat`                | 3          |
+| `docs/reference/afnm-modding/concepts`              | 3          |
+| `docs/reference/afnm-modding/crafting`              | 3          |
+| `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` | 1          |
+| `docs/reference/afnm-modding/index.md`              | 1          |
+| `docs/reference/afnm-modding/README.md`             | 1          |
+| `docs/reference/index.md`                           | 1          |

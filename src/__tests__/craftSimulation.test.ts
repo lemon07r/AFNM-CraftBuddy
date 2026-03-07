@@ -26,6 +26,10 @@ import {
   SearchResult,
   CraftingConditionType,
 } from '../optimizer/search';
+import {
+  getReplaySearchInput,
+  loadOptimizerReplaySnapshot,
+} from './__fixtures__/replaySnapshots';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1392,5 +1396,64 @@ describe('craft simulation — sublime crafts', () => {
     }
     // The optimizer should never waste turns on refine at heat=0.
     expect(zeroHeatRefines).toBe(0);
+  });
+
+  it('should keep the full skyfall bow replay on a safe non-fusion line until forge heat recovers', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'skyfall-bow-heat-regression.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    let state = input.state;
+    const conditionTimeline: CraftingConditionType[] = [
+      input.currentCondition as CraftingConditionType,
+      ...(input.forecastConditions as CraftingConditionType[]),
+      'neutral',
+      'neutral',
+    ];
+
+    const chosenKeys: string[] = [];
+    const chosenTypes: string[] = [];
+
+    for (let turn = 0; turn < 3; turn++) {
+      const currentCondition = conditionTimeline[turn] || 'neutral';
+      const forecast = conditionTimeline.slice(turn + 1, turn + 4);
+      const result = findBestSkill(
+        state,
+        input.config,
+        input.targetCompletion,
+        input.targetPerfection,
+        false,
+        input.lookaheadDepth,
+        currentCondition,
+        forecast,
+        input.searchConfig,
+      );
+
+      expect(result.recommendation).not.toBeNull();
+      const skill = result.recommendation!.skill;
+      chosenKeys.push(skill.key);
+      chosenTypes.push(skill.type);
+
+      if (turn < 2) {
+        expect(skill.type).not.toBe('fusion');
+      }
+
+      const nextState = applySkill(
+        state,
+        skill,
+        input.config,
+        getConditionEffectsForConfig(input.config, currentCondition),
+        input.targetCompletion,
+        currentCondition,
+      );
+
+      expect(nextState).not.toBeNull();
+      state = nextState!;
+    }
+
+    expect(chosenKeys[0]).toBe('invasive_refine');
+    expect(chosenTypes[1]).not.toBe('fusion');
+    expect(state.harmonyData?.forgeWorks?.heat).toBeLessThanOrEqual(6);
+    expect(chosenTypes[2]).toBe('fusion');
   });
 });
