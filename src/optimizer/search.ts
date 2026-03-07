@@ -19,6 +19,7 @@ import {
   SkillDefinition,
   OptimizerConfig,
   applySkill,
+  calculateActionSurvivabilityFloor,
   calculateEffectiveActionCosts,
   getAvailableSkills,
   calculateSkillGains,
@@ -731,8 +732,12 @@ function classifyTerminalState(
   return { isTerminal, isTerminalUnmet };
 }
 
+interface UnsafeCandidateClassification extends TerminalStateClassification {
+  requiresProbabilisticSurvival?: boolean;
+}
+
 function filterUnfinishedTerminalCandidates<
-  T extends TerminalStateClassification,
+  T extends UnsafeCandidateClassification,
 >(candidates: T[]): T[] {
   if (candidates.length <= 1) {
     return candidates;
@@ -1198,8 +1203,55 @@ function calculateRecommendationGains(
 interface SearchMoveCandidate {
   skill: SkillDefinition;
   nextState: CraftingState;
+  searchState: CraftingState;
   orderingScore: number;
   immediateProgress: number;
+  requiresProbabilisticSurvival: boolean;
+}
+
+function applySurvivabilityFloorToState(
+  displayState: CraftingState,
+  survivabilityFloor:
+    | ReturnType<typeof calculateActionSurvivabilityFloor>
+    | null,
+): CraftingState {
+  if (!survivabilityFloor) {
+    return displayState;
+  }
+
+  const clampedStability = Math.max(
+    0,
+    Math.min(displayState.stability, survivabilityFloor.stability),
+  );
+  const floorPenalty = Math.min(
+    displayState.initialMaxStability,
+    Math.max(
+      0,
+      displayState.initialMaxStability - survivabilityFloor.maxStability,
+    ),
+  );
+
+  if (
+    clampedStability === displayState.stability &&
+    floorPenalty === displayState.stabilityPenalty
+  ) {
+    return displayState;
+  }
+
+  const nativeVariables = displayState.nativeVariables
+    ? {
+        ...displayState.nativeVariables,
+        stability: clampedStability,
+        maxstability: survivabilityFloor.maxStability,
+        stabilitypenalty: floorPenalty,
+      }
+    : displayState.nativeVariables;
+
+  return displayState.copy({
+    stability: clampedStability,
+    stabilityPenalty: floorPenalty,
+    nativeVariables,
+  });
 }
 
 interface TranspositionCacheEntry {
@@ -1412,11 +1464,11 @@ export function greedySearch(
     normalizedCurrentCondition,
   );
   const evaluatedMoves: Array<
-    SkillRecommendation & TerminalStateClassification
+    SkillRecommendation & UnsafeCandidateClassification
   > = [];
 
   for (const skill of availableSkills) {
-    const newState = applySkill(
+    const displayState = applySkill(
       state,
       skill,
       config,
@@ -1424,7 +1476,23 @@ export function greedySearch(
       targetCompletion,
       normalizedCurrentCondition,
     );
-    if (newState === null) continue;
+    if (displayState === null) continue;
+    const goalsMetAfterAction = goalsMet(displayState, modeCompGoal, modePerfGoal);
+    const survivabilityFloor = calculateActionSurvivabilityFloor(
+      state,
+      skill,
+      config,
+      conditionEffects,
+      normalizedCurrentCondition,
+    );
+    const requiresProbabilisticSurvival =
+      !goalsMetAfterAction &&
+      state.stability <= SCORING.NEAR_DEATH_STABILITY &&
+      displayState.stability > 0 &&
+      (survivabilityFloor?.stability ?? displayState.stability) <= 0;
+    const newState = requiresProbabilisticSurvival
+      ? applySurvivabilityFloorToState(displayState, survivabilityFloor)
+      : displayState;
 
     const { expectedGains, immediateGains, effectiveCosts } =
       calculateRecommendationGains(state, skill, config, conditionEffects);
@@ -1461,6 +1529,7 @@ export function greedySearch(
       effectiveCosts,
       score,
       reasoning,
+      requiresProbabilisticSurvival,
       ...terminalState,
     });
   }
@@ -1586,6 +1655,12 @@ export function lookaheadSearch(
       return aIsStabilize ? -1 : 1;
     }
 
+    if (
+      a.requiresProbabilisticSurvival !== b.requiresProbabilisticSurvival
+    ) {
+      return a.requiresProbabilisticSurvival ? -1 : 1;
+    }
+
     const qiSpentA = Math.max(0, currentState.qi - a.nextState.qi);
     const qiSpentB = Math.max(0, currentState.qi - b.nextState.qi);
     if (qiSpentA !== qiSpentB) {
@@ -1655,6 +1730,38 @@ export function lookaheadSearch(
           Math.max(1, effectiveCompGoal + effectivePerfGoal),
         )
       : baseScore;
+  };
+  const buildSearchStateForContinuation = (
+    currentState: CraftingState,
+    skill: SkillDefinition,
+    displayState: CraftingState,
+    conditionEffectsAtDepth: ReturnType<typeof getConditionEffectsForConfig>,
+    currentConditionAtDepth: CraftingConditionType,
+  ): {
+    searchState: CraftingState;
+    requiresProbabilisticSurvival: boolean;
+  } => {
+    const goalsMetAfterAction = targetsMetForCurrentMode(displayState);
+    const survivabilityFloor = calculateActionSurvivabilityFloor(
+      currentState,
+      skill,
+      config,
+      conditionEffectsAtDepth,
+      currentConditionAtDepth,
+    );
+    const floorStability = survivabilityFloor?.stability ?? displayState.stability;
+    const requiresProbabilisticSurvival =
+      !goalsMetAfterAction &&
+      currentState.stability <= SCORING.NEAR_DEATH_STABILITY &&
+      displayState.stability > 0 &&
+      floorStability <= 0;
+
+    return {
+      searchState: requiresProbabilisticSurvival
+        ? applySurvivabilityFloorToState(displayState, survivabilityFloor)
+        : displayState,
+      requiresProbabilisticSurvival,
+    };
   };
   let cache: TranspositionCache = new Map();
   let acceptedCache: TranspositionCache = new Map();
@@ -1772,6 +1879,14 @@ export function lookaheadSearch(
       if (nextState === null) {
         continue;
       }
+      const { searchState, requiresProbabilisticSurvival } =
+        buildSearchStateForContinuation(
+          currentState,
+          skill,
+          nextState,
+          conditionEffectsAtDepth,
+          currentConditionAtDepth,
+        );
 
       const completionBefore =
         modeCompGoal > 0
@@ -1796,17 +1911,27 @@ export function lookaheadSearch(
       candidates.push({
         skill,
         nextState,
+        searchState,
         orderingScore: estimatePostMoveStateScore(
-          nextState,
+          searchState,
           skill,
           currentConditionAtDepth,
           nextConditionQueueAtDepth,
         ),
         immediateProgress,
+        requiresProbabilisticSurvival,
       });
     }
 
-    candidates.sort((a, b) => {
+    const filteredCandidates = filterUnfinishedTerminalCandidates(
+      candidates.map((candidate) => ({
+        ...candidate,
+        isTerminal: false,
+        isTerminalUnmet: false,
+      })),
+    ).map(({ isTerminal, isTerminalUnmet, ...candidate }) => candidate);
+
+    filteredCandidates.sort((a, b) => {
       const scoreDiff = b.orderingScore - a.orderingScore;
       if (Math.abs(scoreDiff) > scoreTieWindow) {
         return scoreDiff;
@@ -1822,16 +1947,16 @@ export function lookaheadSearch(
       Math.max(0, remainingDepth - 1),
     );
     if (cachedBestMoveKey) {
-      const cachedIndex = candidates.findIndex(
+      const cachedIndex = filteredCandidates.findIndex(
         (candidate) => candidate.skill.key === cachedBestMoveKey,
       );
       if (cachedIndex > 0) {
-        const [cachedCandidate] = candidates.splice(cachedIndex, 1);
-        candidates.unshift(cachedCandidate);
+        const [cachedCandidate] = filteredCandidates.splice(cachedIndex, 1);
+        filteredCandidates.unshift(cachedCandidate);
       }
     }
 
-    return candidates;
+    return filteredCandidates;
   }
 
   // Check if targets already met
@@ -2007,7 +2132,7 @@ export function lookaheadSearch(
     let bestMoveKey = ''; // tracks which skill achieved bestScore
 
     for (const candidate of beamCandidates) {
-      const { skill, nextState: newState } = candidate;
+      const { skill, searchState: newState } = candidate;
 
       let score = 0;
       if (!actionConsumesTurn(skill)) {
@@ -2218,8 +2343,15 @@ export function lookaheadSearch(
             conditionAtDepth,
           );
           if (nextState !== null) {
+            const { searchState } = buildSearchStateForContinuation(
+              currentState,
+              cachedSkill,
+              nextState,
+              conditionEffectsAtDepth,
+              conditionAtDepth,
+            );
             chosenSkill = cachedSkill;
-            chosenNextState = nextState;
+            chosenNextState = searchState;
           }
         }
       }
@@ -2228,17 +2360,16 @@ export function lookaheadSearch(
       if (!chosenSkill || !chosenNextState) {
         let bestScore = -Infinity;
         let bestCandidate: SearchMoveCandidate | null = null;
-        for (const skill of skills) {
-          const nextState = applySkill(
-            currentState,
-            skill,
-            config,
-            conditionEffectsAtDepth,
-            targetCompletion,
-            conditionAtDepth,
-          );
-          if (nextState === null) continue;
-
+        const orderedFallbackCandidates = buildOrderedMoveCandidates(
+          currentState,
+          remainingDepth,
+          conditionAtDepth,
+          conditionQueueAtDepth,
+          conditionEffectsAtDepth,
+        );
+        for (const candidate of orderedFallbackCandidates) {
+          const skill = candidate.skill;
+          const nextState = candidate.searchState;
           const score = evaluateFutureScoreAfterSkill(
             nextState,
             Math.max(0, remainingDepth - 1),
@@ -2247,29 +2378,9 @@ export function lookaheadSearch(
             conditionQueueAtDepth,
             skill,
           );
-          const completionBefore =
-            modeCompGoal > 0
-              ? Math.min(modeCompGoal, currentState.completion)
-              : currentState.completion;
-          const perfectionBefore =
-            modePerfGoal > 0
-              ? Math.min(modePerfGoal, currentState.perfection)
-              : currentState.perfection;
-          const completionAfter =
-            modeCompGoal > 0
-              ? Math.min(modeCompGoal, nextState.completion)
-              : nextState.completion;
-          const perfectionAfter =
-            modePerfGoal > 0
-              ? Math.min(modePerfGoal, nextState.perfection)
-              : nextState.perfection;
-          const candidate: SearchMoveCandidate = {
-            skill,
-            nextState,
+          const scoredCandidate: SearchMoveCandidate = {
+            ...candidate,
             orderingScore: score,
-            immediateProgress:
-              Math.max(0, completionAfter - completionBefore) +
-              Math.max(0, perfectionAfter - perfectionBefore),
           };
 
           const scoreDelta = score - bestScore;
@@ -2279,14 +2390,14 @@ export function lookaheadSearch(
           const winsTie =
             isScoreTie &&
             compareMoveCandidatesForTie(
-              candidate,
+              scoredCandidate,
               bestCandidate!,
               currentState,
             ) > 0;
 
           if (isClearImprovement || winsTie || bestCandidate === null) {
             bestScore = score;
-            bestCandidate = candidate;
+            bestCandidate = scoredCandidate;
             chosenSkill = skill;
             chosenNextState = nextState;
           }
@@ -2451,7 +2562,7 @@ export function lookaheadSearch(
 
     for (const candidate of orderedFollowUpCandidates) {
       const followUp = candidate.skill;
-      const nextState = candidate.nextState;
+      const nextState = candidate.searchState;
 
       const { expectedGains, immediateGains, effectiveCosts } =
         calculateRecommendationGains(
@@ -2525,14 +2636,14 @@ export function lookaheadSearch(
       currentConditionEffects,
     );
     const evaluatedFirstMoves: Array<
-      SkillRecommendation & TerminalStateClassification
+      SkillRecommendation & UnsafeCandidateClassification
     > = [];
 
     // First pass: evaluate ALL first-level skills with basic scoring
     // This ensures we always have alternatives even if deep search times out
     for (const candidate of orderedCandidates) {
       const skill = candidate.skill;
-      const newState = candidate.nextState;
+      const newState = candidate.searchState;
 
       const { expectedGains, immediateGains, effectiveCosts } =
         calculateRecommendationGains(
@@ -2578,6 +2689,7 @@ export function lookaheadSearch(
         reasoning,
         consumesBuff: skill.isDisciplinedTouch === true,
         followUpSkill: undefined,
+        requiresProbabilisticSurvival: candidate.requiresProbabilisticSurvival,
         ...terminalState,
       });
     }
@@ -2606,7 +2718,7 @@ export function lookaheadSearch(
         break;
       }
 
-      const newState = applySkill(
+      const displayState = applySkill(
         state,
         rec.skill,
         config,
@@ -2614,10 +2726,17 @@ export function lookaheadSearch(
         targetCompletion,
         normalizedCurrentCondition,
       );
-      if (newState === null) continue;
+      if (displayState === null) continue;
+      const { searchState } = buildSearchStateForContinuation(
+        state,
+        rec.skill,
+        displayState,
+        currentConditionEffects,
+        normalizedCurrentCondition,
+      );
 
       rec.score = evaluateFutureScoreAfterSkill(
-        newState,
+        searchState,
         Math.max(0, depthToSearch - 1),
         1,
         normalizedCurrentCondition,
@@ -2663,7 +2782,7 @@ export function lookaheadSearch(
       index++
     ) {
       const rec = recommendations[index];
-      const stateAfterSkill = applySkill(
+      const displayStateAfterSkill = applySkill(
         state,
         rec.skill,
         config,
@@ -2671,9 +2790,16 @@ export function lookaheadSearch(
         targetCompletion,
         normalizedCurrentCondition,
       );
-      if (stateAfterSkill === null) {
+      if (displayStateAfterSkill === null) {
         continue;
       }
+      const { searchState: stateAfterSkill } = buildSearchStateForContinuation(
+        state,
+        rec.skill,
+        displayStateAfterSkill,
+        currentConditionEffects,
+        normalizedCurrentCondition,
+      );
 
       const followUpConditionState = getMostLikelyConditionStateAfterSkill(
         stateAfterSkill,
@@ -2789,7 +2915,7 @@ export function lookaheadSearch(
     config,
     normalizedCurrentCondition,
   );
-  const stateAfterFirstMove = applySkill(
+  const stateAfterFirstMoveDisplay = applySkill(
     state,
     bestFirstMove,
     config,
@@ -2801,7 +2927,14 @@ export function lookaheadSearch(
   let optimalRotation: string[] = [bestFirstMove.name];
   let expectedFinalState: SearchResult['expectedFinalState'] = undefined;
 
-  if (stateAfterFirstMove) {
+  if (stateAfterFirstMoveDisplay) {
+    const { searchState: stateAfterFirstMove } = buildSearchStateForContinuation(
+      state,
+      bestFirstMove,
+      stateAfterFirstMoveDisplay,
+      currentConditionEffects,
+      normalizedCurrentCondition,
+    );
     const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
       stateAfterFirstMove,
       normalizedCurrentCondition,

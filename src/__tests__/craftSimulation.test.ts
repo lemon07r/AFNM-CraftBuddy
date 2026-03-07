@@ -1456,4 +1456,100 @@ describe('craft simulation — sublime crafts', () => {
     expect(state.harmonyData?.forgeWorks?.heat).toBeLessThanOrEqual(6);
     expect(chosenTypes[2]).toBe('fusion');
   });
+
+  it('should stabilize across the low-stability replay regression sequence', () => {
+    const stepBeforeSnapshot = loadOptimizerReplaySnapshot(
+      'low-stability-step-before.snapshot.json',
+    );
+    const stepBeforeInput = getReplaySearchInput(stepBeforeSnapshot);
+    const stepBeforeResult = findBestSkill(
+      stepBeforeInput.state,
+      stepBeforeInput.config,
+      stepBeforeInput.targetCompletion,
+      stepBeforeInput.targetPerfection,
+      false,
+      stepBeforeInput.lookaheadDepth,
+      stepBeforeInput.currentCondition,
+      stepBeforeInput.forecastConditions as CraftingConditionType[],
+      stepBeforeInput.searchConfig,
+    );
+
+    expect(stepBeforeSnapshot.output?.recommendation?.skill?.key).toBe(
+      'corrupted_stabilization',
+    );
+    expect(stepBeforeResult.recommendation).not.toBeNull();
+    expect(stepBeforeResult.recommendation!.skill.key).toBe(
+      'forceful_stabilize',
+    );
+
+    const stepBeforeNextState = applySkill(
+      stepBeforeInput.state,
+      stepBeforeResult.recommendation!.skill,
+      stepBeforeInput.config,
+      getConditionEffectsForConfig(
+        stepBeforeInput.config,
+        stepBeforeInput.currentCondition,
+      ),
+      stepBeforeInput.targetCompletion,
+      stepBeforeInput.currentCondition,
+    );
+
+    expect(stepBeforeNextState).not.toBeNull();
+    expect(stepBeforeNextState!.stability).toBeGreaterThan(
+      stepBeforeInput.state.stability,
+    );
+    expect(
+      isTerminalState(
+        stepBeforeNextState!,
+        stepBeforeInput.config,
+        stepBeforeInput.currentCondition,
+      ),
+    ).toBe(false);
+
+    const regressionSnapshot = loadOptimizerReplaySnapshot(
+      'low-stability-regression.snapshot.json',
+    );
+    const regressionInput = getReplaySearchInput(regressionSnapshot);
+    const regressionResult = findBestSkill(
+      regressionInput.state,
+      regressionInput.config,
+      regressionInput.targetCompletion,
+      regressionInput.targetPerfection,
+      false,
+      regressionInput.lookaheadDepth,
+      regressionInput.currentCondition,
+      regressionInput.forecastConditions as CraftingConditionType[],
+      regressionInput.searchConfig,
+    );
+
+    expect(regressionSnapshot.output?.recommendation?.skill?.key).toBe(
+      'invasive_refine',
+    );
+    expect(regressionResult.recommendation).not.toBeNull();
+    expect(regressionResult.recommendation!.skill.type).toBe('stabilize');
+
+    const regressionNextState = applySkill(
+      regressionInput.state,
+      regressionResult.recommendation!.skill,
+      regressionInput.config,
+      getConditionEffectsForConfig(
+        regressionInput.config,
+        regressionInput.currentCondition,
+      ),
+      regressionInput.targetCompletion,
+      regressionInput.currentCondition,
+    );
+
+    expect(regressionNextState).not.toBeNull();
+    expect(regressionNextState!.stability).toBeGreaterThan(
+      regressionInput.state.stability,
+    );
+    expect(
+      isTerminalState(
+        regressionNextState!,
+        regressionInput.config,
+        regressionInput.currentCondition,
+      ),
+    ).toBe(false);
+  });
 });

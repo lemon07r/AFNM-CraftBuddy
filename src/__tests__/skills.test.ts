@@ -10,6 +10,7 @@ import {
   DEFAULT_CONFIG,
   canApplySkill,
   applySkill,
+  calculateActionSurvivabilityFloor,
   calculateSkillGains,
   getAvailableSkills,
   isTerminalState,
@@ -2043,5 +2044,71 @@ describe('Restoring Brilliance stability gain bug', () => {
     // With expected value - 32.5 * 1 + 1 * 0.18 = 32.68, floor = 32
     const expected = calculateSkillGains(state, restoringBrilliance, testConfig, []);
     expect(expected.stability).toBe(32);
+  });
+
+  it('should keep chance-based stabilization out of the guaranteed survival floor', () => {
+    const corruptedStabilizationBuff = {
+      name: 'Corrupted Stabilization',
+      canStack: true,
+      effects: [
+        { kind: 'addStack' as const, stacks: { value: -1 } },
+        {
+          kind: 'stability' as const,
+          condition: { kind: 'chance' as const, percentage: 75 },
+          amount: { value: 7 },
+        },
+      ],
+      onFusion: [],
+      onRefine: [],
+      onStabilize: [],
+    };
+
+    const riskyRefine = createTestSkill({
+      name: 'Risky Refine',
+      key: 'risky_refine',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      scalesWithIntensity: false,
+      scalesWithControl: false,
+      effects: [{ kind: 'perfection' as const, amount: { value: 100 } }],
+    });
+
+    const state = new CraftingState({
+      qi: 100,
+      stability: 1,
+      initialMaxStability: 60,
+      buffs: new Map([
+        [
+          'corrupted_stabilization',
+          {
+            name: 'Corrupted Stabilization',
+            stacks: 8,
+            definition: corruptedStabilizationBuff,
+          },
+        ],
+      ]),
+    });
+    const config = createTestConfig({
+      skills: [riskyRefine],
+    });
+
+    const nextState = applySkill(state, riskyRefine, config, [], 0, 'neutral');
+    const survivabilityFloor = calculateActionSurvivabilityFloor(
+      state,
+      riskyRefine,
+      config,
+      [],
+      'neutral',
+    );
+
+    expect(nextState).not.toBeNull();
+    expect(nextState!.stability).toBe(5.25);
+    expect(survivabilityFloor).toEqual({
+      stability: 0,
+      maxStability: 59,
+    });
   });
 });

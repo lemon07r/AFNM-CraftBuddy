@@ -3,7 +3,7 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-06
+last_verified: 2026-03-07
 source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/settings/index.ts
 review_cycle_days: 30
 related_files:
@@ -42,6 +42,7 @@ related_files:
 ## Probability handling
 
 - Success/crit modeled as expected value in gains.
+- Immediate survival is not flattened entirely into EV: `calculateActionSurvivabilityFloor(...)` computes a guaranteed post-action stability/max-stability floor, and search treats proc-dependent survival lines as unsafe when a guaranteed-safe alternative exists.
 - Condition queue is normalized to fixed length `3` (matches game UI/runtime visibility).
 - Beyond forecast queue, condition transitions are probability-weighted (`enableConditionBranchingAfterForecast`, `conditionBranchLimit`, `conditionBranchMinProbability`).
 - Non-turn item actions do not consume lookahead turn-depth/index.
@@ -63,7 +64,7 @@ related_files:
 
 ### Move ordering
 
-`buildOrderedMoveCandidates()` is the live beam-ordering path. It evaluates every currently legal move with `applySkill(...)`, scores the resulting state through `estimatePostMoveStateScore(...)`, and then uses `compareMoveCandidatesForTie(...)` plus immediate progress as tie-breakers. When iterative deepening has already solved a shallower version of the same normalized subproblem, the cached `bestMove` is promoted before beam truncation so deeper passes continue from the previously validated principal variation instead of re-guessing move order from scratch.
+`buildOrderedMoveCandidates()` is the live beam-ordering path. It evaluates every currently legal move with `applySkill(...)`, scores the resulting state through `estimatePostMoveStateScore(...)`, and then uses `compareMoveCandidatesForTie(...)` plus immediate progress as tie-breakers. It also consults the guaranteed survivability floor so a move that only survives if a probabilistic stability proc lands does not outrank a guaranteed-safe alternative while goals are still unmet. When iterative deepening has already solved a shallower version of the same normalized subproblem, the cached `bestMove` is promoted before beam truncation so deeper passes continue from the previously validated principal variation instead of re-guessing move order from scratch.
 
 No skills are hard-filtered out of the search tree before evaluation. If a move class is being mis-ordered, fix the post-move state evaluation or the underlying transition/scoring model instead of introducing a second heuristic ordering lane.
 
@@ -111,4 +112,4 @@ Identical state + config inputs should produce stable recommendations within the
 ## Key design decisions
 
 - **Pure optimizer core** — simulation and search in `src/optimizer/*` remain pure/testable with no game runtime dependencies.
-- **Expected-value modeling** — EV for success/crit and future-condition branching provides stable quality with bounded runtime cost (no stochastic rollouts).
+- **Expected-value modeling with guaranteed-survival guardrails** — EV for success/crit and future-condition branching provides stable quality with bounded runtime cost (no stochastic rollouts), but immediate survivability is guarded by a deterministic floor so the optimizer does not spend a craft on a recovery proc when a guaranteed stabilize exists.

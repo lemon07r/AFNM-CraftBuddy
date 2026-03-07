@@ -3073,4 +3073,95 @@ describe('scoreState (isolated)', () => {
       explosiveFusion!.score,
     );
   });
+
+  it('replays the low-stability step-before snapshot and now prefers guaranteed stabilization', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'low-stability-step-before.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      input.searchConfig,
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const corruptedStabilization = allRecommendations.find(
+      (recommendation) =>
+        recommendation.skill.key === 'corrupted_stabilization',
+    );
+    const forcefulStabilize = allRecommendations.find(
+      (recommendation) =>
+        recommendation.skill.key === 'forceful_stabilize',
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      'corrupted_stabilization',
+    );
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
+    expect(forcefulStabilize).toBeDefined();
+    expect(corruptedStabilization).toBeDefined();
+    expect(forcefulStabilize!.score).toBeGreaterThan(
+      corruptedStabilization!.score,
+    );
+  });
+
+  it('replays the low-stability regression snapshot and prefers stabilization over invasive refine', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'low-stability-regression.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      input.searchConfig,
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const invasiveRefine = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === 'invasive_refine',
+    );
+    const forcefulStabilize = allRecommendations.find(
+      (recommendation) =>
+        recommendation.skill.key === 'forceful_stabilize',
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      'invasive_refine',
+    );
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
+    expect(result.recommendation!.skill.type).toBe('stabilize');
+    expect(invasiveRefine).toBeUndefined();
+    expect(forcefulStabilize).toBeDefined();
+  });
 });

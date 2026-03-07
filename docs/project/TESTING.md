@@ -50,6 +50,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 - condition exploitation: positive conditions steer toward the right skills
 - buff utilization: buff setup → payoff sequences preferred over raw progress
 - survivability: stabilize when critical, skip when a finisher is available
+- probabilistic survivability: when chance-based stability recovery exists, the optimizer should still prefer a guaranteed stabilize over a proc-dependent line if both keep goals alive
 - mixed conditions: varied/all-negative sequences don't cause craft death
 - harmony sub-systems: forge works crafts use fusion to raise heat before refining, complete without wasting turns on zero-gain skills
 
@@ -70,6 +71,11 @@ Exported optimizer snapshots are only useful for bug reproduction if they preser
 Because search is wall-clock-budgeted, CI/browser/live runs can reach different frontiers before cutoff. Real-user regressions should use exported snapshot fixtures or explicit constrained budgets instead of assuming one machine's timing behavior generalizes.
 
 For search-budget regressions, prefer deterministic node-budget cutoffs over wall-clock-only assertions when the behavior under test is iterative-deepening stability rather than raw responsiveness. Assert against the last fully completed depth/frontier, not mixed partial-pass results.
+
+For chance-based survivability bugs, cover both layers:
+
+- `skills.test.ts`: unit-test the guaranteed survivability floor (`calculateActionSurvivabilityFloor(...)`) so probabilistic stability recovery does not masquerade as guaranteed runway
+- `search.test.ts` / `craftSimulation.test.ts`: add replay or simulation regressions proving the optimizer chooses the guaranteed-safe line when one exists
 
 ## UI checks with `agent-browser`
 
