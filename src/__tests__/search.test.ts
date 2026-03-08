@@ -3514,6 +3514,57 @@ describe('scoreState (isolated)', () => {
     expect(forcefulStabilize).toBeDefined();
   });
 
+  it('replays the user resonance snapshot and prefers refine over explosive fusion', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-resonance-regression.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      input.searchConfig,
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      'explosive_fusion',
+    );
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('refine');
+    expect(result.recommendation!.skill.key).toBe('focused_refine');
+  });
+
+  it('replays the user alchemical sequence snapshot and respects the refine-only harmony step', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-alchemical-sequence.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      input.searchConfig,
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe('invasive_fusion');
+    expect(input.state.harmonyData?.recommendedTechniqueTypes).toEqual([
+      'refine',
+    ]);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('refine');
+    expect(result.recommendation!.skill.key).toBe('harmonious_refine');
+  });
+
   it('replays the premature-finish proc-floor snapshot and refuses an immediate proc-dependent dead-end refine', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'premature-finish-proc-floor.snapshot.json',

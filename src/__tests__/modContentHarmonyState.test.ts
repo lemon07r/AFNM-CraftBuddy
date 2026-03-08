@@ -1,5 +1,9 @@
 import { BuffType, CraftingState } from '../optimizer/state';
-import { findBestSkill, lookaheadSearch } from '../optimizer/search';
+import {
+  findBestSkill,
+  lookaheadSearch,
+  normalizeForecastConditionQueue,
+} from '../optimizer/search';
 import {
   applySkill,
   calculateSkillGains,
@@ -1349,5 +1353,98 @@ describe('integration regression - forge heat parity', () => {
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation?.skill.key).toBe('invasive_fusion');
     expect(result.recommendation?.skill.type).toBe('fusion');
+  });
+});
+
+describe('user report replay regressions', () => {
+  it('prefers refine over fusion or stabilize in the first supplied replay', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-pattern-step-1.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+    };
+    const result = findBestSkill(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      stableSearchConfig,
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('refine');
+    expect(result.recommendation!.skill.key).not.toBe('forceful_stabilize');
+    expect(result.recommendation!.skill.type).not.toBe('fusion');
+  });
+
+  it('respects the reported alchemical charge pattern and avoids a stabilize overcap follow-up', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-pattern-step-2.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+    };
+    const result = findBestSkill(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      stableSearchConfig,
+    );
+
+    expect(input.state.harmonyData?.recommendedTechniqueTypes).toEqual([
+      'refine',
+    ]);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('refine');
+    expect(result.recommendation!.skill.type).not.toBe('fusion');
+
+    const nextState = applySkill(
+      input.state,
+      result.recommendation!.skill,
+      input.config,
+      getConditionEffectsForConfig(input.config, input.currentCondition),
+      input.targetCompletion,
+      input.currentCondition,
+    );
+
+    expect(nextState).not.toBeNull();
+
+    const shiftedForecast = normalizeForecastConditionQueue(
+      input.currentCondition as any,
+      input.forecastConditions as any,
+      input.state.harmony,
+    );
+    const nextCondition = shiftedForecast[0] || input.currentCondition;
+    const nextForecast = shiftedForecast.slice(1);
+    const nextResult = findBestSkill(
+      nextState!,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      nextCondition,
+      nextForecast as any,
+      stableSearchConfig,
+    );
+
+    expect(nextResult.recommendation).not.toBeNull();
+    expect(nextResult.recommendation!.skill.type).not.toBe('stabilize');
   });
 });

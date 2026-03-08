@@ -527,7 +527,8 @@ function buildAutoCraftSnapshot() {
     hasConfirmedCraftSession &&
     lastEntity !== null &&
     lastProgressState !== null &&
-    wasCraftingActive;
+    wasCraftingActive &&
+    wasVisibleCraftingUiLastPoll;
 
   return {
     craftSessionActive:
@@ -2650,19 +2651,23 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     createOverlayContainer();
   }
 
-  // Show overlay only while crafting is active and panel visibility is enabled.
-  // Also show when a craft just started (craftStartPending) or when actively
-  // calculating, so the loading skeleton is visible before entity data arrives.
-  const isCraftingActive =
+  // Show the overlay only while the crafting UI is still on-screen (or while a
+  // craft is still bootstrapping). This prevents cached Redux craft data from
+  // leaving stale panels visible on library/result transitions.
+  const hasVisibleCraftingUi = wasVisibleCraftingUiLastPoll;
+  const hasLiveCraftState =
     hasConfirmedCraftSession &&
     lastEntity !== null &&
-    lastProgressState !== null;
+    lastProgressState !== null &&
+    hasVisibleCraftingUi;
   const isPendingCraftStart = isCraftStartPendingActive();
+  const hasCraftResultUi = detectCraftResultUi();
   const shouldShow =
     currentSettings.panelVisible &&
-    (isCraftingActive ||
+    !hasCraftResultUi &&
+    (hasLiveCraftState ||
       isPendingCraftStart ||
-      (isCalculating && hasConfirmedCraftSession));
+      (isCalculating && hasConfirmedCraftSession && hasVisibleCraftingUi));
 
   if (!reactRoot || !shouldShow) {
     if (reactRoot && overlayContainer) {
@@ -2937,6 +2942,13 @@ function processCraftingStateFromStore(store: any): void {
     }
 
     const hasVisibleCraftingUi = detectVisibleCraftingUi();
+    if (detectCraftResultUi()) {
+      if (wasCraftingActive) {
+        wasCraftingActive = false;
+        handleCraftingEnded();
+      }
+      return;
+    }
     if (hasVisibleCraftingUi) {
       hasConfirmedCraftSession = true;
     }
@@ -3041,6 +3053,37 @@ function isElementVisible(element: Element): boolean {
   }
 
   return htmlElement.getClientRects().length > 0;
+}
+
+function detectCraftResultUi(): boolean {
+  const gameRoot = getGameRootElement() as HTMLElement;
+  const visibleText = gameRoot.innerText?.toLowerCase() || '';
+  const hasResultCue =
+    visibleText.includes('craft success') ||
+    visibleText.includes('perfect craft') ||
+    visibleText.includes('craft result');
+
+  if (!hasResultCue) {
+    return false;
+  }
+
+  return Array.from(gameRoot.querySelectorAll('button, [role="button"]')).some(
+    (element) => {
+      if (isElementInCraftBuddyOverlay(element) || !isElementVisible(element)) {
+        return false;
+      }
+
+      const label = (
+        (element as HTMLElement).textContent ||
+        (element as HTMLElement).getAttribute('aria-label') ||
+        ''
+      )
+        .toLowerCase()
+        .trim();
+
+      return label === 'return' || label.includes('return');
+    },
+  );
 }
 
 /**
@@ -3318,6 +3361,18 @@ function parseCraftingValuesFromDOM(): {
  */
 function pollCraftingState(): void {
   refreshReduxStoreConnection();
+
+  if (detectCraftResultUi()) {
+    if (wasCraftingActive) {
+      wasCraftingActive = false;
+      debugLog(
+        '[CraftBuddy] Craft result screen detected, clearing active state',
+      );
+      handleCraftingEnded();
+    }
+    wasVisibleCraftingUiLastPoll = false;
+    return;
+  }
 
   const {
     isActive,

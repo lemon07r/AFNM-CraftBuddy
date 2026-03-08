@@ -40,7 +40,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 | `largeNumbers.test.ts` | Numeric safety |
 | `configStats.test.ts` | Config statistics calculation |
 | `settings.test.ts` | Settings persistence |
-| `autoCraftController.test.ts` | Auto-mode controller policy gating, stop/reset behavior, and state-advance waits |
+| `autoCraftController.test.ts` | Auto-mode controller policy gating, auto-finish completion latch, stop/reset behavior, and state-advance waits |
 | `modContentHarmonyState.test.ts` | Harmony hydration, replay snapshot parity, integration regressions |
 
 ## Simulation tests (`craftSimulation.test.ts`)

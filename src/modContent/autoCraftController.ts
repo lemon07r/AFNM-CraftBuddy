@@ -193,6 +193,7 @@ export function createAutoCraftController({
   let scheduledExecutionHandle: unknown = null;
   let scheduledExecutionFingerprint: string | null = null;
   let awaitingFingerprint: string | null = null;
+  let awaitingRequest: AutoCraftExecutionRequest | null = null;
   let waitingTimeoutHandle: unknown = null;
   let stopReason =
     'Auto mode will stop after the current action resolves.';
@@ -241,11 +242,15 @@ export function createAutoCraftController({
     cancelScheduledExecution();
     cancelWaitingTimeout();
     awaitingFingerprint = null;
+    awaitingRequest = null;
     stopReason = 'Auto mode stopped.';
   };
 
   const finalizeStoppedState = (
-    phase: Extract<AutoCraftPhase, 'stopped' | 'unsupported' | 'error'>,
+    phase: Extract<
+      AutoCraftPhase,
+      'completed' | 'stopped' | 'unsupported' | 'error'
+    >,
     tone: AutoCraftTone,
     statusTitle: string,
     statusDetail: string,
@@ -342,6 +347,7 @@ export function createAutoCraftController({
 
     const executionSnapshot = lastSnapshot;
     startAwaitingStateAdvance(executionFingerprint);
+    awaitingRequest = request;
 
     try {
       await executor.execute(request, executionSnapshot);
@@ -467,6 +473,17 @@ export function createAutoCraftController({
       ) {
         cancelWaitingTimeout();
         awaitingFingerprint = null;
+        const completedRequest = awaitingRequest;
+        awaitingRequest = null;
+        if (completedRequest?.kind === 'finish') {
+          finalizeStoppedState(
+            'completed',
+            'success',
+            'Craft finished',
+            'Auto mode sent Finish Craft and is waiting for the next craft.',
+          );
+          return;
+        }
         if (uiState.stopRequested) {
           finalizeStoppedState(
             'stopped',

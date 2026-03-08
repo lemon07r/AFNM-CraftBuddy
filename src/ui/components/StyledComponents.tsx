@@ -843,8 +843,12 @@ export const LoadingDots = memo(function LoadingDots() {
  */
 export const LoadingHeader = memo(function LoadingHeader({
   compact = false,
+  title = 'CraftBuddy',
+  statusLabel = 'Calculating',
 }: {
   compact?: boolean;
+  title?: string;
+  statusLabel?: string;
 }) {
   return (
     <Box sx={{ mb: compact ? 1 : 1.5 }}>
@@ -858,7 +862,7 @@ export const LoadingHeader = memo(function LoadingHeader({
             animation: `${pulseGold} 2s ease-in-out infinite`,
           }}
         >
-          CraftBuddy
+          {title}
         </Typography>
         <Typography
           variant="body2"
@@ -869,7 +873,7 @@ export const LoadingHeader = memo(function LoadingHeader({
             alignItems: 'center',
           }}
         >
-          Calculating
+          {statusLabel}
           <LoadingDots />
         </Typography>
       </Box>

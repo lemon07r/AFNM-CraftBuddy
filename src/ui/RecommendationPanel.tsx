@@ -318,6 +318,7 @@ const AUTO_PHASE_LABELS: Record<AutoCraftUiState['phase'], string> = {
   ready: 'Ready',
   executing: 'Executing',
   waiting_for_state: 'Waiting',
+  completed: 'Done',
   stop_requested: 'Stopping',
   stopped: 'Stopped',
   unsupported: 'Needs Input',
@@ -371,6 +372,8 @@ function getAutoToneSx(tone: AutoCraftUiState['tone']) {
 
 function getAutoModeIcon(autoMode: AutoCraftUiState) {
   switch (autoMode.phase) {
+    case 'completed':
+      return <CheckCircleIcon sx={{ fontSize: 15 }} />;
     case 'ready':
     case 'executing':
       return <PlayArrowIcon sx={{ fontSize: 16 }} />;
@@ -707,8 +710,8 @@ const PanelModeToggle = memo(function PanelModeToggle({
           letterSpacing: '0.04em',
           lineHeight: 1,
         }}
-      >
-        {mode === 'auto' ? 'Suggestions' : 'Auto'}
+        >
+        {mode === 'auto' ? 'Suggestions' : 'AutoBuddy'}
       </Typography>
       {mode !== 'auto' && autoActive && (
         <Box
@@ -1216,6 +1219,240 @@ const ConditionsSection = memo(function ConditionsSection({
   );
 });
 
+const AutoBuddySnapshotSection = memo(function AutoBuddySnapshotSection({
+  currentCompletion,
+  currentPerfection,
+  targetCompletion,
+  targetPerfection,
+  maxCompletionCap,
+  maxPerfectionCap,
+  currentStability,
+  currentMaxStability,
+  targetStability,
+  currentCondition,
+  nextConditions,
+  currentToxicity,
+  maxToxicity,
+}: {
+  currentCompletion: number;
+  currentPerfection: number;
+  targetCompletion: number;
+  targetPerfection: number;
+  maxCompletionCap?: number;
+  maxPerfectionCap?: number;
+  currentStability: number;
+  currentMaxStability: number;
+  targetStability: number;
+  currentCondition?: CraftingConditionType;
+  nextConditions: CraftingConditionType[];
+  currentToxicity: number;
+  maxToxicity: number;
+}) {
+  const effectiveMaxStability =
+    currentMaxStability > 0 ? currentMaxStability : targetStability;
+  const stats = [
+    {
+      label: 'Completion',
+      value: formatProgress(currentCompletion, targetCompletion),
+      accent: colors.completion,
+    },
+    {
+      label: 'Perfection',
+      value: formatProgress(currentPerfection, targetPerfection),
+      accent: colors.perfection,
+    },
+    {
+      label: 'Stability',
+      value: formatProgress(currentStability, effectiveMaxStability),
+      accent:
+        currentStability <= Math.max(10, effectiveMaxStability * 0.25)
+          ? colors.error
+          : colors.stability,
+    },
+  ];
+
+  return (
+    <Box sx={{ display: 'grid', gap: 0.9, mb: 1.15 }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 0.65,
+        }}
+      >
+        {stats.map((stat) => (
+          <Box
+            key={stat.label}
+            sx={{
+              minWidth: 0,
+              px: 0.9,
+              py: 0.75,
+              borderRadius: 1.35,
+              border: `1px solid ${colors.borderMedium}`,
+              background:
+                'linear-gradient(180deg, rgba(18, 24, 38, 0.92), rgba(11, 15, 24, 0.92))',
+              boxShadow: '0 8px 18px rgba(0, 0, 0, 0.18)',
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{
+                display: 'block',
+                color: colors.textMuted,
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                fontSize: '0.58rem',
+              }}
+            >
+              {stat.label}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                mt: 0.25,
+                color: stat.accent,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                fontSize: '0.82rem',
+              }}
+            >
+              {stat.value}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+
+      <FlexRow gap={0.45} wrap align="center">
+        {currentCondition && (
+          <ConditionChip
+            condition={currentCondition}
+            label={`Now: ${CONDITION_NAMES[currentCondition] || currentCondition}`}
+            current
+          />
+        )}
+        {nextConditions.slice(0, 3).map((condition, index) => (
+          <ConditionChip
+            key={`${condition}-${index}`}
+            condition={condition}
+            label={`${index + 1}: ${CONDITION_NAMES[condition] || condition}`}
+            index={index}
+          />
+        ))}
+      </FlexRow>
+
+      {(maxCompletionCap !== undefined ||
+        maxPerfectionCap !== undefined ||
+        maxToxicity > 0 ||
+        currentMaxStability > 0 && currentMaxStability < targetStability) && (
+        <Typography
+          variant="caption"
+          sx={{
+            color: colors.textMuted,
+            display: 'block',
+            lineHeight: 1.35,
+          }}
+        >
+          {[
+            maxCompletionCap !== undefined || maxPerfectionCap !== undefined
+              ? `Caps ${formatGain(maxCompletionCap ?? targetCompletion)} / ${formatGain(maxPerfectionCap ?? targetPerfection)}`
+              : null,
+            currentMaxStability > 0 && currentMaxStability < targetStability
+              ? `Stability max decayed from ${formatGain(targetStability)}`
+              : null,
+            maxToxicity > 0
+              ? `Toxicity ${formatProgress(currentToxicity, maxToxicity)}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join('  |  ')}
+        </Typography>
+      )}
+    </Box>
+  );
+});
+
+const AutoBuddyLoadingCard = memo(function AutoBuddyLoadingCard({
+  compact = false,
+  title,
+  detail,
+}: {
+  compact?: boolean;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <Box
+      sx={{
+        display: 'grid',
+        gap: 0.8,
+        mb: 1,
+        px: compact ? 1 : 1.1,
+        py: compact ? 0.95 : 1.05,
+        borderRadius: 1.5,
+        border: `1px solid ${colors.borderMedium}`,
+        background:
+          'linear-gradient(180deg, rgba(18, 24, 38, 0.94), rgba(10, 14, 22, 0.94))',
+        boxShadow: '0 12px 22px rgba(0, 0, 0, 0.24)',
+      }}
+    >
+      <Box>
+        <Typography
+          variant="body2"
+          sx={{ color: colors.textPrimary, fontWeight: 700 }}
+        >
+          {title}
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            color: colors.textSecondary,
+            display: 'block',
+            mt: 0.3,
+            lineHeight: 1.35,
+          }}
+        >
+          {detail}
+        </Typography>
+      </Box>
+
+      <Box
+        sx={{
+          height: 10,
+          borderRadius: 999,
+          backgroundColor: 'rgba(255, 255, 255, 0.06)',
+          overflow: 'hidden',
+        }}
+      >
+        <Box
+          sx={{
+            width: '58%',
+            height: '100%',
+            borderRadius: 999,
+            background: `linear-gradient(90deg, ${colors.borderHighlight}, rgba(255, 214, 96, 0.28))`,
+            boxShadow: '0 0 18px rgba(255, 214, 96, 0.16)',
+          }}
+        />
+      </Box>
+
+      <Box sx={{ display: 'grid', gap: 0.45 }}>
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Box
+            key={index}
+            sx={{
+              height: index === 0 ? 38 : 16,
+              borderRadius: 1.1,
+              backgroundColor:
+                index === 0
+                  ? 'rgba(255, 255, 255, 0.05)'
+                  : 'rgba(255, 255, 255, 0.035)',
+            }}
+          />
+        ))}
+      </Box>
+    </Box>
+  );
+});
+
 /**
  * Rotation preview section.
  */
@@ -1522,6 +1759,319 @@ export function RecommendationPanel({
   // Panel not visible
   if (settings?.panelVisible === false) {
     return null;
+  }
+
+  if (showAutoModePanel) {
+    const timeBudgetMs = settings?.searchTimeBudgetMs ?? 2000;
+    const versionFooterPadding = version && !isSettingsOpen ? 2.25 : 0;
+    const autoTone = getAutoToneSx(autoMode?.tone ?? 'neutral');
+    const autoHeader = (
+      <FlexRow
+        align="center"
+        gap={0.75}
+        wrap
+        sx={{
+          justifyContent: 'space-between',
+          mb: compactMode ? 1 : 1.2,
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
+          <SectionHeader color={autoTone.accent} compact={compactMode}>
+            AutoBuddy
+          </SectionHeader>
+          <Typography
+            variant="caption"
+            sx={{
+              color: colors.textMuted,
+              display: 'block',
+              mt: 0.25,
+              letterSpacing: '0.04em',
+            }}
+          >
+            Focused auto-crafting view
+          </Typography>
+        </Box>
+
+        {autoMode && (
+          <PanelModeToggle
+            mode={panelMode}
+            autoMode={autoMode}
+            compact={compactMode}
+            onToggle={() => setPanelMode('suggestions')}
+          />
+        )}
+      </FlexRow>
+    );
+
+    if (!result || isCalculating) {
+      return (
+        <PanelContainer compact={compactMode}>
+          <Box sx={{ pb: versionFooterPadding }}>
+            {autoHeader}
+            {autoMode && (
+              <Box sx={{ mb: 1 }}>
+                <AutoModeSection
+                  autoMode={autoMode}
+                  compact={compactMode}
+                  loading
+                  embedded
+                  onArm={onAutoModeArm}
+                  onStop={onAutoModeStop}
+                  onPolicyChange={onAutoModePolicyChange}
+                />
+              </Box>
+            )}
+            <AutoBuddyLoadingCard
+              compact={compactMode}
+              title={autoMode?.statusTitle || 'Preparing auto mode'}
+              detail={
+                autoMode?.statusDetail ||
+                'AutoBuddy is reading the craft state before the next action.'
+              }
+            />
+            <SearchProgressBar durationMs={timeBudgetMs} />
+          </Box>
+          <PanelVersionBadge version={version} visible={!isSettingsOpen} />
+        </PanelContainer>
+      );
+    }
+
+    if (result.targetsMet) {
+      return (
+        <PanelContainer variant="success" compact={compactMode}>
+          <Box sx={{ pb: versionFooterPadding }}>
+            {autoHeader}
+            {autoMode && (
+              <Box sx={{ mb: 1 }}>
+                <AutoModeSection
+                  autoMode={autoMode}
+                  compact={compactMode}
+                  embedded
+                  onArm={onAutoModeArm}
+                  onStop={onAutoModeStop}
+                  onPolicyChange={onAutoModePolicyChange}
+                />
+              </Box>
+            )}
+            <AutoBuddySnapshotSection
+              currentCompletion={currentCompletion}
+              currentPerfection={currentPerfection}
+              targetCompletion={targetCompletion}
+              targetPerfection={targetPerfection}
+              maxCompletionCap={maxCompletionCap}
+              maxPerfectionCap={maxPerfectionCap}
+              currentStability={currentStability}
+              currentMaxStability={currentMaxStability}
+              targetStability={targetStability}
+              currentCondition={currentCondition}
+              nextConditions={nextConditions}
+              currentToxicity={currentToxicity}
+              maxToxicity={maxToxicity}
+            />
+            <Box
+              sx={{
+                px: 1.05,
+                py: 0.95,
+                borderRadius: 1.45,
+                border: `1px solid rgba(101, 232, 157, 0.34)`,
+                background:
+                  'linear-gradient(180deg, rgba(18, 54, 39, 0.86), rgba(9, 28, 20, 0.86))',
+              }}
+            >
+              <FlexRow gap={0.75} align="center">
+                <CheckCircleIcon
+                  sx={{ color: colors.completion, fontSize: 20 }}
+                />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: colors.completion, fontWeight: 700 }}
+                  >
+                    Targets secured
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: colors.textSecondary,
+                      display: 'block',
+                      mt: 0.2,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    AutoBuddy has nothing left to optimize here. Finish the
+                    craft or move into the next recipe.
+                  </Typography>
+                </Box>
+              </FlexRow>
+            </Box>
+          </Box>
+          <PanelVersionBadge version={version} visible={!isSettingsOpen} />
+        </PanelContainer>
+      );
+    }
+
+    if (result.isTerminal || !result.recommendation) {
+      return (
+        <PanelContainer variant="error" compact={compactMode}>
+          <Box sx={{ pb: versionFooterPadding }}>
+            {autoHeader}
+            {autoMode && (
+              <Box sx={{ mb: 1 }}>
+                <AutoModeSection
+                  autoMode={autoMode}
+                  compact={compactMode}
+                  embedded
+                  onArm={onAutoModeArm}
+                  onStop={onAutoModeStop}
+                  onPolicyChange={onAutoModePolicyChange}
+                />
+              </Box>
+            )}
+            <AutoBuddySnapshotSection
+              currentCompletion={currentCompletion}
+              currentPerfection={currentPerfection}
+              targetCompletion={targetCompletion}
+              targetPerfection={targetPerfection}
+              maxCompletionCap={maxCompletionCap}
+              maxPerfectionCap={maxPerfectionCap}
+              currentStability={currentStability}
+              currentMaxStability={currentMaxStability}
+              targetStability={targetStability}
+              currentCondition={currentCondition}
+              nextConditions={nextConditions}
+              currentToxicity={currentToxicity}
+              maxToxicity={maxToxicity}
+            />
+            <Box
+              sx={{
+                px: 1.05,
+                py: 0.95,
+                borderRadius: 1.45,
+                border: `1px solid rgba(255, 109, 109, 0.28)`,
+                background:
+                  'linear-gradient(180deg, rgba(56, 20, 20, 0.86), rgba(28, 10, 10, 0.86))',
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{ color: colors.error, fontWeight: 700 }}
+              >
+                AutoBuddy needs manual input
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: colors.textSecondary,
+                  display: 'block',
+                  mt: 0.3,
+                  lineHeight: 1.35,
+                }}
+              >
+                No safe automated action is available from the current state.
+              </Typography>
+              <BlockedReasonsSection
+                blockedReasons={result.blockedReasons || []}
+              />
+            </Box>
+          </Box>
+          <PanelVersionBadge version={version} visible={!isSettingsOpen} />
+        </PanelContainer>
+      );
+    }
+
+    return (
+      <PanelContainer compact={compactMode} allowOverflowVisible={isSettingsOpen}>
+        <Box sx={{ position: 'relative' }}>
+          <SettingsPanel
+            onSettingsChange={onSettingsChange}
+            onSearchSettingsChange={onSearchSettingsChange}
+            onOpenChange={setIsSettingsOpen}
+            version={version}
+            compact={compactMode}
+          />
+
+          <Box
+            sx={{
+              position: 'relative',
+              zIndex: 1,
+              pointerEvents: isSettingsOpen ? 'none' : 'auto',
+              transform: isSettingsOpen
+                ? 'translateX(-18px) scale(0.985)'
+                : 'translateX(0) scale(1)',
+              transformOrigin: 'left center',
+              opacity: isSettingsOpen ? 0.18 : 1,
+              filter: isSettingsOpen
+                ? 'blur(7px) saturate(0.72)'
+                : 'blur(0) saturate(1)',
+              transition:
+                'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, filter 0.3s ease',
+            }}
+          >
+            {onRecalculate && (
+              <RecalculateButton
+                visible={settingsStale}
+                onClick={onRecalculate}
+              />
+            )}
+
+            <Box sx={{ mb: 1.05 }}>
+              {autoHeader}
+              {autoMode && (
+                <Box sx={{ mb: 1 }}>
+                  <AutoModeSection
+                    autoMode={autoMode}
+                    compact={compactMode}
+                    embedded
+                    onArm={onAutoModeArm}
+                    onStop={onAutoModeStop}
+                    onPolicyChange={onAutoModePolicyChange}
+                  />
+                </Box>
+              )}
+              <AutoBuddySnapshotSection
+                currentCompletion={currentCompletion}
+                currentPerfection={currentPerfection}
+                targetCompletion={targetCompletion}
+                targetPerfection={targetPerfection}
+                maxCompletionCap={maxCompletionCap}
+                maxPerfectionCap={maxPerfectionCap}
+                currentStability={currentStability}
+                currentMaxStability={currentMaxStability}
+                targetStability={targetStability}
+                currentCondition={currentCondition}
+                nextConditions={nextConditions}
+                currentToxicity={currentToxicity}
+                maxToxicity={maxToxicity}
+              />
+            </Box>
+
+            <Box sx={{ mb: 0.75 }}>
+              <SubSectionHeader>Recommended next action</SubSectionHeader>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: colors.textMuted,
+                  display: 'block',
+                  mt: 0.15,
+                  lineHeight: 1.35,
+                }}
+              >
+                {autoMode?.armed
+                  ? 'AutoBuddy will execute this recommendation on the next valid craft input.'
+                  : 'Previewing the move AutoBuddy will take once you enable auto mode.'}
+              </Typography>
+            </Box>
+
+            <SkillCard
+              rec={result.recommendation}
+              isPrimary
+              compact
+            />
+          </Box>
+        </Box>
+        <PanelVersionBadge version={version} visible={!isSettingsOpen} />
+      </PanelContainer>
+    );
   }
 
   // No result yet - Loading state

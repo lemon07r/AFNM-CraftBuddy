@@ -173,6 +173,58 @@ describe('autoCraftController', () => {
     expect(executed[0].actionName).toBe('Finish Craft');
   });
 
+  it('marks auto-finish complete after the craft state advances so it does not reissue finish', async () => {
+    const controller = createHarness('techniquesAndFinish');
+
+    controller.arm();
+    controller.sync(
+      buildSnapshot({
+        result: {
+          recommendation: null,
+          alternativeSkills: [],
+          isTerminal: false,
+          targetsMet: true,
+        } as any,
+      }),
+    );
+
+    jest.advanceTimersByTime(100);
+    await Promise.resolve();
+
+    expect(executed).toHaveLength(1);
+    expect(executed[0].kind).toBe('finish');
+    expect(controller.getUiState().phase).toBe('waiting_for_state');
+
+    controller.sync(
+      buildSnapshot({
+        stateFingerprint: 'fp-2',
+        result: {
+          recommendation: null,
+          alternativeSkills: [],
+          isTerminal: false,
+          targetsMet: true,
+        } as any,
+      }),
+    );
+
+    expect(controller.getUiState().phase).toBe('completed');
+    expect(controller.getUiState().armed).toBe(false);
+
+    controller.sync(
+      buildSnapshot({
+        stateFingerprint: 'fp-3',
+        result: {
+          recommendation: null,
+          alternativeSkills: [],
+          isTerminal: false,
+          targetsMet: true,
+        } as any,
+      }),
+    );
+
+    expect(executed).toHaveLength(1);
+  });
+
   it('allows item actions only in the full action space policy', async () => {
     const controller = createHarness('fullActionSpace');
 

@@ -53,6 +53,7 @@ export type AutoCraftPhase =
   | 'ready'
   | 'executing'
   | 'waiting_for_state'
+  | 'completed'
   | 'stop_requested'
   | 'stopped'
   | 'unsupported'

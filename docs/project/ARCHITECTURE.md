@@ -17,7 +17,7 @@ related_files:
 
 - `src/mod.ts` — bootstrap entrypoint and metadata export.
 - `src/modContent/index.ts` — runtime integration boundary: reads game state, builds optimizer config/state/actions, invokes optimizer, renders overlay panel.
-- `src/modContent/autoCraftController.ts` — per-craft auto-mode state machine that arms/stops automation, gates action policies, and waits for observed state advance between actions.
+- `src/modContent/autoCraftController.ts` — per-craft auto-mode state machine that arms/stops automation, gates action policies, waits for observed state advance between actions, and latches into a completed state after auto-finish until the craft fully tears down.
 - `src/modContent/autoCraftExecutor.ts` — runtime action bridge that dispatches native crafting actions one at a time; skill actions go through the live Redux crafting action path when available, and synthesized `Finish Craft` recommendations map back to the game's native `Wait` action before any DOM fallback.
 - `src/modContent/configStats.ts` — base crafting stat resolution from game entities.
 - `src/modContent/harmonyState.ts` — harmony-state hydration/canonicalization from authoritative progress payloads and verified runtime fallbacks.
