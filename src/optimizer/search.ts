@@ -1466,6 +1466,7 @@ interface SearchMoveCandidate {
   orderingScore: number;
   immediateProgress: number;
   requiresProbabilisticSurvival: boolean;
+  unsafeWithGuaranteedSafeAlternative?: boolean;
   projectedSuccessChance?: number;
 }
 
@@ -1514,6 +1515,118 @@ function applySurvivabilityFloorToState(
   });
 }
 
+function shouldUseSurvivabilityFloorForContinuation(params: {
+  currentStability: number;
+  displayStability: number;
+  floorStability: number;
+  goalsMetAfterAction: boolean;
+  baseSuccessSecuredAfterAction: boolean;
+  hasGuaranteedSafeStabilize: boolean;
+  minimumGuaranteedContinuationStability: number;
+}): boolean {
+  const {
+    currentStability,
+    displayStability,
+    floorStability,
+    goalsMetAfterAction,
+    baseSuccessSecuredAfterAction,
+    hasGuaranteedSafeStabilize,
+    minimumGuaranteedContinuationStability,
+  } = params;
+  const hasProbabilisticRunwayGap = floorStability < displayStability;
+
+  if (goalsMetAfterAction) {
+    return false;
+  }
+  if (
+    currentStability > SCORING.NEAR_DEATH_STABILITY ||
+    displayStability <= 0
+  ) {
+    return false;
+  }
+
+  // If a guaranteed-safe stabilize exists, do not let an immediate floor-death
+  // branch masquerade as a live continuation line just because EV-only recovery
+  // procs would keep it alive. Without that stabilize alternative, sublime
+  // overcraft lines may still intentionally accept the immediate risk.
+  if (floorStability <= 0) {
+    return hasGuaranteedSafeStabilize || !baseSuccessSecuredAfterAction;
+  }
+
+  if (
+    hasGuaranteedSafeStabilize &&
+    hasProbabilisticRunwayGap &&
+    floorStability < minimumGuaranteedContinuationStability
+  ) {
+    return true;
+  }
+
+  return (
+    !baseSuccessSecuredAfterAction &&
+    currentStability <= 1 &&
+    hasProbabilisticRunwayGap
+  );
+}
+
+function shouldDeprioritizeAgainstGuaranteedSafeStabilize(params: {
+  currentStability: number;
+  displayStability: number;
+  floorStability: number;
+  goalsMetAfterAction: boolean;
+  hasGuaranteedSafeStabilize: boolean;
+  minimumGuaranteedContinuationStability: number;
+}): boolean {
+  const {
+    currentStability,
+    displayStability,
+    floorStability,
+    goalsMetAfterAction,
+    hasGuaranteedSafeStabilize,
+    minimumGuaranteedContinuationStability,
+  } = params;
+  const hasProbabilisticRunwayGap = floorStability < displayStability;
+
+  if (
+    goalsMetAfterAction ||
+    !hasGuaranteedSafeStabilize ||
+    currentStability > SCORING.NEAR_DEATH_STABILITY ||
+    displayStability <= 0
+  ) {
+    return false;
+  }
+
+  if (floorStability <= 0) {
+    return true;
+  }
+
+  return (
+    hasProbabilisticRunwayGap &&
+    floorStability < minimumGuaranteedContinuationStability
+  );
+}
+
+function hasGuaranteedSafeStabilizeAction(
+  state: CraftingState,
+  availableSkills: SkillDefinition[],
+  config: OptimizerConfig,
+  conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
+  currentCondition: CraftingConditionType,
+): boolean {
+  return availableSkills.some((skill) => {
+    if (skill.type !== 'stabilize' || isFinishAction(skill)) {
+      return false;
+    }
+    const floor = calculateActionSurvivabilityFloor(
+      state,
+      skill,
+      config,
+      conditionEffects,
+      currentCondition,
+    );
+    return (floor?.stability ?? 0) > 0;
+  });
+}
+
 interface TranspositionCacheEntry {
   score: number;
   bestMove: string;
@@ -1530,12 +1643,19 @@ function computeScoreTieWindow(totalTargetMagnitude: number): number {
 function rankRecommendations(
   scored: SkillRecommendation[],
   scoreTieWindow: number = 0,
+  unsafeKeys: ReadonlySet<string> = new Set(),
 ): SkillRecommendation[] {
   if (scored.length <= 1) {
     return scored;
   }
 
   const sorted = [...scored].sort((a, b) => {
+    const aUnsafe = unsafeKeys.has(a.skill.key);
+    const bUnsafe = unsafeKeys.has(b.skill.key);
+    if (aUnsafe !== bUnsafe) {
+      return aUnsafe ? 1 : -1;
+    }
+
     const scoreDiff = b.score - a.score;
     if (Math.abs(scoreDiff) > scoreTieWindow) {
       return scoreDiff;
@@ -1784,9 +1904,20 @@ export function greedySearch(
     config,
     normalizedCurrentCondition,
   );
+  const hasGuaranteedSafeStabilize = hasGuaranteedSafeStabilizeAction(
+    state,
+    availableSkills,
+    config,
+    conditionEffects,
+    normalizedCurrentCondition,
+  );
+  const minimumGuaranteedContinuationStability = hasGuaranteedSafeStabilize
+    ? Math.max(1, scoringCtx.avgStabilityCostPerTurn)
+    : 0;
   const evaluatedMoves: Array<
     SkillRecommendation & UnsafeCandidateClassification
   > = [];
+  const unsafeRecommendationKeys = new Set<string>();
 
   for (const skill of availableSkills) {
     const displayState = applySkill(
@@ -1815,18 +1946,30 @@ export function greedySearch(
       conditionEffects,
       normalizedCurrentCondition,
     );
-    const floorStability = survivabilityFloor?.stability ?? displayState.stability;
-    const hasProbabilisticRunwayGap = floorStability < displayState.stability;
-    const mustGuaranteeImmediateSurvival =
-      !baseSuccessSecuredAfterAction || state.stability <= 1;
+    const floorStability =
+      survivabilityFloor?.stability ?? displayState.stability;
+    const unsafeWithGuaranteedSafeAlternative =
+      shouldDeprioritizeAgainstGuaranteedSafeStabilize({
+        currentStability: state.stability,
+        displayStability: displayState.stability,
+        floorStability,
+        goalsMetAfterAction,
+        hasGuaranteedSafeStabilize,
+        minimumGuaranteedContinuationStability,
+      });
+    if (unsafeWithGuaranteedSafeAlternative) {
+      unsafeRecommendationKeys.add(skill.key);
+    }
     const requiresProbabilisticSurvival =
-      !goalsMetAfterAction &&
-      state.stability <= SCORING.NEAR_DEATH_STABILITY &&
-      displayState.stability > 0 &&
-      ((mustGuaranteeImmediateSurvival && floorStability <= 0) ||
-        (!baseSuccessSecuredAfterAction &&
-          state.stability <= 1 &&
-          hasProbabilisticRunwayGap));
+      shouldUseSurvivabilityFloorForContinuation({
+        currentStability: state.stability,
+        displayStability: displayState.stability,
+        floorStability,
+        goalsMetAfterAction,
+        baseSuccessSecuredAfterAction,
+        hasGuaranteedSafeStabilize,
+        minimumGuaranteedContinuationStability,
+      });
     const newState = requiresProbabilisticSurvival
       ? applySurvivabilityFloorToState(displayState, survivabilityFloor)
       : displayState;
@@ -1881,7 +2024,11 @@ export function greedySearch(
       ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
     );
 
-  const rankedSkills = rankRecommendations(scoredSkills, scoreTieWindow);
+  const rankedSkills = rankRecommendations(
+    scoredSkills,
+    scoreTieWindow,
+    unsafeRecommendationKeys,
+  );
 
   if (rankedSkills.length === 0) {
     return {
@@ -2094,6 +2241,8 @@ export function lookaheadSearch(
     displayState: CraftingState,
     conditionEffectsAtDepth: ReturnType<typeof getConditionEffectsForConfig>,
     currentConditionAtDepth: CraftingConditionType,
+    hasGuaranteedSafeStabilize: boolean,
+    minimumGuaranteedContinuationStability: number = 0,
   ): {
     searchState: CraftingState;
     requiresProbabilisticSurvival: boolean;
@@ -2118,18 +2267,18 @@ export function lookaheadSearch(
       conditionEffectsAtDepth,
       currentConditionAtDepth,
     );
-    const floorStability = survivabilityFloor?.stability ?? displayState.stability;
-    const hasProbabilisticRunwayGap = floorStability < displayState.stability;
-    const mustGuaranteeImmediateSurvival =
-      !baseSuccessSecuredAfterAction || currentState.stability <= 1;
+    const floorStability =
+      survivabilityFloor?.stability ?? displayState.stability;
     const requiresProbabilisticSurvival =
-      !goalsMetAfterAction &&
-      currentState.stability <= SCORING.NEAR_DEATH_STABILITY &&
-      displayState.stability > 0 &&
-      ((mustGuaranteeImmediateSurvival && floorStability <= 0) ||
-        (!baseSuccessSecuredAfterAction &&
-          currentState.stability <= 1 &&
-          hasProbabilisticRunwayGap));
+      shouldUseSurvivabilityFloorForContinuation({
+        currentStability: currentState.stability,
+        displayStability: displayState.stability,
+        floorStability,
+        goalsMetAfterAction,
+        baseSuccessSecuredAfterAction,
+        hasGuaranteedSafeStabilize,
+        minimumGuaranteedContinuationStability,
+      });
 
     return {
       searchState: requiresProbabilisticSurvival
@@ -2288,12 +2437,26 @@ export function lookaheadSearch(
     currentConditionAtDepth: CraftingConditionType,
     nextConditionQueueAtDepth: CraftingConditionType[],
     conditionEffectsAtDepth: ReturnType<typeof getConditionEffectsForConfig>,
+    useGuaranteedSafeStabilizeGate: boolean = false,
   ): SearchMoveCandidate[] {
     const availableSkills = getAvailableSkills(
       currentState,
       config,
       currentConditionAtDepth,
     );
+    const hasGuaranteedSafeStabilize = useGuaranteedSafeStabilizeGate
+      ? hasGuaranteedSafeStabilizeAction(
+          currentState,
+          availableSkills,
+          config,
+          conditionEffectsAtDepth,
+          currentConditionAtDepth,
+        )
+      : false;
+    const minimumGuaranteedContinuationStability =
+      useGuaranteedSafeStabilizeGate && hasGuaranteedSafeStabilize
+        ? Math.max(1, scoringCtx.avgStabilityCostPerTurn)
+        : 0;
     const candidates: SearchMoveCandidate[] = [];
 
     for (const skill of availableSkills) {
@@ -2315,7 +2478,26 @@ export function lookaheadSearch(
           nextState,
           conditionEffectsAtDepth,
           currentConditionAtDepth,
+          hasGuaranteedSafeStabilize,
+          minimumGuaranteedContinuationStability,
         );
+      const floorStability =
+        calculateActionSurvivabilityFloor(
+          currentState,
+          skill,
+          config,
+          conditionEffectsAtDepth,
+          currentConditionAtDepth,
+        )?.stability ?? nextState.stability;
+      const unsafeWithGuaranteedSafeAlternative =
+        shouldDeprioritizeAgainstGuaranteedSafeStabilize({
+          currentStability: currentState.stability,
+          displayStability: nextState.stability,
+          floorStability,
+          goalsMetAfterAction: targetsMetForCurrentMode(nextState),
+          hasGuaranteedSafeStabilize,
+          minimumGuaranteedContinuationStability,
+        });
 
       const completionBefore =
         modeCompGoal > 0
@@ -2349,6 +2531,7 @@ export function lookaheadSearch(
         ),
         immediateProgress,
         requiresProbabilisticSurvival,
+        unsafeWithGuaranteedSafeAlternative,
       });
     }
 
@@ -2798,6 +2981,7 @@ export function lookaheadSearch(
                 nextState,
                 conditionEffectsAtDepth,
                 conditionAtDepth,
+                false,
               );
               chosenSkill = cachedSkill;
               chosenNextState = searchState;
@@ -2891,10 +3075,17 @@ export function lookaheadSearch(
     Number.isFinite(modePerfGoal) &&
     modePerfGoal > 0 &&
     state.perfection < modePerfGoal;
+  let unsafeRootRecommendationKeys = new Set<string>();
   const compareRecommendations = (
     a: SkillRecommendation,
     b: SkillRecommendation,
   ): number => {
+    const aUnsafe = unsafeRootRecommendationKeys.has(a.skill.key);
+    const bUnsafe = unsafeRootRecommendationKeys.has(b.skill.key);
+    if (aUnsafe !== bUnsafe) {
+      return aUnsafe ? 1 : -1;
+    }
+
     const scoreDiff = b.score - a.score;
     if (Math.abs(scoreDiff) > scoreTieWindow) {
       return scoreDiff;
@@ -3118,6 +3309,7 @@ export function lookaheadSearch(
     useDeepSearch: boolean,
   ): {
     recommendations: SkillRecommendation[];
+    unsafeRecommendationKeys: Set<string>;
     completed: boolean;
     evaluatedDepth: number;
   } {
@@ -3125,22 +3317,42 @@ export function lookaheadSearch(
       config,
       normalizedCurrentCondition,
     );
+    const rootAvailableSkills = getAvailableSkills(
+      state,
+      config,
+      normalizedCurrentCondition,
+    );
+    const hasGuaranteedSafeStabilize = hasGuaranteedSafeStabilizeAction(
+      state,
+      rootAvailableSkills,
+      config,
+      currentConditionEffects,
+      normalizedCurrentCondition,
+    );
+    const minimumGuaranteedContinuationStability = hasGuaranteedSafeStabilize
+      ? Math.max(1, scoringCtx.avgStabilityCostPerTurn)
+      : 0;
     const orderedCandidates = buildOrderedMoveCandidates(
       state,
       depthToSearch,
       normalizedCurrentCondition,
       initialConditionQueue,
       currentConditionEffects,
+      true,
     );
     const evaluatedFirstMoves: Array<
       SkillRecommendation & UnsafeCandidateClassification
     > = [];
+    const unsafeRecommendationKeys = new Set<string>();
 
     // First pass: evaluate ALL first-level skills with basic scoring
     // This ensures we always have alternatives even if deep search times out
     for (const candidate of orderedCandidates) {
       const skill = candidate.skill;
       const newState = candidate.searchState;
+      if (candidate.unsafeWithGuaranteedSafeAlternative) {
+        unsafeRecommendationKeys.add(skill.key);
+      }
 
       const { expectedGains, immediateGains, effectiveCosts } =
         isFinishAction(skill)
@@ -3207,11 +3419,13 @@ export function lookaheadSearch(
     const scored: SkillRecommendation[] = filterUnfinishedTerminalCandidates(
       evaluatedFirstMoves,
     ).map(({ isTerminal, isTerminalUnmet, ...rec }) => rec);
+    unsafeRootRecommendationKeys = unsafeRecommendationKeys;
 
     if (!useDeepSearch || depthToSearch <= 1) {
       scored.sort(compareRecommendations);
       return {
         recommendations: scored,
+        unsafeRecommendationKeys,
         completed: true,
         evaluatedDepth: Math.min(1, depthToSearch),
       };
@@ -3243,6 +3457,8 @@ export function lookaheadSearch(
         displayState,
         currentConditionEffects,
         normalizedCurrentCondition,
+        hasGuaranteedSafeStabilize,
+        minimumGuaranteedContinuationStability,
       );
 
       rec.score = evaluateFutureScoreAfterSkill(
@@ -3258,6 +3474,7 @@ export function lookaheadSearch(
     if (shouldTerminate) {
       return {
         recommendations: scored,
+        unsafeRecommendationKeys,
         completed: false,
         evaluatedDepth: 1,
       };
@@ -3267,6 +3484,7 @@ export function lookaheadSearch(
 
     return {
       recommendations: deepenedRecommendations,
+      unsafeRecommendationKeys,
       completed: true,
       evaluatedDepth: depthToSearch,
     };
@@ -3313,6 +3531,7 @@ export function lookaheadSearch(
         displayStateAfterSkill,
         currentConditionEffects,
         normalizedCurrentCondition,
+        false,
       );
 
       const followUpConditionState = getMostLikelyConditionStateAfterSkill(
@@ -3352,6 +3571,7 @@ export function lookaheadSearch(
   const baselineResult = evaluateFirstMoves(baselineDepth, false);
   let usedDepth = baselineResult.evaluatedDepth;
   let scoredSkills: SkillRecommendation[] = baselineResult.recommendations;
+  unsafeRootRecommendationKeys = baselineResult.unsafeRecommendationKeys;
 
   if (baselineResult.recommendations.length > 0) {
     metrics.depthReached = baselineResult.evaluatedDepth;
@@ -3364,6 +3584,7 @@ export function lookaheadSearch(
     if (checkBudget()) break;
     const candidateResult = evaluateFirstMoves(candidateDepth, true);
     const candidateSkills = candidateResult.recommendations;
+    const candidateUnsafeKeys = candidateResult.unsafeRecommendationKeys;
     const iterationCompleted = candidateResult.completed;
     const evaluatedDepth = candidateResult.evaluatedDepth;
 
@@ -3372,6 +3593,7 @@ export function lookaheadSearch(
     // overwrite a fully completed shallower pass.
     if (iterationCompleted && candidateSkills.length > 0) {
       scoredSkills = candidateSkills;
+      unsafeRootRecommendationKeys = candidateUnsafeKeys;
       usedDepth = evaluatedDepth;
       acceptedCache = new Map(cache);
       metrics.depthReached = evaluatedDepth;
@@ -3420,7 +3642,11 @@ export function lookaheadSearch(
     }
   }
 
-  const rankedSkills = rankRecommendations(scoredSkills, scoreTieWindow);
+  const rankedSkills = rankRecommendations(
+    scoredSkills,
+    scoreTieWindow,
+    unsafeRootRecommendationKeys,
+  );
   populateFollowUpSkills(rankedSkills, usedDepth);
 
   // Find the optimal rotation starting from the best first move
@@ -3450,6 +3676,7 @@ export function lookaheadSearch(
       stateAfterFirstMoveDisplay,
       currentConditionEffects,
       normalizedCurrentCondition,
+      false,
     );
     const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
       stateAfterFirstMove,

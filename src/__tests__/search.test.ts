@@ -3353,8 +3353,16 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
     expect(forcefulStabilize).toBeDefined();
     expect(corruptedStabilization).toBeDefined();
-    expect(forcefulStabilize!.score).toBeGreaterThan(
-      corruptedStabilization!.score,
+    expect(
+      allRecommendations.findIndex(
+        (recommendation) =>
+          recommendation.skill.key === 'forceful_stabilize',
+      ),
+    ).toBeLessThan(
+      allRecommendations.findIndex(
+        (recommendation) =>
+          recommendation.skill.key === 'corrupted_stabilization',
+      ),
     );
   });
 
@@ -3400,6 +3408,50 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation!.skill.type).toBe('stabilize');
     expect(invasiveRefine).toBeUndefined();
     expect(forcefulStabilize).toBeDefined();
+  });
+
+  it('replays the premature-finish proc-floor snapshot and refuses an immediate proc-dependent dead-end refine', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'premature-finish-proc-floor.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      input.searchConfig,
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const invasiveRefine = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === 'invasive_refine',
+    );
+    const forcefulStabilize = allRecommendations.find(
+      (recommendation) =>
+        recommendation.skill.key === 'forceful_stabilize',
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      'invasive_refine',
+    );
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
+    expect(result.recommendation!.skill.type).toBe('stabilize');
+    expect(forcefulStabilize).toBeDefined();
+    expect(invasiveRefine).toBeUndefined();
   });
 
   it('replays the forge heat runway snapshot at heat two and prioritizes heat recovery over support setup', () => {

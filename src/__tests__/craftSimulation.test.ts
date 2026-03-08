@@ -1702,6 +1702,46 @@ describe('craft simulation — sublime crafts', () => {
     ).toBe(false);
   });
 
+  it('should stabilize instead of spending a proc-dependent refine that hard-stops the sublime craft', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'premature-finish-proc-floor.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    const result = findBestSkill(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as CraftingConditionType[],
+      input.searchConfig,
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      'invasive_refine',
+    );
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
+
+    const nextState = applySkill(
+      input.state,
+      result.recommendation!.skill,
+      input.config,
+      getConditionEffectsForConfig(input.config, input.currentCondition),
+      input.targetCompletion,
+      input.currentCondition,
+    );
+
+    expect(nextState).not.toBeNull();
+    expect(nextState!.stability).toBeGreaterThan(input.state.stability);
+    expect(nextState!.stability).toBeLessThanOrEqual(nextState!.maxStability);
+    expect(
+      isTerminalState(nextState!, input.config, input.currentCondition),
+    ).toBe(false);
+  });
+
   it('should keep forge heat above collapse while continuing a sublime craft after base success is secured', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'forge-heat-runway-step-2.snapshot.json',

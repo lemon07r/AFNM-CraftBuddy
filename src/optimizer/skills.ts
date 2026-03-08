@@ -274,6 +274,13 @@ function evaluateScalingWithMasteryUpgrades(
   );
 }
 
+function clampStabilityToBounds(
+  stability: number,
+  maxStability: number,
+): number {
+  return Math.max(0, Math.min(maxStability, stability));
+}
+
 export interface SkillGains {
   completion: number;
   perfection: number;
@@ -2027,6 +2034,38 @@ export function calculateActionSurvivabilityFloor(
         Math.min(1, (skill.successChance ?? 1) + actionVars.successChanceBonus),
       );
 
+  if (!skill.effects || skill.effects.length === 0) {
+    let guaranteedDirectStabilityGain = skill.stabilityGain;
+
+    if (
+      skill.buffCost &&
+      !skill.scalesWithControl &&
+      !skill.scalesWithIntensity
+    ) {
+      const have = state.getBuffStacks(skill.buffCost.buffName);
+      const stacksUsed = skill.buffCost.consumeAll
+        ? have
+        : Math.min(have, skill.buffCost.amount ?? 0);
+      if (stacksUsed > 1) {
+        guaranteedDirectStabilityGain = safeMultiply(
+          guaranteedDirectStabilityGain,
+          stacksUsed,
+        );
+      }
+    }
+
+    newStability = Math.floor(
+      clampStabilityToBounds(
+        newStability +
+          resolveGuaranteedContribution(
+            guaranteedDirectStabilityGain,
+            actionSuccessChance,
+          ),
+        newMaxStability,
+      ),
+    );
+  }
+
   let guaranteedTechniqueStabilityDelta = 0;
   let guaranteedTechniqueMaxStabilityDelta = 0;
   let guaranteedTechniquePoolDelta = 0;
@@ -2328,7 +2367,9 @@ export function calculateActionSurvivabilityFloor(
     }
   }
 
-  newStability = Math.max(0, Math.floor(newStability + buffStabilityDelta));
+  newStability = Math.floor(
+    clampStabilityToBounds(newStability + buffStabilityDelta, newMaxStability),
+  );
   newQi = clampQi(newQi + buffPoolDelta);
   newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
   if (buffMaxStabilityDelta !== 0) {
@@ -2355,7 +2396,10 @@ export function calculateActionSurvivabilityFloor(
       skill.type,
     );
     if (harmonyResult.stabilityDelta !== 0) {
-      newStability = Math.max(0, newStability + harmonyResult.stabilityDelta);
+      newStability = clampStabilityToBounds(
+        newStability + harmonyResult.stabilityDelta,
+        newMaxStability,
+      );
     }
     if (harmonyResult.stabilityPenaltyDelta !== 0) {
       newStabilityPenalty += harmonyResult.stabilityPenaltyDelta;
@@ -3106,7 +3150,10 @@ export function applySkill(
   }
 
   // Apply buff per-turn state changes
-  newStability = Math.max(0, newStability + buffStabilityDelta);
+  newStability = clampStabilityToBounds(
+    newStability + buffStabilityDelta,
+    state.initialMaxStability - newStabilityPenalty,
+  );
   newQi = clampQi(newQi + buffPoolDelta);
   newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
   if (buffMaxStabilityDelta !== 0) {
@@ -3141,7 +3188,10 @@ export function applySkill(
 
     // Apply direct state changes from harmony (e.g., Inscription penalty, Resonance stability loss)
     if (harmonyResult.stabilityDelta !== 0) {
-      newStability = Math.max(0, newStability + harmonyResult.stabilityDelta);
+      newStability = clampStabilityToBounds(
+        newStability + harmonyResult.stabilityDelta,
+        state.initialMaxStability - newStabilityPenalty,
+      );
     }
     if (harmonyResult.poolDelta !== 0) {
       newQi = clampQi(newQi + harmonyResult.poolDelta);
