@@ -53,6 +53,7 @@ import {
 } from './theme';
 import {
   PanelContainer,
+  SectionHeader,
   SubSectionHeader,
   SkillCardContainer,
   SkillIcon,
@@ -784,8 +785,13 @@ const SingleSkillBox = memo(function SingleSkillBox({
   const visualType = actionKind === 'finish' ? 'finish' : type;
   const typeColor = getSkillTypeColor(visualType);
   const iconSize = isFollowUp ? 'small' : isPrimary ? 'large' : 'medium';
+  const canClickIcon =
+    interactive &&
+    !isFollowUp &&
+    typeof onClick === 'function' &&
+    Boolean(icon);
 
-  const content = (
+  return (
     <SkillCardContainer
       isPrimary={isPrimary}
       isFollowUp={isFollowUp}
@@ -793,12 +799,55 @@ const SingleSkillBox = memo(function SingleSkillBox({
       animate={isPrimary && !isFollowUp}
     >
       <FlexRow gap={1.5} align="flex-start">
-        <SkillIcon
-          src={icon}
-          name={name}
-          size={iconSize}
-          typeColor={typeColor}
-        />
+        {canClickIcon ? (
+          <Box
+            component="button"
+            type="button"
+            aria-label={`Use ${name} now`}
+            onClick={onClick}
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              p: 0.2,
+              border: `1px solid ${typeColor}35`,
+              borderRadius: 1.2,
+              background: 'rgba(13, 18, 28, 0.24)',
+              cursor: 'pointer',
+              transition: transitions.smooth,
+              '& .MuiAvatar-root': {
+                transition: transitions.smooth,
+              },
+              '&:hover': {
+                borderColor: `${typeColor}88`,
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                boxShadow: `0 0 0 1px ${typeColor}20, 0 10px 18px rgba(0, 0, 0, 0.24)`,
+              },
+              '&:hover .MuiAvatar-root, &:focus-visible .MuiAvatar-root': {
+                transform: 'translateY(-1px) scale(1.03)',
+                boxShadow: `0 0 0 1px ${typeColor}25, ${shadows.iconGlow}`,
+              },
+              '&:focus-visible': {
+                outline: `2px solid ${typeColor}`,
+                outlineOffset: 2,
+              },
+            }}
+          >
+            <SkillIcon
+              src={icon}
+              name={name}
+              size={iconSize}
+              typeColor={typeColor}
+            />
+          </Box>
+        ) : (
+          <SkillIcon
+            src={icon}
+            name={name}
+            size={iconSize}
+            typeColor={typeColor}
+          />
+        )}
 
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <SkillName
@@ -858,25 +907,6 @@ const SingleSkillBox = memo(function SingleSkillBox({
             </Typography>
           )}
 
-          {interactive && !isFollowUp && (
-            <Typography
-              variant="caption"
-              className="craftbuddy-interaction-hint"
-              sx={{
-                display: 'block',
-                mt: 0.45,
-                color: typeColor,
-                fontWeight: 700,
-                letterSpacing: '0.04em',
-                opacity: 0,
-                transform: 'translateY(1px)',
-                transition: transitions.smooth,
-              }}
-            >
-              Click to use now
-            </Typography>
-          )}
-
           {/* Buff indicators */}
           <FlexRow gap={0.5} wrap sx={{ mt: 0.25 }}>
             {buffGranted && buffDuration > 0 && (
@@ -901,45 +931,6 @@ const SingleSkillBox = memo(function SingleSkillBox({
         </Box>
       </FlexRow>
     </SkillCardContainer>
-  );
-
-  if (!interactive || typeof onClick !== 'function') {
-    return content;
-  }
-
-  return (
-    <Box
-      component="button"
-      type="button"
-      onClick={onClick}
-      aria-label={`Use ${name} now`}
-      sx={{
-        display: 'block',
-        width: '100%',
-        p: 0,
-        border: 0,
-        background: 'none',
-        color: 'inherit',
-        textAlign: 'left',
-        cursor: 'pointer',
-        borderRadius: 1.5,
-        transition: transitions.smooth,
-        '&:hover': {
-          transform: 'translateY(-1px)',
-        },
-        '&:hover .craftbuddy-interaction-hint, &:focus-visible .craftbuddy-interaction-hint':
-          {
-            opacity: 1,
-            transform: 'translateY(0)',
-          },
-        '&:focus-visible': {
-          outline: `2px solid ${typeColor}`,
-          outlineOffset: 2,
-        },
-      }}
-    >
-      {content}
-    </Box>
   );
 });
 
@@ -1687,26 +1678,23 @@ export function RecommendationPanel({
           )}
 
           <Box sx={{ mb: 1.2 }}>
-            <Box
+            <FlexRow
+              align="center"
+              gap={0.75}
+              wrap
               sx={{
                 pr: compactMode ? '40px' : '132px',
                 mb: compactMode ? 1 : 1.5,
               }}
             >
-              <FlexRow align="center" gap={0.85} wrap sx={{ mb: 0.45 }}>
-                <Typography
-                  variant={compactMode ? 'subtitle1' : 'h6'}
-                  sx={{
-                    color: colors.gold,
-                    fontWeight: 600,
-                    letterSpacing: '0.5px',
-                    minWidth: 0,
-                  }}
-                >
+              <Box sx={{ minWidth: 0 }}>
+                <SectionHeader color={colors.gold} compact={compactMode}>
                   {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
-                </Typography>
+                </SectionHeader>
+              </Box>
 
-                {autoMode && (
+              {autoMode && (
+                <Box sx={{ pb: compactMode ? 0.95 : 1.35 }}>
                   <PanelModeToggle
                     mode={panelMode}
                     autoMode={autoMode}
@@ -1717,17 +1705,9 @@ export function RecommendationPanel({
                       )
                     }
                   />
-                )}
-              </FlexRow>
-
-              <Box
-                sx={{
-                  height: 1,
-                  borderRadius: 1,
-                  background: `linear-gradient(90deg, ${colors.gold}60 0%, transparent 80%)`,
-                }}
-              />
-            </Box>
+                </Box>
+              )}
+            </FlexRow>
 
             {showAutoModePanel && autoMode && (
               <Box sx={{ mb: 1.15 }}>
