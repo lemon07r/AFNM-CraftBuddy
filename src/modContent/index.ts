@@ -27,6 +27,7 @@ import {
   CraftingState,
   findBestSkill,
   SearchResult,
+  SkillRecommendation,
   BuffType,
   OptimizerConfig,
   SkillDefinition,
@@ -54,7 +55,10 @@ import {
   type AutoCraftUiState,
 } from '../settings/autoCraft';
 import { resolveBaseCraftingStats } from './configStats';
-import { createAutoCraftController } from './autoCraftController';
+import {
+  createAutoCraftController,
+  type AutoCraftExecutionRequest,
+} from './autoCraftController';
 import { createDomAutoCraftExecutor } from './autoCraftExecutor';
 import {
   resolveCraftingType,
@@ -207,13 +211,15 @@ interface LastSearchSettings {
 }
 let lastSearchSettings: LastSearchSettings | null = null;
 
+const autoCraftExecutor = createDomAutoCraftExecutor({
+  getRootElement: getGameRootElement,
+  isElementVisible,
+  isIgnoredElement: isElementInCraftBuddyOverlay,
+});
+
 const autoCraftController = createAutoCraftController({
   initialPolicy: currentSettings.preferredAutoModePolicy,
-  executor: createDomAutoCraftExecutor({
-    getRootElement: getGameRootElement,
-    isElementVisible,
-    isIgnoredElement: isElementInCraftBuddyOverlay,
-  }),
+  executor: autoCraftExecutor,
   onStateChange: (state) => {
     autoCraftUiState = state;
     if (overlayContainer) {
@@ -496,6 +502,54 @@ function buildAutoCraftSnapshot() {
 
 function syncAutoCraftController(): void {
   autoCraftController.sync(buildAutoCraftSnapshot());
+}
+
+function buildExecutionRequestForRecommendation(
+  recommendation: SkillRecommendation,
+): AutoCraftExecutionRequest {
+  const actionKind = (recommendation.skill.actionKind ?? 'skill') as
+    | 'skill'
+    | 'item'
+    | 'finish';
+
+  return {
+    kind: actionKind,
+    actionName: recommendation.skill.name,
+    skill: recommendation.skill,
+    reason: recommendation.reasoning,
+  };
+}
+
+function executeDisplayedRecommendation(
+  recommendation: SkillRecommendation,
+): void {
+  const autoModeBusy =
+    autoCraftUiState.armed &&
+    (autoCraftUiState.phase === 'executing' ||
+      autoCraftUiState.phase === 'waiting_for_state' ||
+      autoCraftUiState.phase === 'stop_requested');
+
+  if (autoCraftUiState.armed) {
+    stopAutoCraft('Auto mode stopped for manual action.');
+    if (autoModeBusy) {
+      return;
+    }
+  }
+
+  const request = buildExecutionRequestForRecommendation(recommendation);
+  const snapshot = buildAutoCraftSnapshot();
+
+  try {
+    const execution = autoCraftExecutor.execute(request, snapshot);
+    void Promise.resolve(execution).catch((error) => {
+      console.warn(
+        '[CraftBuddy] Failed to execute recommendation action:',
+        error,
+      );
+    });
+  } catch (error) {
+    console.warn('[CraftBuddy] Failed to execute recommendation action:', error);
+  }
 }
 
 function setAutoCraftPolicy(policy: AutoCraftPolicy): void {
@@ -2646,6 +2700,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     isCalculating,
     settingsStale: areSearchSettingsStale(),
     onRecalculate: handleRecalculate,
+    onRecommendationAction: executeDisplayedRecommendation,
     autoMode: autoCraftUiState,
     onAutoModeArm: armAutoCraft,
     onAutoModeStop: stopAutoCraft,

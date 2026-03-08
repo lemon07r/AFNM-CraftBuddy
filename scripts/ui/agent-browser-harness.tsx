@@ -234,6 +234,7 @@ function Harness() {
             isCalculating={
               harnessState === 'loading' || harnessState === 'loading-auto'
             }
+            onRecommendationAction={() => {}}
             autoMode={buildAutoModeFixture(harnessState)}
             onAutoModeArm={() => {}}
             onAutoModeStop={() => {}}

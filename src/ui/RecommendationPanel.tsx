@@ -5,7 +5,7 @@
  * and reasoning. Uses themed components for consistent styling.
  */
 
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Typography, Chip, IconButton, Tooltip } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -53,7 +53,6 @@ import {
 } from './theme';
 import {
   PanelContainer,
-  SectionHeader,
   SubSectionHeader,
   SkillCardContainer,
   SkillIcon,
@@ -195,6 +194,8 @@ interface RecommendationPanelProps {
   settingsStale?: boolean;
   /** Callback to trigger recalculation with new settings */
   onRecalculate?: () => void;
+  /** Execute the first action of a displayed recommendation immediately */
+  onRecommendationAction?: (recommendation: SkillRecommendation) => void;
   /** Auto-craft controller state */
   autoMode?: AutoCraftUiState;
   /** Arm auto mode for the current craft */
@@ -206,6 +207,8 @@ interface RecommendationPanelProps {
   /** Mod version shown in panel footer */
   version?: string;
 }
+
+type RecommendationPanelMode = 'suggestions' | 'auto';
 
 const CommunityLinks = memo(function CommunityLinks({
   isOpen = false,
@@ -629,6 +632,106 @@ const AutoModeSection = memo(function AutoModeSection({
   );
 });
 
+const PanelModeToggle = memo(function PanelModeToggle({
+  mode,
+  autoMode,
+  compact = false,
+  onToggle,
+}: {
+  mode: RecommendationPanelMode;
+  autoMode?: AutoCraftUiState;
+  compact?: boolean;
+  onToggle: () => void;
+}) {
+  const autoPhase = autoMode?.phase ?? 'off';
+  const autoTone = getAutoToneSx(autoMode?.tone ?? 'neutral');
+  const autoActive = autoPhase !== 'off';
+
+  return (
+    <Box
+      component="button"
+      type="button"
+      onClick={onToggle}
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 0.6,
+        px: compact ? 0.8 : 1,
+        py: compact ? 0.42 : 0.5,
+        borderRadius: 999,
+        border: `1px solid ${
+          mode === 'auto'
+            ? autoTone.border
+            : autoActive
+              ? autoTone.border
+              : colors.borderMedium
+        }`,
+        background:
+          mode === 'auto'
+            ? autoTone.background
+            : autoActive
+              ? `linear-gradient(135deg, ${autoTone.accentSoft}, rgba(17, 24, 37, 0.92))`
+              : 'rgba(20, 26, 39, 0.82)',
+        color:
+          mode === 'auto'
+            ? autoTone.accent
+            : autoActive
+              ? autoTone.accent
+              : colors.textMuted,
+        cursor: 'pointer',
+        transition: transitions.smooth,
+        '&:hover': {
+          transform: 'translateY(-1px)',
+          boxShadow:
+            mode === 'auto'
+              ? `0 10px 18px ${autoTone.accentSoft}`
+              : '0 8px 16px rgba(0, 0, 0, 0.22)',
+          borderColor: autoActive ? autoTone.border : colors.borderHighlight,
+        },
+      }}
+    >
+      {mode === 'auto' ? (
+        <TrendingUpIcon sx={{ fontSize: 15 }} />
+      ) : autoMode ? (
+        getAutoModeIcon(autoMode)
+      ) : (
+        <SmartToyIcon sx={{ fontSize: 15 }} />
+      )}
+      <Typography
+        component="span"
+        variant="caption"
+        sx={{
+          color: 'inherit',
+          fontWeight: 700,
+          letterSpacing: '0.04em',
+          lineHeight: 1,
+        }}
+      >
+        {mode === 'auto' ? 'Suggestions' : 'Auto'}
+      </Typography>
+      {mode !== 'auto' && autoActive && (
+        <Box
+          component="span"
+          sx={{
+            px: 0.45,
+            py: 0.12,
+            borderRadius: 999,
+            border: `1px solid ${autoTone.border}`,
+            backgroundColor: autoTone.accentSoft,
+            color: autoTone.accent,
+            fontSize: '0.58rem',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            lineHeight: 1.2,
+          }}
+        >
+          {AUTO_PHASE_LABELS[autoPhase]}
+        </Box>
+      )}
+    </Box>
+  );
+});
+
 // ============================================================================
 // Sub-Components
 // ============================================================================
@@ -653,6 +756,8 @@ const SingleSkillBox = memo(function SingleSkillBox({
   isFollowUp = false,
   consumesBuff = false,
   reasoning,
+  interactive = false,
+  onClick,
 }: {
   name: string;
   type: string;
@@ -673,12 +778,14 @@ const SingleSkillBox = memo(function SingleSkillBox({
   isFollowUp?: boolean;
   consumesBuff?: boolean;
   reasoning?: string;
+  interactive?: boolean;
+  onClick?: () => void;
 }) {
   const visualType = actionKind === 'finish' ? 'finish' : type;
   const typeColor = getSkillTypeColor(visualType);
   const iconSize = isFollowUp ? 'small' : isPrimary ? 'large' : 'medium';
 
-  return (
+  const content = (
     <SkillCardContainer
       isPrimary={isPrimary}
       isFollowUp={isFollowUp}
@@ -751,6 +858,25 @@ const SingleSkillBox = memo(function SingleSkillBox({
             </Typography>
           )}
 
+          {interactive && !isFollowUp && (
+            <Typography
+              variant="caption"
+              className="craftbuddy-interaction-hint"
+              sx={{
+                display: 'block',
+                mt: 0.45,
+                color: typeColor,
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                opacity: 0,
+                transform: 'translateY(1px)',
+                transition: transitions.smooth,
+              }}
+            >
+              Click to use now
+            </Typography>
+          )}
+
           {/* Buff indicators */}
           <FlexRow gap={0.5} wrap sx={{ mt: 0.25 }}>
             {buffGranted && buffDuration > 0 && (
@@ -776,6 +902,45 @@ const SingleSkillBox = memo(function SingleSkillBox({
       </FlexRow>
     </SkillCardContainer>
   );
+
+  if (!interactive || typeof onClick !== 'function') {
+    return content;
+  }
+
+  return (
+    <Box
+      component="button"
+      type="button"
+      onClick={onClick}
+      aria-label={`Use ${name} now`}
+      sx={{
+        display: 'block',
+        width: '100%',
+        p: 0,
+        border: 0,
+        background: 'none',
+        color: 'inherit',
+        textAlign: 'left',
+        cursor: 'pointer',
+        borderRadius: 1.5,
+        transition: transitions.smooth,
+        '&:hover': {
+          transform: 'translateY(-1px)',
+        },
+        '&:hover .craftbuddy-interaction-hint, &:focus-visible .craftbuddy-interaction-hint':
+          {
+            opacity: 1,
+            transform: 'translateY(0)',
+          },
+        '&:focus-visible': {
+          outline: `2px solid ${typeColor}`,
+          outlineOffset: 2,
+        },
+      }}
+    >
+      {content}
+    </Box>
+  );
 });
 
 /**
@@ -787,11 +952,13 @@ const SkillCard = memo(function SkillCard({
   isPrimary = false,
   showQuality = false,
   compact = false,
+  onPrimaryAction,
 }: {
   rec: SkillRecommendation;
   isPrimary?: boolean;
   showQuality?: boolean;
   compact?: boolean;
+  onPrimaryAction?: (recommendation: SkillRecommendation) => void;
 }) {
   const qualityRating = rec.qualityRating ?? 100;
   const hasFollowUp = rec.followUpSkill !== undefined;
@@ -849,6 +1016,12 @@ const SkillCard = memo(function SkillCard({
             isFollowUp={false}
             consumesBuff={rec.consumesBuff}
             reasoning={isPrimary ? rec.reasoning : undefined}
+            interactive={typeof onPrimaryAction === 'function'}
+            onClick={
+              typeof onPrimaryAction === 'function'
+                ? () => onPrimaryAction(rec)
+                : undefined
+            }
           />
         </Box>
 
@@ -1325,6 +1498,7 @@ export function RecommendationPanel({
   isCalculating = false,
   settingsStale = false,
   onRecalculate,
+  onRecommendationAction,
   autoMode,
   onAutoModeArm,
   onAutoModeStop,
@@ -1332,6 +1506,10 @@ export function RecommendationPanel({
   version,
 }: RecommendationPanelProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [panelMode, setPanelMode] = useState<RecommendationPanelMode>(
+    () => ((autoMode?.phase ?? 'off') !== 'off' ? 'auto' : 'suggestions'),
+  );
+  const previousAutoPhaseRef = useRef(autoMode?.phase ?? 'off');
 
   // Use settings or defaults
   const compactMode = settings?.compactMode ?? false;
@@ -1340,6 +1518,15 @@ export function RecommendationPanel({
   const showForecastedConditions = settings?.showForecastedConditions ?? true;
   const maxAlternatives = settings?.maxAlternatives ?? 1;
   const maxRotationDisplay = settings?.maxRotationDisplay ?? 5;
+  const showAutoModePanel = panelMode === 'auto';
+
+  useEffect(() => {
+    const currentPhase = autoMode?.phase ?? 'off';
+    if (previousAutoPhaseRef.current === 'off' && currentPhase !== 'off') {
+      setPanelMode('auto');
+    }
+    previousAutoPhaseRef.current = currentPhase;
+  }, [autoMode?.phase]);
 
   // Panel not visible
   if (settings?.panelVisible === false) {
@@ -1350,22 +1537,26 @@ export function RecommendationPanel({
   if (!result || isCalculating) {
     const timeBudgetMs = settings?.searchTimeBudgetMs ?? 2000;
     const versionFooterPadding = version && !isSettingsOpen ? 2.25 : 0;
+    const shouldShowAutoLoadingPanel =
+      showAutoModePanel || (autoMode?.phase ?? 'off') !== 'off';
 
     return (
       <PanelContainer compact={compactMode}>
         <Box sx={{ pb: versionFooterPadding }}>
           <LoadingHeader compact={compactMode} />
-          <Box sx={{ mb: 1.1 }}>
-            <AutoModeSection
-              autoMode={autoMode}
-              compact={compactMode}
-              loading
-              embedded
-              onArm={onAutoModeArm}
-              onStop={onAutoModeStop}
-              onPolicyChange={onAutoModePolicyChange}
-            />
-          </Box>
+          {shouldShowAutoLoadingPanel && (
+            <Box sx={{ mb: 1.1 }}>
+              <AutoModeSection
+                autoMode={autoMode}
+                compact={compactMode}
+                loading
+                embedded
+                onArm={onAutoModeArm}
+                onStop={onAutoModeStop}
+                onPolicyChange={onAutoModePolicyChange}
+              />
+            </Box>
+          )}
           <LoadingSkeletonCard compact={compactMode} />
           <SearchProgressBar durationMs={timeBudgetMs} />
         </Box>
@@ -1396,7 +1587,7 @@ export function RecommendationPanel({
         >
           You can finish crafting now!
         </Typography>
-        {autoMode && autoMode.phase !== 'off' && (
+        {autoMode && (showAutoModePanel || autoMode.phase !== 'off') && (
           <Box sx={{ mt: 1.25 }}>
             <AutoModeSection
               autoMode={autoMode}
@@ -1435,7 +1626,7 @@ export function RecommendationPanel({
         >
           Consider finishing the craft or check your Qi/Stability.
         </Typography>
-        {autoMode && autoMode.phase !== 'off' && (
+        {autoMode && (showAutoModePanel || autoMode.phase !== 'off') && (
           <Box sx={{ mt: 1.25 }}>
             <AutoModeSection
               autoMode={autoMode}
@@ -1495,70 +1686,81 @@ export function RecommendationPanel({
             />
           )}
 
-          <Box
-            sx={{
-              display: 'grid',
-              gap: 1.1,
-              alignItems: 'start',
-              mb: 1.2,
-              gridTemplateColumns:
-                compactMode || !autoMode
-                  ? '1fr'
-                  : 'minmax(0, 1fr) 178px',
-              '@media (max-width: 720px)': {
-                gridTemplateColumns: '1fr',
-              },
-            }}
-          >
-            <Box sx={{ minWidth: 0 }}>
-              <Box sx={{ pr: compactMode ? '40px' : '132px' }}>
-                <SectionHeader
-                  color={colors.gold}
-                  compact={compactMode || Boolean(autoMode)}
+          <Box sx={{ mb: 1.2 }}>
+            <Box
+              sx={{
+                pr: compactMode ? '40px' : '132px',
+                mb: compactMode ? 1 : 1.5,
+              }}
+            >
+              <FlexRow align="center" gap={0.85} wrap sx={{ mb: 0.45 }}>
+                <Typography
+                  variant={compactMode ? 'subtitle1' : 'h6'}
+                  sx={{
+                    color: colors.gold,
+                    fontWeight: 600,
+                    letterSpacing: '0.5px',
+                    minWidth: 0,
+                  }}
                 >
                   {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
-                </SectionHeader>
-              </Box>
+                </Typography>
 
-              <ProgressSection
-                currentCompletion={currentCompletion}
-                currentPerfection={currentPerfection}
-                targetCompletion={targetCompletion}
-                targetPerfection={targetPerfection}
-                maxCompletionCap={maxCompletionCap}
-                maxPerfectionCap={maxPerfectionCap}
-                currentStability={currentStability}
-                currentMaxStability={currentMaxStability}
-                targetStability={targetStability}
-                currentToxicity={currentToxicity}
-                maxToxicity={maxToxicity}
-              />
+                {autoMode && (
+                  <PanelModeToggle
+                    mode={panelMode}
+                    autoMode={autoMode}
+                    compact={compactMode}
+                    onToggle={() =>
+                      setPanelMode((currentMode) =>
+                        currentMode === 'suggestions' ? 'auto' : 'suggestions',
+                      )
+                    }
+                  />
+                )}
+              </FlexRow>
 
-              {showForecastedConditions && !compactMode && (
-                <ConditionsSection
-                  currentCondition={currentCondition}
-                  nextConditions={nextConditions}
-                />
-              )}
-            </Box>
-
-            {autoMode && (
               <Box
                 sx={{
-                  minWidth: 0,
-                  '@media (max-width: 720px)': {
-                    order: 1,
-                  },
+                  height: 1,
+                  borderRadius: 1,
+                  background: `linear-gradient(90deg, ${colors.gold}60 0%, transparent 80%)`,
                 }}
-              >
+              />
+            </Box>
+
+            {showAutoModePanel && autoMode && (
+              <Box sx={{ mb: 1.15 }}>
                 <AutoModeSection
                   autoMode={autoMode}
-                  compact
+                  compact={compactMode}
+                  embedded
                   onArm={onAutoModeArm}
                   onStop={onAutoModeStop}
                   onPolicyChange={onAutoModePolicyChange}
                 />
               </Box>
+            )}
+
+            <ProgressSection
+              currentCompletion={currentCompletion}
+              currentPerfection={currentPerfection}
+              targetCompletion={targetCompletion}
+              targetPerfection={targetPerfection}
+              maxCompletionCap={maxCompletionCap}
+              maxPerfectionCap={maxPerfectionCap}
+              currentStability={currentStability}
+              currentMaxStability={currentMaxStability}
+              targetStability={targetStability}
+              currentToxicity={currentToxicity}
+              maxToxicity={maxToxicity}
+            />
+
+            {showForecastedConditions && !compactMode && (
+              <ConditionsSection
+                currentCondition={currentCondition}
+                nextConditions={nextConditions}
+              />
             )}
           </Box>
 
@@ -1567,6 +1769,9 @@ export function RecommendationPanel({
             rec={result.recommendation}
             isPrimary
             compact={compactMode}
+            onPrimaryAction={
+              !showAutoModePanel ? onRecommendationAction : undefined
+            }
           />
 
           {/* Optimal rotation preview */}
@@ -1599,7 +1804,14 @@ export function RecommendationPanel({
                 {result.alternativeSkills
                   .slice(0, maxAlternatives)
                   .map((rec, idx) => (
-                    <SkillCard key={idx} rec={rec} showQuality />
+                    <SkillCard
+                      key={idx}
+                      rec={rec}
+                      showQuality
+                      onPrimaryAction={
+                        !showAutoModePanel ? onRecommendationAction : undefined
+                      }
+                    />
                   ))}
               </>
             )}
