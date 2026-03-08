@@ -111,7 +111,8 @@ For `src/modContent/autoCraftController.ts` / `src/modContent/autoCraftExecutor.
 
 - unit tests cover controller state transitions, policy gating, stop requests, craft-end reset, and timeout/error behavior
 - harness checks cover panel layout/status rendering
-- installed-runtime/manual validation confirms the one-action bridge triggers exactly one live craft action and waits for an observed craft-state change before continuing
+- rebuild `dist/` / `builds/afnm-craftbuddy.zip` from the current worktree before any in-game validation; stale artifacts can still be running older action-bridge code even when source fixes exist locally
+- installed-runtime/manual validation confirms the one-action bridge triggers exactly one live craft action, that synthesized `Finish Craft` recommendations resolve to the native `Wait` technique, and that auto mode still waits for an observed craft-state change before continuing
 
 ## Optional live UI verification
 

@@ -41,15 +41,23 @@ describe('autoCraftController', () => {
   let executed: AutoCraftExecutionRequest[];
   let uiStates: AutoCraftUiState[];
 
-  function createHarness(initialPolicy: AutoCraftPolicy = 'techniquesOnly') {
+  function createHarness(
+    initialPolicy: AutoCraftPolicy = 'techniquesOnly',
+    onExecute?: (
+      request: AutoCraftExecutionRequest,
+      controller: ReturnType<typeof createAutoCraftController>,
+    ) => void,
+  ) {
     executed = [];
     uiStates = [];
 
-    const controller = createAutoCraftController({
+    let controller!: ReturnType<typeof createAutoCraftController>;
+    controller = createAutoCraftController({
       initialPolicy,
       executor: {
         execute: (request) => {
           executed.push(request);
+          onExecute?.(request, controller);
         },
       },
       onStateChange: (state) => {
@@ -230,6 +238,33 @@ describe('autoCraftController', () => {
 
     expect(controller.getUiState().phase).toBe('error');
     expect(controller.getUiState().armed).toBe(false);
+  });
+
+  it('does not time out when the live state advances synchronously during execution', async () => {
+    const controller = createHarness('techniquesOnly', (_request, liveController) => {
+      liveController.sync(
+        buildSnapshot({
+          stateFingerprint: 'fp-2',
+          isCalculating: true,
+          result: null,
+        }),
+      );
+    });
+
+    controller.arm();
+    controller.sync(buildSnapshot());
+
+    jest.advanceTimersByTime(100);
+    await Promise.resolve();
+
+    expect(executed).toHaveLength(1);
+    expect(controller.getUiState().phase).toBe('calculating');
+
+    jest.advanceTimersByTime(5000);
+    await Promise.resolve();
+
+    expect(controller.getUiState().phase).toBe('calculating');
+    expect(controller.getUiState().armed).toBe(true);
   });
 
   it('updates the preferred policy while idle without arming auto mode', () => {

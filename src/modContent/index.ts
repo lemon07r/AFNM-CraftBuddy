@@ -213,6 +213,7 @@ let lastSearchSettings: LastSearchSettings | null = null;
 
 const autoCraftExecutor = createDomAutoCraftExecutor({
   getRootElement: getGameRootElement,
+  getStore: () => cachedStore,
   isElementVisible,
   isIgnoredElement: isElementInCraftBuddyOverlay,
 });
@@ -433,6 +434,27 @@ function buildAutoCraftCooldownSignature(): string {
     .join('|');
 }
 
+function serializeTechniqueCooldowns(
+  techniques: CraftingTechnique[] | undefined,
+): string {
+  if (!techniques?.length) {
+    return 'none';
+  }
+
+  return techniques
+    .map((technique) => {
+      const key = String(technique?.name || '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '_');
+      const cooldown = Number(technique?.currentCooldown || 0) || 0;
+      return key && cooldown > 0 ? `${key}:${cooldown}` : null;
+    })
+    .filter((entry): entry is string => Boolean(entry))
+    .sort()
+    .join('|') || 'none';
+}
+
 function serializeQuickAccessInventory(
   quickAccess: (string | undefined)[] | undefined,
   inventoryItems: InventoryItemLike[] | undefined,
@@ -459,6 +481,23 @@ function buildAutoCraftInventorySignature(): string {
     | undefined
   )[];
   return serializeQuickAccessInventory(quickAccess, inventoryItems);
+}
+
+function computeObservedMaxStability(
+  progressState: ProgressState | null | undefined,
+  maxStabilityTarget: number,
+  fallbackValue: number,
+): number {
+  const stabilityPenalty = parseGameNumber(
+    (progressState as any)?.stabilityPenalty,
+    0,
+  );
+
+  if (maxStabilityTarget > 0) {
+    return Math.max(0, maxStabilityTarget - stabilityPenalty);
+  }
+
+  return fallbackValue;
 }
 
 function buildAutoCraftStateFingerprint(): string {
@@ -3439,6 +3478,29 @@ function pollCraftingState(): void {
       normalizedQueue.length !== nextConditions.length ||
       normalizedQueue.some((entry, index) => entry !== nextConditions[index]);
     const previousPool = parseGameNumber((lastEntity as any)?.stats?.pool, 0);
+    const currentCooldownSignature = serializeTechniqueCooldowns(
+      entity?.techniques,
+    );
+    const previousCooldownSignature = serializeTechniqueCooldowns(
+      lastEntity?.techniques,
+    );
+    const currentBuffSignature = serializeCraftingBuffs(entity?.buffs);
+    const previousBuffSignature = serializeCraftingBuffs(lastEntity?.buffs);
+    const currentInventorySignature = serializeQuickAccessInventory(
+      ((entity as any)?.craftingQuickAccess || []) as (string | undefined)[],
+      inventoryItems,
+    );
+    const previousInventorySignature = serializeQuickAccessInventory(
+      ((lastEntity as any)?.craftingQuickAccess || []) as (string | undefined)[],
+      inventoryItems,
+    );
+    const maxStabilityTarget =
+      parsePositiveGameNumber((recipeStats as any)?.stability) ?? targetStability;
+    const observedMaxStability = computeObservedMaxStability(
+      progress,
+      maxStabilityTarget,
+      currentMaxStability,
+    );
 
     if (
       newCompletion !== currentCompletion ||
@@ -3449,6 +3511,10 @@ function pollCraftingState(): void {
       queueChanged ||
       newPool !== previousPool ||
       newToxicity !== currentToxicity ||
+      observedMaxStability !== currentMaxStability ||
+      currentCooldownSignature !== previousCooldownSignature ||
+      currentBuffSignature !== previousBuffSignature ||
+      currentInventorySignature !== previousInventorySignature ||
       !lastEntity ||
       enteredVisibleCraftingUi
     ) {
@@ -3531,6 +3597,7 @@ function pollCraftingState(): void {
         currentPerfection = domValues.perfection;
         currentStability = domValues.stability;
         renderOverlay();
+        syncAutoCraftController();
       }
     }
   }
@@ -4778,9 +4845,20 @@ function processCraftingState(craftingState: any): void {
     ((lastEntity as any)?.craftingQuickAccess || []) as (string | undefined)[],
     inventoryItems,
   );
+  const currentCooldownSignature = serializeTechniqueCooldowns(entity?.techniques);
+  const previousCooldownSignature = serializeTechniqueCooldowns(
+    lastEntity?.techniques,
+  );
   const progressToxicity = parseGameNumber(
     (progress as any)?.toxicity ?? (entity as any)?.stats?.toxicity,
     0,
+  );
+  const maxStabilityTarget =
+    parsePositiveGameNumber((recipeStats as any)?.stability) ?? targetStability;
+  const observedMaxStability = computeObservedMaxStability(
+    progress,
+    maxStabilityTarget,
+    currentMaxStability,
   );
   const stateChanged =
     parseGameNumber(progress.completion, 0) !== currentCompletion ||
@@ -4790,6 +4868,8 @@ function processCraftingState(craftingState: any): void {
     normalizedCondition !== currentCondition ||
     queueChanged ||
     progressPool !== previousPool ||
+    observedMaxStability !== currentMaxStability ||
+    currentCooldownSignature !== previousCooldownSignature ||
     currentBuffSignature !== previousBuffSignature ||
     currentInventorySignature !== previousInventorySignature ||
     progressToxicity !== currentToxicity;

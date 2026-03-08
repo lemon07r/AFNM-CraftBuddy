@@ -2,6 +2,7 @@ import type { AutoCraftExecutor, AutoCraftExecutionRequest, AutoCraftRuntimeSnap
 
 interface DomAutoCraftExecutorOptions {
   getRootElement: () => ParentNode;
+  getStore?: () => DispatchStore | null;
   isElementVisible: (element: Element) => boolean;
   isIgnoredElement: (element: Element | null) => boolean;
 }
@@ -9,6 +10,12 @@ interface DomAutoCraftExecutorOptions {
 interface ButtonCandidate {
   element: HTMLElement;
   searchText: string;
+  sourceBoost?: number;
+}
+
+interface DispatchStore {
+  dispatch: (action: { type: string; payload?: unknown }) => unknown;
+  getState?: () => any;
 }
 
 const BUTTON_SELECTORS = ['button', '[role="button"]'].join(', ');
@@ -22,6 +29,20 @@ const CLICKABLE_SELECTORS = [
   '[class*="Button"]',
 ].join(', ');
 const FINISH_REGION_THRESHOLD_PX = 14_000;
+const EXECUTE_TECHNIQUE_ACTION_TYPE = 'crafting/executeTechnique';
+const WAIT_TECHNIQUE = {
+  name: 'Wait',
+  icon: 'wait.webp',
+  poolCost: 0,
+  stabilityCost: 10,
+  successChance: 1,
+  cooldown: 0,
+  tooltip: 'Let the crafting process advance. Has no other effects.',
+  effects: [],
+  type: 'support',
+  realm: 'mundane',
+  currentCooldown: 0,
+};
 
 function normalizeText(value: string | undefined): string {
   return String(value || '')
@@ -29,6 +50,88 @@ function normalizeText(value: string | undefined): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+function isDispatchStore(value: unknown): value is DispatchStore {
+  return !!value && typeof (value as DispatchStore).dispatch === 'function';
+}
+
+function cloneTechniquePayload(
+  technique: Record<string, unknown>,
+): Record<string, unknown> {
+  return { ...technique };
+}
+
+function resolveDirectTechniquePayload(
+  request: AutoCraftExecutionRequest,
+  store: DispatchStore,
+): Record<string, unknown> | null {
+  if (request.kind === 'finish') {
+    // CraftBuddy synthesizes "Finish Craft". The native crafting UI executes
+    // that by using the built-in Wait technique until stability reaches zero.
+    return cloneTechniquePayload(WAIT_TECHNIQUE);
+  }
+
+  if (request.kind !== 'skill') {
+    return null;
+  }
+
+  const aliases = new Set(
+    [
+      request.actionName,
+      request.skill?.name,
+      (request.skill?.nativeTechnique as { name?: string } | undefined)?.name,
+    ]
+      .map((name) => normalizeText(name))
+      .filter(Boolean),
+  );
+
+  const liveTechniques = store.getState?.()?.crafting?.player?.techniques;
+  if (Array.isArray(liveTechniques)) {
+    const liveTechnique = liveTechniques.find((technique) =>
+      aliases.has(normalizeText((technique as { name?: string } | null)?.name)),
+    );
+    if (
+      liveTechnique &&
+      typeof liveTechnique === 'object' &&
+      !Array.isArray(liveTechnique)
+    ) {
+      return cloneTechniquePayload(liveTechnique as Record<string, unknown>);
+    }
+  }
+
+  const nativeTechnique = request.skill?.nativeTechnique;
+  if (
+    nativeTechnique &&
+    typeof nativeTechnique === 'object' &&
+    !Array.isArray(nativeTechnique)
+  ) {
+    return cloneTechniquePayload(nativeTechnique as Record<string, unknown>);
+  }
+
+  return null;
+}
+
+function dispatchTechniqueAction(
+  options: DomAutoCraftExecutorOptions,
+  request: AutoCraftExecutionRequest,
+): boolean {
+  const store = options.getStore?.();
+  if (!isDispatchStore(store)) {
+    return false;
+  }
+
+  const payload = resolveDirectTechniquePayload(request, store);
+  if (!payload) {
+    return false;
+  }
+
+  store.dispatch({
+    type: EXECUTE_TECHNIQUE_ACTION_TYPE,
+    payload,
+  });
+
+  return true;
 }
 
 function buildSearchAliases(request: AutoCraftExecutionRequest): string[] {
@@ -42,6 +145,10 @@ function buildSearchAliases(request: AutoCraftExecutionRequest): string[] {
     aliases.add('finalize craft');
     aliases.add('perfect craft');
     aliases.add('craft success');
+    aliases.add('wait');
+    aliases.add('do nothing');
+    aliases.add('advance craft');
+    aliases.add('advance crafting process');
   }
 
   if (request.kind === 'item') {
@@ -60,21 +167,18 @@ function buildSearchAliases(request: AutoCraftExecutionRequest): string[] {
     .filter(Boolean);
 }
 
-function scoreCandidate(
-  candidate: ButtonCandidate,
-  aliases: string[],
-): number {
+function scoreSearchText(searchText: string, aliases: string[]): number {
   let bestScore = 0;
   for (const alias of aliases) {
-    if (candidate.searchText === alias) {
+    if (searchText === alias) {
       bestScore = Math.max(bestScore, 100);
       continue;
     }
-    if (candidate.searchText.startsWith(`${alias} `)) {
+    if (searchText.startsWith(`${alias} `)) {
       bestScore = Math.max(bestScore, 92);
       continue;
     }
-    if (candidate.searchText.includes(alias)) {
+    if (searchText.includes(alias)) {
       bestScore = Math.max(bestScore, 80);
       continue;
     }
@@ -82,13 +186,22 @@ function scoreCandidate(
     const aliasTokens = alias.split(' ').filter(Boolean);
     if (
       aliasTokens.length > 1 &&
-      aliasTokens.every((token) => candidate.searchText.includes(token))
+      aliasTokens.every((token) => searchText.includes(token))
     ) {
       bestScore = Math.max(bestScore, 68);
     }
   }
 
   return bestScore;
+}
+
+function scoreCandidate(
+  candidate: ButtonCandidate,
+  aliases: string[],
+): number {
+  return (
+    scoreSearchText(candidate.searchText, aliases) + (candidate.sourceBoost ?? 0)
+  );
 }
 
 function buildElementSearchText(
@@ -135,6 +248,7 @@ function addCandidate(
   target: Map<HTMLElement, ButtonCandidate>,
   element: HTMLElement,
   extraText?: string,
+  sourceBoost: number = 0,
 ): void {
   if (isDisabledElement(element)) return;
 
@@ -142,8 +256,16 @@ function addCandidate(
   if (!searchText) return;
 
   const existing = target.get(element);
-  if (!existing || searchText.length > existing.searchText.length) {
-    target.set(element, { element, searchText });
+  if (
+    !existing ||
+    sourceBoost > (existing.sourceBoost ?? 0) ||
+    searchText.length > existing.searchText.length
+  ) {
+    target.set(element, {
+      element,
+      searchText,
+      sourceBoost: Math.max(sourceBoost, existing?.sourceBoost ?? 0),
+    });
   }
 }
 
@@ -184,6 +306,168 @@ function hasFinishCue(searchText: string): boolean {
   );
 }
 
+function getVisibleHtmlElements(
+  options: DomAutoCraftExecutorOptions,
+): HTMLElement[] {
+  const rootElement = options.getRootElement();
+  return Array.from(rootElement.querySelectorAll('*'))
+    .filter((element): element is HTMLElement => element instanceof HTMLElement)
+    .filter(
+      (element) =>
+        !options.isIgnoredElement(element) && options.isElementVisible(element),
+    );
+}
+
+function normalizeImageHint(value: string | undefined): string | null {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const withoutQuery = trimmed.split(/[?#]/, 1)[0];
+  const normalizedPath = withoutQuery.replace(/\\/g, '/').toLowerCase();
+  const fileName =
+    normalizedPath.split('/').filter(Boolean).pop() || normalizedPath;
+
+  return fileName || null;
+}
+
+function buildIconHints(request: AutoCraftExecutionRequest): string[] {
+  const hints = new Set<string>();
+  const nativeTechnique = request.skill?.nativeTechnique as
+    | { icon?: string }
+    | undefined;
+
+  const possibleHints = [
+    request.skill?.icon,
+    nativeTechnique?.icon,
+  ];
+  possibleHints.forEach((hint) => {
+    const normalized = normalizeImageHint(hint);
+    if (normalized) {
+      hints.add(normalized);
+    }
+  });
+
+  return Array.from(hints);
+}
+
+function collectImageUrls(value: string | null | undefined): string[] {
+  if (!value) return [];
+  const matches = Array.from(value.matchAll(/url\((['"]?)(.*?)\1\)/gi));
+  return matches.map((match) => match[2]).filter(Boolean);
+}
+
+function extractElementImageHints(element: HTMLElement): string[] {
+  const hints = new Set<string>();
+  const possibleValues = [
+    element.getAttribute('src'),
+    element.getAttribute('currentSrc'),
+    element.getAttribute('data-src'),
+    element.getAttribute('poster'),
+    ...collectImageUrls(element.style.backgroundImage),
+    ...collectImageUrls(window.getComputedStyle(element).backgroundImage),
+  ];
+
+  possibleValues.forEach((value) => {
+    const normalized = normalizeImageHint(value ?? undefined);
+    if (normalized) {
+      hints.add(normalized);
+    }
+  });
+
+  return Array.from(hints);
+}
+
+function elementMatchesIconHints(
+  element: HTMLElement,
+  iconHints: string[],
+): boolean {
+  if (iconHints.length === 0) return false;
+  const elementHints = extractElementImageHints(element);
+  return elementHints.some((hint) => iconHints.includes(hint));
+}
+
+function listNamedClickCandidates(
+  options: DomAutoCraftExecutorOptions,
+  aliases: string[],
+): ButtonCandidate[] {
+  const candidates = new Map<HTMLElement, ButtonCandidate>();
+
+  getVisibleHtmlElements(options).forEach((element) => {
+    const searchText = buildElementSearchText(element);
+    if (scoreSearchText(searchText, aliases) <= 0) {
+      return;
+    }
+
+    const clickableElement = findClickableAncestor(element, options);
+    if (!clickableElement) {
+      return;
+    }
+
+    addCandidate(candidates, clickableElement, searchText, 8);
+  });
+
+  return Array.from(candidates.values());
+}
+
+function listIconCandidates(
+  options: DomAutoCraftExecutorOptions,
+  request: AutoCraftExecutionRequest,
+  iconHints: string[],
+): ButtonCandidate[] {
+  if (iconHints.length === 0) {
+    return [];
+  }
+
+  const candidates = new Map<HTMLElement, ButtonCandidate>();
+  getVisibleHtmlElements(options).forEach((element) => {
+    if (!elementMatchesIconHints(element, iconHints)) {
+      return;
+    }
+
+    const clickableElement = findClickableAncestor(element, options);
+    if (!clickableElement) {
+      return;
+    }
+
+    addCandidate(candidates, clickableElement, request.actionName, 18);
+  });
+
+  return Array.from(candidates.values());
+}
+
+function listActionCandidates(
+  options: DomAutoCraftExecutorOptions,
+  request: AutoCraftExecutionRequest,
+  aliases: string[],
+): ButtonCandidate[] {
+  const iconHints = buildIconHints(request);
+  const candidates = new Map<HTMLElement, ButtonCandidate>();
+
+  listVisibleButtons(options).forEach((candidate) => {
+    candidates.set(candidate.element, candidate);
+  });
+  listNamedClickCandidates(options, aliases).forEach((candidate) => {
+    addCandidate(
+      candidates,
+      candidate.element,
+      candidate.searchText,
+      candidate.sourceBoost ?? 0,
+    );
+  });
+  listIconCandidates(options, request, iconHints).forEach((candidate) => {
+    addCandidate(
+      candidates,
+      candidate.element,
+      candidate.searchText,
+      candidate.sourceBoost ?? 0,
+    );
+  });
+
+  return Array.from(candidates.values());
+}
+
 function scoreFinishCandidate(
   candidate: ButtonCandidate,
   aliases: string[],
@@ -208,6 +492,8 @@ function scoreFinishCandidate(
   ) {
     bestScore = Math.max(bestScore, 68);
   }
+  if (searchText.includes('wait')) bestScore = Math.max(bestScore, 96);
+  if (searchText.includes('do nothing')) bestScore = Math.max(bestScore, 88);
   if (searchText.includes('cauldron') || searchText.includes('product')) {
     bestScore = Math.max(bestScore, 62);
   }
@@ -248,14 +534,8 @@ function listVisibleButtons({
 function listFinishCandidates(
   options: DomAutoCraftExecutorOptions,
 ): ButtonCandidate[] {
-  const rootElement = options.getRootElement();
   const candidates = new Map<HTMLElement, ButtonCandidate>();
-  const allElements = Array.from(rootElement.querySelectorAll('*'))
-    .filter((element): element is HTMLElement => element instanceof HTMLElement)
-    .filter(
-      (element) =>
-        !options.isIgnoredElement(element) && options.isElementVisible(element),
-    );
+  const allElements = getVisibleHtmlElements(options);
 
   allElements.forEach((element) => {
     if (!isProbablyClickableElement(element) || isDisabledElement(element)) {
@@ -336,25 +616,58 @@ function dispatchClickSequence(element: HTMLElement): void {
   element.click();
 }
 
+function executeFinishAction(
+  options: DomAutoCraftExecutorOptions,
+  request: AutoCraftExecutionRequest,
+  aliases: string[],
+): void {
+  if (dispatchTechniqueAction(options, request)) {
+    return;
+  }
+
+  const candidates = [
+    ...listActionCandidates(options, request, aliases),
+    ...listFinishCandidates(options),
+  ]
+    .map((candidate) => ({
+      ...candidate,
+      score: scoreFinishCandidate(candidate, aliases),
+    }))
+    .filter((candidate) => candidate.score >= 60)
+    .sort((a, b) => b.score - a.score);
+
+  const candidate = candidates[0];
+  if (!candidate) {
+    throw new Error(
+      'Could not find a visible game control or confirm keybinding for Finish Craft. Auto mode stopped before sending another input.',
+    );
+  }
+
+  dispatchClickSequence(candidate.element);
+}
+
 export function createDomAutoCraftExecutor(
   options: DomAutoCraftExecutorOptions,
 ): AutoCraftExecutor {
   return {
     execute(request: AutoCraftExecutionRequest, _snapshot: AutoCraftRuntimeSnapshot) {
       const aliases = buildSearchAliases(request);
-      const rawCandidates =
-        request.kind === 'finish'
-          ? listFinishCandidates(options)
-          : listVisibleButtons(options);
+      if (request.kind === 'finish') {
+        executeFinishAction(options, request, aliases);
+        return;
+      }
+
+      if (request.kind === 'skill' && dispatchTechniqueAction(options, request)) {
+        return;
+      }
+
+      const rawCandidates = listActionCandidates(options, request, aliases);
       const candidates = rawCandidates
         .map((candidate) => ({
           ...candidate,
-          score:
-            request.kind === 'finish'
-              ? scoreFinishCandidate(candidate, aliases)
-              : scoreCandidate(candidate, aliases),
+          score: scoreCandidate(candidate, aliases),
         }))
-        .filter((candidate) => candidate.score >= (request.kind === 'finish' ? 60 : 80))
+        .filter((candidate) => candidate.score >= 80)
         .sort((a, b) => b.score - a.score);
 
       const candidate = candidates[0];

@@ -270,11 +270,19 @@ export function createAutoCraftController({
     emit();
   };
 
-  const waitForStateAdvance = (request: AutoCraftExecutionRequest) => {
-    if (!lastSnapshot) return;
-
-    awaitingFingerprint = lastSnapshot.stateFingerprint;
+  const startAwaitingStateAdvance = (executionFingerprint: string) => {
+    awaitingFingerprint = executionFingerprint;
     cancelWaitingTimeout();
+  };
+
+  const waitForStateAdvance = (
+    request: AutoCraftExecutionRequest,
+    executionFingerprint: string,
+  ) => {
+    if (awaitingFingerprint !== executionFingerprint) {
+      return;
+    }
+
     waitingTimeoutHandle = schedule(() => {
       finalizeStoppedState(
         'error',
@@ -332,10 +340,15 @@ export function createAutoCraftController({
       canStop: true,
     });
 
+    const executionSnapshot = lastSnapshot;
+    startAwaitingStateAdvance(executionFingerprint);
+
     try {
-      await executor.execute(request, lastSnapshot);
-      waitForStateAdvance(request);
+      await executor.execute(request, executionSnapshot);
+      waitForStateAdvance(request, executionFingerprint);
     } catch (error) {
+      cancelWaitingTimeout();
+      awaitingFingerprint = null;
       const message =
         error instanceof Error ? error.message : String(error ?? 'Unknown');
       finalizeStoppedState(
