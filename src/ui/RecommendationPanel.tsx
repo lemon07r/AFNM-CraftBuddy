@@ -446,10 +446,12 @@ const SkillCard = memo(function SkillCard({
   rec,
   isPrimary = false,
   showQuality = false,
+  compact = false,
 }: {
   rec: SkillRecommendation;
   isPrimary?: boolean;
   showQuality?: boolean;
+  compact?: boolean;
 }) {
   const qualityRating = rec.qualityRating ?? 100;
   const hasFollowUp = rec.followUpSkill !== undefined;
@@ -476,7 +478,20 @@ const SkillCard = memo(function SkillCard({
       )}
 
       {/* Skills displayed side-by-side */}
-      <FlexRow align="stretch" gap={0.5}>
+      <FlexRow
+        align="stretch"
+        gap={0.5}
+        sx={
+          compact && hasFollowUp
+            ? {
+                '@media (max-aspect-ratio: 16/9)': {
+                  flexDirection: 'column',
+                  gap: 0.75,
+                },
+              }
+            : undefined
+        }
+      >
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <SingleSkillBox
             name={rec.skill.name}
@@ -500,8 +515,39 @@ const SkillCard = memo(function SkillCard({
         {/* Follow-up skill */}
         {hasFollowUp && rec.followUpSkill && (
           <>
-            <SequenceArrow />
+            <Box
+              sx={
+                compact
+                  ? {
+                      '@media (max-aspect-ratio: 16/9)': {
+                        display: 'none',
+                      },
+                    }
+                  : undefined
+              }
+            >
+              <SequenceArrow />
+            </Box>
             <Box sx={{ flex: 1, minWidth: 0 }}>
+              {compact && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'none',
+                    mb: 0.4,
+                    px: 0.25,
+                    color: colors.textMuted,
+                    fontSize: '0.63rem',
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    '@media (max-aspect-ratio: 16/9)': {
+                      display: 'block',
+                    },
+                  }}
+                >
+                  Then
+                </Typography>
+              )}
               <SingleSkillBox
                 name={rec.followUpSkill.name}
                 type={rec.followUpSkill.type}
@@ -1100,7 +1146,11 @@ export function RecommendationPanel({
           )}
 
           {/* Primary recommendation */}
-          <SkillCard rec={result.recommendation} isPrimary />
+          <SkillCard
+            rec={result.recommendation}
+            isPrimary
+            compact={compactMode}
+          />
 
           {/* Optimal rotation preview */}
           {showOptimalRotation && result.optimalRotation && !compactMode && (

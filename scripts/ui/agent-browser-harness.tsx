@@ -134,7 +134,7 @@ function Harness() {
             onSettingsChange={setSettings}
             onSearchSettingsChange={setSettings}
             isCalculating={harnessState === 'loading'}
-            version="3.7.6"
+            version="3.7.7"
           />
         </div>
       </div>
