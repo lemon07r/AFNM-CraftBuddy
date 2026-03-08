@@ -1,4 +1,5 @@
 import {
+  DEFAULT_AUTO_CRAFT_POLICY,
   DEFAULT_SETTINGS,
   getSearchConfig,
   loadSettings,
@@ -67,6 +68,9 @@ describe('settings search budget', () => {
     expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(5);
     expect(DEFAULT_SETTINGS.searchGoalPriorityBias).toBe(0);
     expect(DEFAULT_SETTINGS.maxAlternatives).toBe(1);
+    expect(DEFAULT_SETTINGS.preferredAutoModePolicy).toBe(
+      DEFAULT_AUTO_CRAFT_POLICY,
+    );
     expect(getSearchConfig().timeBudgetMs).toBe(4500);
     expect(getSearchConfig().maxNodes).toBe(2000000);
     expect(getSearchConfig().beamWidth).toBe(5);
@@ -190,5 +194,29 @@ describe('settings search budget', () => {
 
     const reloaded = loadSettings();
     expect(reloaded.maxAlternatives).toBe(4);
+  });
+
+  it('persists the preferred auto mode policy', () => {
+    const saved = saveSettings({
+      preferredAutoModePolicy: 'fullActionSpace',
+    });
+
+    expect(saved.preferredAutoModePolicy).toBe('fullActionSpace');
+
+    const reloaded = loadSettings();
+    expect(reloaded.preferredAutoModePolicy).toBe('fullActionSpace');
+  });
+
+  it('falls back to the default auto mode policy for invalid stored values', () => {
+    storageData['craftbuddy_settings'] = JSON.stringify({
+      preferredAutoModePolicy: 'everything_everywhere',
+    });
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] = '2';
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
+
+    const loaded = loadSettings();
+
+    expect(loaded.preferredAutoModePolicy).toBe(DEFAULT_AUTO_CRAFT_POLICY);
   });
 });

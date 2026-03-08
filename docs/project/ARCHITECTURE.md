@@ -3,7 +3,7 @@ title: Architecture
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-06
+last_verified: 2026-03-08
 source_of_truth: src/mod.ts, src/modContent/*, src/optimizer/*, src/ui/*, src/settings/index.ts, src/utils/*
 review_cycle_days: 30
 related_files:
@@ -17,6 +17,8 @@ related_files:
 
 - `src/mod.ts` — bootstrap entrypoint and metadata export.
 - `src/modContent/index.ts` — runtime integration boundary: reads game state, builds optimizer config/state/actions, invokes optimizer, renders overlay panel.
+- `src/modContent/autoCraftController.ts` — per-craft auto-mode state machine that arms/stops automation, gates action policies, and waits for observed state advance between actions.
+- `src/modContent/autoCraftExecutor.ts` — runtime action bridge that resolves live crafting controls and dispatches one action at a time.
 - `src/modContent/configStats.ts` — base crafting stat resolution from game entities.
 - `src/modContent/harmonyState.ts` — harmony-state hydration/canonicalization from authoritative progress payloads and verified runtime fallbacks.
 - `src/modContent/replaySnapshot.ts` — optimizer replay snapshot serialization for live bug reports/debug captures.
@@ -34,6 +36,7 @@ related_files:
 - `src/ui/components/StyledComponents.tsx` — reusable styled components (buttons, cards, indicators, search progress bar).
 - `src/ui/components/index.ts` — component barrel exports.
 - `src/settings/index.ts` — persistent user settings and optimizer search-config mapping.
+- `src/settings/autoCraft.ts` — shared auto-mode policy values and UI state types used across settings, runtime, and panel rendering.
 - `src/utils/largeNumbers.ts` — safe arithmetic, number parsing/formatting for late-game values.
 - `src/utils/debug.ts` — debug logging utility.
 
@@ -42,8 +45,9 @@ related_files:
 1. Craft state detection/refresh in integration layer.
 2. Conversion of live game payloads -> optimizer model, including harmony hydration and canonical native-variable extraction.
 3. Search execution for best next action.
-4. UI render/update with recommendation + alternatives.
-5. Repeat on craft-state changes.
+4. Optional auto-craft controller sync against the latest recommendation/live craft fingerprint.
+5. UI render/update with recommendation + alternatives + auto-mode status.
+6. Repeat on craft-state changes.
 
 ## Key integration functions (in `src/modContent/index.ts`)
 
@@ -56,12 +60,14 @@ These are internal (not exported) — the file is a side-effect module imported 
 - `updateRecommendation(...)` — triggers search and updates UI
 - `pollCraftingState(...)` — polling loop for craft state changes
 - `processCraftingState(...)` — main state processing pipeline
+- `syncAutoCraftController(...)` — feeds the latest recommendation/live snapshot into the auto-mode controller
 - `renderOverlay(...)` — UI mount/update
 
 ## Design boundaries
 
 - Keep simulation logic in `src/optimizer/*` pure and testable.
 - Keep game object adaptation and fallback extraction in `src/modContent/*`.
+- Keep action execution isolated behind the auto-craft controller/executor boundary instead of mixing it into optimizer or panel code.
 - Keep UI concerns in `src/ui/*` and settings persistence in `src/settings/index.ts`.
 
 ## Dependency direction

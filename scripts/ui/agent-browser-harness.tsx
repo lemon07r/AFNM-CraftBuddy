@@ -5,8 +5,10 @@ import { CraftBuddyThemeProvider } from '../../src/ui/ThemeProvider';
 import {
   loadSettings,
   resetSettings,
+  DEFAULT_AUTO_CRAFT_POLICY,
   type CraftBuddySettings,
 } from '../../src/settings';
+import { type AutoCraftUiState } from '../../src/settings/autoCraft';
 
 resetSettings();
 
@@ -87,6 +89,98 @@ const harnessParams = new URLSearchParams(window.location.search);
 const harnessState = harnessParams.get('state') || 'default';
 const harnessCompactMode = harnessParams.get('compact');
 
+function buildAutoModeFixture(state: string): AutoCraftUiState {
+  switch (state) {
+    case 'auto-ready':
+      return {
+        policy: 'techniquesOnly',
+        armed: true,
+        phase: 'ready',
+        tone: 'active',
+        statusTitle: 'Ready to act',
+        statusDetail: 'Preparing to use Simple Fusion.',
+        lastActionName: 'Forceful Stabilize',
+        canArm: false,
+        canStop: true,
+        isRunning: true,
+        stopRequested: false,
+      };
+    case 'auto-waiting':
+      return {
+        policy: 'techniquesAndFinish',
+        armed: true,
+        phase: 'waiting_for_state',
+        tone: 'active',
+        statusTitle: 'Waiting for game state',
+        statusDetail:
+          'Waiting for Simple Fusion to advance the craft before continuing.',
+        lastActionName: 'Simple Fusion',
+        canArm: false,
+        canStop: true,
+        isRunning: true,
+        stopRequested: false,
+      };
+    case 'auto-stopping':
+      return {
+        policy: 'fullActionSpace',
+        armed: true,
+        phase: 'stop_requested',
+        tone: 'warning',
+        statusTitle: 'Stop requested',
+        statusDetail: 'Auto mode will stop after the current action resolves.',
+        lastActionName: 'Use Spirit Dew',
+        canArm: false,
+        canStop: true,
+        isRunning: true,
+        stopRequested: true,
+      };
+    case 'auto-error':
+      return {
+        policy: 'fullActionSpace',
+        armed: false,
+        phase: 'error',
+        tone: 'error',
+        statusTitle: 'Auto mode error',
+        statusDetail:
+          'Could not find a visible game control for Use Spirit Dew. Auto mode stopped before sending another input.',
+        lastActionName: 'Use Spirit Dew',
+        canArm: true,
+        canStop: false,
+        isRunning: false,
+        stopRequested: false,
+      };
+    case 'loading-auto':
+      return {
+        policy: 'techniquesAndFinish',
+        armed: true,
+        phase: 'calculating',
+        tone: 'active',
+        statusTitle: 'Calculating next step',
+        statusDetail:
+          'Auto mode is waiting for CraftBuddy to finish calculating before acting.',
+        lastActionName: 'Simple Fusion',
+        canArm: false,
+        canStop: true,
+        isRunning: false,
+        stopRequested: false,
+      };
+    default:
+      return {
+        policy: DEFAULT_AUTO_CRAFT_POLICY,
+        armed: false,
+        phase: 'off',
+        tone: 'neutral',
+        statusTitle: 'Auto mode off',
+        statusDetail:
+          'Enable auto mode to execute the optimizer recommendation each turn.',
+        canArm: true,
+        canStop: false,
+        isRunning: false,
+        stopRequested: false,
+      };
+  }
+}
+
 function Harness() {
   const [settings, setSettings] = React.useState<CraftBuddySettings>(() => {
     const baseSettings = loadSettings();
@@ -116,7 +210,11 @@ function Harness() {
       >
         <div style={{ width: 530 }}>
           <RecommendationPanel
-            result={harnessState === 'loading' ? null : fixtureResult}
+            result={
+              harnessState === 'loading' || harnessState === 'loading-auto'
+                ? null
+                : fixtureResult
+            }
             currentCompletion={20}
             currentPerfection={10}
             targetCompletion={60}
@@ -133,7 +231,13 @@ function Harness() {
             settings={settings}
             onSettingsChange={setSettings}
             onSearchSettingsChange={setSettings}
-            isCalculating={harnessState === 'loading'}
+            isCalculating={
+              harnessState === 'loading' || harnessState === 'loading-auto'
+            }
+            autoMode={buildAutoModeFixture(harnessState)}
+            onAutoModeArm={() => {}}
+            onAutoModeStop={() => {}}
+            onAutoModePolicyChange={() => {}}
             version="3.7.8"
           />
         </div>

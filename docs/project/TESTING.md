@@ -3,7 +3,7 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-07
+last_verified: 2026-03-08
 source_of_truth: src/__tests__/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
 review_cycle_days: 30
 related_files:
@@ -40,6 +40,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 | `largeNumbers.test.ts` | Numeric safety |
 | `configStats.test.ts` | Config statistics calculation |
 | `settings.test.ts` | Settings persistence |
+| `autoCraftController.test.ts` | Auto-mode controller policy gating, stop/reset behavior, and state-advance waits |
 | `modContentHarmonyState.test.ts` | Harmony hydration, replay snapshot parity, integration regressions |
 
 ## Simulation tests (`craftSimulation.test.ts`)
@@ -97,9 +98,20 @@ For visual/UI changes, do not rely only on static code review. Use the committed
 
 The harness renders a stable recommendation/settings fixture that is good enough for layout regressions like card overflow, tooltip placement, settings panel size, and open/close cover transitions.
 
+When the change touches auto mode, capture at least:
+
+- a normal recommendation fixture with the auto panel visible
+- a loading fixture that shows auto status + stop button
+
 Keep `react` and `react-dom` on the same version. Standalone browser verification will fail fast on mismatched versions even if the mod webpack build still succeeds.
 
 For `src/modContent/index.ts` and other runtime-sensitive work, the default validation path is the installed-runtime oracle below, not launching the installed game UI.
+
+For `src/modContent/autoCraftController.ts` / `src/modContent/autoCraftExecutor.ts`, keep validation split:
+
+- unit tests cover controller state transitions, policy gating, stop requests, craft-end reset, and timeout/error behavior
+- harness checks cover panel layout/status rendering
+- installed-runtime/manual validation confirms the one-action bridge triggers exactly one live craft action and waits for an observed craft-state change before continuing
 
 ## Optional live UI verification
 

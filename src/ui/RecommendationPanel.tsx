@@ -18,6 +18,11 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   ElectricBolt as ElectricBoltIcon,
   TrendingUp as TrendingUpIcon,
+  SmartToy as SmartToyIcon,
+  PlayArrow as PlayArrowIcon,
+  StopCircle as StopCircleIcon,
+  CheckCircleOutline as CheckCircleOutlineIcon,
+  Inventory2 as Inventory2Icon,
 } from '@mui/icons-material';
 import { FaDiscord, FaGithub, FaSteam } from 'react-icons/fa';
 import {
@@ -25,7 +30,12 @@ import {
   SkillRecommendation,
   CraftingConditionType,
 } from '../optimizer';
-import { CraftBuddySettings } from '../settings';
+import {
+  AUTO_CRAFT_POLICY_OPTIONS,
+  type AutoCraftPolicy,
+  type CraftBuddySettings,
+} from '../settings';
+import { type AutoCraftUiState } from '../settings/autoCraft';
 import { SettingsPanel } from './SettingsPanel';
 import {
   formatLargeNumber,
@@ -185,6 +195,14 @@ interface RecommendationPanelProps {
   settingsStale?: boolean;
   /** Callback to trigger recalculation with new settings */
   onRecalculate?: () => void;
+  /** Auto-craft controller state */
+  autoMode?: AutoCraftUiState;
+  /** Arm auto mode for the current craft */
+  onAutoModeArm?: () => void;
+  /** Stop auto mode */
+  onAutoModeStop?: (reason?: string) => void;
+  /** Change the preferred auto mode policy */
+  onAutoModePolicyChange?: (policy: AutoCraftPolicy) => void;
   /** Mod version shown in panel footer */
   version?: string;
 }
@@ -286,6 +304,328 @@ const PanelVersionBadge = memo(function PanelVersionBadge({
     >
       {versionLabel}
     </Typography>
+  );
+});
+
+const AUTO_PHASE_LABELS: Record<AutoCraftUiState['phase'], string> = {
+  off: 'Off',
+  armed: 'Armed',
+  calculating: 'Calculating',
+  ready: 'Ready',
+  executing: 'Executing',
+  waiting_for_state: 'Waiting',
+  stop_requested: 'Stopping',
+  stopped: 'Stopped',
+  unsupported: 'Needs Input',
+  error: 'Error',
+};
+
+function getAutoToneSx(tone: AutoCraftUiState['tone']) {
+  switch (tone) {
+    case 'active':
+      return {
+        border: 'rgba(76, 196, 255, 0.38)',
+        background:
+          'linear-gradient(180deg, rgba(18, 40, 66, 0.92), rgba(11, 22, 39, 0.92))',
+        accent: '#7dd5ff',
+        accentSoft: 'rgba(125, 213, 255, 0.16)',
+      };
+    case 'warning':
+      return {
+        border: 'rgba(255, 191, 99, 0.4)',
+        background:
+          'linear-gradient(180deg, rgba(56, 38, 18, 0.92), rgba(30, 20, 10, 0.92))',
+        accent: '#ffcb75',
+        accentSoft: 'rgba(255, 203, 117, 0.18)',
+      };
+    case 'error':
+      return {
+        border: 'rgba(255, 109, 109, 0.42)',
+        background:
+          'linear-gradient(180deg, rgba(60, 20, 20, 0.92), rgba(30, 10, 10, 0.92))',
+        accent: '#ff8f8f',
+        accentSoft: 'rgba(255, 143, 143, 0.18)',
+      };
+    case 'success':
+      return {
+        border: 'rgba(101, 232, 157, 0.4)',
+        background:
+          'linear-gradient(180deg, rgba(18, 54, 39, 0.92), rgba(9, 28, 20, 0.92))',
+        accent: '#7ef0a9',
+        accentSoft: 'rgba(126, 240, 169, 0.18)',
+      };
+    default:
+      return {
+        border: 'rgba(109, 124, 154, 0.3)',
+        background:
+          'linear-gradient(180deg, rgba(20, 26, 39, 0.92), rgba(13, 18, 28, 0.92))',
+        accent: '#d8c595',
+        accentSoft: 'rgba(216, 197, 149, 0.14)',
+      };
+  }
+}
+
+function getAutoModeIcon(autoMode: AutoCraftUiState) {
+  switch (autoMode.phase) {
+    case 'ready':
+    case 'executing':
+      return <PlayArrowIcon sx={{ fontSize: 16 }} />;
+    case 'waiting_for_state':
+    case 'stop_requested':
+      return <AutoAwesomeIcon sx={{ fontSize: 15 }} />;
+    case 'unsupported':
+      return <Inventory2Icon sx={{ fontSize: 15 }} />;
+    case 'error':
+      return <WarningIcon sx={{ fontSize: 15 }} />;
+    case 'stopped':
+      return <CheckCircleOutlineIcon sx={{ fontSize: 15 }} />;
+    default:
+      return <SmartToyIcon sx={{ fontSize: 15 }} />;
+  }
+}
+
+const AutoModeSection = memo(function AutoModeSection({
+  autoMode,
+  compact = false,
+  loading = false,
+  embedded = false,
+  onArm,
+  onStop,
+  onPolicyChange,
+}: {
+  autoMode?: AutoCraftUiState;
+  compact?: boolean;
+  loading?: boolean;
+  embedded?: boolean;
+  onArm?: () => void;
+  onStop?: (reason?: string) => void;
+  onPolicyChange?: (policy: AutoCraftPolicy) => void;
+}) {
+  if (!autoMode) return null;
+
+  const tone = getAutoToneSx(autoMode.tone);
+  const primaryActionLabel =
+    autoMode.armed || autoMode.stopRequested ? 'Stop Auto' : 'Enable Auto';
+  const primaryDisabled =
+    autoMode.stopRequested ||
+    (!autoMode.armed && typeof onArm !== 'function') ||
+    (autoMode.armed && typeof onStop !== 'function');
+
+  return (
+    <Box
+      sx={{
+        borderRadius: embedded ? 1.5 : 2,
+        border: `1px solid ${tone.border}`,
+        background: tone.background,
+        boxShadow: loading
+          ? '0 10px 22px rgba(0, 0, 0, 0.24)'
+          : '0 12px 26px rgba(0, 0, 0, 0.28)',
+        p: compact ? 1 : 1.15,
+        display: 'grid',
+        gap: 0.9,
+        minWidth: 0,
+      }}
+    >
+      <FlexRow align="center" gap={0.75} sx={{ justifyContent: 'space-between' }}>
+        <FlexRow align="center" gap={0.65}>
+          <Box
+            sx={{
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: tone.accent,
+              backgroundColor: tone.accentSoft,
+              border: `1px solid ${tone.border}`,
+              flexShrink: 0,
+            }}
+          >
+            {getAutoModeIcon(autoMode)}
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: colors.gold,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                letterSpacing: '0.04em',
+              }}
+            >
+              Auto Craft
+            </Typography>
+            <Typography
+              variant="caption"
+              sx={{ color: colors.textMuted, display: 'block', mt: 0.2 }}
+            >
+              Per craft automation
+            </Typography>
+          </Box>
+        </FlexRow>
+
+        <Chip
+          size="small"
+          label={AUTO_PHASE_LABELS[autoMode.phase]}
+          sx={{
+            height: 22,
+            color: tone.accent,
+            backgroundColor: tone.accentSoft,
+            border: `1px solid ${tone.border}`,
+            fontWeight: 700,
+            fontSize: '0.68rem',
+            letterSpacing: '0.04em',
+          }}
+        />
+      </FlexRow>
+
+      <Box>
+        <Typography
+          variant="body2"
+          sx={{
+            color:
+              autoMode.tone === 'warning' || autoMode.tone === 'error'
+                ? tone.accent
+                : colors.textPrimary,
+            fontWeight: 600,
+            lineHeight: 1.2,
+          }}
+        >
+          {autoMode.statusTitle}
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            color: colors.textSecondary,
+            display: 'block',
+            mt: 0.35,
+            lineHeight: 1.35,
+          }}
+        >
+          {autoMode.statusDetail}
+        </Typography>
+        {autoMode.lastActionName && (
+          <Typography
+            variant="caption"
+            sx={{
+              display: 'block',
+              mt: 0.55,
+              color: tone.accent,
+              fontWeight: 600,
+              letterSpacing: '0.03em',
+            }}
+          >
+            Last action: {autoMode.lastActionName}
+          </Typography>
+        )}
+      </Box>
+
+      <Box sx={{ display: 'grid', gap: 0.45 }}>
+        {AUTO_CRAFT_POLICY_OPTIONS.map((option) => {
+          const selected = autoMode.policy === option.value;
+          return (
+            <Box
+              key={option.value}
+              component="button"
+              type="button"
+              onClick={() => onPolicyChange?.(option.value)}
+              sx={{
+                display: 'grid',
+                justifyItems: 'start',
+                gap: 0.1,
+                width: '100%',
+                px: 0.9,
+                py: 0.7,
+                borderRadius: 1.2,
+                border: `1px solid ${selected ? tone.border : 'rgba(99, 109, 134, 0.26)'}`,
+                background: selected
+                  ? `linear-gradient(135deg, ${tone.accentSoft}, rgba(255, 255, 255, 0.02))`
+                  : 'rgba(12, 17, 27, 0.42)',
+                color: selected ? colors.textPrimary : colors.textSecondary,
+                cursor: onPolicyChange ? 'pointer' : 'default',
+                textAlign: 'left',
+                transition: transitions.smooth,
+                '&:hover': onPolicyChange
+                  ? {
+                      borderColor: tone.border,
+                      backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    }
+                  : undefined,
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  color: selected ? tone.accent : colors.textPrimary,
+                  fontWeight: 700,
+                  lineHeight: 1.1,
+                  fontSize: '0.68rem',
+                }}
+              >
+                {compact ? option.shortLabel : option.label}
+              </Typography>
+              {!compact && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: colors.textMuted,
+                    lineHeight: 1.25,
+                    fontSize: '0.62rem',
+                  }}
+                >
+                  {option.description}
+                </Typography>
+              )}
+            </Box>
+          );
+        })}
+      </Box>
+
+      <Box
+        component="button"
+        type="button"
+        disabled={primaryDisabled}
+        onClick={() =>
+          autoMode.armed || autoMode.stopRequested ? onStop?.() : onArm?.()
+        }
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 0.7,
+          width: '100%',
+          px: 1.1,
+          py: 0.85,
+          borderRadius: 1.3,
+          border: '1px solid transparent',
+          background:
+            autoMode.armed || autoMode.stopRequested
+              ? 'linear-gradient(135deg, rgba(120, 34, 34, 0.94), rgba(71, 18, 18, 0.94))'
+              : `linear-gradient(135deg, ${tone.accentSoft}, rgba(28, 43, 66, 0.92))`,
+          color: autoMode.armed || autoMode.stopRequested ? '#ffd5d5' : tone.accent,
+          fontSize: '0.76rem',
+          fontWeight: 700,
+          letterSpacing: '0.04em',
+          cursor: primaryDisabled ? 'not-allowed' : 'pointer',
+          opacity: primaryDisabled ? 0.6 : 1,
+          transition: transitions.smooth,
+          '&:hover': primaryDisabled
+            ? undefined
+            : {
+                transform: 'translateY(-1px)',
+                boxShadow: `0 8px 16px ${tone.accentSoft}`,
+              },
+        }}
+      >
+        {autoMode.armed || autoMode.stopRequested ? (
+          <StopCircleIcon sx={{ fontSize: 16 }} />
+        ) : (
+          <PlayArrowIcon sx={{ fontSize: 16 }} />
+        )}
+        {primaryActionLabel}
+      </Box>
+    </Box>
   );
 });
 
@@ -985,6 +1325,10 @@ export function RecommendationPanel({
   isCalculating = false,
   settingsStale = false,
   onRecalculate,
+  autoMode,
+  onAutoModeArm,
+  onAutoModeStop,
+  onAutoModePolicyChange,
   version,
 }: RecommendationPanelProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1011,6 +1355,17 @@ export function RecommendationPanel({
       <PanelContainer compact={compactMode}>
         <Box sx={{ pb: versionFooterPadding }}>
           <LoadingHeader compact={compactMode} />
+          <Box sx={{ mb: 1.1 }}>
+            <AutoModeSection
+              autoMode={autoMode}
+              compact={compactMode}
+              loading
+              embedded
+              onArm={onAutoModeArm}
+              onStop={onAutoModeStop}
+              onPolicyChange={onAutoModePolicyChange}
+            />
+          </Box>
           <LoadingSkeletonCard compact={compactMode} />
           <SearchProgressBar durationMs={timeBudgetMs} />
         </Box>
@@ -1041,6 +1396,18 @@ export function RecommendationPanel({
         >
           You can finish crafting now!
         </Typography>
+        {autoMode && autoMode.phase !== 'off' && (
+          <Box sx={{ mt: 1.25 }}>
+            <AutoModeSection
+              autoMode={autoMode}
+              compact={compactMode}
+              embedded
+              onArm={onAutoModeArm}
+              onStop={onAutoModeStop}
+              onPolicyChange={onAutoModePolicyChange}
+            />
+          </Box>
+        )}
         <PanelVersionBadge version={version} visible={!isSettingsOpen} />
       </PanelContainer>
     );
@@ -1068,6 +1435,18 @@ export function RecommendationPanel({
         >
           Consider finishing the craft or check your Qi/Stability.
         </Typography>
+        {autoMode && autoMode.phase !== 'off' && (
+          <Box sx={{ mt: 1.25 }}>
+            <AutoModeSection
+              autoMode={autoMode}
+              compact={compactMode}
+              embedded
+              onArm={onAutoModeArm}
+              onStop={onAutoModeStop}
+              onPolicyChange={onAutoModePolicyChange}
+            />
+          </Box>
+        )}
         <PanelVersionBadge version={version} visible={!isSettingsOpen} />
       </PanelContainer>
     );
@@ -1116,34 +1495,72 @@ export function RecommendationPanel({
             />
           )}
 
-          <Box sx={{ pr: compactMode ? '40px' : '132px' }}>
-            <SectionHeader color={colors.gold} compact={compactMode}>
-              {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
-            </SectionHeader>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 1.1,
+              alignItems: 'start',
+              mb: 1.2,
+              gridTemplateColumns:
+                compactMode || !autoMode
+                  ? '1fr'
+                  : 'minmax(0, 1fr) 178px',
+              '@media (max-width: 720px)': {
+                gridTemplateColumns: '1fr',
+              },
+            }}
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <Box sx={{ pr: compactMode ? '40px' : '132px' }}>
+                <SectionHeader
+                  color={colors.gold}
+                  compact={compactMode || Boolean(autoMode)}
+                >
+                  {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
+                </SectionHeader>
+              </Box>
+
+              <ProgressSection
+                currentCompletion={currentCompletion}
+                currentPerfection={currentPerfection}
+                targetCompletion={targetCompletion}
+                targetPerfection={targetPerfection}
+                maxCompletionCap={maxCompletionCap}
+                maxPerfectionCap={maxPerfectionCap}
+                currentStability={currentStability}
+                currentMaxStability={currentMaxStability}
+                targetStability={targetStability}
+                currentToxicity={currentToxicity}
+                maxToxicity={maxToxicity}
+              />
+
+              {showForecastedConditions && !compactMode && (
+                <ConditionsSection
+                  currentCondition={currentCondition}
+                  nextConditions={nextConditions}
+                />
+              )}
+            </Box>
+
+            {autoMode && (
+              <Box
+                sx={{
+                  minWidth: 0,
+                  '@media (max-width: 720px)': {
+                    order: 1,
+                  },
+                }}
+              >
+                <AutoModeSection
+                  autoMode={autoMode}
+                  compact
+                  onArm={onAutoModeArm}
+                  onStop={onAutoModeStop}
+                  onPolicyChange={onAutoModePolicyChange}
+                />
+              </Box>
+            )}
           </Box>
-
-          {/* Progress display */}
-          <ProgressSection
-            currentCompletion={currentCompletion}
-            currentPerfection={currentPerfection}
-            targetCompletion={targetCompletion}
-            targetPerfection={targetPerfection}
-            maxCompletionCap={maxCompletionCap}
-            maxPerfectionCap={maxPerfectionCap}
-            currentStability={currentStability}
-            currentMaxStability={currentMaxStability}
-            targetStability={targetStability}
-            currentToxicity={currentToxicity}
-            maxToxicity={maxToxicity}
-          />
-
-          {/* Conditions display */}
-          {showForecastedConditions && !compactMode && (
-            <ConditionsSection
-              currentCondition={currentCondition}
-              nextConditions={nextConditions}
-            />
-          )}
 
           {/* Primary recommendation */}
           <SkillCard

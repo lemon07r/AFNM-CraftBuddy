@@ -10,6 +10,11 @@ import {
   DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   SEARCH_GOAL_PRIORITY_BIAS_MAX,
 } from '../utils/searchGoalPriority';
+import {
+  DEFAULT_AUTO_CRAFT_POLICY,
+  normalizeAutoCraftPolicy,
+  type AutoCraftPolicy,
+} from './autoCraft';
 
 export interface CraftBuddySettings {
   /** Lookahead search depth (1-96, default: 64) */
@@ -41,6 +46,8 @@ export interface CraftBuddySettings {
    * -100 = perfection priority, 0 = balanced, 100 = completion priority.
    */
   searchGoalPriorityBias: number;
+  /** Preferred policy for per-craft automatic execution mode. */
+  preferredAutoModePolicy: AutoCraftPolicy;
 }
 
 const STORAGE_KEY = 'craftbuddy_settings';
@@ -79,6 +86,7 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
+  preferredAutoModePolicy: DEFAULT_AUTO_CRAFT_POLICY,
 };
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
@@ -153,6 +161,10 @@ function normalizeSettings(
       DEFAULT_SETTINGS.searchBeamWidth,
     ),
     searchGoalPriorityBias,
+    preferredAutoModePolicy: normalizeAutoCraftPolicy(
+      settings.preferredAutoModePolicy,
+      DEFAULT_SETTINGS.preferredAutoModePolicy,
+    ),
     maxAlternatives: clampInteger(
       settings.maxAlternatives,
       0,
@@ -349,3 +361,8 @@ loadSettings();
 
 // Export defaults for reference
 export { DEFAULT_SETTINGS };
+export type { AutoCraftPolicy } from './autoCraft';
+export {
+  AUTO_CRAFT_POLICY_OPTIONS,
+  DEFAULT_AUTO_CRAFT_POLICY,
+} from './autoCraft';

@@ -48,7 +48,14 @@ import {
   loadSettings,
   getSearchConfig,
 } from '../settings';
+import {
+  createDefaultAutoCraftUiState,
+  type AutoCraftPolicy,
+  type AutoCraftUiState,
+} from '../settings/autoCraft';
 import { resolveBaseCraftingStats } from './configStats';
+import { createAutoCraftController } from './autoCraftController';
+import { createDomAutoCraftExecutor } from './autoCraftExecutor';
 import {
   resolveCraftingType,
   resolveSublimeCraftState,
@@ -182,6 +189,9 @@ let sublimeTargetMultiplier = 2.0;
 
 // Settings
 let currentSettings: CraftBuddySettings = loadSettings();
+let autoCraftUiState: AutoCraftUiState = createDefaultAutoCraftUiState(
+  currentSettings.preferredAutoModePolicy,
+);
 
 // Calculation state tracking for loading indicator
 let isCalculating = false;
@@ -196,6 +206,21 @@ interface LastSearchSettings {
   searchGoalPriorityBias: number;
 }
 let lastSearchSettings: LastSearchSettings | null = null;
+
+const autoCraftController = createAutoCraftController({
+  initialPolicy: currentSettings.preferredAutoModePolicy,
+  executor: createDomAutoCraftExecutor({
+    getRootElement: getGameRootElement,
+    isElementVisible,
+    isIgnoredElement: isElementInCraftBuddyOverlay,
+  }),
+  onStateChange: (state) => {
+    autoCraftUiState = state;
+    if (overlayContainer) {
+      renderOverlay();
+    }
+  },
+});
 
 /**
  * Check if current settings differ from last calculated settings.
@@ -367,6 +392,127 @@ function renderReactRoot(
   }
 
   root.render(element);
+}
+
+function serializeCraftingBuffs(
+  buffs: CraftingBuff[] | undefined | null,
+): string {
+  if (!buffs?.length) {
+    return 'none';
+  }
+
+  return buffs
+    .map((buff) => {
+      const name = String(buff?.name || '').trim().toLowerCase();
+      const stacks = Number(buff?.stacks ?? 0) || 0;
+      return `${name}:${stacks}`;
+    })
+    .filter(Boolean)
+    .sort()
+    .join('|');
+}
+
+function buildAutoCraftBuffSignature(): string {
+  return serializeCraftingBuffs(lastEntity?.buffs);
+}
+
+function buildAutoCraftCooldownSignature(): string {
+  if (currentCooldowns.size === 0) {
+    return 'none';
+  }
+
+  return Array.from(currentCooldowns.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}:${value}`)
+    .join('|');
+}
+
+function serializeQuickAccessInventory(
+  quickAccess: (string | undefined)[] | undefined,
+  inventoryItems: InventoryItemLike[] | undefined,
+): string {
+  if (!inventoryItems?.length || !quickAccess?.length) {
+    return 'none';
+  }
+
+  return quickAccess
+    .filter(Boolean)
+    .map((name) => {
+      const entry = inventoryItems.find((item) => item?.name === name);
+      return `${String(name).toLowerCase()}:${Number(entry?.stacks ?? 0) || 0}`;
+    })
+    .join('|');
+}
+
+function buildAutoCraftInventorySignature(): string {
+  const inventoryItems = cachedStore?.getState?.()?.inventory?.items as
+    | InventoryItemLike[]
+    | undefined;
+  const quickAccess = ((lastEntity as any)?.craftingQuickAccess || []) as (
+    | string
+    | undefined
+  )[];
+  return serializeQuickAccessInventory(quickAccess, inventoryItems);
+}
+
+function buildAutoCraftStateFingerprint(): string {
+  if (!lastEntity || !lastProgressState) {
+    return 'inactive';
+  }
+
+  const pool = parseGameNumber((lastEntity as any)?.stats?.pool, 0);
+  return [
+    `step:${currentStep}`,
+    `pool:${pool}`,
+    `comp:${currentCompletion}`,
+    `perf:${currentPerfection}`,
+    `stab:${currentStability}`,
+    `max:${currentMaxStability}`,
+    `tox:${currentToxicity}`,
+    `cond:${currentCondition || 'none'}`,
+    `queue:${nextConditions.join(',') || 'none'}`,
+    `cooldowns:${buildAutoCraftCooldownSignature()}`,
+    `buffs:${buildAutoCraftBuffSignature()}`,
+    `items:${buildAutoCraftInventorySignature()}`,
+  ].join(';');
+}
+
+function buildAutoCraftSnapshot() {
+  const craftActive =
+    hasConfirmedCraftSession &&
+    lastEntity !== null &&
+    lastProgressState !== null &&
+    wasCraftingActive;
+
+  return {
+    craftSessionActive:
+      hasConfirmedCraftSession || isCraftStartPendingActive() || craftActive,
+    craftActive,
+    isCalculating,
+    result: currentRecommendation,
+    stateFingerprint: buildAutoCraftStateFingerprint(),
+  };
+}
+
+function syncAutoCraftController(): void {
+  autoCraftController.sync(buildAutoCraftSnapshot());
+}
+
+function setAutoCraftPolicy(policy: AutoCraftPolicy): void {
+  currentSettings = saveSettings({
+    preferredAutoModePolicy: policy,
+  });
+  autoCraftController.setPolicy(policy);
+}
+
+function armAutoCraft(): void {
+  autoCraftController.arm();
+  syncAutoCraftController();
+}
+
+function stopAutoCraft(reason?: string): void {
+  autoCraftController.requestStop(reason);
+  syncAutoCraftController();
 }
 
 // LocalStorage key for caching targets (used for mid-craft save loads)
@@ -2302,6 +2448,7 @@ function updateRecommendation(
   // host ReactDOM exposes flushSync we use it, otherwise we still wait for a
   // real paint before starting synchronous search work.
   isCalculating = true;
+  syncAutoCraftController();
   renderOverlay({ sync: true });
 
   // Cross a paint boundary before the expensive synchronous search so the
@@ -2373,6 +2520,7 @@ function updateRecommendation(
       clearCraftStartPending();
       snapshotSearchSettings();
       checkIntegrationHealth();
+      syncAutoCraftController();
 
       // Update the overlay with results
       renderOverlay();
@@ -2436,6 +2584,10 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
 
   const handleSettingsChange = (newSettings: CraftBuddySettings) => {
     currentSettings = newSettings;
+    autoCraftController.setPolicy(newSettings.preferredAutoModePolicy);
+    if (!newSettings.panelVisible && autoCraftUiState.armed) {
+      stopAutoCraft('Auto mode stopped because the panel was hidden.');
+    }
     renderOverlay();
   };
 
@@ -2494,6 +2646,14 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     isCalculating,
     settingsStale: areSearchSettingsStale(),
     onRecalculate: handleRecalculate,
+    autoMode: autoCraftUiState,
+    onAutoModeArm: armAutoCraft,
+    onAutoModeStop: stopAutoCraft,
+    onAutoModePolicyChange: (policy: AutoCraftPolicy) => {
+      setAutoCraftPolicy(policy);
+      syncAutoCraftController();
+      renderOverlay();
+    },
     version: MOD_METADATA.version,
   });
 
@@ -2542,6 +2702,8 @@ function clearActiveCraftingRuntimeState(): void {
   clearCraftStartPending();
   currentStep = 0;
   hasConfirmedCraftSession = false;
+  autoCraftController.reset();
+  autoCraftUiState = autoCraftController.getUiState();
 }
 
 /**
@@ -3494,6 +3656,7 @@ try {
   getNextConditions: () => nextConditions,
   getConditionEffects: () => conditionEffectsCache,
   getSettings: () => currentSettings,
+  getAutoCraftState: () => autoCraftUiState,
   getDiagnostics: () => ({ ...integrationDiagnostics }),
   getDiagnosticsSummary: () => buildIntegrationDiagnosticsSummary(),
   getLastEntity: () => lastEntity,
@@ -3566,6 +3729,9 @@ try {
     currentSettings = saveSettings({
       panelVisible: !currentSettings.panelVisible,
     });
+    if (!currentSettings.panelVisible && autoCraftUiState.armed) {
+      stopAutoCraft('Auto mode stopped because the panel was hidden.');
+    }
     if (currentSettings.panelVisible) {
       showOverlay();
     } else {
@@ -3580,6 +3746,25 @@ try {
     });
     renderOverlay();
     return currentSettings.compactMode;
+  },
+
+  armAutoCraft: () => {
+    armAutoCraft();
+    renderOverlay();
+    return autoCraftUiState;
+  },
+
+  stopAutoCraft: (reason?: string) => {
+    stopAutoCraft(reason);
+    renderOverlay();
+    return autoCraftUiState;
+  },
+
+  setAutoCraftPolicy: (policy: AutoCraftPolicy) => {
+    setAutoCraftPolicy(policy);
+    syncAutoCraftController();
+    renderOverlay();
+    return currentSettings.preferredAutoModePolicy;
   },
 
   logGameData: () => {
@@ -4523,6 +4708,21 @@ function processCraftingState(craftingState: any): void {
   const progressStep = parseGameNumber((progress as any)?.step, 0);
   const progressPool = parseGameNumber((entity as any)?.stats?.pool, 0);
   const previousPool = parseGameNumber((lastEntity as any)?.stats?.pool, 0);
+  const currentBuffSignature = serializeCraftingBuffs(
+    (entity as CraftingEntity | null | undefined)?.buffs,
+  );
+  const previousBuffSignature = serializeCraftingBuffs(lastEntity?.buffs);
+  const inventoryItems = cachedStore?.getState?.()?.inventory?.items as
+    | InventoryItemLike[]
+    | undefined;
+  const currentInventorySignature = serializeQuickAccessInventory(
+    ((entity as any)?.craftingQuickAccess || []) as (string | undefined)[],
+    inventoryItems,
+  );
+  const previousInventorySignature = serializeQuickAccessInventory(
+    ((lastEntity as any)?.craftingQuickAccess || []) as (string | undefined)[],
+    inventoryItems,
+  );
   const progressToxicity = parseGameNumber(
     (progress as any)?.toxicity ?? (entity as any)?.stats?.toxicity,
     0,
@@ -4535,6 +4735,8 @@ function processCraftingState(craftingState: any): void {
     normalizedCondition !== currentCondition ||
     queueChanged ||
     progressPool !== previousPool ||
+    currentBuffSignature !== previousBuffSignature ||
+    currentInventorySignature !== previousInventorySignature ||
     progressToxicity !== currentToxicity;
   const needsInitialization = !lastEntity || !lastProgressState;
 
@@ -4557,9 +4759,6 @@ function processCraftingState(craftingState: any): void {
       showOverlay({ sync: true });
     }
 
-    const inventoryItems = cachedStore?.getState?.()?.inventory?.items as
-      | InventoryItemLike[]
-      | undefined;
     updateRecommendation(
       entity,
       progress,
