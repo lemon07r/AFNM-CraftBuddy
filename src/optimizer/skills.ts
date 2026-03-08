@@ -1240,6 +1240,13 @@ export interface EffectiveActionCosts {
   requiredPostStability: number;
 }
 
+interface PostCostStabilityFrame {
+  effectiveCosts: EffectiveActionCosts;
+  stabilityAfterCosts: number;
+  stabilityPenaltyAfterSetup: number;
+  maxStabilityAfterSetup: number;
+}
+
 /**
  * Calculate actual action costs after all modifiers using game order/rounding:
  * - Pool: condition pool multiplier -> poolCostPercentage
@@ -1321,6 +1328,72 @@ export function calculateEffectiveActionCosts(
     stabilityCost: Math.max(0, -stabilityDelta),
     requiredPostStability: Math.max(0, minStability),
   };
+}
+
+function buildPostCostStabilityFrame(
+  state: CraftingState,
+  skill: SkillDefinition,
+  minStability: number,
+  conditionEffects: ConditionEffect[] = [],
+  config?: OptimizerConfig,
+): PostCostStabilityFrame {
+  const isItemAction = skill.actionKind === 'item';
+  const consumesTurn = skill.consumesTurn ?? !isItemAction;
+  const effectiveCosts = calculateEffectiveActionCosts(
+    state,
+    skill,
+    minStability,
+    conditionEffects,
+    config,
+  );
+
+  let stabilityPenaltyAfterSetup = state.stabilityPenalty;
+  if (consumesTurn && !skill.preventsMaxStabilityDecay) {
+    stabilityPenaltyAfterSetup++;
+  }
+  stabilityPenaltyAfterSetup = Math.min(
+    stabilityPenaltyAfterSetup,
+    state.initialMaxStability,
+  );
+
+  let maxStabilityAfterSetup =
+    state.initialMaxStability - stabilityPenaltyAfterSetup;
+  if (skill.maxStabilityChange) {
+    stabilityPenaltyAfterSetup = Math.min(
+      state.initialMaxStability,
+      Math.max(0, stabilityPenaltyAfterSetup - skill.maxStabilityChange),
+    );
+    maxStabilityAfterSetup =
+      state.initialMaxStability - stabilityPenaltyAfterSetup;
+  }
+  if (skill.restoresMaxStabilityToFull) {
+    stabilityPenaltyAfterSetup = 0;
+    maxStabilityAfterSetup = state.initialMaxStability;
+  }
+
+  return {
+    effectiveCosts,
+    stabilityAfterCosts: state.stability - effectiveCosts.stabilityCost,
+    stabilityPenaltyAfterSetup,
+    maxStabilityAfterSetup,
+  };
+}
+
+function clampDisplayedStabilityGain(
+  gain: number,
+  frame: PostCostStabilityFrame,
+): number {
+  if (!Number.isFinite(gain) || gain <= 0) {
+    return gain;
+  }
+
+  const availableHeadroom =
+    frame.maxStabilityAfterSetup - Math.max(0, frame.stabilityAfterCosts);
+  if (availableHeadroom <= 0) {
+    return 0;
+  }
+
+  return Math.min(gain, availableHeadroom);
 }
 
 /**
@@ -1684,6 +1757,43 @@ export function calculateSkillGains(
     ),
     stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
     toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),
+  };
+}
+
+/**
+ * Calculate display-facing gains using the same post-cost stability cap that
+ * applySkill() enforces, so recommendation previews do not advertise restore
+ * amounts that cannot actually fit under the current max stability.
+ */
+export function calculateDisplayedSkillGains(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ConditionEffect[] = [],
+  options: SkillGainOptions = {},
+): SkillGains {
+  const gains = calculateSkillGains(
+    state,
+    skill,
+    config,
+    conditionEffects,
+    options,
+  );
+  if (gains.stability <= 0) {
+    return gains;
+  }
+
+  const frame = buildPostCostStabilityFrame(
+    state,
+    skill,
+    config.minStability,
+    conditionEffects,
+    config,
+  );
+
+  return {
+    ...gains,
+    stability: safeFloor(clampDisplayedStabilityGain(gains.stability, frame)),
   };
 }
 

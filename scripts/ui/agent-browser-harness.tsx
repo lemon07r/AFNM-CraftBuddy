@@ -22,8 +22,8 @@ const fixtureResult = {
       qiCost: 88,
       stabilityCost: 0,
     },
-    expectedGains: { completion: 0, perfection: 0, stability: 40 },
-    immediateGains: { completion: 0, perfection: 0, stability: 40 },
+    expectedGains: { completion: 0, perfection: 0, stability: 27 },
+    immediateGains: { completion: 0, perfection: 0, stability: 27 },
     effectiveCosts: { qi: 88, stability: 0 },
     score: 100,
     reasoning: 'Restore stability for more actions',
@@ -134,7 +134,7 @@ function Harness() {
             onSettingsChange={setSettings}
             onSearchSettingsChange={setSettings}
             isCalculating={harnessState === 'loading'}
-            version="3.7.7"
+            version="3.7.8"
           />
         </div>
       </div>

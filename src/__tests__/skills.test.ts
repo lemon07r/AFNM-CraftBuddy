@@ -12,6 +12,7 @@ import {
   applySkill,
   calculateActionSurvivabilityFloor,
   calculateSkillGains,
+  calculateDisplayedSkillGains,
   getAvailableSkills,
   isTerminalState,
   getEffectiveQiCost,
@@ -616,9 +617,15 @@ describe('calculateSkillGains', () => {
       ]),
     });
 
-    const gains = calculateSkillGains(state, perfectionSkill, configWithSource, [], {
-      includeExpectedValue: false,
-    });
+    const gains = calculateSkillGains(
+      state,
+      perfectionSkill,
+      configWithSource,
+      [],
+      {
+        includeExpectedValue: false,
+      },
+    );
 
     // Base control is 16 from createTestConfig. Buff adds 50% of control (+8),
     // so the skill's perfection amount (1.0 * control) should be 24.
@@ -698,6 +705,59 @@ describe('calculateSkillGains', () => {
     expect(gains.completion).toBe(0);
     expect(gains.perfection).toBe(0);
     expect(gains.stability).toBe(20);
+  });
+
+  it('should clamp displayed stability gains to the post-action max stability headroom', () => {
+    const state = new CraftingState({
+      qi: 194,
+      stability: 31,
+      initialMaxStability: 58,
+      stabilityPenalty: 3,
+    });
+    const skill = createTestSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize',
+      qiCost: 88,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      stabilityGain: 40,
+      type: 'stabilize',
+      scalesWithIntensity: false,
+      preventsMaxStabilityDecay: true,
+    });
+
+    const raw = calculateSkillGains(state, skill, config);
+    const displayed = calculateDisplayedSkillGains(state, skill, config);
+
+    expect(raw.stability).toBe(40);
+    expect(displayed.stability).toBe(24);
+  });
+
+  it('should respect restored max stability when clamping displayed stability gains', () => {
+    const state = new CraftingState({
+      qi: 194,
+      stability: 40,
+      initialMaxStability: 60,
+      stabilityPenalty: 10,
+    });
+    const skill = createTestSkill({
+      name: 'Restoring Stabilize',
+      key: 'restoring_stabilize',
+      qiCost: 0,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      stabilityGain: 20,
+      type: 'stabilize',
+      scalesWithIntensity: false,
+      preventsMaxStabilityDecay: true,
+      restoresMaxStabilityToFull: true,
+    });
+
+    const displayed = calculateDisplayedSkillGains(state, skill, config);
+
+    expect(displayed.stability).toBe(20);
   });
 
   it('should prefer full effect definitions when provided', () => {
@@ -2062,9 +2122,16 @@ describe('Restoring Brilliance stability gain bug', () => {
       preventsMaxStabilityDecay: true,
       restoresMaxStabilityToFull: true,
       effects: [
-        { kind: 'stability' as any, amount: { value: 32.5, upgradeKey: 'stability' } },
+        {
+          kind: 'stability' as any,
+          amount: { value: 32.5, upgradeKey: 'stability' },
+        },
         { kind: 'maxStability' as any, amount: { value: 1 } },
-        { kind: 'stability' as any, condition: { kind: 'chance' as any, percentage: 18 }, amount: { value: 1 } },
+        {
+          kind: 'stability' as any,
+          condition: { kind: 'chance' as any, percentage: 18 },
+          amount: { value: 1 },
+        },
       ],
     });
 
@@ -2080,13 +2147,24 @@ describe('Restoring Brilliance stability gain bug', () => {
     });
 
     // Without expected value (immediate gains) - should be 32 (floor of 32.5)
-    const immediate = calculateSkillGains(state, restoringBrilliance, testConfig, [], {
-      includeExpectedValue: false,
-    });
+    const immediate = calculateSkillGains(
+      state,
+      restoringBrilliance,
+      testConfig,
+      [],
+      {
+        includeExpectedValue: false,
+      },
+    );
     expect(immediate.stability).toBe(32);
 
     // With expected value - 32.5 * 1 + 1 * 0.18 = 32.68, floor = 32
-    const expected = calculateSkillGains(state, restoringBrilliance, testConfig, []);
+    const expected = calculateSkillGains(
+      state,
+      restoringBrilliance,
+      testConfig,
+      [],
+    );
     expect(expected.stability).toBe(32);
   });
 

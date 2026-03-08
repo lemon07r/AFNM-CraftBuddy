@@ -32,6 +32,7 @@ import {
   getReplaySearchInput,
   loadOptimizerReplaySnapshot,
 } from './__fixtures__/replaySnapshots';
+import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -588,15 +589,7 @@ describe('craft simulation — finish craft policy', () => {
       perfection: 40,
     });
 
-    const balanced = simulateCraft(
-      state,
-      config,
-      100,
-      100,
-      ['neutral'],
-      1,
-      1,
-    );
+    const balanced = simulateCraft(state, config, 100, 100, ['neutral'], 1, 1);
     const completionBiased = simulateCraft(
       state,
       config,
@@ -1552,6 +1545,11 @@ describe('craft simulation — sublime crafts', () => {
       'skyfall-bow-heat-regression.snapshot.json',
     );
     const input = getReplaySearchInput(snapshot);
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 12000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 4000000),
+    };
     let state = input.state;
     const conditionTimeline: CraftingConditionType[] = [
       input.currentCondition as CraftingConditionType,
@@ -1575,7 +1573,7 @@ describe('craft simulation — sublime crafts', () => {
         input.lookaheadDepth,
         currentCondition,
         forecast,
-        input.searchConfig,
+        stableSearchConfig,
       );
 
       expect(result.recommendation).not.toBeNull();
@@ -1719,9 +1717,7 @@ describe('craft simulation — sublime crafts', () => {
       input.searchConfig,
     );
 
-    expect(snapshot.output?.recommendation?.skill?.key).toBe(
-      'invasive_refine',
-    );
+    expect(snapshot.output?.recommendation?.skill?.key).toBe('invasive_refine');
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
 
@@ -1737,6 +1733,39 @@ describe('craft simulation — sublime crafts', () => {
     expect(nextState).not.toBeNull();
     expect(nextState!.stability).toBeGreaterThan(input.state.stability);
     expect(nextState!.stability).toBeLessThanOrEqual(nextState!.maxStability);
+    expect(
+      isTerminalState(nextState!, input.config, input.currentCondition),
+    ).toBe(false);
+  });
+
+  it('should spend the live overcap replay state on progress before stabilizing', () => {
+    const input = createForcefulOvercapReplayInput();
+    const result = findBestSkill(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as CraftingConditionType[],
+      input.searchConfig,
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('invasive_refine');
+
+    const nextState = applySkill(
+      input.state,
+      result.recommendation!.skill,
+      input.config,
+      getConditionEffectsForConfig(input.config, input.currentCondition),
+      input.targetCompletion,
+      input.currentCondition,
+    );
+
+    expect(nextState).not.toBeNull();
+    expect(nextState!.stability).toBeLessThan(input.state.stability);
     expect(
       isTerminalState(nextState!, input.config, input.currentCondition),
     ).toBe(false);

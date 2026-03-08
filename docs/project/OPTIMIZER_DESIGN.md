@@ -53,7 +53,7 @@ related_files:
 
 ## Scoring architecture
 
-`scoreState()` uses a layered architecture where each layer handles one concern. It accepts an optional `ScoringContext` parameter carrying precomputed craft-specific estimates (`avgStabilityCostPerTurn`, `avgGainPerTurn`) so that survivability calculations use actual skill data instead of hardcoded defaults. All scoring weights are defined in the `SCORING` named constants block at the top of `search.ts`; `buildScoringContext()` computes the context from `OptimizerConfig`. See `AGENTS.md` → "Optimizer Design Principles" for the full design rules, anti-patterns, and validation workflow.
+`scoreState()` uses a layered architecture where each layer handles one concern. It accepts an optional `ScoringContext` parameter carrying precomputed craft-specific estimates (`avgStabilityCostPerTurn`, `avgCompletionGainPerTurn`, `avgPerfectionGainPerTurn`, `avgGainPerTurn`) so that survivability and qi/runway calculations use representative live skill gains instead of bare base stats. `buildScoringContext()` samples the strongest currently-usable productive moves (with current state/condition effects when available) rather than averaging every low-output filler action, which keeps long-craft runway estimates grounded on real progress throughput. All scoring weights are defined in the `SCORING` named constants block at the top of `search.ts`. See `AGENTS.md` → "Optimizer Design Principles" for the full design rules, anti-patterns, and validation workflow.
 
 ### Layers (in evaluation order)
 

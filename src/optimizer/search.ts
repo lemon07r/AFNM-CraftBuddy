@@ -23,6 +23,7 @@ import {
   calculateEffectiveActionCosts,
   getAvailableSkills,
   calculateSkillGains,
+  calculateDisplayedSkillGains,
   isTerminalState,
   getBlockedSkillReasons,
   getConditionEffectsForConfig,
@@ -227,6 +228,10 @@ const SCORING = {
   // better, preventing stabilize spirals.  0.5 is small relative to
   // per-turn progress (typically 12–24 points) but enough to break ties.
   STEP_PENALTY: 0.5,
+  // Live crafts can have thousand-point progress actions. Keep the dynamic
+  // step penalty well below full-turn value so it remains a tiebreaker and
+  // does not bulldoze harmony/setup lines that the tree search prefers.
+  STEP_PENALTY_PROGRESS_FRACTION: 0.25,
   // Beyond-base bonus weight in sublime mode.  0.5× progress value
   // so the optimizer pursues sublime targets but doesn't overvalue them
   // relative to reaching base targets first.
@@ -308,7 +313,11 @@ const SCORING = {
 interface ScoringContext {
   /** Average stability cost per progress turn, from available skills. */
   avgStabilityCostPerTurn: number;
-  /** Average gain per progress turn (max of intensity, control stats). */
+  /** Representative completion gain per productive turn. */
+  avgCompletionGainPerTurn: number;
+  /** Representative perfection gain per productive turn. */
+  avgPerfectionGainPerTurn: number;
+  /** Weighted overall gain per productive turn. */
   avgGainPerTurn: number;
   /** Average qi cost per progress turn, from available skills. */
   avgQiCostPerTurn: number;
@@ -317,42 +326,223 @@ interface ScoringContext {
 /** Default scoring context used when callers don't provide one. */
 const DEFAULT_SCORING_CONTEXT: ScoringContext = {
   avgStabilityCostPerTurn: 10,
+  avgCompletionGainPerTurn: 16,
+  avgPerfectionGainPerTurn: 16,
   avgGainPerTurn: 16,
   avgQiCostPerTurn: 0,
 };
+
+interface ProgressScoringSample {
+  completionGain: number;
+  perfectionGain: number;
+  totalGain: number;
+  qiCost: number;
+  stabilityCost: number;
+}
+
+const SCORING_CONTEXT_PROGRESS_SAMPLE_SIZE = 2;
+
+function average(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function getTopProgressAverage(
+  values: number[],
+  sampleSize: number = SCORING_CONTEXT_PROGRESS_SAMPLE_SIZE,
+): number {
+  const sorted = values
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => b - a)
+    .slice(0, Math.max(1, sampleSize));
+  return average(sorted);
+}
+
+function estimateWeightedProgressPerTurn(
+  completionShare: number,
+  perfectionShare: number,
+  ctx: ScoringContext,
+): number {
+  const completionGain = Math.max(1, ctx.avgCompletionGainPerTurn);
+  const perfectionGain = Math.max(1, ctx.avgPerfectionGainPerTurn);
+  const totalShare =
+    Math.max(0, completionShare) + Math.max(0, perfectionShare);
+  if (totalShare <= 0) {
+    return Math.max(1, ctx.avgGainPerTurn);
+  }
+
+  return (
+    (Math.max(0, completionShare) * completionGain +
+      Math.max(0, perfectionShare) * perfectionGain) /
+    totalShare
+  );
+}
+
+function estimateTurnsRemainingFromContext(
+  completionRemaining: number,
+  perfectionRemaining: number,
+  completionShare: number,
+  perfectionShare: number,
+  ctx: ScoringContext,
+): number {
+  if (completionRemaining <= 0 && perfectionRemaining <= 0) {
+    return 0;
+  }
+
+  if (completionRemaining > 0 && perfectionRemaining <= 0) {
+    return Math.ceil(
+      completionRemaining / Math.max(1, ctx.avgCompletionGainPerTurn),
+    );
+  }
+  if (perfectionRemaining > 0 && completionRemaining <= 0) {
+    return Math.ceil(
+      perfectionRemaining / Math.max(1, ctx.avgPerfectionGainPerTurn),
+    );
+  }
+
+  const weightedProgressPerTurn = estimateWeightedProgressPerTurn(
+    completionShare,
+    perfectionShare,
+    ctx,
+  );
+  return Math.ceil(
+    (completionRemaining + perfectionRemaining) /
+      Math.max(1, weightedProgressPerTurn),
+  );
+}
 
 /**
  * Build a ScoringContext from actual config values.
  * Callers that have access to OptimizerConfig should use this instead of
  * relying on DEFAULT_SCORING_CONTEXT.
  */
-function buildScoringContext(config: OptimizerConfig): ScoringContext {
-  const intensity = config.baseIntensity || 12;
-  const control = config.baseControl || 16;
-  const avgGainPerTurn = Math.max(1, intensity, control);
+function buildScoringContext(
+  config: OptimizerConfig,
+  referenceState?: CraftingState,
+  currentCondition: CraftingConditionType = 'neutral',
+): ScoringContext {
+  const baselineState =
+    referenceState ||
+    new CraftingState({
+      qi: config.maxQi,
+      stability: config.maxStability,
+      initialMaxStability: config.maxStability,
+      completion: 0,
+      perfection: 0,
+      maxToxicity: config.maxToxicity || 0,
+    });
+  const conditionEffects = getConditionEffectsForConfig(
+    config,
+    currentCondition,
+  );
+  const configuredSkills = config.skills || [];
+  const availableSkills = getAvailableSkills(
+    baselineState,
+    config,
+    currentCondition,
+  );
 
-  // Compute average stability cost from the config's skill list.
-  // Only consider turn-consuming skills that produce completion or perfection.
-  const skills = config.skills || [];
-  let totalStabCost = 0;
-  let totalQiCost = 0;
-  let count = 0;
-  for (const skill of skills) {
-    if (skill.type === 'stabilize' || skill.type === 'support') continue;
-    const hasProgress =
-      (skill.baseCompletionGain || 0) > 0 ||
-      (skill.basePerfectionGain || 0) > 0;
-    if (!hasProgress) continue;
-    if (skill.stabilityCost > 0) {
-      totalStabCost += skill.stabilityCost;
-    }
-    totalQiCost += Math.max(0, skill.qiCost || 0);
-    count++;
+  const collectSamples = (skills: SkillDefinition[]): ProgressScoringSample[] =>
+    skills
+      .map((skill) => {
+        const consumesTurn =
+          skill.consumesTurn !== undefined
+            ? skill.consumesTurn
+            : skill.actionKind !== 'item';
+        if (!consumesTurn || skill.actionKind === 'finish') {
+          return null;
+        }
+
+        const gains = calculateSkillGains(
+          baselineState,
+          skill,
+          config,
+          conditionEffects,
+          { includeExpectedValue: false },
+        );
+        const completionGain = Math.max(0, gains.completion);
+        const perfectionGain = Math.max(0, gains.perfection);
+        const totalGain = completionGain + perfectionGain;
+        if (totalGain <= 0) {
+          return null;
+        }
+
+        const costs = calculateEffectiveActionCosts(
+          baselineState,
+          skill,
+          config.minStability,
+          conditionEffects,
+          config,
+        );
+
+        return {
+          completionGain,
+          perfectionGain,
+          totalGain,
+          qiCost: Math.max(0, costs.qiCost),
+          stabilityCost: Math.max(0, costs.stabilityCost),
+        } satisfies ProgressScoringSample;
+      })
+      .filter((sample): sample is ProgressScoringSample => sample !== null);
+
+  const samples = collectSamples(availableSkills);
+  const fallbackSamples =
+    samples.length > 0 ? samples : collectSamples(configuredSkills);
+
+  if (fallbackSamples.length === 0) {
+    const fallbackGain = Math.max(
+      1,
+      config.baseIntensity || 12,
+      config.baseControl || 16,
+    );
+    return {
+      avgStabilityCostPerTurn: DEFAULT_SCORING_CONTEXT.avgStabilityCostPerTurn,
+      avgCompletionGainPerTurn: fallbackGain,
+      avgPerfectionGainPerTurn: fallbackGain,
+      avgGainPerTurn: fallbackGain,
+      avgQiCostPerTurn: DEFAULT_SCORING_CONTEXT.avgQiCostPerTurn,
+    };
   }
-  const avgStabilityCostPerTurn = count > 0 ? totalStabCost / count : 10;
-  const avgQiCostPerTurn = count > 0 ? totalQiCost / count : 0;
 
-  return { avgStabilityCostPerTurn, avgGainPerTurn, avgQiCostPerTurn };
+  const topOverallSamples = [...fallbackSamples]
+    .sort((a, b) => b.totalGain - a.totalGain)
+    .slice(0, Math.max(1, SCORING_CONTEXT_PROGRESS_SAMPLE_SIZE));
+
+  const avgCompletionGainPerTurn = Math.max(
+    1,
+    getTopProgressAverage(
+      fallbackSamples.map((sample) => sample.completionGain),
+    ) || average(topOverallSamples.map((sample) => sample.totalGain)),
+  );
+  const avgPerfectionGainPerTurn = Math.max(
+    1,
+    getTopProgressAverage(
+      fallbackSamples.map((sample) => sample.perfectionGain),
+    ) || average(topOverallSamples.map((sample) => sample.totalGain)),
+  );
+  const avgGainPerTurn = Math.max(
+    1,
+    average(topOverallSamples.map((sample) => sample.totalGain)),
+  );
+  const avgStabilityCostPerTurn = Math.max(
+    1,
+    average(topOverallSamples.map((sample) => sample.stabilityCost)) ||
+      DEFAULT_SCORING_CONTEXT.avgStabilityCostPerTurn,
+  );
+  const avgQiCostPerTurn = Math.max(
+    0,
+    average(topOverallSamples.map((sample) => sample.qiCost)),
+  );
+
+  return {
+    avgStabilityCostPerTurn,
+    avgCompletionGainPerTurn,
+    avgPerfectionGainPerTurn,
+    avgGainPerTurn,
+    avgQiCostPerTurn,
+  };
 }
 
 /**
@@ -910,8 +1100,8 @@ function evaluateHarmonySubsystemQuality(
     return clampQuality(
       completionPriorityShare *
         normalizeMultiplierQuality(mods.intensityMultiplier) +
-      perfectionPriorityShare *
-        normalizeMultiplierQuality(mods.controlMultiplier),
+        perfectionPriorityShare *
+          normalizeMultiplierQuality(mods.controlMultiplier),
     );
   }
 
@@ -1030,11 +1220,21 @@ function scoreState(
     perfNeedPct,
     (compNeedPct + perfNeedPct) / 2,
   );
-  const estimatedTurnsRemaining =
-    totalRemaining > 0 ? Math.ceil(totalRemaining / ctx.avgGainPerTurn) : 0;
+  const estimatedProgressPerTurn = estimateWeightedProgressPerTurn(
+    compNeedShare,
+    perfNeedShare,
+    ctx,
+  );
+  const estimatedTurnsRemaining = estimateTurnsRemainingFromContext(
+    compRemaining,
+    perfRemaining,
+    compNeedShare,
+    perfNeedShare,
+    ctx,
+  );
   const stepPenaltyWeight = Math.max(
     SCORING.STEP_PENALTY,
-    ctx.avgGainPerTurn * 0.25,
+    estimatedProgressPerTurn * SCORING.STEP_PENALTY_PROGRESS_FRACTION,
   );
 
   // ── 1. progress score (primary) ──────────────────────────────────────
@@ -1054,8 +1254,7 @@ function scoreState(
     totalPriorityWeight > 0 ? completionWeight / totalPriorityWeight : 0.5;
   const perfectionPriorityShare =
     totalPriorityWeight > 0 ? perfectionWeight / totalPriorityWeight : 0.5;
-  let score =
-    compProgress * completionWeight + perfProgress * perfectionWeight;
+  let score = compProgress * completionWeight + perfProgress * perfectionWeight;
 
   // ── 2. target-met bonus (scaled to target magnitude) ─────────────────
   const totalTargetMagnitude = Math.max(
@@ -1123,7 +1322,7 @@ function scoreState(
       const qiShortfall = Math.max(0, estimatedQiNeeded - state.qi);
       if (qiShortfall > 0) {
         const turnsShortByQi = qiShortfall / ctx.avgQiCostPerTurn;
-        score -= turnsShortByQi * ctx.avgGainPerTurn;
+        score -= turnsShortByQi * estimatedProgressPerTurn;
       }
     }
 
@@ -1255,10 +1454,7 @@ function scoreState(
   }
   if (isSublimeCraft) {
     if (!modeTargetsMet) {
-      const normalizedHarmony = Math.max(
-        -1,
-        Math.min(1, state.harmony / 100),
-      );
+      const normalizedHarmony = Math.max(-1, Math.min(1, state.harmony / 100));
       score +=
         normalizedHarmony *
         remainingWorkPct *
@@ -1334,7 +1530,7 @@ function scoreFinishedOutcome(
   );
   const stepPenaltyWeight = Math.max(
     SCORING.STEP_PENALTY,
-    ctx.avgGainPerTurn * 0.25,
+    ctx.avgGainPerTurn * SCORING.STEP_PENALTY_PROGRESS_FRACTION,
   );
 
   let score =
@@ -1425,8 +1621,13 @@ function calculateRecommendationGains(
   immediateGains: GainPreview;
   effectiveCosts: ActionCostPreview;
 } {
-  const expected = calculateSkillGains(state, skill, config, conditionEffects);
-  const immediate = calculateSkillGains(
+  const expected = calculateDisplayedSkillGains(
+    state,
+    skill,
+    config,
+    conditionEffects,
+  );
+  const immediate = calculateDisplayedSkillGains(
     state,
     skill,
     config,
@@ -1472,9 +1673,9 @@ interface SearchMoveCandidate {
 
 function applySurvivabilityFloorToState(
   displayState: CraftingState,
-  survivabilityFloor:
-    | ReturnType<typeof calculateActionSurvivabilityFloor>
-    | null,
+  survivabilityFloor: ReturnType<
+    typeof calculateActionSurvivabilityFloor
+  > | null,
 ): CraftingState {
   if (!survivabilityFloor) {
     return displayState;
@@ -1534,14 +1735,15 @@ function shouldUseSurvivabilityFloorForContinuation(params: {
     minimumGuaranteedContinuationStability,
   } = params;
   const hasProbabilisticRunwayGap = floorStability < displayStability;
+  const runwayGuardThreshold = Math.max(
+    SCORING.NEAR_DEATH_STABILITY,
+    Math.ceil(minimumGuaranteedContinuationStability),
+  );
 
   if (goalsMetAfterAction) {
     return false;
   }
-  if (
-    currentStability > SCORING.NEAR_DEATH_STABILITY ||
-    displayStability <= 0
-  ) {
+  if (currentStability > runwayGuardThreshold || displayStability <= 0) {
     return false;
   }
 
@@ -1584,12 +1786,15 @@ function shouldDeprioritizeAgainstGuaranteedSafeStabilize(params: {
     hasGuaranteedSafeStabilize,
     minimumGuaranteedContinuationStability,
   } = params;
-  const hasProbabilisticRunwayGap = floorStability < displayStability;
+  const runwayGuardThreshold = Math.max(
+    SCORING.NEAR_DEATH_STABILITY,
+    Math.ceil(minimumGuaranteedContinuationStability),
+  );
 
   if (
     goalsMetAfterAction ||
     !hasGuaranteedSafeStabilize ||
-    currentStability > SCORING.NEAR_DEATH_STABILITY ||
+    currentStability > runwayGuardThreshold ||
     displayStability <= 0
   ) {
     return false;
@@ -1599,10 +1804,7 @@ function shouldDeprioritizeAgainstGuaranteedSafeStabilize(params: {
     return true;
   }
 
-  return (
-    hasProbabilisticRunwayGap &&
-    floorStability < minimumGuaranteedContinuationStability
-  );
+  return floorStability < minimumGuaranteedContinuationStability;
 }
 
 function hasGuaranteedSafeStabilizeAction(
@@ -1798,7 +2000,11 @@ export function greedySearch(
   const isSublime = config.isSublimeCraft || false;
   const targetMult = config.targetMultiplier || 2.0;
   const isTraining = config.trainingMode || false;
-  const scoringCtx = buildScoringContext(config);
+  const scoringCtx = buildScoringContext(
+    config,
+    state,
+    normalizeConditionType(currentConditionType),
+  );
   const effectiveCompTarget = isSublime
     ? targetCompletion * targetMult
     : targetCompletion;
@@ -2106,7 +2312,11 @@ export function lookaheadSearch(
   const isSublime = config.isSublimeCraft || false;
   const targetMult = config.targetMultiplier || 2.0;
   const isTraining = config.trainingMode || false;
-  const scoringCtx = buildScoringContext(config);
+  const scoringCtx = buildScoringContext(
+    config,
+    state,
+    normalizedCurrentCondition,
+  );
   const effectiveCompTarget = isSublime
     ? targetCompletion * targetMult
     : targetCompletion;
@@ -2144,9 +2354,7 @@ export function lookaheadSearch(
       return aIsStabilize ? -1 : 1;
     }
 
-    if (
-      a.requiresProbabilisticSurvival !== b.requiresProbabilisticSurvival
-    ) {
+    if (a.requiresProbabilisticSurvival !== b.requiresProbabilisticSurvival) {
       return a.requiresProbabilisticSurvival ? -1 : 1;
     }
 
@@ -2217,8 +2425,13 @@ export function lookaheadSearch(
         perfectionPriorityShare * controlScale;
       const neutralPotential =
         completionPriorityShare + perfectionPriorityShare;
+      const conditionWeightedProgress = estimateWeightedProgressPerTurn(
+        completionPriorityShare,
+        perfectionPriorityShare,
+        scoringCtx,
+      );
       baseScore +=
-        (conditionedPotential - neutralPotential) * scoringCtx.avgGainPerTurn;
+        (conditionedPotential - neutralPotential) * conditionWeightedProgress;
     }
 
     const { isTerminalUnmet } = classifyTerminalState(
@@ -2806,7 +3019,10 @@ export function lookaheadSearch(
     }
 
     if (!Number.isFinite(bestScore)) {
-      bestScore = scoreStateConsideringFinish(currentState, currentConditionAtDepth);
+      bestScore = scoreStateConsideringFinish(
+        currentState,
+        currentConditionAtDepth,
+      );
       bestMoveKey = '';
     }
 
@@ -3195,19 +3411,20 @@ export function lookaheadSearch(
       const finishProjectedSuccessChance = isFinishAction(followUpSkill)
         ? fallbackCandidate.projectedSuccessChance
         : undefined;
-      const { expectedGains, immediateGains, effectiveCosts } =
-        isFinishAction(followUpSkill)
-          ? {
-              expectedGains: { ...ZERO_GAINS },
-              immediateGains: { ...ZERO_GAINS },
-              effectiveCosts: { ...ZERO_COSTS },
-            }
-          : calculateRecommendationGains(
-              stateAfterSkill,
-              followUpSkill,
-              config,
-              followUpConditionEffects,
-            );
+      const { expectedGains, immediateGains, effectiveCosts } = isFinishAction(
+        followUpSkill,
+      )
+        ? {
+            expectedGains: { ...ZERO_GAINS },
+            immediateGains: { ...ZERO_GAINS },
+            effectiveCosts: { ...ZERO_COSTS },
+          }
+        : calculateRecommendationGains(
+            stateAfterSkill,
+            followUpSkill,
+            config,
+            followUpConditionEffects,
+          );
       return {
         name: followUpSkill.name,
         type: followUpSkill.type,
@@ -3243,19 +3460,20 @@ export function lookaheadSearch(
       const followUp = candidate.skill;
       const nextState = candidate.searchState;
 
-      const { expectedGains, immediateGains, effectiveCosts } =
-        isFinishAction(followUp)
-          ? {
-              expectedGains: { ...ZERO_GAINS },
-              immediateGains: { ...ZERO_GAINS },
-              effectiveCosts: { ...ZERO_COSTS },
-            }
-          : calculateRecommendationGains(
-              stateAfterSkill,
-              followUp,
-              config,
-              followUpConditionEffects,
-            );
+      const { expectedGains, immediateGains, effectiveCosts } = isFinishAction(
+        followUp,
+      )
+        ? {
+            expectedGains: { ...ZERO_GAINS },
+            immediateGains: { ...ZERO_GAINS },
+            effectiveCosts: { ...ZERO_COSTS },
+          }
+        : calculateRecommendationGains(
+            stateAfterSkill,
+            followUp,
+            config,
+            followUpConditionEffects,
+          );
       const followUpScore = evaluateFutureScoreAfterSkill(
         nextState,
         Math.max(0, depthToSearch - 1 - depthIndex),
@@ -3354,19 +3572,20 @@ export function lookaheadSearch(
         unsafeRecommendationKeys.add(skill.key);
       }
 
-      const { expectedGains, immediateGains, effectiveCosts } =
-        isFinishAction(skill)
-          ? {
-              expectedGains: { ...ZERO_GAINS },
-              immediateGains: { ...ZERO_GAINS },
-              effectiveCosts: { ...ZERO_COSTS },
-            }
-          : calculateRecommendationGains(
-              state,
-              skill,
-              config,
-              currentConditionEffects,
-            );
+      const { expectedGains, immediateGains, effectiveCosts } = isFinishAction(
+        skill,
+      )
+        ? {
+            expectedGains: { ...ZERO_GAINS },
+            immediateGains: { ...ZERO_GAINS },
+            effectiveCosts: { ...ZERO_COSTS },
+          }
+        : calculateRecommendationGains(
+            state,
+            skill,
+            config,
+            currentConditionEffects,
+          );
       const reasoning = isFinishAction(skill)
         ? generateFinishReasoning(candidate.projectedSuccessChance ?? 0)
         : generateReasoning(
@@ -3670,14 +3889,15 @@ export function lookaheadSearch(
   let expectedFinalState: SearchResult['expectedFinalState'] = undefined;
 
   if (stateAfterFirstMoveDisplay) {
-    const { searchState: stateAfterFirstMove } = buildSearchStateForContinuation(
-      state,
-      bestFirstMove,
-      stateAfterFirstMoveDisplay,
-      currentConditionEffects,
-      normalizedCurrentCondition,
-      false,
-    );
+    const { searchState: stateAfterFirstMove } =
+      buildSearchStateForContinuation(
+        state,
+        bestFirstMove,
+        stateAfterFirstMoveDisplay,
+        currentConditionEffects,
+        normalizedCurrentCondition,
+        false,
+      );
     const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
       stateAfterFirstMove,
       normalizedCurrentCondition,
@@ -3685,20 +3905,23 @@ export function lookaheadSearch(
       bestFirstMove,
     );
     const finishedByChoice = isFinishAction(bestFirstMove);
-    const { path, finalState, finishedByChoice: pathFinishedByChoice } =
-      finishedByChoice
-        ? {
-            path: [] as string[],
-            finalState: stateAfterFirstMove,
-            finishedByChoice: true,
-          }
-        : findOptimalPath(
-            stateAfterFirstMove,
-            Math.max(0, usedDepth - 1),
-            1,
-            firstMoveConditionState.nextCondition,
-            firstMoveConditionState.nextQueue,
-          );
+    const {
+      path,
+      finalState,
+      finishedByChoice: pathFinishedByChoice,
+    } = finishedByChoice
+      ? {
+          path: [] as string[],
+          finalState: stateAfterFirstMove,
+          finishedByChoice: true,
+        }
+      : findOptimalPath(
+          stateAfterFirstMove,
+          Math.max(0, usedDepth - 1),
+          1,
+          firstMoveConditionState.nextCondition,
+          firstMoveConditionState.nextQueue,
+        );
     optimalRotation = [bestFirstMove.name, ...path];
 
     // Ensure the top recommendation's follow-up matches the rotation.
@@ -3756,9 +3979,19 @@ export function lookaheadSearch(
     }
 
     // Calculate turns remaining (estimate based on progress needed)
-    const compRemaining = Math.max(0, effectiveCompGoal - finalState.completion);
-    const perfRemaining = Math.max(0, effectivePerfGoal - finalState.perfection);
-    const avgGainPerTurn = scoringCtx.avgGainPerTurn;
+    const compRemaining = Math.max(
+      0,
+      effectiveCompGoal - finalState.completion,
+    );
+    const perfRemaining = Math.max(
+      0,
+      effectivePerfGoal - finalState.perfection,
+    );
+    const totalRemaining = compRemaining + perfRemaining;
+    const compNeedShare =
+      totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
+    const perfNeedShare =
+      totalRemaining > 0 ? perfRemaining / totalRemaining : 0.5;
     const projectedSuccessChance =
       finalState.stability > 0
         ? calculateFinishSuccessChance(finalState, targetCompletion)
@@ -3766,7 +3999,13 @@ export function lookaheadSearch(
     const turnsRemaining =
       finishedByChoice || pathFinishedByChoice
         ? 0
-        : Math.ceil((compRemaining + perfRemaining) / avgGainPerTurn);
+        : estimateTurnsRemainingFromContext(
+            compRemaining,
+            perfRemaining,
+            compNeedShare,
+            perfNeedShare,
+            scoringCtx,
+          );
 
     expectedFinalState = {
       completion: finalState.completion,

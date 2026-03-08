@@ -24,6 +24,7 @@ import {
   getReplaySearchInput,
   loadOptimizerReplaySnapshot,
 } from './__fixtures__/replaySnapshots';
+import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
 
 const { scoreState, SCORING } = __testing;
 
@@ -224,6 +225,73 @@ describe('greedySearch', () => {
     expect(result.recommendation!.expectedGains.completion).toBeGreaterThan(
       result.recommendation!.immediateGains.completion,
     );
+  });
+
+  it('should cap displayed stabilize gains to the actual post-action headroom', () => {
+    const config = createTestConfig({
+      maxStability: 58,
+      skills: [FORCEFUL_STABILIZE],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 31,
+      initialMaxStability: 58,
+      stabilityPenalty: 3,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 2, 'neutral', []);
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
+    expect(result.recommendation!.immediateGains.stability).toBe(24);
+    expect(result.recommendation!.expectedGains.stability).toBe(24);
+  });
+
+  it('should build scoring context from live skill gains instead of raw base stats', () => {
+    const config = createTestConfig({
+      maxQi: 300,
+      baseIntensity: 80,
+      baseControl: 100,
+      skills: [
+        createCustomSkill({
+          name: 'Heavy Fusion',
+          key: 'heavy_fusion',
+          type: 'fusion',
+          stabilityCost: 15,
+          qiCost: 12,
+          effects: [
+            { kind: 'completion', amount: { value: 3, stat: 'intensity' } },
+          ],
+        }),
+        createCustomSkill({
+          name: 'Heavy Refine',
+          key: 'heavy_refine',
+          type: 'refine',
+          stabilityCost: 18,
+          qiCost: 14,
+          effects: [
+            { kind: 'perfection', amount: { value: 4, stat: 'control' } },
+          ],
+        }),
+      ],
+    });
+    const state = new CraftingState({
+      qi: 300,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const ctx = __testing.buildScoringContext(config, state, 'neutral');
+
+    expect(ctx.avgCompletionGainPerTurn).toBe(240);
+    expect(ctx.avgPerfectionGainPerTurn).toBe(400);
+    expect(ctx.avgGainPerTurn).toBe(320);
+    expect(ctx.avgStabilityCostPerTurn).toBe(16.5);
+    expect(ctx.avgQiCostPerTurn).toBe(13);
   });
 
   it('should provide alternative skills', () => {
@@ -1148,9 +1216,7 @@ describe('finish craft policy', () => {
 
     expect(result.recommendation?.skill.name).toBe('Finish Craft');
     expect(result.recommendation?.skill.actionKind).toBe('finish');
-    expect(result.recommendation?.projectedSuccessChance).toBeCloseTo(
-      90 / 130,
-    );
+    expect(result.recommendation?.projectedSuccessChance).toBeCloseTo(90 / 130);
   });
 
   it('keeps pursuing a guaranteed completion line when it is better than finishing early', () => {
@@ -1826,6 +1892,48 @@ describe('tutorial regression scenarios', () => {
       expect(result.optimalRotation[1]).not.toBe('Forceful Stabilize');
     }
   });
+
+  it('should prefer progress over forceful stabilize in the live overcap replay state', () => {
+    const input = createForcefulOvercapReplayInput();
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      input.searchConfig,
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const forcefulStabilize = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === 'forceful_stabilize',
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('invasive_refine');
+    expect(forcefulStabilize).toBeDefined();
+    expect(forcefulStabilize!.immediateGains.stability).toBe(24);
+    expect(
+      allRecommendations.findIndex(
+        (recommendation) => recommendation.skill.key === 'invasive_refine',
+      ),
+    ).toBeLessThan(
+      allRecommendations.findIndex(
+        (recommendation) => recommendation.skill.key === 'forceful_stabilize',
+      ),
+    );
+  });
 });
 
 describe('survivability-first recommendation gate', () => {
@@ -2481,6 +2589,7 @@ describe('condition timeline modeling', () => {
       key: 'refine_push',
       type: 'refine',
       basePerfectionGain: 1,
+      scalesWithControl: true,
     });
 
     const config = createTestConfig({
@@ -3342,8 +3451,7 @@ describe('scoreState (isolated)', () => {
         recommendation.skill.key === 'corrupted_stabilization',
     );
     const forcefulStabilize = allRecommendations.find(
-      (recommendation) =>
-        recommendation.skill.key === 'forceful_stabilize',
+      (recommendation) => recommendation.skill.key === 'forceful_stabilize',
     );
 
     expect(snapshot.output?.recommendation?.skill?.key).toBe(
@@ -3355,8 +3463,7 @@ describe('scoreState (isolated)', () => {
     expect(corruptedStabilization).toBeDefined();
     expect(
       allRecommendations.findIndex(
-        (recommendation) =>
-          recommendation.skill.key === 'forceful_stabilize',
+        (recommendation) => recommendation.skill.key === 'forceful_stabilize',
       ),
     ).toBeLessThan(
       allRecommendations.findIndex(
@@ -3396,13 +3503,10 @@ describe('scoreState (isolated)', () => {
       (recommendation) => recommendation.skill.key === 'invasive_refine',
     );
     const forcefulStabilize = allRecommendations.find(
-      (recommendation) =>
-        recommendation.skill.key === 'forceful_stabilize',
+      (recommendation) => recommendation.skill.key === 'forceful_stabilize',
     );
 
-    expect(snapshot.output?.recommendation?.skill?.key).toBe(
-      'invasive_refine',
-    );
+    expect(snapshot.output?.recommendation?.skill?.key).toBe('invasive_refine');
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
     expect(result.recommendation!.skill.type).toBe('stabilize');
@@ -3440,13 +3544,10 @@ describe('scoreState (isolated)', () => {
       (recommendation) => recommendation.skill.key === 'invasive_refine',
     );
     const forcefulStabilize = allRecommendations.find(
-      (recommendation) =>
-        recommendation.skill.key === 'forceful_stabilize',
+      (recommendation) => recommendation.skill.key === 'forceful_stabilize',
     );
 
-    expect(snapshot.output?.recommendation?.skill?.key).toBe(
-      'invasive_refine',
-    );
+    expect(snapshot.output?.recommendation?.skill?.key).toBe('invasive_refine');
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
     expect(result.recommendation!.skill.type).toBe('stabilize');
