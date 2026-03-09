@@ -686,6 +686,24 @@ function buildNativeAvailabilityVariables(
       : Number.isFinite(seededVariables.maxtoxicity)
         ? Math.max(1, seededVariables.maxtoxicity)
         : Math.max(1, state.maxToxicity);
+  const maxCompletion =
+    typeof seededVariables.maxcompletion === 'number' &&
+    Number.isFinite(seededVariables.maxcompletion)
+      ? Math.max(0, seededVariables.maxcompletion)
+      : 0;
+  const maxPerfection =
+    typeof seededVariables.maxperfection === 'number' &&
+    Number.isFinite(seededVariables.maxperfection)
+      ? Math.max(0, seededVariables.maxperfection)
+      : 0;
+  const completionInfo =
+    maxCompletion > 0
+      ? getBonusAndChance(state.completion, maxCompletion)
+      : { guaranteed: 0, bonusChance: 0 };
+  const perfectionInfo =
+    maxPerfection > 0
+      ? getBonusAndChance(state.perfection, maxPerfection)
+      : { guaranteed: 0, bonusChance: 0 };
 
   const variables: Record<string, number> = {
     ...seededVariables,
@@ -693,6 +711,14 @@ function buildNativeAvailabilityVariables(
     maxpool: maxPool,
     completion: state.completion,
     perfection: state.perfection,
+    completionpercentage: Math.max(
+      0,
+      Math.floor((completionInfo.guaranteed + completionInfo.bonusChance) * 100),
+    ),
+    perfectionpercentage: Math.max(
+      0,
+      Math.floor((perfectionInfo.guaranteed + perfectionInfo.bonusChance) * 100),
+    ),
     stability: state.stability,
     maxstability: state.maxStability,
     stabilitypenalty: state.stabilityPenalty,
@@ -787,6 +813,36 @@ function propagateNativeVariablesAfterAction(
   variables.step = nextState.step;
   variables.maxtoxicity =
     maxToxicity > 0 ? maxToxicity : Math.max(1, state.maxToxicity);
+  const nextCompletionTarget =
+    typeof variables.maxcompletion === 'number' &&
+    Number.isFinite(variables.maxcompletion)
+      ? Math.max(0, variables.maxcompletion)
+      : 0;
+  const nextPerfectionTarget =
+    typeof variables.maxperfection === 'number' &&
+    Number.isFinite(variables.maxperfection)
+      ? Math.max(0, variables.maxperfection)
+      : 0;
+  const nextCompletionInfo =
+    nextCompletionTarget > 0
+      ? getBonusAndChance(nextState.completion, nextCompletionTarget)
+      : { guaranteed: 0, bonusChance: 0 };
+  const nextPerfectionInfo =
+    nextPerfectionTarget > 0
+      ? getBonusAndChance(nextState.perfection, nextPerfectionTarget)
+      : { guaranteed: 0, bonusChance: 0 };
+  variables.completionpercentage = Math.max(
+    0,
+    Math.floor(
+      (nextCompletionInfo.guaranteed + nextCompletionInfo.bonusChance) * 100,
+    ),
+  );
+  variables.perfectionpercentage = Math.max(
+    0,
+    Math.floor(
+      (nextPerfectionInfo.guaranteed + nextPerfectionInfo.bonusChance) * 100,
+    ),
+  );
 
   const keysToRefresh = new Set<string>();
   collectDerivedNativeVariableAliases({
@@ -828,6 +884,16 @@ function buildTechniqueScalingVariables(
   critMultiplier: number,
   activeBuffs: ActiveBuffMap = state.buffs,
 ): ScalingVariables {
+  const completionTarget = Math.max(0, config.targetCompletion ?? 0);
+  const perfectionTarget = Math.max(0, config.targetPerfection ?? 0);
+  const completionInfo =
+    completionTarget > 0
+      ? getBonusAndChance(state.completion, completionTarget)
+      : { guaranteed: 0, bonusChance: 0 };
+  const perfectionInfo =
+    perfectionTarget > 0
+      ? getBonusAndChance(state.perfection, perfectionTarget)
+      : { guaranteed: 0, bonusChance: 0 };
   const vars: ScalingVariables = {
     control,
     intensity,
@@ -850,9 +916,21 @@ function buildTechniqueScalingVariables(
     stacks: 0,
     completion: state.completion,
     perfection: state.perfection,
+    completionpercentage: Math.max(
+      0,
+      Math.floor(
+        (completionInfo.guaranteed + completionInfo.bonusChance) * 100,
+      ),
+    ),
+    perfectionpercentage: Math.max(
+      0,
+      Math.floor(
+        (perfectionInfo.guaranteed + perfectionInfo.bonusChance) * 100,
+      ),
+    ),
     stability: state.stability,
-    maxcompletion: config.targetCompletion ?? 0,
-    maxperfection: config.targetPerfection ?? 0,
+    maxcompletion: completionTarget,
+    maxperfection: perfectionTarget,
     maxstability: state.initialMaxStability,
     stabilitypenalty: state.stabilityPenalty,
   };

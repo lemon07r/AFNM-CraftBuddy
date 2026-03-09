@@ -34,6 +34,7 @@ import {
   DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   SEARCH_GOAL_PRIORITY_BIAS_MAX,
 } from '../utils/searchGoalPriority';
+import { getBonusAndChance } from './gameTypes';
 
 interface GainPreview {
   completion: number;
@@ -73,6 +74,8 @@ export interface SkillRecommendation {
   };
   /** Success chance if this recommendation ends the craft immediately. */
   projectedSuccessChance?: number;
+  /** Whether the line depends on probabilistic survival rather than a guaranteed floor. */
+  requiresProbabilisticSurvival?: boolean;
 }
 
 /** Diagnostic info for why skills are unavailable */
@@ -180,7 +183,6 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   conditionBranchMinProbability: 0.15,
 };
 
-const TERMINAL_UNMET_PENALTY_MULTIPLIER = 4;
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
 const FINISH_CRAFT_KEY = '__finish_craft__';
 const FINISH_CRAFT_NAME = 'Finish Craft';
@@ -258,6 +260,10 @@ const SCORING = {
   // 10 points of overshoot costs 3 score — enough to steer the
   // optimizer but not so large it avoids finishing a nearly-met target.
   OVERSHOOT_PENALTY_WEIGHT: 0.3,
+  // Finished-craft shortfall penalty: once the craft is ended, any remaining
+  // unmet work is permanent. Penalize unresolved completion/perfection so a
+  // live state with runway outranks an already-finished mediocre result.
+  FINISHED_UNMET_PENALTY_WEIGHT: 0.5,
   // Hard-cap violation is 3× overshoot weight — strong deterrent against
   // exceeding the recipe's absolute maximum.
   HARD_CAP_PENALTY_WEIGHT: 3,
@@ -961,6 +967,32 @@ interface TerminalStateClassification {
   isTerminalUnmet: boolean;
 }
 
+interface BonusTierProgress {
+  guaranteed: number;
+  bonusChance: number;
+  total: number;
+  nextThreshold: number;
+}
+
+interface BonusTierOutcome {
+  guaranteed: number;
+  probability: number;
+  threshold: number;
+}
+
+interface CraftEndOutcomeDistribution {
+  completion: BonusTierProgress;
+  perfection: BonusTierProgress;
+  completionOutcomes: BonusTierOutcome[];
+  perfectionOutcomes: BonusTierOutcome[];
+  failChance: number;
+  successChance: number;
+  basicChance: number;
+  perfectChance: number;
+  sublimeChance: number;
+  perfectOrBetterChance: number;
+}
+
 function classifyTerminalState(
   state: CraftingState,
   config: OptimizerConfig,
@@ -983,29 +1015,294 @@ interface UnsafeCandidateClassification extends TerminalStateClassification {
 function filterUnfinishedTerminalCandidates<
   T extends UnsafeCandidateClassification,
 >(candidates: T[]): T[] {
-  if (candidates.length <= 1) {
-    return candidates;
-  }
-
-  const hasSurvivableCandidate = candidates.some(
-    (candidate) => !candidate.isTerminal,
-  );
-  if (!hasSurvivableCandidate) {
-    return candidates;
-  }
-
-  const filtered = candidates.filter((candidate) => !candidate.isTerminalUnmet);
-  return filtered.length > 0 ? filtered : candidates;
+  // Terminal branches are now scored through the same authoritative craft-end
+  // outcome model used by Finish Craft. Do not hard-filter them out before the
+  // scorer can compare their actual forced-resolution EV against live lines.
+  return candidates;
 }
 
-function applyTerminalUnmetPenalty(
-  baseScore: number,
-  totalTargetMagnitude: number,
+function getBonusTierProgress(value: number, target: number): BonusTierProgress {
+  if (!Number.isFinite(target) || target <= 0) {
+    return {
+      guaranteed: 0,
+      bonusChance: 0,
+      total: 0,
+      nextThreshold: 0,
+    };
+  }
+
+  const safeValue = Math.max(0, value);
+  const result = getBonusAndChance(safeValue, target);
+  const bonusChance = Math.max(0, Math.min(1, result.bonusChance));
+  return {
+    guaranteed: Math.max(0, result.guaranteed),
+    bonusChance,
+    total: Math.max(0, result.guaranteed) + bonusChance,
+    nextThreshold: Math.max(0, result.nextThreshold),
+  };
+}
+
+function getThresholdForGuaranteedBonusCount(
+  target: number,
+  guaranteedCount: number,
 ): number {
-  // Preserve meaningful differences between unfinished terminal branches,
-  // especially on large-target sublime crafts, while still making any
-  // "craft ended before goals were met" state materially worse.
-  return baseScore - totalTargetMagnitude * TERMINAL_UNMET_PENALTY_MULTIPLIER;
+  if (
+    !Number.isFinite(target) ||
+    target <= 0 ||
+    !Number.isFinite(guaranteedCount) ||
+    guaranteedCount <= 0
+  ) {
+    return 0;
+  }
+
+  let threshold = 0;
+  let currentTarget = target;
+  const cappedCount = Math.max(0, Math.floor(guaranteedCount));
+
+  for (let index = 0; index < cappedCount; index++) {
+    threshold += currentTarget;
+    currentTarget = Math.floor(currentTarget * 1.3);
+  }
+
+  return threshold;
+}
+
+function getProgressTowardRawGoal(
+  value: number,
+  rawGoal: number,
+  baseTarget: number,
+): number {
+  if (!Number.isFinite(rawGoal) || rawGoal <= 0) {
+    return 0;
+  }
+
+  const safeValue = Math.max(0, value);
+  if (!Number.isFinite(baseTarget) || baseTarget <= 0) {
+    return Math.min(rawGoal, safeValue);
+  }
+
+  const goalProgress = getBonusTierProgress(rawGoal, baseTarget).total;
+  if (!(goalProgress > 0)) {
+    return Math.min(rawGoal, safeValue);
+  }
+
+  const currentProgress = getBonusTierProgress(safeValue, baseTarget).total;
+  return Math.min(1, currentProgress / goalProgress) * rawGoal;
+}
+
+function calculateImmediateProgressTowardGoals(
+  currentState: CraftingState,
+  nextState: CraftingState,
+  completionGoal: number,
+  perfectionGoal: number,
+  targetCompletion: number,
+  targetPerfection: number,
+): number {
+  const completionBefore =
+    completionGoal > 0
+      ? getProgressTowardRawGoal(
+          currentState.completion,
+          completionGoal,
+          targetCompletion,
+        )
+      : currentState.completion;
+  const perfectionBefore =
+    perfectionGoal > 0
+      ? getProgressTowardRawGoal(
+          currentState.perfection,
+          perfectionGoal,
+          targetPerfection,
+        )
+      : currentState.perfection;
+  const completionAfter =
+    completionGoal > 0
+      ? getProgressTowardRawGoal(
+          nextState.completion,
+          completionGoal,
+          targetCompletion,
+        )
+      : nextState.completion;
+  const perfectionAfter =
+    perfectionGoal > 0
+      ? getProgressTowardRawGoal(
+          nextState.perfection,
+          perfectionGoal,
+          targetPerfection,
+        )
+      : nextState.perfection;
+
+  return (
+    Math.max(0, completionAfter - completionBefore) +
+    Math.max(0, perfectionAfter - perfectionBefore)
+  );
+}
+
+interface CandidateTieBreakMetrics {
+  immediateProgress: number;
+  isStabilize: boolean;
+  requiresProbabilisticSurvival: boolean;
+  qiSpent: number;
+  skillKey: string;
+}
+
+function compareTieBreakMetrics(
+  a: CandidateTieBreakMetrics,
+  b: CandidateTieBreakMetrics,
+): number {
+  const progressDiff = a.immediateProgress - b.immediateProgress;
+  if (progressDiff !== 0) {
+    return progressDiff;
+  }
+
+  if (a.isStabilize !== b.isStabilize) {
+    return a.isStabilize ? -1 : 1;
+  }
+
+  if (a.requiresProbabilisticSurvival !== b.requiresProbabilisticSurvival) {
+    return a.requiresProbabilisticSurvival ? -1 : 1;
+  }
+
+  if (a.qiSpent !== b.qiSpent) {
+    return b.qiSpent - a.qiSpent;
+  }
+
+  return b.skillKey.localeCompare(a.skillKey);
+}
+
+function buildBonusTierOutcomeDistribution(
+  value: number,
+  target: number,
+): BonusTierOutcome[] {
+  if (!Number.isFinite(target) || target <= 0) {
+    return [
+      {
+        guaranteed: 0,
+        probability: 1,
+        threshold: 0,
+      },
+    ];
+  }
+
+  const progress = getBonusTierProgress(value, target);
+  const outcomes: BonusTierOutcome[] = [];
+  const baseProbability = Math.max(0, 1 - progress.bonusChance);
+  outcomes.push({
+    guaranteed: progress.guaranteed,
+    probability: baseProbability,
+    threshold: getThresholdForGuaranteedBonusCount(target, progress.guaranteed),
+  });
+
+  if (progress.bonusChance > 0) {
+    outcomes.push({
+      guaranteed: progress.guaranteed + 1,
+      probability: progress.bonusChance,
+      threshold: getThresholdForGuaranteedBonusCount(
+        target,
+        progress.guaranteed + 1,
+      ),
+    });
+  }
+
+  return outcomes.filter((outcome) => outcome.probability > 0);
+}
+
+function evaluateCraftEndOutcomeDistribution(params: {
+  state: CraftingState;
+  targetCompletion: number;
+  targetPerfection: number;
+  hasDistinctSublimeOutcome: boolean;
+}): CraftEndOutcomeDistribution {
+  const {
+    state,
+    targetCompletion,
+    targetPerfection,
+    hasDistinctSublimeOutcome,
+  } = params;
+  const completion = getBonusTierProgress(state.completion, targetCompletion);
+  const perfection = getBonusTierProgress(state.perfection, targetPerfection);
+  const completionOutcomes = buildBonusTierOutcomeDistribution(
+    state.completion,
+    targetCompletion,
+  );
+  const perfectionOutcomes = buildBonusTierOutcomeDistribution(
+    state.perfection,
+    targetPerfection,
+  );
+
+  let failChance = 0;
+  let basicChance = 0;
+  let perfectChance = 0;
+  let sublimeChance = 0;
+
+  for (const completionOutcome of completionOutcomes) {
+    for (const perfectionOutcome of perfectionOutcomes) {
+      const probability =
+        completionOutcome.probability * perfectionOutcome.probability;
+      if (probability <= 0) {
+        continue;
+      }
+
+      const craftSucceeded =
+        targetCompletion <= 0 || completionOutcome.guaranteed > 0;
+      if (!craftSucceeded) {
+        failChance += probability;
+        continue;
+      }
+
+      const hasPerfection =
+        targetPerfection > 0 ? perfectionOutcome.guaranteed > 0 : false;
+      const isSublime =
+        hasDistinctSublimeOutcome &&
+        targetCompletion > 0 &&
+        targetPerfection > 0 &&
+        completionOutcome.guaranteed > 1 &&
+        perfectionOutcome.guaranteed > 1;
+
+      if (isSublime) {
+        sublimeChance += probability;
+      } else if (hasPerfection) {
+        perfectChance += probability;
+      } else {
+        basicChance += probability;
+      }
+    }
+  }
+
+  const successChance = Math.max(
+    0,
+    Math.min(1, 1 - Math.max(0, Math.min(1, failChance))),
+  );
+  return {
+    completion,
+    perfection,
+    completionOutcomes,
+    perfectionOutcomes,
+    failChance: Math.max(0, Math.min(1, failChance)),
+    successChance,
+    basicChance: Math.max(0, Math.min(1, basicChance)),
+    perfectChance: Math.max(0, Math.min(1, perfectChance)),
+    sublimeChance: Math.max(0, Math.min(1, sublimeChance)),
+    perfectOrBetterChance: Math.max(
+      0,
+      Math.min(1, perfectChance + sublimeChance),
+    ),
+  };
+}
+
+function isRawGoalSecuredByOutcome(
+  guaranteedBands: number,
+  rawGoal: number,
+  baseTarget: number,
+): boolean {
+  if (!Number.isFinite(rawGoal) || rawGoal <= 0) {
+    return true;
+  }
+  if (!Number.isFinite(baseTarget) || baseTarget <= 0) {
+    return guaranteedBands > 0;
+  }
+  return (
+    getThresholdForGuaranteedBonusCount(baseTarget, guaranteedBands) >= rawGoal
+  );
 }
 
 /**
@@ -1200,6 +1497,26 @@ function scoreState(
     maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
       ? Math.min(targetPerfection, maxPerfectionCap)
       : targetPerfection;
+  const effectiveCompProgress = getProgressTowardRawGoal(
+    state.completion,
+    effectiveCompGoal,
+    targetCompletion,
+  );
+  const effectivePerfProgress = getProgressTowardRawGoal(
+    state.perfection,
+    effectivePerfGoal,
+    targetPerfection,
+  );
+  const baseCompProgress = getProgressTowardRawGoal(
+    state.completion,
+    baseCompGoal,
+    targetCompletion,
+  );
+  const basePerfProgress = getProgressTowardRawGoal(
+    state.perfection,
+    basePerfGoal,
+    targetPerfection,
+  );
   const baseTargetsMet =
     (targetCompletion <= 0 || state.completion >= targetCompletion) &&
     (targetPerfection <= 0 || state.perfection >= targetPerfection);
@@ -1207,11 +1524,11 @@ function scoreState(
   // ── remaining work metrics ───────────────────────────────────────────
   const compRemaining =
     effectiveCompGoal > 0
-      ? Math.max(0, effectiveCompGoal - state.completion)
+      ? Math.max(0, effectiveCompGoal - effectiveCompProgress)
       : 0;
   const perfRemaining =
     effectivePerfGoal > 0
-      ? Math.max(0, effectivePerfGoal - state.perfection)
+      ? Math.max(0, effectivePerfGoal - effectivePerfProgress)
       : 0;
   const totalRemaining = compRemaining + perfRemaining;
   const compNeedShare =
@@ -1244,9 +1561,9 @@ function scoreState(
     ctx,
   );
   const baseCompRemaining =
-    baseCompGoal > 0 ? Math.max(0, baseCompGoal - state.completion) : 0;
+    baseCompGoal > 0 ? Math.max(0, baseCompGoal - baseCompProgress) : 0;
   const basePerfRemaining =
-    basePerfGoal > 0 ? Math.max(0, basePerfGoal - state.perfection) : 0;
+    basePerfGoal > 0 ? Math.max(0, basePerfGoal - basePerfProgress) : 0;
   const baseTotalRemaining = baseCompRemaining + basePerfRemaining;
   const baseCompNeedShare =
     baseTotalRemaining > 0 ? baseCompRemaining / baseTotalRemaining : 0.5;
@@ -1278,10 +1595,6 @@ function scoreState(
   );
 
   // ── 1. progress score (primary) ──────────────────────────────────────
-  const compProgress =
-    effectiveCompGoal > 0 ? Math.min(state.completion, effectiveCompGoal) : 0;
-  const perfProgress =
-    effectivePerfGoal > 0 ? Math.min(state.perfection, effectivePerfGoal) : 0;
   const { completionWeight, perfectionWeight } = getGoalPriorityWeights(
     compNeedShare,
     perfNeedShare,
@@ -1294,7 +1607,9 @@ function scoreState(
     totalPriorityWeight > 0 ? completionWeight / totalPriorityWeight : 0.5;
   const perfectionPriorityShare =
     totalPriorityWeight > 0 ? perfectionWeight / totalPriorityWeight : 0.5;
-  let score = compProgress * completionWeight + perfProgress * perfectionWeight;
+  let score =
+    effectiveCompProgress * completionWeight +
+    effectivePerfProgress * perfectionWeight;
 
   // ── 2. target-met bonus (scaled to target magnitude) ─────────────────
   const totalTargetMagnitude = Math.max(
@@ -1309,8 +1624,8 @@ function scoreState(
 
   const sublimeTargetsMet =
     isSublimeCraft &&
-    (effectiveCompTarget <= 0 || state.completion >= effectiveCompTarget) &&
-    (effectivePerfTarget <= 0 || state.perfection >= effectivePerfTarget);
+    (effectiveCompGoal <= 0 || state.completion >= effectiveCompGoal) &&
+    (effectivePerfGoal <= 0 || state.perfection >= effectivePerfGoal);
   const modeTargetsMet = isSublimeCraft ? sublimeTargetsMet : baseTargetsMet;
   const resourceRemainingWorkPct = baseTargetsMet
     ? remainingWorkPct
@@ -1333,8 +1648,8 @@ function scoreState(
     score += state.stability * SCORING.RESOURCE_TIEBREAKER;
     score -= state.step * stepPenaltyWeight;
     if (isSublimeCraft) {
-      const compBeyondBase = Math.max(0, state.completion - targetCompletion);
-      const perfBeyondBase = Math.max(0, state.perfection - targetPerfection);
+      const compBeyondBase = Math.max(0, effectiveCompProgress - baseCompGoal);
+      const perfBeyondBase = Math.max(0, effectivePerfProgress - basePerfGoal);
       score +=
         (compBeyondBase + perfBeyondBase) * SCORING.SUBLIME_BEYOND_BASE_WEIGHT;
     }
@@ -1547,6 +1862,10 @@ function scoreFinishedOutcome(
   ctx: ScoringContext = DEFAULT_SCORING_CONTEXT,
   goalPriorityBias: number = DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
 ): number {
+  if (targetCompletion === 0 && targetPerfection === 0) {
+    return Math.min(state.completion, state.perfection);
+  }
+
   const effectiveCompTarget = isSublimeCraft
     ? targetCompletion * targetMultiplier
     : targetCompletion;
@@ -1561,12 +1880,30 @@ function scoreFinishedOutcome(
     maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
       ? Math.min(effectivePerfTarget, maxPerfectionCap)
       : effectivePerfTarget;
+  const baseCompGoal =
+    maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
+      ? Math.min(targetCompletion, maxCompletionCap)
+      : targetCompletion;
+  const basePerfGoal =
+    maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
+      ? Math.min(targetPerfection, maxPerfectionCap)
+      : targetPerfection;
   const totalTargetMagnitude = Math.max(
     1,
     effectiveCompGoal + effectivePerfGoal,
   );
-  const remainingCompletion = Math.max(0, effectiveCompGoal - state.completion);
-  const remainingPerfection = Math.max(0, effectivePerfGoal - state.perfection);
+  const effectiveCompProgress = getProgressTowardRawGoal(
+    state.completion,
+    effectiveCompGoal,
+    targetCompletion,
+  );
+  const effectivePerfProgress = getProgressTowardRawGoal(
+    state.perfection,
+    effectivePerfGoal,
+    targetPerfection,
+  );
+  const remainingCompletion = Math.max(0, effectiveCompGoal - effectiveCompProgress);
+  const remainingPerfection = Math.max(0, effectivePerfGoal - effectivePerfProgress);
   const totalRemaining = remainingCompletion + remainingPerfection;
   const compNeedShare =
     totalRemaining > 0 ? remainingCompletion / totalRemaining : 0.5;
@@ -1583,83 +1920,97 @@ function scoreFinishedOutcome(
     SCORING.STEP_PENALTY,
     ctx.avgGainPerTurn * SCORING.STEP_PENALTY_PROGRESS_FRACTION,
   );
-
-  let score =
-    Math.min(Math.max(0, state.completion), Math.max(0, effectiveCompGoal)) *
-      completionWeight +
-    Math.min(Math.max(0, state.perfection), Math.max(0, effectivePerfGoal)) *
-      perfectionWeight;
-
   const targetMetBonus = totalTargetMagnitude * SCORING.TARGET_MET_MULTIPLIER;
-  const baseTargetsMet =
-    (targetCompletion <= 0 || state.completion >= targetCompletion) &&
-    (targetPerfection <= 0 || state.perfection >= targetPerfection);
-  const sublimeTargetsMet =
-    isSublimeCraft &&
-    (effectiveCompTarget <= 0 || state.completion >= effectiveCompTarget) &&
-    (effectivePerfTarget <= 0 || state.perfection >= effectivePerfTarget);
+  const completionOutcomes = buildBonusTierOutcomeDistribution(
+    state.completion,
+    targetCompletion,
+  );
+  const perfectionOutcomes = buildBonusTierOutcomeDistribution(
+    state.perfection,
+    targetPerfection,
+  );
 
-  if (sublimeTargetsMet) {
-    score += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
-  } else if (baseTargetsMet) {
-    score += targetMetBonus;
-    if (isSublimeCraft) {
-      score +=
-        (Math.max(0, state.completion - targetCompletion) +
-          Math.max(0, state.perfection - targetPerfection)) *
-        SCORING.SUBLIME_BEYOND_BASE_WEIGHT;
+  let expectedScore = 0;
+  for (const completionOutcome of completionOutcomes) {
+    for (const perfectionOutcome of perfectionOutcomes) {
+      const probability =
+        completionOutcome.probability * perfectionOutcome.probability;
+      if (probability <= 0) {
+        continue;
+      }
+
+      const craftSucceeded =
+        targetCompletion <= 0 || completionOutcome.guaranteed > 0;
+      if (!craftSucceeded) {
+        expectedScore += probability * -totalTargetMagnitude;
+        continue;
+      }
+
+      const resolvedCompProgress = craftSucceeded
+        ? getProgressTowardRawGoal(
+            completionOutcome.threshold,
+            effectiveCompGoal,
+            targetCompletion,
+          )
+        : 0;
+      const resolvedPerfProgress = getProgressTowardRawGoal(
+        perfectionOutcome.threshold,
+        effectivePerfGoal,
+        targetPerfection,
+      );
+
+      let outcomeScore =
+        resolvedCompProgress * completionWeight +
+        resolvedPerfProgress * perfectionWeight;
+      const finishedCompShortfall = Math.max(
+        0,
+        effectiveCompGoal - resolvedCompProgress,
+      );
+      const finishedPerfShortfall = Math.max(
+        0,
+        effectivePerfGoal - resolvedPerfProgress,
+      );
+      outcomeScore -=
+        (finishedCompShortfall + finishedPerfShortfall) *
+        SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
+
+      expectedScore += probability * outcomeScore;
     }
   }
 
-  if (!isSublimeCraft) {
-    const normalCompLimit =
-      maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-        ? Math.min(targetCompletion, maxCompletionCap)
-        : targetCompletion;
-    const normalPerfLimit =
-      maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-        ? Math.min(targetPerfection, maxPerfectionCap)
-        : targetPerfection;
-    score -=
-      Math.max(0, state.completion - Math.max(0, normalCompLimit)) *
-        SCORING.OVERSHOOT_PENALTY_WEIGHT +
-      Math.max(0, state.perfection - Math.max(0, normalPerfLimit)) *
-        SCORING.OVERSHOOT_PENALTY_WEIGHT;
-  } else {
-    score -=
-      Math.max(0, state.completion - Math.max(0, effectiveCompGoal)) *
-        SCORING.OVERSHOOT_PENALTY_WEIGHT +
-      Math.max(0, state.perfection - Math.max(0, effectivePerfGoal)) *
-        SCORING.OVERSHOOT_PENALTY_WEIGHT;
+  const currentBaseTargetsMet =
+    (baseCompGoal <= 0 || state.completion >= baseCompGoal) &&
+    (basePerfGoal <= 0 || state.perfection >= basePerfGoal);
+  const currentModeTargetsMet =
+    isSublimeCraft &&
+    (effectiveCompGoal <= 0 || state.completion >= effectiveCompGoal) &&
+    (effectivePerfGoal <= 0 || state.perfection >= effectivePerfGoal);
+
+  if (currentModeTargetsMet) {
+    expectedScore += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
+  } else if (currentBaseTargetsMet) {
+    expectedScore += targetMetBonus;
+    if (isSublimeCraft) {
+      const compBeyondBase = Math.max(0, effectiveCompProgress - baseCompGoal);
+      const perfBeyondBase = Math.max(0, effectivePerfProgress - basePerfGoal);
+      expectedScore +=
+        (compBeyondBase + perfBeyondBase) * SCORING.SUBLIME_BEYOND_BASE_WEIGHT;
+    }
   }
 
-  if (maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)) {
-    score -=
-      Math.max(0, state.completion - maxCompletionCap) *
-      SCORING.HARD_CAP_PENALTY_WEIGHT;
-  }
-  if (maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)) {
-    score -=
-      Math.max(0, state.perfection - maxPerfectionCap) *
-      SCORING.HARD_CAP_PENALTY_WEIGHT;
-  }
-
-  score -= state.step * stepPenaltyWeight;
-
-  return score;
+  return expectedScore - state.step * stepPenaltyWeight;
 }
 
 function calculateFinishSuccessChance(
   state: CraftingState,
   targetCompletion: number,
 ): number {
-  if (!Number.isFinite(targetCompletion) || targetCompletion <= 0) {
-    return 1;
-  }
-  if (!Number.isFinite(state.completion) || state.completion <= 0) {
-    return 0;
-  }
-  return Math.max(0, Math.min(1, state.completion / targetCompletion));
+  return evaluateCraftEndOutcomeDistribution({
+    state,
+    targetCompletion,
+    targetPerfection: 0,
+    hasDistinctSublimeOutcome: false,
+  }).successChance;
 }
 
 function calculateRecommendationGains(
@@ -1845,8 +2196,7 @@ function shouldDeprioritizeAgainstGuaranteedSafeStabilize(params: {
   if (
     goalsMetAfterAction ||
     !hasGuaranteedSafeStabilize ||
-    currentStability > runwayGuardThreshold ||
-    displayStability <= 0
+    currentStability > runwayGuardThreshold
   ) {
     return false;
   }
@@ -1897,6 +2247,7 @@ function rankRecommendations(
   scored: SkillRecommendation[],
   scoreTieWindow: number = 0,
   unsafeKeys: ReadonlySet<string> = new Set(),
+  tieBreaker?: (a: SkillRecommendation, b: SkillRecommendation) => number,
 ): SkillRecommendation[] {
   if (scored.length <= 1) {
     return scored;
@@ -1914,15 +2265,22 @@ function rankRecommendations(
       return scoreDiff;
     }
 
-    const aProgress =
-      Math.max(0, a.immediateGains.completion) +
-      Math.max(0, a.immediateGains.perfection);
-    const bProgress =
-      Math.max(0, b.immediateGains.completion) +
-      Math.max(0, b.immediateGains.perfection);
-    const progressDiff = bProgress - aProgress;
-    if (progressDiff !== 0) {
-      return progressDiff;
+    if (tieBreaker) {
+      const tieDiff = tieBreaker(a, b);
+      if (tieDiff !== 0) {
+        return tieDiff > 0 ? -1 : 1;
+      }
+    } else {
+      const aProgress =
+        Math.max(0, a.immediateGains.completion) +
+        Math.max(0, a.immediateGains.perfection);
+      const bProgress =
+        Math.max(0, b.immediateGains.completion) +
+        Math.max(0, b.immediateGains.perfection);
+      const progressDiff = bProgress - aProgress;
+      if (progressDiff !== 0) {
+        return progressDiff;
+      }
     }
 
     return a.skill.key.localeCompare(b.skill.key);
@@ -2099,19 +2457,17 @@ export function greedySearch(
       expectedGains: { ...ZERO_GAINS },
       immediateGains: { ...ZERO_GAINS },
       effectiveCosts: { ...ZERO_COSTS },
-      score:
-        projectedSuccessChance *
-        scoreFinishedOutcome(
-          candidate,
-          targetCompletion,
-          targetPerfection,
-          isSublime,
-          targetMult,
-          config.maxCompletion,
-          config.maxPerfection,
-          scoringCtx,
-          cfg.goalPriorityBias,
-        ),
+      score: scoreFinishedOutcome(
+        candidate,
+        targetCompletion,
+        targetPerfection,
+        isSublime,
+        targetMult,
+        config.maxCompletion,
+        config.maxPerfection,
+        scoringCtx,
+        cfg.goalPriorityBias,
+      ),
       reasoning: generateFinishReasoning(projectedSuccessChance),
       projectedSuccessChance,
       isTerminal: false,
@@ -2155,6 +2511,54 @@ export function greedySearch(
     config,
     normalizedCurrentCondition,
   );
+  const recommendationTieMetricCache = new Map<
+    string,
+    CandidateTieBreakMetrics
+  >();
+  const getRecommendationTieMetrics = (
+    recommendation: SkillRecommendation,
+  ): CandidateTieBreakMetrics => {
+    const cached = recommendationTieMetricCache.get(recommendation.skill.key);
+    if (cached) {
+      return cached;
+    }
+
+    const displayState = isFinishAction(recommendation.skill)
+      ? state
+      : applySkill(
+          state,
+          recommendation.skill,
+          config,
+          conditionEffects,
+          targetCompletion,
+          normalizedCurrentCondition,
+        ) ?? state;
+    const metrics: CandidateTieBreakMetrics = {
+      immediateProgress: calculateImmediateProgressTowardGoals(
+        state,
+        displayState,
+        modeCompGoal,
+        modePerfGoal,
+        targetCompletion,
+        targetPerfection,
+      ),
+      isStabilize: recommendation.skill.type === 'stabilize',
+      requiresProbabilisticSurvival:
+        recommendation.requiresProbabilisticSurvival === true,
+      qiSpent: Math.max(0, state.qi - displayState.qi),
+      skillKey: recommendation.skill.key,
+    };
+    recommendationTieMetricCache.set(recommendation.skill.key, metrics);
+    return metrics;
+  };
+  const compareRecommendationTies = (
+    a: SkillRecommendation,
+    b: SkillRecommendation,
+  ): number =>
+    compareTieBreakMetrics(
+      getRecommendationTieMetrics(a),
+      getRecommendationTieMetrics(b),
+    );
 
   const availableSkills = getAvailableSkills(
     state,
@@ -2233,18 +2637,6 @@ export function greedySearch(
 
     const { expectedGains, immediateGains, effectiveCosts } =
       calculateRecommendationGains(state, skill, config, conditionEffects);
-    const score = scoreState(
-      newState,
-      targetCompletion,
-      targetPerfection,
-      isSublime,
-      targetMult,
-      isTraining,
-      config.maxCompletion,
-      config.maxPerfection,
-      scoringCtx,
-      cfg.goalPriorityBias,
-    );
     const terminalState = classifyTerminalState(
       newState,
       config,
@@ -2252,6 +2644,30 @@ export function greedySearch(
       modeCompGoal,
       modePerfGoal,
     );
+    const score = terminalState.isTerminal
+      ? scoreFinishedOutcome(
+          newState,
+          targetCompletion,
+          targetPerfection,
+          isSublime,
+          targetMult,
+          config.maxCompletion,
+          config.maxPerfection,
+          scoringCtx,
+          cfg.goalPriorityBias,
+        )
+      : scoreState(
+          newState,
+          targetCompletion,
+          targetPerfection,
+          isSublime,
+          targetMult,
+          isTraining,
+          config.maxCompletion,
+          config.maxPerfection,
+          scoringCtx,
+          cfg.goalPriorityBias,
+        );
     const reasoning = generateReasoning(
       skill,
       state,
@@ -2285,6 +2701,7 @@ export function greedySearch(
     scoredSkills,
     scoreTieWindow,
     unsafeRecommendationKeys,
+    compareRecommendationTies,
   );
 
   if (rankedSkills.length === 0) {
@@ -2394,33 +2811,41 @@ export function lookaheadSearch(
     b: SearchMoveCandidate,
     currentState: CraftingState,
   ): number => {
-    const progressDiff = a.immediateProgress - b.immediateProgress;
-    if (progressDiff !== 0) {
-      return progressDiff;
-    }
-
-    const aIsStabilize = a.skill.type === 'stabilize';
-    const bIsStabilize = b.skill.type === 'stabilize';
-    if (aIsStabilize !== bIsStabilize) {
-      return aIsStabilize ? -1 : 1;
-    }
-
-    if (a.requiresProbabilisticSurvival !== b.requiresProbabilisticSurvival) {
-      return a.requiresProbabilisticSurvival ? -1 : 1;
-    }
-
-    const qiSpentA = Math.max(0, currentState.qi - a.nextState.qi);
-    const qiSpentB = Math.max(0, currentState.qi - b.nextState.qi);
-    if (qiSpentA !== qiSpentB) {
-      return qiSpentB - qiSpentA;
-    }
-
-    return b.skill.key.localeCompare(a.skill.key);
+    return compareTieBreakMetrics(
+      {
+        immediateProgress: a.immediateProgress,
+        isStabilize: a.skill.type === 'stabilize',
+        requiresProbabilisticSurvival: a.requiresProbabilisticSurvival,
+        qiSpent: Math.max(0, currentState.qi - a.nextState.qi),
+        skillKey: a.skill.key,
+      },
+      {
+        immediateProgress: b.immediateProgress,
+        isStabilize: b.skill.type === 'stabilize',
+        requiresProbabilisticSurvival: b.requiresProbabilisticSurvival,
+        qiSpent: Math.max(0, currentState.qi - b.nextState.qi),
+        skillKey: b.skill.key,
+      },
+    );
   };
   const scoreStateWithTerminalPenalty = (
     candidate: CraftingState,
     conditionAtDepth: CraftingConditionType,
   ): number => {
+    if (isTerminalState(candidate, config, conditionAtDepth)) {
+      return scoreFinishedOutcome(
+        candidate,
+        targetCompletion,
+        targetPerfection,
+        isSublime,
+        targetMult,
+        config.maxCompletion,
+        config.maxPerfection,
+        scoringCtx,
+        cfg.goalPriorityBias,
+      );
+    }
+
     let baseScore = scoreState(
       candidate,
       targetCompletion,
@@ -2484,20 +2909,7 @@ export function lookaheadSearch(
       baseScore +=
         (conditionedPotential - neutralPotential) * conditionWeightedProgress;
     }
-
-    const { isTerminalUnmet } = classifyTerminalState(
-      candidate,
-      config,
-      conditionAtDepth,
-      modeCompGoal,
-      modePerfGoal,
-    );
-    return isTerminalUnmet
-      ? applyTerminalUnmetPenalty(
-          baseScore,
-          Math.max(1, effectiveCompGoal + effectivePerfGoal),
-        )
-      : baseScore;
+    return baseScore;
   };
   const buildSearchStateForContinuation = (
     currentState: CraftingState,
@@ -2573,19 +2985,17 @@ export function lookaheadSearch(
       skill: FINISH_CRAFT_SKILL,
       nextState: candidate,
       searchState: candidate,
-      orderingScore:
-        projectedSuccessChance *
-        scoreFinishedOutcome(
-          candidate,
-          targetCompletion,
-          targetPerfection,
-          isSublime,
-          targetMult,
-          config.maxCompletion,
-          config.maxPerfection,
-          scoringCtx,
-          cfg.goalPriorityBias,
-        ),
+      orderingScore: scoreFinishedOutcome(
+        candidate,
+        targetCompletion,
+        targetPerfection,
+        isSublime,
+        targetMult,
+        config.maxCompletion,
+        config.maxPerfection,
+        scoringCtx,
+        cfg.goalPriorityBias,
+      ),
       immediateProgress: 0,
       requiresProbabilisticSurvival: false,
       projectedSuccessChance,
@@ -2763,25 +3173,14 @@ export function lookaheadSearch(
           minimumGuaranteedContinuationStability,
         });
 
-      const completionBefore =
-        modeCompGoal > 0
-          ? Math.min(modeCompGoal, currentState.completion)
-          : currentState.completion;
-      const perfectionBefore =
-        modePerfGoal > 0
-          ? Math.min(modePerfGoal, currentState.perfection)
-          : currentState.perfection;
-      const completionAfter =
-        modeCompGoal > 0
-          ? Math.min(modeCompGoal, nextState.completion)
-          : nextState.completion;
-      const perfectionAfter =
-        modePerfGoal > 0
-          ? Math.min(modePerfGoal, nextState.perfection)
-          : nextState.perfection;
-      const immediateProgress =
-        Math.max(0, completionAfter - completionBefore) +
-        Math.max(0, perfectionAfter - perfectionBefore);
+      const immediateProgress = calculateImmediateProgressTowardGoals(
+        currentState,
+        nextState,
+        modeCompGoal,
+        modePerfGoal,
+        targetCompletion,
+        targetPerfection,
+      );
 
       candidates.push({
         skill,
@@ -3334,15 +3733,51 @@ export function lookaheadSearch(
   /**
    * Evaluate all first moves at a specific depth.
    */
-  const rootNeedsCompletion =
-    Number.isFinite(modeCompGoal) &&
-    modeCompGoal > 0 &&
-    state.completion < modeCompGoal;
-  const rootNeedsPerfection =
-    Number.isFinite(modePerfGoal) &&
-    modePerfGoal > 0 &&
-    state.perfection < modePerfGoal;
+  const rootConditionEffects = getConditionEffectsForConfig(
+    config,
+    normalizedCurrentCondition,
+  );
   let unsafeRootRecommendationKeys = new Set<string>();
+  const recommendationTieMetricCache = new Map<
+    string,
+    CandidateTieBreakMetrics
+  >();
+  const getRecommendationTieMetrics = (
+    recommendation: SkillRecommendation,
+  ): CandidateTieBreakMetrics => {
+    const cached = recommendationTieMetricCache.get(recommendation.skill.key);
+    if (cached) {
+      return cached;
+    }
+
+    const displayState = isFinishAction(recommendation.skill)
+      ? state
+      : applySkill(
+          state,
+          recommendation.skill,
+          config,
+          rootConditionEffects,
+          targetCompletion,
+          normalizedCurrentCondition,
+        ) ?? state;
+    const metrics: CandidateTieBreakMetrics = {
+      immediateProgress: calculateImmediateProgressTowardGoals(
+        state,
+        displayState,
+        modeCompGoal,
+        modePerfGoal,
+        targetCompletion,
+        targetPerfection,
+      ),
+      isStabilize: recommendation.skill.type === 'stabilize',
+      requiresProbabilisticSurvival:
+        recommendation.requiresProbabilisticSurvival === true,
+      qiSpent: Math.max(0, state.qi - displayState.qi),
+      skillKey: recommendation.skill.key,
+    };
+    recommendationTieMetricCache.set(recommendation.skill.key, metrics);
+    return metrics;
+  };
   const compareRecommendations = (
     a: SkillRecommendation,
     b: SkillRecommendation,
@@ -3358,15 +3793,12 @@ export function lookaheadSearch(
       return scoreDiff;
     }
 
-    const aProgress =
-      (rootNeedsCompletion ? Math.max(0, a.immediateGains.completion) : 0) +
-      (rootNeedsPerfection ? Math.max(0, a.immediateGains.perfection) : 0);
-    const bProgress =
-      (rootNeedsCompletion ? Math.max(0, b.immediateGains.completion) : 0) +
-      (rootNeedsPerfection ? Math.max(0, b.immediateGains.perfection) : 0);
-    const progressDiff = bProgress - aProgress;
-    if (progressDiff !== 0) {
-      return progressDiff;
+    const tieDiff = compareTieBreakMetrics(
+      getRecommendationTieMetrics(a),
+      getRecommendationTieMetrics(b),
+    );
+    if (tieDiff !== 0) {
+      return tieDiff > 0 ? -1 : 1;
     }
 
     return a.skill.key.localeCompare(b.skill.key);
@@ -3916,6 +4348,11 @@ export function lookaheadSearch(
     scoredSkills,
     scoreTieWindow,
     unsafeRootRecommendationKeys,
+    (a, b) =>
+      compareTieBreakMetrics(
+        getRecommendationTieMetrics(a),
+        getRecommendationTieMetrics(b),
+      ),
   );
   populateFollowUpSkills(rankedSkills, usedDepth);
 
@@ -4138,6 +4575,11 @@ export function findBestSkill(
 // Internals exposed for isolated unit testing only — not part of the public API.
 export const __testing = {
   scoreState,
+  scoreFinishedOutcome,
+  calculateFinishSuccessChance,
+  evaluateCraftEndOutcomeDistribution,
+  getProgressTowardRawGoal,
+  getThresholdForGuaranteedBonusCount,
   buildScoringContext,
   SCORING,
 } as const;

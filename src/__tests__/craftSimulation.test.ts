@@ -27,12 +27,16 @@ import {
   CraftingConditionType,
   SearchConfig,
   normalizeForecastConditionQueue,
+  __testing,
 } from '../optimizer/search';
 import {
   getReplaySearchInput,
   loadOptimizerReplaySnapshot,
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
+
+const { evaluateCraftEndOutcomeDistribution, getProgressTowardRawGoal } =
+  __testing;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -143,7 +147,7 @@ interface SimulationResult {
   history: string[];
   /** State after the last applied skill. */
   finalState: CraftingState;
-  /** Whether both targets were met. */
+  /** Whether the ending state guarantees both active goals. */
   targetsMet: boolean;
   /** Number of turns consumed. */
   turnsUsed: number;
@@ -171,6 +175,67 @@ interface TurnLog {
   };
 }
 
+interface CraftEndTargetOptions {
+  completion: number;
+  perfection: number;
+}
+
+function guaranteesCraftEndGoals(
+  state: CraftingState,
+  goalCompletion: number,
+  goalPerfection: number,
+  craftEndTargets: CraftEndTargetOptions,
+): boolean {
+  const distribution = evaluateCraftEndOutcomeDistribution({
+    state,
+    targetCompletion: craftEndTargets.completion,
+    targetPerfection: craftEndTargets.perfection,
+    hasDistinctSublimeOutcome: false,
+  });
+
+  for (const completionOutcome of distribution.completionOutcomes) {
+    for (const perfectionOutcome of distribution.perfectionOutcomes) {
+      const probability =
+        completionOutcome.probability * perfectionOutcome.probability;
+      if (probability <= 0) {
+        continue;
+      }
+
+      const craftSucceeded =
+        craftEndTargets.completion <= 0 || completionOutcome.guaranteed > 0;
+      if (!craftSucceeded) {
+        return false;
+      }
+
+      const resolvedCompletion =
+        goalCompletion > 0
+          ? getProgressTowardRawGoal(
+              completionOutcome.threshold,
+              goalCompletion,
+              craftEndTargets.completion,
+            )
+          : 0;
+      const resolvedPerfection =
+        goalPerfection > 0
+          ? getProgressTowardRawGoal(
+              perfectionOutcome.threshold,
+              goalPerfection,
+              craftEndTargets.perfection,
+            )
+          : 0;
+
+      if (goalCompletion > 0 && resolvedCompletion + 1e-9 < goalCompletion) {
+        return false;
+      }
+      if (goalPerfection > 0 && resolvedPerfection + 1e-9 < goalPerfection) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 /**
  * Simulate a full craft by following the optimizer's recommendations.
  *
@@ -192,6 +257,10 @@ function simulateCraft(
   maxTurns: number = 30,
   depth: number = 6,
   searchConfig: Partial<SearchConfig> = {},
+  craftEndTargets: CraftEndTargetOptions = {
+    completion: targetComp,
+    perfection: targetPerf,
+  },
 ): SimulationResult {
   let state = initialState;
   const history: string[] = [];
@@ -287,7 +356,12 @@ function simulateCraft(
       return {
         history,
         finalState: state,
-        targetsMet: false,
+        targetsMet: guaranteesCraftEndGoals(
+          state,
+          targetComp,
+          targetPerf,
+          craftEndTargets,
+        ),
         turnsUsed,
         craftDied: false,
         log,
@@ -334,6 +408,23 @@ function simulateCraft(
     });
 
     history.push(skill.name);
+
+    if (nextState.stability <= 0) {
+      return {
+        history,
+        finalState: nextState,
+        targetsMet: guaranteesCraftEndGoals(
+          nextState,
+          targetComp,
+          targetPerf,
+          craftEndTargets,
+        ),
+        turnsUsed: turn + 1,
+        craftDied: false,
+        log,
+      };
+    }
+
     state = nextState;
     turnsUsed = turn + 1;
   }
@@ -533,7 +624,7 @@ describe('craft simulation — finish craft policy', () => {
     scalesWithControl: true,
   });
 
-  it('ends with Finish Craft instead of walking into a dead-end action', () => {
+  it('ends with a finishing fusion when it improves craft-end EV over stopping immediately', () => {
     const config = fullConfig({
       minStability: 0,
       baseIntensity: 51,
@@ -550,9 +641,43 @@ describe('craft simulation — finish craft policy', () => {
 
     const sim = simulateCraft(state, config, 130, 130, ['neutral'], 5, 4);
 
-    expect(sim.history[0]).toBe('Finish Craft');
+    expect(sim.history[0]).toBe('Energised Fusion');
     expect(sim.craftDied).toBe(false);
     expect(sim.targetsMet).toBe(false);
+  });
+
+  it('continues below the sublime target when another ending action improves perfection odds over a guaranteed finish', () => {
+    const config = fullConfig({
+      minStability: 0,
+      baseIntensity: 51,
+      baseControl: 23,
+      skills: [energizedFusion, simpleRefine],
+      isSublimeCraft: true,
+      targetMultiplier: 2,
+      maxCompletion: 260,
+      maxPerfection: 260,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 17,
+      initialMaxStability: 60,
+      completion: 130,
+      perfection: 110,
+    });
+
+    const sim = simulateCraft(
+      state,
+      config,
+      130,
+      130,
+      ['neutral'],
+      5,
+      4,
+    );
+
+    expect(sim.history[0]).toBe('Simple Refine');
+    expect(sim.craftDied).toBe(false);
+    expect(sim.targetsMet).toBe(true);
   });
 
   it('honors the completion vs perfection goal priority bias', () => {
@@ -1514,7 +1639,10 @@ describe('craft simulation — sublime crafts', () => {
     });
     const neutralOnly: CraftingConditionType[] = ['neutral'];
 
-    const sim = simulateCraft(state, config, 200, 200, neutralOnly, 80);
+    const sim = simulateCraft(state, config, 200, 200, neutralOnly, 80, 6, {}, {
+      completion: 100,
+      perfection: 100,
+    });
     expect(sim.craftDied).toBe(false);
     expect(sim.targetsMet).toBe(true);
 

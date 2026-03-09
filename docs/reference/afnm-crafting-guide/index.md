@@ -3,7 +3,7 @@ title: AFNM Crafting Guide Analysis
 status: active
 authoritative: false
 owner: craftbuddy-maintainers
-last_verified: 2026-03-07
+last_verified: 2026-03-09
 source_of_truth: docs/reference/afnm-crafting-guide/index.md
 review_cycle_days: 30
 related_files:
@@ -30,4 +30,4 @@ Based on the guide, the following areas might be potential blind spots or edge c
 
 1. **Percentage Buff Stat Base:** The game strictly applies percentage buffs (like those from the Empower Intensity technique) *only* to pre-crafting base stats (Base + Cauldron + Flame). They do NOT scale the flat stats added mid-craft from Reagents or Pills. The simulator's evaluation pipeline (`scaling evaluation pipeline`) must mirror this exact sequence.
 2. **Harmony Penalties & State Transitions:** Inscribed Patterns destroys HALF of all stacks on an invalid action. If the lookahead search doesn't prune invalid Inscribed Pattern actions, it might severely miscalculate EV. Spiritual Resonance changes target color if a new color is used twice in a row.
-3. **Chance-based Completion:** Even at partial completion (e.g., 30%), the game rolls for success upon finishing. While the optimizer aims for guaranteed success (100%), knowing that partial success exists could be relevant for desperate/fallback recommendations.
+3. **Chance-based Completion:** Completion and perfection are both resolved as independent craft-end ladder rolls, not hard deterministic bars. Partial progress can still finish successfully, but the odds are nonlinear and over-target progress matters for both success and finish quality.

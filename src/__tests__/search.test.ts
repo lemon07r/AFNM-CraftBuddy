@@ -26,7 +26,15 @@ import {
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
 
-const { scoreState, SCORING } = __testing;
+const {
+  scoreState,
+  scoreFinishedOutcome,
+  calculateFinishSuccessChance,
+  evaluateCraftEndOutcomeDistribution,
+  getProgressTowardRawGoal,
+  getThresholdForGuaranteedBonusCount,
+  SCORING,
+} = __testing;
 
 // Helper to create a basic test config
 function createTestConfig(
@@ -588,6 +596,39 @@ describe('lookaheadSearch', () => {
     expect(posResult.recommendation!.score).toBeGreaterThan(
       negResult.recommendation!.score,
     );
+  });
+
+  it('should break exact root ties toward the unmet goal instead of overshooting a secured one', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      conditionEffectType: 'perfectable' as any,
+      skills: [SIMPLE_FUSION, SIMPLE_REFINE, STABILIZE],
+    });
+    const state = new CraftingState({
+      qi: 138,
+      stability: 30,
+      initialMaxStability: 60,
+      completion: 60,
+      perfection: 16,
+    });
+
+    const result = lookaheadSearch(
+      state,
+      config,
+      50,
+      50,
+      6,
+      'negative',
+      ['negative', 'negative', 'negative'],
+      {
+        timeBudgetMs: 500,
+        maxNodes: 200000,
+        beamWidth: 8,
+      },
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('simple_refine');
   });
 
   it('should handle different lookahead depths', () => {
@@ -1197,7 +1238,7 @@ describe('finish craft policy', () => {
     scalesWithControl: true,
   });
 
-  it('recommends Finish Craft when continuing is lower EV than stopping', () => {
+  it('prefers a final fusion when it converts a risky finish into a guaranteed success', () => {
     const config = createTestConfig({
       minStability: 0,
       baseIntensity: 51,
@@ -1213,10 +1254,14 @@ describe('finish craft policy', () => {
     });
 
     const result = lookaheadSearch(state, config, 130, 130, 4);
+    const finishCraft = result.alternativeSkills.find(
+      (recommendation) => recommendation.skill.actionKind === 'finish',
+    );
 
-    expect(result.recommendation?.skill.name).toBe('Finish Craft');
-    expect(result.recommendation?.skill.actionKind).toBe('finish');
-    expect(result.recommendation?.projectedSuccessChance).toBeCloseTo(90 / 130);
+    expect(result.recommendation?.skill.name).toBe('Energised Fusion');
+    expect(result.recommendation?.skill.actionKind).not.toBe('finish');
+    expect(finishCraft).toBeDefined();
+    expect(finishCraft!.projectedSuccessChance).toBeCloseTo(90 / 130);
   });
 
   it('keeps pursuing a guaranteed completion line when it is better than finishing early', () => {
@@ -1354,7 +1399,7 @@ describe('finish craft policy', () => {
     expect(result.recommendation).toBeNull();
   });
 
-  it('can recommend a guaranteed finish below the sublime target', () => {
+  it('can continue below the sublime target when one more refine secures a perfect finish', () => {
     const config = createTestConfig({
       minStability: 0,
       baseIntensity: 51,
@@ -1374,10 +1419,107 @@ describe('finish craft policy', () => {
     });
 
     const result = lookaheadSearch(state, config, 130, 130, 4);
+    const finishCraft = result.alternativeSkills.find(
+      (recommendation) => recommendation.skill.actionKind === 'finish',
+    );
 
     expect(result.targetsMet).toBe(false);
-    expect(result.recommendation?.skill.name).toBe('Finish Craft');
-    expect(result.recommendation?.projectedSuccessChance).toBe(1);
+    expect(result.recommendation?.skill.name).toBe('Simple Refine');
+    expect(finishCraft).toBeDefined();
+    expect(finishCraft!.projectedSuccessChance).toBe(1);
+  });
+});
+
+describe('craft-end ladder modeling', () => {
+  it('uses the game bonus ladders for finish-time sublime odds', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 200,
+      perfection: 200,
+    });
+
+    const outcome = evaluateCraftEndOutcomeDistribution({
+      state,
+      targetCompletion: 100,
+      targetPerfection: 100,
+      hasDistinctSublimeOutcome: true,
+    });
+
+    const secondTierChance = 100 / 130;
+    expect(outcome.successChance).toBe(1);
+    expect(outcome.basicChance).toBe(0);
+    expect(outcome.sublimeChance).toBeCloseTo(
+      secondTierChance * secondTierChance,
+      5,
+    );
+    expect(outcome.perfectChance).toBeCloseTo(
+      1 - secondTierChance * secondTierChance,
+      5,
+    );
+    expect(outcome.perfectOrBetterChance).toBe(1);
+  });
+
+  it('maps overcraft progress through the real ladder instead of a raw linear bar', () => {
+    expect(getThresholdForGuaranteedBonusCount(100, 2)).toBe(230);
+    expect(getProgressTowardRawGoal(150, 200, 100)).toBeGreaterThan(150);
+    expect(getProgressTowardRawGoal(200, 200, 100)).toBeCloseTo(200, 5);
+  });
+
+  it('treats a last-step refine as a forced craft resolution instead of a dead branch', () => {
+    const lastRefine = createCustomSkill({
+      name: 'Last Refine',
+      key: 'last_refine',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      scalesWithIntensity: false,
+      scalesWithControl: false,
+      effects: [{ kind: 'perfection' as const, amount: { value: 50 } }],
+    });
+    const stabilize = createCustomSkill({
+      name: 'Stabilize',
+      key: 'stabilize_last_step',
+      type: 'stabilize',
+      qiCost: 0,
+      stabilityCost: 0,
+      stabilityGain: 20,
+      preventsMaxStabilityDecay: true,
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [lastRefine, stabilize],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 10,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 50,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 2);
+
+    expect(result.recommendation?.skill.key).toBe('last_refine');
+  });
+
+  it('scores finished outcomes from resolved probabilities instead of re-multiplying success chance', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 90,
+      perfection: 40,
+    });
+
+    const finishChance = calculateFinishSuccessChance(state, 130);
+    const finishedScore = scoreFinishedOutcome(state, 130, 130);
+
+    expect(finishChance).toBeCloseTo(90 / 130, 5);
+    expect(finishedScore).toBeGreaterThan(0);
   });
 });
 
@@ -2018,7 +2160,7 @@ describe('survivability-first recommendation gate', () => {
     expect(recommendedNames).toContain('Energised Fusion');
   });
 
-  it('should keep best-salvage recommendation when all actions end the craft', () => {
+  it('should keep the best craft-ending salvage move when every option resolves immediately', () => {
     const allEndingConfig = createTestConfig({
       minStability: 0,
       baseIntensity: 51,
@@ -2034,13 +2176,13 @@ describe('survivability-first recommendation gate', () => {
       4,
     );
     expect(lookaheadResult.recommendation).not.toBeNull();
-    expect(lookaheadResult.recommendation!.skill.name).toBe('Finish Craft');
-    expect(lookaheadResult.recommendation!.skill.actionKind).toBe('finish');
+    expect(lookaheadResult.recommendation!.skill.name).toBe('Energised Fusion');
+    expect(lookaheadResult.recommendation!.skill.actionKind).not.toBe('finish');
 
     const greedyResult = greedySearch(baseState(), allEndingConfig, 130, 130);
     expect(greedyResult.recommendation).not.toBeNull();
-    expect(greedyResult.recommendation!.skill.name).toBe('Finish Craft');
-    expect(greedyResult.recommendation!.skill.actionKind).toBe('finish');
+    expect(greedyResult.recommendation!.skill.name).toBe('Energised Fusion');
+    expect(greedyResult.recommendation!.skill.actionKind).not.toBe('finish');
   });
 });
 
@@ -3473,7 +3615,7 @@ describe('scoreState (isolated)', () => {
     );
   });
 
-  it('replays the low-stability regression snapshot and prefers stabilization over invasive refine', () => {
+  it('replays the low-stability regression snapshot and keeps invasive refine as a risky lower-ranked alternative', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'low-stability-regression.snapshot.json',
     );
@@ -3510,8 +3652,18 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
     expect(result.recommendation!.skill.type).toBe('stabilize');
-    expect(invasiveRefine).toBeUndefined();
     expect(forcefulStabilize).toBeDefined();
+    expect(invasiveRefine).toBeDefined();
+    expect((invasiveRefine as any).requiresProbabilisticSurvival).toBe(true);
+    expect(
+      allRecommendations.findIndex(
+        (recommendation) => recommendation.skill.key === 'forceful_stabilize',
+      ),
+    ).toBeLessThan(
+      allRecommendations.findIndex(
+        (recommendation) => recommendation.skill.key === 'invasive_refine',
+      ),
+    );
   });
 
   it('replays the user resonance snapshot and prefers refine over explosive fusion', () => {
@@ -3576,7 +3728,7 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation!.skill.type).not.toBe('stabilize');
   });
 
-  it('replays the premature-finish proc-floor snapshot and refuses an immediate proc-dependent dead-end refine', () => {
+  it('replays the premature-finish proc-floor snapshot and keeps proc-dependent refine behind safe stabilization', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'premature-finish-proc-floor.snapshot.json',
     );
@@ -3614,7 +3766,17 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
     expect(result.recommendation!.skill.type).toBe('stabilize');
     expect(forcefulStabilize).toBeDefined();
-    expect(invasiveRefine).toBeUndefined();
+    expect(invasiveRefine).toBeDefined();
+    expect((invasiveRefine as any).requiresProbabilisticSurvival).toBe(true);
+    expect(
+      allRecommendations.findIndex(
+        (recommendation) => recommendation.skill.key === 'forceful_stabilize',
+      ),
+    ).toBeLessThan(
+      allRecommendations.findIndex(
+        (recommendation) => recommendation.skill.key === 'invasive_refine',
+      ),
+    );
   });
 
   it('replays the forge heat runway snapshot at heat two and prioritizes heat recovery over support setup', () => {

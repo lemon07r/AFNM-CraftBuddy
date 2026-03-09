@@ -272,6 +272,32 @@ describe('native canUseAction precheck integration', () => {
     expect(provider.mock.calls[0][0].variables.pool).toBe(90);
   });
 
+  it('should derive completion/perfection percentages from the game bonus ladders', () => {
+    const provider = jest.fn((context: any) => {
+      expect(context.variables.completionpercentage).toBe(176);
+      expect(context.variables.perfectionpercentage).toBe(138);
+      return true;
+    });
+    setNativeCanUseActionProvider(provider);
+
+    const state = new CraftingState({
+      qi: 90,
+      stability: 40,
+      completion: 200,
+      perfection: 150,
+      nativeVariables: {
+        maxcompletion: 100,
+        maxperfection: 100,
+      },
+    });
+    const skill = createTestSkill({
+      nativeTechnique: { name: 'Test Skill' },
+    });
+
+    expect(canApplySkill(state, skill, 0, 0, 'neutral')).toBe(true);
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
   it('should pass current condition through applySkill to native precheck', () => {
     const provider = jest.fn(
       (context: any) => context.currentCondition === 'positive',

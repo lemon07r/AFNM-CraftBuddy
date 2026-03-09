@@ -3,7 +3,7 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-07
+last_verified: 2026-03-09
 source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/settings/index.ts
 review_cycle_days: 30
 related_files:
@@ -19,7 +19,7 @@ related_files:
 - State defensively clones tracked buff entries to preserve immutability boundaries.
 - Integration seeds only canonical supplemental `nativeVariables`; state/buff/harmony mirrors are re-derived on demand from `CraftingState` during native availability checks instead of being persisted into cache keys.
 - Actions: crafting techniques + mapped item actions (when provided by integration layer).
-- Search also exposes a local pseudo-action, `Finish Craft`, so bounded lookahead can compare voluntary finish EV against continuing lines.
+- Search also exposes a local pseudo-action, `Finish Craft`, so bounded lookahead can compare exact craft-end EV against continuing lines.
 - Transition engine: `calculateSkillGains(...)` + `applySkill(...)` in `src/optimizer/skills.ts`.
 
 ## Search modes
@@ -45,7 +45,7 @@ related_files:
 - Success/crit modeled as expected value in gains.
 - Immediate survival is not flattened entirely into EV: `calculateActionSurvivabilityFloor(...)` computes a guaranteed post-action stability/max-stability floor, and search treats proc-dependent survival lines as unsafe when a guaranteed-safe alternative exists while base goals are still unsecured.
 - The guaranteed floor also applies to exact `1`-stability unmet-goal runway traps where an EV stabilize line can leave only a token guaranteed floor. On sublime crafts, base-success overcraft lines are still allowed to stay probabilistic when they retain a non-terminal guaranteed floor, but immediate hard-stop branches (guaranteed floor `<= 0`) are collapsed so they cannot outrank a guaranteed-safe continuation while sublime goals remain unmet.
-- Partial completion is modeled explicitly through the `Finish Craft` branch. Success chance uses the base completion threshold (`completion / targetCompletion`, clamped to `[0,1]`) rather than sublime/overcraft goals, while finished-outcome scoring values final output and ignores post-finish runway concerns.
+- Craft-end resolution is modeled explicitly through the `Finish Craft` branch with the same nonlinear bonus ladder the runtime uses (`getBonusAndChance(...)`). Completion and perfection roll independently at craft end; success requires at least one completion band, perfect requires at least one perfection band, and sublime requires `2+` completion and perfection bands when the recipe has a distinct sublime outcome. Finished-outcome scoring evaluates the resulting fail/basic/perfect/sublime distribution directly and ignores post-finish runway concerns.
 - Condition queue is normalized to fixed length `3` (matches game UI/runtime visibility).
 - Beyond forecast queue, condition transitions are probability-weighted (`enableConditionBranchingAfterForecast`, `conditionBranchLimit`, `conditionBranchMinProbability`).
 - Non-turn item actions do not consume lookahead turn-depth/index.

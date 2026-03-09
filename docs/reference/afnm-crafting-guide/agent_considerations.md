@@ -3,7 +3,7 @@ title: Agent Considerations & Potential Blind Spots
 status: active
 authoritative: false
 owner: craftbuddy-maintainers
-last_verified: 2026-03-07
+last_verified: 2026-03-09
 source_of_truth: docs/reference/afnm-crafting-guide/agent_considerations.md
 review_cycle_days: 30
 related_files:
@@ -50,7 +50,7 @@ Status: `Implemented and covered`
 
 Status: `Chosen product behavior`
 
-- Search now models `Finish Craft` directly as a voluntary action with EV based on base completion success chance.
+- Search now models `Finish Craft` directly as a voluntary action with runtime-faithful craft-end ladders for both completion and perfection, not a linear `completion / target` proxy.
 - A persisted `searchGoalPriorityBias` slider now lets users bias the same underlying scorer toward perfection (`-100`) or completion (`100`), with balanced (`0`) as the default neutral policy.
 - Coverage: `src/__tests__/search.test.ts`, `src/__tests__/craftSimulation.test.ts`, `src/__tests__/modContentHarmonyState.test.ts`
 
