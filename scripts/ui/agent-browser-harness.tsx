@@ -208,7 +208,7 @@ function Harness() {
           fontFamily: 'system-ui, sans-serif',
         }}
       >
-        <div style={{ width: 530 }}>
+        <div style={{ width: 560 }}>
           <RecommendationPanel
             result={
               harnessState === 'loading' || harnessState === 'loading-auto'
@@ -239,7 +239,7 @@ function Harness() {
             onAutoModeArm={() => {}}
             onAutoModeStop={() => {}}
             onAutoModePolicyChange={() => {}}
-            version="3.7.8"
+            version="4.0.0"
           />
         </div>
       </div>

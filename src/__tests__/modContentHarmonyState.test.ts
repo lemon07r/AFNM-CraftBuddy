@@ -1447,4 +1447,60 @@ describe('user report replay regressions', () => {
     expect(nextResult.recommendation).not.toBeNull();
     expect(nextResult.recommendation!.skill.type).not.toBe('stabilize');
   });
+
+  it('replays the live workshop step-1 export and keeps the third action on a refine line', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-live-workshop-step-1.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+    };
+    const result = findBestSkill(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      stableSearchConfig,
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('refine');
+    expect(result.recommendation!.skill.type).not.toBe('fusion');
+    expect(result.recommendation!.skill.type).not.toBe('stabilize');
+  });
+
+  it('replays the live workshop step-2 export and no longer overcap-stabilizes after the valid combo', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-live-workshop-step-2.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+    };
+    const result = findBestSkill(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      stableSearchConfig,
+    );
+
+    expect(input.state.stability).toBe(36);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.type).toBe('refine');
+    expect(result.recommendation!.skill.type).not.toBe('stabilize');
+  });
 });

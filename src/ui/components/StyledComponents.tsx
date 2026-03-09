@@ -53,8 +53,8 @@ export const PanelContainer = memo(function PanelContainer({
   animate = true,
   allowOverflowVisible = false,
 }: PanelContainerProps) {
-  const widePanelWidthPx = compact ? 280 : 350;
-  const narrowPanelWidthPx = compact ? 272 : 340;
+  const widePanelWidthPx = compact ? 280 : 360;
+  const narrowPanelWidthPx = compact ? 272 : 348;
 
   const getBorderColor = () => {
     switch (variant) {
@@ -85,9 +85,9 @@ export const PanelContainer = memo(function PanelContainer({
         position: 'relative',
         display: 'inline-block',
         p: compact ? 1.5 : 2,
-        // Keep the overlay content-sized so paired recommendation cards can
-        // expand the panel when needed, but avoid CSS min() which the game's
-        // embedded browser may treat as invalid.
+        // Keep the overlay content-sized so it can stay compact on simpler
+        // states, while still guaranteeing enough room for the heading and
+        // paired recommendation cards.
         width: 'auto',
         minWidth: widePanelWidthPx,
         maxWidth: 'calc(100vw - 24px)',

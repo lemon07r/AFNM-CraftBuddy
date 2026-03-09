@@ -1192,6 +1192,17 @@ function scoreState(
     maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
       ? Math.min(effectivePerfTarget, maxPerfectionCap)
       : effectivePerfTarget;
+  const baseCompGoal =
+    maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
+      ? Math.min(targetCompletion, maxCompletionCap)
+      : targetCompletion;
+  const basePerfGoal =
+    maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
+      ? Math.min(targetPerfection, maxPerfectionCap)
+      : targetPerfection;
+  const baseTargetsMet =
+    (targetCompletion <= 0 || state.completion >= targetCompletion) &&
+    (targetPerfection <= 0 || state.perfection >= targetPerfection);
 
   // ── remaining work metrics ───────────────────────────────────────────
   const compRemaining =
@@ -1232,6 +1243,35 @@ function scoreState(
     perfNeedShare,
     ctx,
   );
+  const baseCompRemaining =
+    baseCompGoal > 0 ? Math.max(0, baseCompGoal - state.completion) : 0;
+  const basePerfRemaining =
+    basePerfGoal > 0 ? Math.max(0, basePerfGoal - state.perfection) : 0;
+  const baseTotalRemaining = baseCompRemaining + basePerfRemaining;
+  const baseCompNeedShare =
+    baseTotalRemaining > 0 ? baseCompRemaining / baseTotalRemaining : 0.5;
+  const basePerfNeedShare =
+    baseTotalRemaining > 0 ? basePerfRemaining / baseTotalRemaining : 0.5;
+  const baseCompNeedPct =
+    baseCompGoal > 0
+      ? Math.max(0, Math.min(1, baseCompRemaining / baseCompGoal))
+      : 0;
+  const basePerfNeedPct =
+    basePerfGoal > 0
+      ? Math.max(0, Math.min(1, basePerfRemaining / basePerfGoal))
+      : 0;
+  const baseRemainingWorkPct = Math.max(
+    baseCompNeedPct,
+    basePerfNeedPct,
+    (baseCompNeedPct + basePerfNeedPct) / 2,
+  );
+  const baseEstimatedTurnsRemaining = estimateTurnsRemainingFromContext(
+    baseCompRemaining,
+    basePerfRemaining,
+    baseCompNeedShare,
+    basePerfNeedShare,
+    ctx,
+  );
   const stepPenaltyWeight = Math.max(
     SCORING.STEP_PENALTY,
     estimatedProgressPerTurn * SCORING.STEP_PENALTY_PROGRESS_FRACTION,
@@ -1261,16 +1301,26 @@ function scoreState(
     1,
     effectiveCompGoal + effectivePerfGoal,
   );
+  const baseTargetMagnitude = Math.max(
+    1,
+    Math.max(0, baseCompGoal) + Math.max(0, basePerfGoal),
+  );
   const targetMetBonus = totalTargetMagnitude * SCORING.TARGET_MET_MULTIPLIER;
 
-  const baseTargetsMet =
-    (targetCompletion <= 0 || state.completion >= targetCompletion) &&
-    (targetPerfection <= 0 || state.perfection >= targetPerfection);
   const sublimeTargetsMet =
     isSublimeCraft &&
     (effectiveCompTarget <= 0 || state.completion >= effectiveCompTarget) &&
     (effectivePerfTarget <= 0 || state.perfection >= effectivePerfTarget);
   const modeTargetsMet = isSublimeCraft ? sublimeTargetsMet : baseTargetsMet;
+  const resourceRemainingWorkPct = baseTargetsMet
+    ? remainingWorkPct
+    : baseRemainingWorkPct;
+  const resourceEstimatedTurnsRemaining = baseTargetsMet
+    ? estimatedTurnsRemaining
+    : baseEstimatedTurnsRemaining;
+  const resourceEstimatedProgressPerTurn = baseTargetsMet
+    ? estimatedProgressPerTurn
+    : estimateWeightedProgressPerTurn(baseCompNeedShare, basePerfNeedShare, ctx);
 
   if (sublimeTargetsMet) {
     score += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
@@ -1318,18 +1368,19 @@ function scoreState(
     // This prevents overvaluing turn-consuming qi restores when progress
     // skills are already qi-free.
     if (ctx.avgQiCostPerTurn > 0 && estimatedTurnsRemaining > 0) {
-      const estimatedQiNeeded = estimatedTurnsRemaining * ctx.avgQiCostPerTurn;
+      const estimatedQiNeeded =
+        resourceEstimatedTurnsRemaining * ctx.avgQiCostPerTurn;
       const qiShortfall = Math.max(0, estimatedQiNeeded - state.qi);
       if (qiShortfall > 0) {
         const turnsShortByQi = qiShortfall / ctx.avgQiCostPerTurn;
-        score -= turnsShortByQi * estimatedProgressPerTurn;
+        score -= turnsShortByQi * resourceEstimatedProgressPerTurn;
       }
     }
 
     score +=
       state.stability *
       (SCORING.STABILITY_BASE_WEIGHT +
-        remainingWorkPct * SCORING.STABILITY_WORK_WEIGHT);
+        resourceRemainingWorkPct * SCORING.STABILITY_WORK_WEIGHT);
 
     // Step efficiency: prefer shorter paths to target completion.
     // Without this, the tree search sees no cost to "stabilize now,
@@ -1403,7 +1454,7 @@ function scoreState(
       ? SCORING.STABILITY_THRESHOLD_TURNS_SCALE_TRAINING
       : SCORING.STABILITY_THRESHOLD_TURNS_SCALE;
     const stabilityThreshold =
-      (thresholdBase + remainingWorkPct * thresholdScale) *
+      (thresholdBase + baseRemainingWorkPct * thresholdScale) *
       ctx.avgStabilityCostPerTurn;
 
     const penaltyFraction = trainingMode
@@ -1414,7 +1465,7 @@ function scoreState(
       : SCORING.STABILITY_PENALTY_FLOOR;
     const stabilityPenaltyWeight = Math.max(
       penaltyFloor,
-      totalTargetMagnitude * penaltyFraction,
+      baseTargetMagnitude * penaltyFraction,
     );
 
     if (state.stability < stabilityThreshold) {
@@ -1439,12 +1490,12 @@ function scoreState(
       ctx.avgStabilityCostPerTurn > 0
         ? Math.floor(Math.max(0, state.stability) / ctx.avgStabilityCostPerTurn)
         : Infinity;
-    if (estimatedTurnsRemaining > estimatedRunwayTurns) {
-      const gap = estimatedTurnsRemaining - estimatedRunwayTurns;
+    if (baseEstimatedTurnsRemaining > estimatedRunwayTurns) {
+      const gap = baseEstimatedTurnsRemaining - estimatedRunwayTurns;
       const gapFraction = trainingMode
         ? SCORING.RUNWAY_GAP_FRACTION_TRAINING
         : SCORING.RUNWAY_GAP_FRACTION;
-      score -= gap * totalTargetMagnitude * gapFraction;
+      score -= gap * baseTargetMagnitude * gapFraction;
     }
   }
 

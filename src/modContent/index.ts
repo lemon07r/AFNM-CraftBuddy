@@ -73,6 +73,10 @@ import {
   shouldPrimeCraftSessionFromRecipeDifficultyHook,
   shouldAcceptReduxCraftingState,
 } from './craftingActivity';
+import {
+  hasCraftingActionCue,
+  hasVisibleCraftingUiSignals,
+} from './craftingUiDetection';
 import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
 import {
   buildConfigSnapshot,
@@ -410,7 +414,9 @@ function serializeCraftingBuffs(
 
   return buffs
     .map((buff) => {
-      const name = String(buff?.name || '').trim().toLowerCase();
+      const name = String(buff?.name || '')
+        .trim()
+        .toLowerCase();
       const stacks = Number(buff?.stacks ?? 0) || 0;
       return `${name}:${stacks}`;
     })
@@ -441,18 +447,20 @@ function serializeTechniqueCooldowns(
     return 'none';
   }
 
-  return techniques
-    .map((technique) => {
-      const key = String(technique?.name || '')
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, '_');
-      const cooldown = Number(technique?.currentCooldown || 0) || 0;
-      return key && cooldown > 0 ? `${key}:${cooldown}` : null;
-    })
-    .filter((entry): entry is string => Boolean(entry))
-    .sort()
-    .join('|') || 'none';
+  return (
+    techniques
+      .map((technique) => {
+        const key = String(technique?.name || '')
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, '_');
+        const cooldown = Number(technique?.currentCooldown || 0) || 0;
+        return key && cooldown > 0 ? `${key}:${cooldown}` : null;
+      })
+      .filter((entry): entry is string => Boolean(entry))
+      .sort()
+      .join('|') || 'none'
+  );
 }
 
 function serializeQuickAccessInventory(
@@ -588,7 +596,10 @@ function executeDisplayedRecommendation(
       );
     });
   } catch (error) {
-    console.warn('[CraftBuddy] Failed to execute recommendation action:', error);
+    console.warn(
+      '[CraftBuddy] Failed to execute recommendation action:',
+      error,
+    );
   }
 }
 
@@ -2666,7 +2677,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     currentSettings.panelVisible &&
     !hasCraftResultUi &&
     (hasLiveCraftState ||
-      isPendingCraftStart ||
+      (isPendingCraftStart && hasVisibleCraftingUi) ||
       (isCalculating && hasConfirmedCraftSession && hasVisibleCraftingUi));
 
   if (!reactRoot || !shouldShow) {
@@ -2829,6 +2840,25 @@ function handleCraftingEnded(): void {
   }
 }
 
+function handleCraftResultUiDetected(source: 'polling' | 'redux'): void {
+  wasVisibleCraftingUiLastPoll = false;
+
+  if (
+    !wasCraftingActive &&
+    !hasConfirmedCraftSession &&
+    !isOverlayVisible &&
+    !isCraftStartPendingActive()
+  ) {
+    return;
+  }
+
+  wasCraftingActive = false;
+  debugLog(
+    `[CraftBuddy] Craft result screen detected via ${source}, clearing active state`,
+  );
+  handleCraftingEnded();
+}
+
 /**
  * Try to find the Redux store from the window object or React fiber tree.
  * The game uses React 19 with a different fiber structure.
@@ -2935,6 +2965,11 @@ function processCraftingStateFromStore(store: any): void {
   if (!isReduxStoreLike(store)) return;
   try {
     const state = store.getState();
+    if (detectCraftResultUi()) {
+      handleCraftResultUiDetected('redux');
+      return;
+    }
+
     const craftingState = extractActiveCraftingState(state);
     if (!craftingState) {
       processCraftingState(craftingState);
@@ -2942,13 +2977,6 @@ function processCraftingStateFromStore(store: any): void {
     }
 
     const hasVisibleCraftingUi = detectVisibleCraftingUi();
-    if (detectCraftResultUi()) {
-      if (wasCraftingActive) {
-        wasCraftingActive = false;
-        handleCraftingEnded();
-      }
-      return;
-    }
     if (hasVisibleCraftingUi) {
       hasConfirmedCraftSession = true;
     }
@@ -3092,14 +3120,6 @@ function detectCraftResultUi(): boolean {
 function detectVisibleCraftingUi(): boolean {
   const gameRoot = getGameRootElement();
 
-  const craftingPanel =
-    Array.from(
-      gameRoot.querySelectorAll(
-        '[class*="crafting"], [class*="Crafting"], [data-testid*="crafting"]',
-      ),
-    ).find((el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el)) ||
-    null;
-
   const stabilityElement =
     Array.from(gameRoot.querySelectorAll('[class*="stability"]')).find(
       (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
@@ -3174,16 +3194,12 @@ function detectVisibleCraftingUi(): boolean {
     ).toLowerCase();
 
     if (
-      text.includes('fusion') ||
-      text.includes('refine') ||
-      text.includes('stabilize') ||
-      text.includes('support') ||
-      className.includes('technique') ||
-      className.includes('craft') ||
-      dataTestId.includes('technique') ||
-      dataTestId.includes('craft') ||
-      ariaLabel.includes('technique') ||
-      ariaLabel.includes('craft')
+      hasCraftingActionCue({
+        text,
+        className,
+        dataTestId,
+        ariaLabel,
+      })
     ) {
       hasCraftingButtons = true;
     }
@@ -3204,21 +3220,15 @@ function detectVisibleCraftingUi(): boolean {
       domValues.targetStability
     );
 
-  // Fallback for icon-only technique buttons where text/class names are unavailable.
-  // Crafting UIs consistently have several visible action buttons plus live progress readouts.
-  if (
-    !hasCraftingButtons &&
-    visibleButtonCount >= 3 &&
-    (hasProgressSignals || hasDomProgressValues || !!craftingPanel)
-  ) {
-    hasCraftingButtons = true;
-  }
-
-  // Require interactive crafting controls so result/summary screens don't keep us "active".
-  return (
-    hasCraftingButtons &&
-    (hasProgressSignals || hasDomProgressValues || !!craftingPanel)
-  );
+  // Require live progress readouts alongside action controls so generic
+  // location screens with "Crafting Hall" buttons do not look like an active
+  // craft. The visible-button fallback remains for icon-only technique rows.
+  return hasVisibleCraftingUiSignals({
+    hasNamedCraftingActionCue: hasCraftingButtons,
+    hasProgressSignals,
+    hasDomProgressValues,
+    visibleButtonCount,
+  });
 }
 
 function extractActiveCraftingState(state: any): any | null {
@@ -3363,14 +3373,7 @@ function pollCraftingState(): void {
   refreshReduxStoreConnection();
 
   if (detectCraftResultUi()) {
-    if (wasCraftingActive) {
-      wasCraftingActive = false;
-      debugLog(
-        '[CraftBuddy] Craft result screen detected, clearing active state',
-      );
-      handleCraftingEnded();
-    }
-    wasVisibleCraftingUiLastPoll = false;
+    handleCraftResultUiDetected('polling');
     return;
   }
 
@@ -3546,11 +3549,15 @@ function pollCraftingState(): void {
       inventoryItems,
     );
     const previousInventorySignature = serializeQuickAccessInventory(
-      ((lastEntity as any)?.craftingQuickAccess || []) as (string | undefined)[],
+      ((lastEntity as any)?.craftingQuickAccess || []) as (
+        | string
+        | undefined
+      )[],
       inventoryItems,
     );
     const maxStabilityTarget =
-      parsePositiveGameNumber((recipeStats as any)?.stability) ?? targetStability;
+      parsePositiveGameNumber((recipeStats as any)?.stability) ??
+      targetStability;
     const observedMaxStability = computeObservedMaxStability(
       progress,
       maxStabilityTarget,
@@ -4900,7 +4907,9 @@ function processCraftingState(craftingState: any): void {
     ((lastEntity as any)?.craftingQuickAccess || []) as (string | undefined)[],
     inventoryItems,
   );
-  const currentCooldownSignature = serializeTechniqueCooldowns(entity?.techniques);
+  const currentCooldownSignature = serializeTechniqueCooldowns(
+    entity?.techniques,
+  );
   const previousCooldownSignature = serializeTechniqueCooldowns(
     lastEntity?.techniques,
   );

@@ -325,6 +325,10 @@ const AUTO_PHASE_LABELS: Record<AutoCraftUiState['phase'], string> = {
   error: 'Error',
 };
 
+const AUTO_BUDDY_ACCENT = colors.error;
+const HEADER_PADDING_WITH_SETTINGS = '44px';
+const HEADER_PADDING_WITH_SETTINGS_AND_LINKS = '140px';
+
 function getAutoToneSx(tone: AutoCraftUiState['tone']) {
   switch (tone) {
     case 'active':
@@ -433,7 +437,11 @@ const AutoModeSection = memo(function AutoModeSection({
         minWidth: 0,
       }}
     >
-      <FlexRow align="center" gap={0.75} sx={{ justifyContent: 'space-between' }}>
+      <FlexRow
+        align="center"
+        gap={0.75}
+        sx={{ justifyContent: 'space-between' }}
+      >
         <FlexRow align="center" gap={0.65}>
           <Box
             sx={{
@@ -610,7 +618,8 @@ const AutoModeSection = memo(function AutoModeSection({
             autoMode.armed || autoMode.stopRequested
               ? 'linear-gradient(135deg, rgba(120, 34, 34, 0.94), rgba(71, 18, 18, 0.94))'
               : `linear-gradient(135deg, ${tone.accentSoft}, rgba(28, 43, 66, 0.92))`,
-          color: autoMode.armed || autoMode.stopRequested ? '#ffd5d5' : tone.accent,
+          color:
+            autoMode.armed || autoMode.stopRequested ? '#ffd5d5' : tone.accent,
           fontSize: '0.76rem',
           fontWeight: 700,
           letterSpacing: '0.04em',
@@ -705,13 +714,13 @@ const PanelModeToggle = memo(function PanelModeToggle({
         component="span"
         variant="caption"
         sx={{
-          color: 'inherit',
+          color: mode === 'auto' ? 'inherit' : AUTO_BUDDY_ACCENT,
           fontWeight: 700,
           letterSpacing: '0.04em',
           lineHeight: 1,
         }}
-        >
-        {mode === 'auto' ? 'Suggestions' : 'AutoBuddy'}
+      >
+        {mode === 'auto' ? 'Suggestions' : 'Try AutoBuddy'}
       </Typography>
       {mode !== 'auto' && autoActive && (
         <Box
@@ -731,6 +740,86 @@ const PanelModeToggle = memo(function PanelModeToggle({
         >
           {AUTO_PHASE_LABELS[autoPhase]}
         </Box>
+      )}
+    </Box>
+  );
+});
+
+const PanelHeading = memo(function PanelHeading({
+  title,
+  titleColor,
+  compact = false,
+  subtitle,
+  rightPadding,
+  modeToggle,
+}: {
+  title: string;
+  titleColor: string;
+  compact?: boolean;
+  subtitle?: string;
+  rightPadding: string;
+  modeToggle?: React.ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        pr: rightPadding,
+        mb: compact ? 1 : 1.25,
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.9,
+          flexWrap: compact ? 'wrap' : 'nowrap',
+          minWidth: 0,
+        }}
+      >
+        <Box sx={{ minWidth: 0, flex: '0 1 auto' }}>
+          <Typography
+            variant={compact ? 'subtitle1' : 'h6'}
+            sx={{
+              color: titleColor,
+              fontWeight: 600,
+              letterSpacing: '0.5px',
+              lineHeight: 1.08,
+              whiteSpace: compact ? 'normal' : 'nowrap',
+            }}
+          >
+            {title}
+          </Typography>
+          <Box
+            sx={{
+              height: 1,
+              mt: 0.45,
+              width: compact ? 112 : 156,
+              maxWidth: '100%',
+              background: `linear-gradient(90deg, ${titleColor}60 0%, transparent 88%)`,
+              borderRadius: 1,
+            }}
+          />
+        </Box>
+
+        {modeToggle && (
+          <Box sx={{ flexShrink: 0, pt: compact ? 0.05 : 0.15 }}>
+            {modeToggle}
+          </Box>
+        )}
+      </Box>
+
+      {subtitle && (
+        <Typography
+          variant="caption"
+          sx={{
+            color: colors.textMuted,
+            display: 'block',
+            mt: 0.5,
+            letterSpacing: '0.04em',
+          }}
+        >
+          {subtitle}
+        </Typography>
       )}
     </Box>
   );
@@ -1343,7 +1432,7 @@ const AutoBuddySnapshotSection = memo(function AutoBuddySnapshotSection({
       {(maxCompletionCap !== undefined ||
         maxPerfectionCap !== undefined ||
         maxToxicity > 0 ||
-        currentMaxStability > 0 && currentMaxStability < targetStability) && (
+        (currentMaxStability > 0 && currentMaxStability < targetStability)) && (
         <Typography
           variant="caption"
           sx={{
@@ -1734,8 +1823,8 @@ export function RecommendationPanel({
   version,
 }: RecommendationPanelProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [panelMode, setPanelMode] = useState<RecommendationPanelMode>(
-    () => ((autoMode?.phase ?? 'off') !== 'off' ? 'auto' : 'suggestions'),
+  const [panelMode, setPanelMode] = useState<RecommendationPanelMode>(() =>
+    (autoMode?.phase ?? 'off') !== 'off' ? 'auto' : 'suggestions',
   );
   const previousAutoPhaseRef = useRef(autoMode?.phase ?? 'off');
 
@@ -1761,52 +1850,92 @@ export function RecommendationPanel({
     return null;
   }
 
+  const headerRightPadding = compactMode
+    ? HEADER_PADDING_WITH_SETTINGS
+    : HEADER_PADDING_WITH_SETTINGS_AND_LINKS;
+  const leadingControls = !compactMode ? (
+    <CommunityLinks isOpen={isSettingsOpen} />
+  ) : undefined;
+  const panelForegroundSx = {
+    position: 'relative',
+    zIndex: 1,
+    pointerEvents: isSettingsOpen ? 'none' : 'auto',
+    transform: isSettingsOpen
+      ? 'translateX(-18px) scale(0.985)'
+      : 'translateX(0) scale(1)',
+    transformOrigin: 'left center',
+    opacity: isSettingsOpen ? 0.18 : 1,
+    filter: isSettingsOpen ? 'blur(7px) saturate(0.72)' : 'blur(0) saturate(1)',
+    transition:
+      'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, filter 0.3s ease',
+  } as const;
+  const suggestionsModeToggle = autoMode ? (
+    <PanelModeToggle
+      mode={panelMode}
+      autoMode={autoMode}
+      compact={compactMode}
+      onToggle={() => setPanelMode('auto')}
+    />
+  ) : undefined;
+  const autoModeToggle = autoMode ? (
+    <PanelModeToggle
+      mode={panelMode}
+      autoMode={autoMode}
+      compact={compactMode}
+      onToggle={() => setPanelMode('suggestions')}
+    />
+  ) : undefined;
+  const autoHeader = (
+    <PanelHeading
+      title="AutoBuddy"
+      titleColor={AUTO_BUDDY_ACCENT}
+      compact={compactMode}
+      subtitle="Focused auto-crafting view"
+      rightPadding={headerRightPadding}
+      modeToggle={autoModeToggle}
+    />
+  );
+  const renderAutoShell = ({
+    content,
+    variant = 'default',
+    contentPaddingBottom = 0,
+  }: {
+    content: React.ReactNode;
+    variant?: 'default' | 'success' | 'error';
+    contentPaddingBottom?: number;
+  }) => (
+    <PanelContainer
+      variant={variant}
+      compact={compactMode}
+      allowOverflowVisible={isSettingsOpen}
+    >
+      <Box sx={{ position: 'relative' }}>
+        <SettingsPanel
+          onSettingsChange={onSettingsChange}
+          onSearchSettingsChange={onSearchSettingsChange}
+          onOpenChange={setIsSettingsOpen}
+          version={version}
+          compact={compactMode}
+          leadingControls={leadingControls}
+        />
+
+        <Box sx={panelForegroundSx}>
+          <Box sx={{ pb: contentPaddingBottom }}>{content}</Box>
+        </Box>
+      </Box>
+      <PanelVersionBadge version={version} visible={!isSettingsOpen} />
+    </PanelContainer>
+  );
+
   if (showAutoModePanel) {
     const timeBudgetMs = settings?.searchTimeBudgetMs ?? 2000;
     const versionFooterPadding = version && !isSettingsOpen ? 2.25 : 0;
-    const autoTone = getAutoToneSx(autoMode?.tone ?? 'neutral');
-    const autoHeader = (
-      <FlexRow
-        align="center"
-        gap={0.75}
-        wrap
-        sx={{
-          justifyContent: 'space-between',
-          mb: compactMode ? 1 : 1.2,
-        }}
-      >
-        <Box sx={{ minWidth: 0 }}>
-          <SectionHeader color={autoTone.accent} compact={compactMode}>
-            AutoBuddy
-          </SectionHeader>
-          <Typography
-            variant="caption"
-            sx={{
-              color: colors.textMuted,
-              display: 'block',
-              mt: 0.25,
-              letterSpacing: '0.04em',
-            }}
-          >
-            Focused auto-crafting view
-          </Typography>
-        </Box>
-
-        {autoMode && (
-          <PanelModeToggle
-            mode={panelMode}
-            autoMode={autoMode}
-            compact={compactMode}
-            onToggle={() => setPanelMode('suggestions')}
-          />
-        )}
-      </FlexRow>
-    );
 
     if (!result || isCalculating) {
-      return (
-        <PanelContainer compact={compactMode}>
-          <Box sx={{ pb: versionFooterPadding }}>
+      return renderAutoShell({
+        contentPaddingBottom: versionFooterPadding,
+        content: (
+          <>
             {autoHeader}
             {autoMode && (
               <Box sx={{ mb: 1 }}>
@@ -1830,16 +1959,17 @@ export function RecommendationPanel({
               }
             />
             <SearchProgressBar durationMs={timeBudgetMs} />
-          </Box>
-          <PanelVersionBadge version={version} visible={!isSettingsOpen} />
-        </PanelContainer>
-      );
+          </>
+        ),
+      });
     }
 
     if (result.targetsMet) {
-      return (
-        <PanelContainer variant="success" compact={compactMode}>
-          <Box sx={{ pb: versionFooterPadding }}>
+      return renderAutoShell({
+        variant: 'success',
+        contentPaddingBottom: versionFooterPadding,
+        content: (
+          <>
             {autoHeader}
             {autoMode && (
               <Box sx={{ mb: 1 }}>
@@ -1904,16 +2034,17 @@ export function RecommendationPanel({
                 </Box>
               </FlexRow>
             </Box>
-          </Box>
-          <PanelVersionBadge version={version} visible={!isSettingsOpen} />
-        </PanelContainer>
-      );
+          </>
+        ),
+      });
     }
 
     if (result.isTerminal || !result.recommendation) {
-      return (
-        <PanelContainer variant="error" compact={compactMode}>
-          <Box sx={{ pb: versionFooterPadding }}>
+      return renderAutoShell({
+        variant: 'error',
+        contentPaddingBottom: versionFooterPadding,
+        content: (
+          <>
             {autoHeader}
             {autoMode && (
               <Box sx={{ mb: 1 }}>
@@ -1973,105 +2104,73 @@ export function RecommendationPanel({
                 blockedReasons={result.blockedReasons || []}
               />
             </Box>
-          </Box>
-          <PanelVersionBadge version={version} visible={!isSettingsOpen} />
-        </PanelContainer>
-      );
+          </>
+        ),
+      });
     }
 
-    return (
-      <PanelContainer compact={compactMode} allowOverflowVisible={isSettingsOpen}>
-        <Box sx={{ position: 'relative' }}>
-          <SettingsPanel
-            onSettingsChange={onSettingsChange}
-            onSearchSettingsChange={onSearchSettingsChange}
-            onOpenChange={setIsSettingsOpen}
-            version={version}
-            compact={compactMode}
-          />
+    return renderAutoShell({
+      content: (
+        <>
+          {onRecalculate && (
+            <RecalculateButton
+              visible={settingsStale}
+              onClick={onRecalculate}
+            />
+          )}
 
-          <Box
-            sx={{
-              position: 'relative',
-              zIndex: 1,
-              pointerEvents: isSettingsOpen ? 'none' : 'auto',
-              transform: isSettingsOpen
-                ? 'translateX(-18px) scale(0.985)'
-                : 'translateX(0) scale(1)',
-              transformOrigin: 'left center',
-              opacity: isSettingsOpen ? 0.18 : 1,
-              filter: isSettingsOpen
-                ? 'blur(7px) saturate(0.72)'
-                : 'blur(0) saturate(1)',
-              transition:
-                'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, filter 0.3s ease',
-            }}
-          >
-            {onRecalculate && (
-              <RecalculateButton
-                visible={settingsStale}
-                onClick={onRecalculate}
-              />
+          <Box sx={{ mb: 1.05 }}>
+            {autoHeader}
+            {autoMode && (
+              <Box sx={{ mb: 1 }}>
+                <AutoModeSection
+                  autoMode={autoMode}
+                  compact={compactMode}
+                  embedded
+                  onArm={onAutoModeArm}
+                  onStop={onAutoModeStop}
+                  onPolicyChange={onAutoModePolicyChange}
+                />
+              </Box>
             )}
-
-            <Box sx={{ mb: 1.05 }}>
-              {autoHeader}
-              {autoMode && (
-                <Box sx={{ mb: 1 }}>
-                  <AutoModeSection
-                    autoMode={autoMode}
-                    compact={compactMode}
-                    embedded
-                    onArm={onAutoModeArm}
-                    onStop={onAutoModeStop}
-                    onPolicyChange={onAutoModePolicyChange}
-                  />
-                </Box>
-              )}
-              <AutoBuddySnapshotSection
-                currentCompletion={currentCompletion}
-                currentPerfection={currentPerfection}
-                targetCompletion={targetCompletion}
-                targetPerfection={targetPerfection}
-                maxCompletionCap={maxCompletionCap}
-                maxPerfectionCap={maxPerfectionCap}
-                currentStability={currentStability}
-                currentMaxStability={currentMaxStability}
-                targetStability={targetStability}
-                currentCondition={currentCondition}
-                nextConditions={nextConditions}
-                currentToxicity={currentToxicity}
-                maxToxicity={maxToxicity}
-              />
-            </Box>
-
-            <Box sx={{ mb: 0.75 }}>
-              <SubSectionHeader>Recommended next action</SubSectionHeader>
-              <Typography
-                variant="caption"
-                sx={{
-                  color: colors.textMuted,
-                  display: 'block',
-                  mt: 0.15,
-                  lineHeight: 1.35,
-                }}
-              >
-                {autoMode?.armed
-                  ? 'AutoBuddy will execute this recommendation on the next valid craft input.'
-                  : 'Previewing the move AutoBuddy will take once you enable auto mode.'}
-              </Typography>
-            </Box>
-
-            <SkillCard
-              rec={result.recommendation}
-              isPrimary
-              compact
+            <AutoBuddySnapshotSection
+              currentCompletion={currentCompletion}
+              currentPerfection={currentPerfection}
+              targetCompletion={targetCompletion}
+              targetPerfection={targetPerfection}
+              maxCompletionCap={maxCompletionCap}
+              maxPerfectionCap={maxPerfectionCap}
+              currentStability={currentStability}
+              currentMaxStability={currentMaxStability}
+              targetStability={targetStability}
+              currentCondition={currentCondition}
+              nextConditions={nextConditions}
+              currentToxicity={currentToxicity}
+              maxToxicity={maxToxicity}
             />
           </Box>
-        </Box>
-        <PanelVersionBadge version={version} visible={!isSettingsOpen} />
-      </PanelContainer>
-    );
+
+          <Box sx={{ mb: 0.75 }}>
+            <SubSectionHeader>Recommended next action</SubSectionHeader>
+            <Typography
+              variant="caption"
+              sx={{
+                color: colors.textMuted,
+                display: 'block',
+                mt: 0.15,
+                lineHeight: 1.35,
+              }}
+            >
+              {autoMode?.armed
+                ? 'AutoBuddy will execute this recommendation on the next valid craft input.'
+                : 'Previewing the move AutoBuddy will take once you enable auto mode.'}
+            </Typography>
+          </Box>
+
+          <SkillCard rec={result.recommendation} isPrimary compact />
+        </>
+      ),
+    });
   }
 
   // No result yet - Loading state
@@ -2195,30 +2294,10 @@ export function RecommendationPanel({
           onOpenChange={setIsSettingsOpen}
           version={version}
           compact={compactMode}
-          leadingControls={
-            !compactMode ? (
-              <CommunityLinks isOpen={isSettingsOpen} />
-            ) : undefined
-          }
+          leadingControls={leadingControls}
         />
 
-        <Box
-          sx={{
-            position: 'relative',
-            zIndex: 1,
-            pointerEvents: isSettingsOpen ? 'none' : 'auto',
-            transform: isSettingsOpen
-              ? 'translateX(-18px) scale(0.985)'
-              : 'translateX(0) scale(1)',
-            transformOrigin: 'left center',
-            opacity: isSettingsOpen ? 0.18 : 1,
-            filter: isSettingsOpen
-              ? 'blur(7px) saturate(0.72)'
-              : 'blur(0) saturate(1)',
-            transition:
-              'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, filter 0.3s ease',
-          }}
-        >
+        <Box sx={panelForegroundSx}>
           {/* Recalculate button when search settings changed */}
           {onRecalculate && (
             <RecalculateButton
@@ -2228,36 +2307,13 @@ export function RecommendationPanel({
           )}
 
           <Box sx={{ mb: 1.2 }}>
-            <FlexRow
-              align="center"
-              gap={0.75}
-              wrap
-              sx={{
-                pr: compactMode ? '40px' : '132px',
-                mb: compactMode ? 1 : 1.5,
-              }}
-            >
-              <Box sx={{ minWidth: 0 }}>
-                <SectionHeader color={colors.gold} compact={compactMode}>
-                  {compactMode ? 'CraftBuddy' : 'CraftBuddy Suggestions'}
-                </SectionHeader>
-              </Box>
-
-              {autoMode && (
-                <Box sx={{ pb: compactMode ? 0.95 : 1.35 }}>
-                  <PanelModeToggle
-                    mode={panelMode}
-                    autoMode={autoMode}
-                    compact={compactMode}
-                    onToggle={() =>
-                      setPanelMode((currentMode) =>
-                        currentMode === 'suggestions' ? 'auto' : 'suggestions',
-                      )
-                    }
-                  />
-                </Box>
-              )}
-            </FlexRow>
+            <PanelHeading
+              title="CraftBuddy"
+              titleColor={colors.gold}
+              compact={compactMode}
+              rightPadding={headerRightPadding}
+              modeToggle={suggestionsModeToggle}
+            />
 
             {showAutoModePanel && autoMode && (
               <Box sx={{ mb: 1.15 }}>
