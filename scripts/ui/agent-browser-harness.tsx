@@ -239,7 +239,7 @@ function Harness() {
             onAutoModeArm={() => {}}
             onAutoModeStop={() => {}}
             onAutoModePolicyChange={() => {}}
-            version="4.0.0"
+            version="4.0.1"
           />
         </div>
       </div>
