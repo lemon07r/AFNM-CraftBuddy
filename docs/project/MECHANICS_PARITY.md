@@ -22,6 +22,7 @@ related_files:
 - active-buff definition hydration from skill payloads when runtime snapshots omit buff definitions
 - harmony subsystem simulation (forge/alchemical/inscription/resonance)
 - authoritative harmony-data hydration from `progressState.harmonyTypeData`, with forge-only fallback recovery from verified runtime mirrors (`Heat` native variables / heat buff stacks) when the live payload omits forge heat
+- search-side harmony frontier valuation now reads subsystem-specific setup state for non-forge harmonies as well, so resonance strength/pending-switch state and partial alchemical charge progress are no longer flattened to neutral when ordering bounded search frontiers
 - crafting-context resolution now uses live `modAPI.gameData.itemTypeToHarmonyType` mapping as a fallback when recipe harmony fields are absent, and replay snapshots capture detection provenance plus raw craft-context fields for parity triage
 - condition-effect handling from recipe condition config
 - integration guard against stale recipe condition-effect cache across craft transitions

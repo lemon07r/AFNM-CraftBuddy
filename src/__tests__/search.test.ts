@@ -31,6 +31,7 @@ const {
   scoreFinishedOutcome,
   calculateFinishSuccessChance,
   evaluateCraftEndOutcomeDistribution,
+  evaluateHarmonySubsystemQuality,
   getProgressTowardRawGoal,
   getThresholdForGuaranteedBonusCount,
   SCORING,
@@ -3664,6 +3665,69 @@ describe('scoreState (isolated)', () => {
         (recommendation) => recommendation.skill.key === 'invasive_refine',
       ),
     );
+  });
+
+  it('values aligned resonance strength as productive harmony quality', () => {
+    const quality = evaluateHarmonySubsystemQuality(
+      {
+        resonance: {
+          resonance: 'refine',
+          strength: 5,
+          pendingCount: 0,
+        },
+        recommendedTechniqueTypes: ['refine'],
+      },
+      0.2,
+      0.8,
+    );
+
+    expect(quality).toBeGreaterThan(0.4);
+  });
+
+  it('values a pending resonance switch toward the needed type above staying on the wrong type', () => {
+    const stuckOnFusion = evaluateHarmonySubsystemQuality(
+      {
+        resonance: {
+          resonance: 'fusion',
+          strength: 3,
+          pendingCount: 0,
+        },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+      0.2,
+      0.8,
+    );
+    const pendingRefineSwitch = evaluateHarmonySubsystemQuality(
+      {
+        resonance: {
+          resonance: 'fusion',
+          strength: 3,
+          pendingResonance: 'refine',
+          pendingCount: 1,
+        },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+      0.2,
+      0.8,
+    );
+
+    expect(pendingRefineSwitch).toBeGreaterThan(stuckOnFusion);
+  });
+
+  it('values partial alchemical charge progress when the valid next charge matches missing work', () => {
+    const quality = evaluateHarmonySubsystemQuality(
+      {
+        alchemicalArts: {
+          charges: ['fusion', 'fusion'],
+          lastCombo: [],
+        },
+        recommendedTechniqueTypes: ['refine'],
+      },
+      0.15,
+      0.85,
+    );
+
+    expect(quality).toBeGreaterThan(0.4);
   });
 
   it('replays the user resonance snapshot and prefers refine over explosive fusion', () => {

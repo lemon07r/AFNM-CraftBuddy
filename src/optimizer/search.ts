@@ -34,7 +34,7 @@ import {
   DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   SEARCH_GOAL_PRIORITY_BIAS_MAX,
 } from '../utils/searchGoalPriority';
-import { getBonusAndChance } from './gameTypes';
+import { getBonusAndChance, TechniqueType } from './gameTypes';
 
 interface GainPreview {
   completion: number;
@@ -1334,6 +1334,82 @@ function getNormalizedCacheKey(
   return `${state.getCacheKey()}:${compKey}:${perfKey}:${remainingDepth}:${conditionType || 'n'}:${queueKey}`;
 }
 
+function getTechniqueNeedAlignment(
+  techniqueType: TechniqueType | undefined,
+  completionPriorityShare: number,
+  perfectionPriorityShare: number,
+): number {
+  switch (techniqueType) {
+    case 'fusion':
+      return completionPriorityShare * 2 - 1;
+    case 'refine':
+      return perfectionPriorityShare * 2 - 1;
+    default:
+      return 0;
+  }
+}
+
+function evaluateGenericHarmonyModifierQuality(
+  mods: ReturnType<typeof getHarmonyStatModifiers>,
+  completionPriorityShare: number,
+  perfectionPriorityShare: number,
+): number {
+  const clampQuality = (value: number): number =>
+    Math.max(-1, Math.min(1, value));
+  const normalizeMultiplierQuality = (multiplier: number): number => {
+    if (multiplier >= 1.5) return 1;
+    if (multiplier <= 0) return -1;
+    return (multiplier - 1) / 0.5;
+  };
+
+  let weightedTotal = 0;
+  let totalWeight = 0;
+  const addQuality = (quality: number, weight: number, active: boolean) => {
+    if (!active || !Number.isFinite(quality) || weight <= 0) {
+      return;
+    }
+    weightedTotal += quality * weight;
+    totalWeight += weight;
+  };
+
+  const progressQuality =
+    completionPriorityShare *
+      normalizeMultiplierQuality(mods.intensityMultiplier) +
+    perfectionPriorityShare *
+      normalizeMultiplierQuality(mods.controlMultiplier);
+  addQuality(
+    progressQuality,
+    1,
+    mods.intensityMultiplier !== 1 || mods.controlMultiplier !== 1,
+  );
+  addQuality(
+    clampQuality(mods.critChanceBonus / 25),
+    1,
+    mods.critChanceBonus !== 0,
+  );
+  addQuality(
+    clampQuality(mods.successChanceBonus / 0.25),
+    1,
+    mods.successChanceBonus !== 0,
+  );
+  addQuality(
+    clampQuality((100 - mods.poolCostPercentage) / 25),
+    1,
+    mods.poolCostPercentage !== 100,
+  );
+  addQuality(
+    clampQuality((100 - mods.stabilityCostPercentage) / 25),
+    1,
+    mods.stabilityCostPercentage !== 100,
+  );
+
+  if (totalWeight <= 0) {
+    return 0;
+  }
+
+  return clampQuality(weightedTotal / totalWeight);
+}
+
 /**
  * Evaluate the quality of the current harmony sub-system state.
  *
@@ -1343,9 +1419,10 @@ function getNormalizedCacheKey(
  *    0  = neutral (no harmony data, or modifiers are all 1×)
  *   -1  = terrible (e.g., forge heat 0: control is -9×)
  *
- * Uses the actual stat modifiers from `getHarmonyStatModifiers` so this
- * works for all harmony types (forge, alchemical, inscription, resonance)
- * without hardcoding sub-system-specific logic.
+ * Uses the actual stat modifiers plus subsystem-specific state that affects
+ * future move quality but is not visible in the immediate completion /
+ * perfection gains alone (for example resonance target alignment and partial
+ * alchemical charge progress).
  */
 function evaluateHarmonySubsystemQuality(
   harmonyData: NonNullable<CraftingState['harmonyData']>,
@@ -1384,22 +1461,69 @@ function evaluateHarmonySubsystemQuality(
     return clampQuality((mods.controlMultiplier - 1) * 5);
   }
 
-  // Alchemical / Resonance: use generic modifier averaging.
-  // These systems have more complex state but the modifier quality
-  // still captures whether the current state is productive.
-  const harmonyType = harmonyData.alchemicalArts
-    ? ('alchemical' as const)
-    : harmonyData.resonance
-      ? ('resonance' as const)
-      : undefined;
-  if (harmonyType) {
-    const mods = getHarmonyStatModifiers(harmonyData, harmonyType);
-    return clampQuality(
-      completionPriorityShare *
-        normalizeMultiplierQuality(mods.intensityMultiplier) +
-        perfectionPriorityShare *
-          normalizeMultiplierQuality(mods.controlMultiplier),
+  if (harmonyData.alchemicalArts) {
+    const mods = getHarmonyStatModifiers(harmonyData, 'alchemical');
+    const modifierQuality = evaluateGenericHarmonyModifierQuality(
+      mods,
+      completionPriorityShare,
+      perfectionPriorityShare,
     );
+    const charges = harmonyData.alchemicalArts.charges;
+    const recommended = harmonyData.recommendedTechniqueTypes ?? [];
+    if (charges.length === 0 || recommended.length === 0) {
+      return modifierQuality;
+    }
+
+    const setupProgress = Math.max(0, Math.min(1, charges.length / 2));
+    const bestRecommendedAlignment = Math.max(
+      ...recommended.map((type) =>
+        getTechniqueNeedAlignment(
+          type,
+          completionPriorityShare,
+          perfectionPriorityShare,
+        ),
+      ),
+    );
+    const setupQuality = clampQuality(setupProgress * bestRecommendedAlignment);
+
+    return modifierQuality === 0
+      ? setupQuality
+      : clampQuality((modifierQuality + setupQuality) / 2);
+  }
+
+  if (harmonyData.resonance) {
+    const mods = getHarmonyStatModifiers(harmonyData, 'resonance');
+    const modifierQuality = evaluateGenericHarmonyModifierQuality(
+      mods,
+      completionPriorityShare,
+      perfectionPriorityShare,
+    );
+    const resonanceState = harmonyData.resonance;
+    const currentAlignment = getTechniqueNeedAlignment(
+      resonanceState.resonance,
+      completionPriorityShare,
+      perfectionPriorityShare,
+    );
+    let quality =
+      resonanceState.resonance === undefined
+        ? modifierQuality
+        : clampQuality((modifierQuality + currentAlignment) / 2);
+
+    if (
+      resonanceState.pendingResonance &&
+      resonanceState.pendingCount > 0 &&
+      resonanceState.pendingResonance !== resonanceState.resonance
+    ) {
+      const pendingAlignment = getTechniqueNeedAlignment(
+        resonanceState.pendingResonance,
+        completionPriorityShare,
+        perfectionPriorityShare,
+      );
+      const discountedSwitchQuality = (currentAlignment + pendingAlignment) / 2;
+      quality = clampQuality((quality + discountedSwitchQuality) / 2);
+    }
+
+    return quality;
   }
 
   return 0;
@@ -4578,6 +4702,7 @@ export const __testing = {
   scoreFinishedOutcome,
   calculateFinishSuccessChance,
   evaluateCraftEndOutcomeDistribution,
+  evaluateHarmonySubsystemQuality,
   getProgressTowardRawGoal,
   getThresholdForGuaranteedBonusCount,
   buildScoringContext,
