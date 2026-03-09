@@ -76,6 +76,7 @@ import {
 import {
   hasCraftingActionCue,
   hasVisibleCraftingUiSignals,
+  isRenderableOnscreenElement,
 } from './craftingUiDetection';
 import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
 import {
@@ -531,16 +532,16 @@ function buildAutoCraftStateFingerprint(): string {
 }
 
 function buildAutoCraftSnapshot() {
+  const hasVisibleCraftingUi = detectVisibleCraftingUi();
   const craftActive =
     hasConfirmedCraftSession &&
     lastEntity !== null &&
     lastProgressState !== null &&
     wasCraftingActive &&
-    wasVisibleCraftingUiLastPoll;
+    hasVisibleCraftingUi;
 
   return {
-    craftSessionActive:
-      hasConfirmedCraftSession || isCraftStartPendingActive() || craftActive,
+    craftSessionActive: craftActive || isCraftStartPendingActive(),
     craftActive,
     isCalculating,
     result: currentRecommendation,
@@ -2665,7 +2666,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
   // Show the overlay only while the crafting UI is still on-screen (or while a
   // craft is still bootstrapping). This prevents cached Redux craft data from
   // leaving stale panels visible on library/result transitions.
-  const hasVisibleCraftingUi = wasVisibleCraftingUiLastPoll;
+  const hasVisibleCraftingUi = detectVisibleCraftingUi();
   const hasLiveCraftState =
     hasConfirmedCraftSession &&
     lastEntity !== null &&
@@ -2806,12 +2807,16 @@ function clearActiveCraftingRuntimeState(): void {
   lastEntity = null;
   lastProgressState = null;
   currentRecommendation = null;
+  currentConfig = null;
   currentCondition = undefined;
   nextConditions = [];
   isCalculating = false;
   clearCraftStartPending();
   currentStep = 0;
+  missingVisibleCraftingUiPolls = 0;
+  wasVisibleCraftingUiLastPoll = false;
   hasConfirmedCraftSession = false;
+  lastOptimizerReplaySnapshot = null;
   autoCraftController.reset();
   autoCraftUiState = autoCraftController.getUiState();
 }
@@ -2987,6 +2992,8 @@ function processCraftingStateFromStore(store: any): void {
         hasVisibleCraftingUi,
         hasConfirmedCraftSession,
         isCraftStartPending: isCraftStartPendingActive(),
+        missingVisibleCraftingUiPolls,
+        hiddenUiGracePolls: MISSING_VISIBLE_CRAFTING_UI_POLLS_BEFORE_END,
       })
     ) {
       return;
@@ -3073,14 +3080,29 @@ function isElementInCraftBuddyOverlay(element: Element | null): boolean {
 
 function isElementVisible(element: Element): boolean {
   const htmlElement = element as HTMLElement;
-  if (!htmlElement.isConnected) return false;
-
   const style = window.getComputedStyle(htmlElement);
-  if (style.display === 'none' || style.visibility === 'hidden') {
-    return false;
-  }
-
-  return htmlElement.getClientRects().length > 0;
+  return isRenderableOnscreenElement({
+    isConnected: htmlElement.isConnected,
+    isHidden: htmlElement.hidden || !!htmlElement.closest('[hidden]'),
+    isAriaHidden:
+      htmlElement.getAttribute('aria-hidden') === 'true' ||
+      !!htmlElement.closest('[aria-hidden="true"]'),
+    display: style.display,
+    visibility: style.visibility,
+    opacity: style.opacity,
+    clientRects: Array.from(htmlElement.getClientRects()).map((rect) => ({
+      top: rect.top,
+      left: rect.left,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    })),
+    viewportWidth:
+      window.innerWidth || document.documentElement.clientWidth || 0,
+    viewportHeight:
+      window.innerHeight || document.documentElement.clientHeight || 0,
+  });
 }
 
 function detectCraftResultUi(): boolean {
@@ -3205,12 +3227,11 @@ function detectVisibleCraftingUi(): boolean {
     }
   });
 
-  const hasProgressSignals = !!(
-    stabilityElement ||
-    completionElement ||
-    perfectionElement ||
-    poolElement
-  );
+  const visibleProgressSignalCount =
+    Number(!!stabilityElement) +
+    Number(!!completionElement) +
+    Number(!!perfectionElement) +
+    Number(!!poolElement);
   const domValues = parseCraftingValuesFromDOM();
   const hasDomProgressValues =
     !!domValues &&
@@ -3225,8 +3246,8 @@ function detectVisibleCraftingUi(): boolean {
   // craft. The visible-button fallback remains for icon-only technique rows.
   return hasVisibleCraftingUiSignals({
     hasNamedCraftingActionCue: hasCraftingButtons,
-    hasProgressSignals,
     hasDomProgressValues,
+    visibleProgressSignalCount,
     visibleButtonCount,
   });
 }
@@ -3390,37 +3411,19 @@ function pollCraftingState(): void {
   } = detectCraftingState();
   const enteredVisibleCraftingUi =
     hasVisibleCraftingUi && !wasVisibleCraftingUiLastPoll;
-  if (hasVisibleCraftingUi) {
-    hasConfirmedCraftSession = true;
-  }
 
   // Only consider crafting truly active if we have actual entity/progress data from Redux.
   // DOM-based detection alone is not reliable (can false-positive on result screens).
   const hasCraftingData = !!(entity && progress);
-
-  // Mid-craft save resume can briefly expose the crafting UI before Redux craft
-  // state is available to mods. Show a loading shell immediately so users don't
-  // stare at empty space while initialization catches up.
-  if (
-    hasVisibleCraftingUi &&
-    !hasCraftingData &&
-    currentSettings.panelVisible
-  ) {
-    overlayForcedByActiveCraft = true;
-    markCraftStartPending();
-    currentRecommendation = null;
-    if (!isOverlayVisible) {
-      showOverlay({ sync: true });
-    }
+  if (hasVisibleCraftingUi && hasCraftingData) {
+    hasConfirmedCraftSession = true;
   }
 
-  // If the crafting UI just reappeared (e.g., resume from mid-craft save),
-  // force a visible loading pass and clear any stale recommendation.
-  if (enteredVisibleCraftingUi && currentSettings.panelVisible) {
-    overlayForcedByActiveCraft = true;
-    markCraftStartPending();
-    currentRecommendation = null;
-    renderOverlay({ sync: true });
+  // The panel should not remain visible once crafting controls leave the
+  // screen, even if we retain a short internal grace window for hidden Redux
+  // state while transitions settle.
+  if (!hasVisibleCraftingUi && isOverlayVisible) {
+    hideOverlay();
   }
 
   if (hasCraftingData) {
@@ -4944,14 +4947,15 @@ function processCraftingState(craftingState: any): void {
       `[CraftBuddy] Redux update: Completion=${progress.completion}, Perfection=${progress.perfection}, Stability=${progress.stability}${needsInitialization ? ' (initial load)' : ''}`,
     );
 
-    // Ensure panel is visible when the user has it enabled and crafting UI is on-screen.
-    // Allow first-load initialization to show the loading state even if crafting
-    // controls are not yet visible in the DOM.
+    // Only bootstrap the loading shell from hidden Redux state when a craft
+    // start is already pending. This prevents stale persisted crafting slices
+    // from resurfacing the panel off-screen.
     const isCraftingUiVisible = detectVisibleCraftingUi();
     if (
       currentSettings.panelVisible &&
       !isOverlayVisible &&
-      (isCraftingUiVisible || needsInitialization)
+      (isCraftingUiVisible ||
+        (needsInitialization && isCraftStartPendingActive()))
     ) {
       overlayForcedByActiveCraft = true;
       markCraftStartPending();

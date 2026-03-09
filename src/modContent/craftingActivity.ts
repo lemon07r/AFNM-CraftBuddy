@@ -39,6 +39,8 @@ export interface ReduxCraftingStateAcceptanceParams {
   hasVisibleCraftingUi: boolean;
   hasConfirmedCraftSession: boolean;
   isCraftStartPending: boolean;
+  missingVisibleCraftingUiPolls: number;
+  hiddenUiGracePolls: number;
 }
 
 /**
@@ -50,14 +52,22 @@ export function shouldAcceptReduxCraftingState({
   hasVisibleCraftingUi,
   hasConfirmedCraftSession,
   isCraftStartPending,
+  missingVisibleCraftingUiPolls,
+  hiddenUiGracePolls,
 }: ReduxCraftingStateAcceptanceParams): boolean {
   if (!hasCraftingState) {
     return false;
   }
 
-  return (
-    hasVisibleCraftingUi || hasConfirmedCraftSession || isCraftStartPending
-  );
+  if (hasVisibleCraftingUi || isCraftStartPending) {
+    return true;
+  }
+
+  if (!hasConfirmedCraftSession) {
+    return false;
+  }
+
+  return missingVisibleCraftingUiPolls < hiddenUiGracePolls;
 }
 
 export interface RecipeDifficultyHookCraftStartParams {

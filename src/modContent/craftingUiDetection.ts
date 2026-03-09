@@ -7,9 +7,30 @@ export interface CraftingActionCueLike {
 
 export interface VisibleCraftingUiSignals {
   hasNamedCraftingActionCue: boolean;
-  hasProgressSignals: boolean;
   hasDomProgressValues: boolean;
+  visibleProgressSignalCount: number;
   visibleButtonCount: number;
+}
+
+export interface ElementVisibilityRectLike {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
+export interface ElementVisibilitySnapshot {
+  isConnected: boolean;
+  isHidden?: boolean;
+  isAriaHidden?: boolean;
+  display?: string;
+  visibility?: string;
+  opacity?: string | number;
+  clientRects: ElementVisibilityRectLike[];
+  viewportWidth?: number;
+  viewportHeight?: number;
 }
 
 const CRAFTING_ACTION_PATTERNS = [
@@ -46,11 +67,13 @@ export function hasCraftingActionCue({
 
 export function hasVisibleCraftingUiSignals({
   hasNamedCraftingActionCue,
-  hasProgressSignals,
   hasDomProgressValues,
+  visibleProgressSignalCount,
   visibleButtonCount,
 }: VisibleCraftingUiSignals): boolean {
-  const hasAnyProgressReadout = hasProgressSignals || hasDomProgressValues;
+  const hasVisibleProgressReadout = visibleProgressSignalCount >= 2;
+  const hasAnyProgressReadout =
+    hasVisibleProgressReadout || hasDomProgressValues;
   if (!hasAnyProgressReadout) {
     return false;
   }
@@ -62,5 +85,53 @@ export function hasVisibleCraftingUiSignals({
   // Generic button counts are only trustworthy when the progress readout is
   // visibly on-screen. Hidden/stale DOM text can linger through transitions
   // and should not keep the overlay alive after the craft has ended.
-  return hasProgressSignals && visibleButtonCount >= 3;
+  return hasVisibleProgressReadout && visibleButtonCount >= 3;
+}
+
+export function isRenderableOnscreenElement({
+  isConnected,
+  isHidden,
+  isAriaHidden,
+  display,
+  visibility,
+  opacity,
+  clientRects,
+  viewportWidth,
+  viewportHeight,
+}: ElementVisibilitySnapshot): boolean {
+  if (!isConnected || isHidden || isAriaHidden) {
+    return false;
+  }
+
+  if (display === 'none' || visibility === 'hidden' || visibility === 'collapse') {
+    return false;
+  }
+
+  const normalizedOpacity =
+    typeof opacity === 'number' ? opacity : Number.parseFloat(opacity || '1');
+  if (Number.isFinite(normalizedOpacity) && normalizedOpacity <= 0.01) {
+    return false;
+  }
+
+  const maxViewportWidth =
+    viewportWidth && viewportWidth > 0 ? viewportWidth : Number.POSITIVE_INFINITY;
+  const maxViewportHeight =
+    viewportHeight && viewportHeight > 0
+      ? viewportHeight
+      : Number.POSITIVE_INFINITY;
+
+  return clientRects.some((rect) => {
+    const width = Number(rect?.width ?? rect?.right - rect?.left);
+    const height = Number(rect?.height ?? rect?.bottom - rect?.top);
+    if (!(width > 0) || !(height > 0)) {
+      return false;
+    }
+
+    return (
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.top < maxViewportHeight &&
+      rect.left < maxViewportWidth
+    );
+  });
 }

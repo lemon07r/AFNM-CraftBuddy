@@ -1,6 +1,7 @@
 import {
   hasCraftingActionCue,
   hasVisibleCraftingUiSignals,
+  isRenderableOnscreenElement,
 } from '../modContent/craftingUiDetection';
 
 describe('crafting UI detection', () => {
@@ -38,8 +39,8 @@ describe('crafting UI detection', () => {
       expect(
         hasVisibleCraftingUiSignals({
           hasNamedCraftingActionCue: false,
-          hasProgressSignals: false,
           hasDomProgressValues: false,
+          visibleProgressSignalCount: 0,
           visibleButtonCount: 3,
         }),
       ).toBe(false);
@@ -49,8 +50,8 @@ describe('crafting UI detection', () => {
       expect(
         hasVisibleCraftingUiSignals({
           hasNamedCraftingActionCue: true,
-          hasProgressSignals: true,
           hasDomProgressValues: false,
+          visibleProgressSignalCount: 2,
           visibleButtonCount: 1,
         }),
       ).toBe(true);
@@ -60,7 +61,7 @@ describe('crafting UI detection', () => {
       expect(
         hasVisibleCraftingUiSignals({
           hasNamedCraftingActionCue: false,
-          hasProgressSignals: true,
+          visibleProgressSignalCount: 3,
           hasDomProgressValues: false,
           visibleButtonCount: 4,
         }),
@@ -71,11 +72,93 @@ describe('crafting UI detection', () => {
       expect(
         hasVisibleCraftingUiSignals({
           hasNamedCraftingActionCue: false,
-          hasProgressSignals: false,
           hasDomProgressValues: true,
+          visibleProgressSignalCount: 0,
           visibleButtonCount: 4,
         }),
       ).toBe(false);
+    });
+
+    it('rejects single-signal progress matches with generic button rows', () => {
+      expect(
+        hasVisibleCraftingUiSignals({
+          hasNamedCraftingActionCue: false,
+          hasDomProgressValues: false,
+          visibleProgressSignalCount: 1,
+          visibleButtonCount: 4,
+        }),
+      ).toBe(false);
+    });
+  });
+
+  describe('isRenderableOnscreenElement', () => {
+    it('rejects hidden and transparent elements', () => {
+      expect(
+        isRenderableOnscreenElement({
+          isConnected: true,
+          isHidden: true,
+          display: 'block',
+          visibility: 'visible',
+          opacity: '1',
+          clientRects: [
+            { top: 10, left: 10, right: 40, bottom: 40, width: 30, height: 30 },
+          ],
+          viewportWidth: 800,
+          viewportHeight: 600,
+        }),
+      ).toBe(false);
+      expect(
+        isRenderableOnscreenElement({
+          isConnected: true,
+          display: 'block',
+          visibility: 'visible',
+          opacity: '0',
+          clientRects: [
+            { top: 10, left: 10, right: 40, bottom: 40, width: 30, height: 30 },
+          ],
+          viewportWidth: 800,
+          viewportHeight: 600,
+        }),
+      ).toBe(false);
+    });
+
+    it('rejects fully offscreen boxes', () => {
+      expect(
+        isRenderableOnscreenElement({
+          isConnected: true,
+          display: 'block',
+          visibility: 'visible',
+          opacity: '1',
+          clientRects: [
+            {
+              top: 700,
+              left: 900,
+              right: 980,
+              bottom: 780,
+              width: 80,
+              height: 80,
+            },
+          ],
+          viewportWidth: 800,
+          viewportHeight: 600,
+        }),
+      ).toBe(false);
+    });
+
+    it('accepts onscreen rendered elements', () => {
+      expect(
+        isRenderableOnscreenElement({
+          isConnected: true,
+          display: 'block',
+          visibility: 'visible',
+          opacity: '1',
+          clientRects: [
+            { top: 10, left: 10, right: 40, bottom: 40, width: 30, height: 30 },
+          ],
+          viewportWidth: 800,
+          viewportHeight: 600,
+        }),
+      ).toBe(true);
     });
   });
 });

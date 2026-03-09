@@ -63,17 +63,21 @@ describe('crafting activity guards', () => {
           hasVisibleCraftingUi: false,
           hasConfirmedCraftSession: false,
           isCraftStartPending: false,
+          missingVisibleCraftingUiPolls: 0,
+          hiddenUiGracePolls: 3,
         }),
       ).toBe(false);
     });
 
-    it('accepts hidden Redux crafting state after an explicit craft-start signal', () => {
+    it('accepts hidden Redux crafting state while craft start is pending', () => {
       expect(
         shouldAcceptReduxCraftingState({
           hasCraftingState: true,
           hasVisibleCraftingUi: false,
-          hasConfirmedCraftSession: true,
+          hasConfirmedCraftSession: false,
           isCraftStartPending: true,
+          missingVisibleCraftingUiPolls: 0,
+          hiddenUiGracePolls: 3,
         }),
       ).toBe(true);
     });
@@ -85,8 +89,33 @@ describe('crafting activity guards', () => {
           hasVisibleCraftingUi: true,
           hasConfirmedCraftSession: false,
           isCraftStartPending: false,
+          missingVisibleCraftingUiPolls: 0,
+          hiddenUiGracePolls: 3,
         }),
       ).toBe(true);
+    });
+
+    it('allows hidden Redux crafting state only during the post-visibility grace window', () => {
+      expect(
+        shouldAcceptReduxCraftingState({
+          hasCraftingState: true,
+          hasVisibleCraftingUi: false,
+          hasConfirmedCraftSession: true,
+          isCraftStartPending: false,
+          missingVisibleCraftingUiPolls: 2,
+          hiddenUiGracePolls: 3,
+        }),
+      ).toBe(true);
+      expect(
+        shouldAcceptReduxCraftingState({
+          hasCraftingState: true,
+          hasVisibleCraftingUi: false,
+          hasConfirmedCraftSession: true,
+          isCraftStartPending: false,
+          missingVisibleCraftingUiPolls: 3,
+          hiddenUiGracePolls: 3,
+        }),
+      ).toBe(false);
     });
   });
 
