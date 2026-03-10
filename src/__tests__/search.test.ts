@@ -1522,6 +1522,86 @@ describe('craft-end ladder modeling', () => {
     expect(finishChance).toBeCloseTo(90 / 130, 5);
     expect(finishedScore).toBeGreaterThan(0);
   });
+
+  it('keeps a healthy live resonance frontier above a shallow partial finish', () => {
+    const scoringCtx = {
+      avgStabilityCostPerTurn: 13.5,
+      avgCompletionGainPerTurn: 2681.5,
+      avgPerfectionGainPerTurn: 3195,
+      avgGainPerTurn: 3250,
+      avgQiCostPerTurn: 3,
+    };
+    const liveState = new CraftingState({
+      qi: 275,
+      stability: 46,
+      initialMaxStability: 60,
+      stabilityPenalty: 2,
+      completion: 4378,
+      perfection: 115,
+      critChance: 11,
+      critMultiplier: 145,
+      successChanceBonus: 0,
+      maxToxicity: 190,
+      harmony: 3,
+      harmonyData: {
+        recommendedTechniqueTypes: ['fusion'],
+        resonance: {
+          resonance: 'fusion',
+          strength: 2,
+          pendingCount: 0,
+        },
+      },
+      step: 4,
+    });
+    const partialFinishState = new CraftingState({
+      qi: 335,
+      stability: 10,
+      initialMaxStability: 60,
+      stabilityPenalty: 3,
+      completion: 7339,
+      perfection: 0,
+      critChance: 11,
+      critMultiplier: 145,
+      successChanceBonus: 0,
+      maxToxicity: 190,
+      harmony: 0,
+      harmonyData: {
+        recommendedTechniqueTypes: ['fusion'],
+        resonance: {
+          resonance: 'fusion',
+          strength: 2,
+          pendingCount: 0,
+        },
+      },
+      step: 4,
+    });
+
+    const liveScore = scoreState(
+      liveState,
+      38980,
+      38980,
+      true,
+      2.3,
+      false,
+      89654,
+      89654,
+      scoringCtx,
+      75,
+    );
+    const finishedScore = scoreFinishedOutcome(
+      partialFinishState,
+      38980,
+      38980,
+      true,
+      2.3,
+      89654,
+      89654,
+      scoringCtx,
+      75,
+    );
+
+    expect(finishedScore).toBeLessThan(liveScore);
+  });
 });
 
 describe('findBestSkill', () => {

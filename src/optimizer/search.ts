@@ -261,9 +261,9 @@ const SCORING = {
   // optimizer but not so large it avoids finishing a nearly-met target.
   OVERSHOOT_PENALTY_WEIGHT: 0.3,
   // Finished-craft shortfall penalty: once the craft is ended, any remaining
-  // unmet work is permanent. Penalize unresolved completion/perfection so a
-  // live state with runway outranks an already-finished mediocre result.
-  FINISHED_UNMET_PENALTY_WEIGHT: 0.5,
+  // unmet work is permanent. Penalize unresolved completion/perfection at
+  // full weight so live states with runway outrank shallow partial finishes.
+  FINISHED_UNMET_PENALTY_WEIGHT: 1,
   // Hard-cap violation is 3× overshoot weight — strong deterrent against
   // exceeding the recipe's absolute maximum.
   HARD_CAP_PENALTY_WEIGHT: 3,
@@ -3343,8 +3343,11 @@ export function lookaheadSearch(
       return compareMoveCandidatesForTie(b, a, currentState);
     });
 
+    // Promote only previously accepted principal-variation moves. Using the
+    // live in-progress cache here can let a partially explored sibling branch
+    // steer beam truncation for the current frontier.
     const cachedBestMoveKey = getCachedBestMoveKey(
-      cache,
+      acceptedCache,
       currentState,
       currentConditionAtDepth,
       nextConditionQueueAtDepth,
@@ -3738,7 +3741,7 @@ export function lookaheadSearch(
       let chosenNextState: CraftingState | null = null;
 
       const cachedBestMove = getCachedBestMoveKey(
-        cache,
+        acceptedCache,
         currentState,
         conditionAtDepth,
         conditionQueueAtDepth,
@@ -3957,7 +3960,7 @@ export function lookaheadSearch(
     );
     const maxRemainingDepth = Math.max(0, depthToSearch - depthIndex);
     const cachedBestMove = getCachedBestMoveKey(
-      cache,
+      acceptedCache,
       stateAfterSkill,
       conditionAtDepth,
       nextConditionQueueAtDepth,
