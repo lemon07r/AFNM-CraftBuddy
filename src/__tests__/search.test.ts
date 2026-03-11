@@ -3923,6 +3923,109 @@ describe('scoreState (isolated)', () => {
     );
   });
 
+  it('replays the user runway snapshot and keeps pushing progress instead of finishing early', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-premature-finish-runway.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+    };
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      stableSearchConfig,
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const finishCraft = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === '__finish_craft__',
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe('__finish_craft__');
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.actionKind).not.toBe('finish');
+    expect(finishCraft).toBeDefined();
+    expect(
+      allRecommendations.findIndex(
+        (recommendation) => recommendation.skill.key === '__finish_craft__',
+      ),
+    ).toBeGreaterThan(0);
+  });
+
+  it('replays the user fairy recovery snapshot and ranks live continuation above Finish Craft', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-fairy-recovery.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+    };
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      stableSearchConfig,
+    );
+
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const finishCraft = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === '__finish_craft__',
+    );
+    const fairyRecovery = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === "fairy's_blessing",
+    );
+
+    expect(snapshot.output?.recommendation?.skill?.key).toBe('__finish_craft__');
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.actionKind).not.toBe('finish');
+    expect(
+      ['delayed_fusion', "fairy's_blessing", 'overbearing_stabilization'],
+    ).toContain(result.recommendation!.skill.key);
+    expect(finishCraft).toBeDefined();
+    expect(fairyRecovery).toBeDefined();
+    expect(
+      allRecommendations.findIndex(
+        (recommendation) => recommendation.skill.key === "fairy's_blessing",
+      ),
+    ).toBeLessThan(
+      allRecommendations.findIndex(
+        (recommendation) => recommendation.skill.key === '__finish_craft__',
+      ),
+    );
+  });
+
   it('replays the forge heat runway snapshot at heat two and prioritizes heat recovery over support setup', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'forge-heat-runway-step-2.snapshot.json',

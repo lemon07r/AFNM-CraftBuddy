@@ -12,6 +12,26 @@ const STATE_ADVANCE_TIMEOUT_MS = 4500;
 
 type AutoCraftExecutionKind = 'skill' | 'item' | 'finish';
 
+function resolveExecutionKind(
+  skill:
+    | {
+        actionKind?: string;
+        key?: string;
+        name?: string;
+      }
+    | undefined,
+): AutoCraftExecutionKind {
+  if (skill?.actionKind === 'item') return 'item';
+  if (
+    skill?.actionKind === 'finish' ||
+    skill?.key === '__finish_craft__' ||
+    skill?.name === 'Finish Craft'
+  ) {
+    return 'finish';
+  }
+  return 'skill';
+}
+
 export interface AutoCraftExecutionRequest {
   kind: AutoCraftExecutionKind;
   actionName: string;
@@ -150,8 +170,7 @@ function resolveActionPlan(
     };
   }
 
-  const actionKind = (recommendation.skill.actionKind ??
-    'skill') as AutoCraftExecutionKind;
+  const actionKind = resolveExecutionKind(recommendation.skill);
   if (!isPolicyAllowed(policy, actionKind)) {
     const policyLabel =
       actionKind === 'finish' ? 'finish crafts' : 'use item actions';

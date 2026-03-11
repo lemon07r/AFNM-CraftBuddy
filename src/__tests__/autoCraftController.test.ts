@@ -259,6 +259,37 @@ describe('autoCraftController', () => {
     expect(executed[0].kind).toBe('item');
   });
 
+  it('treats finish-like recommendations without actionKind as finish for policy checks', () => {
+    const controller = createHarness('techniquesOnly');
+
+    controller.arm();
+    controller.sync(
+      buildSnapshot({
+        result: {
+          recommendation: {
+            skill: {
+              name: 'Finish Craft',
+              key: '__finish_craft__',
+              type: 'support',
+            },
+            expectedGains: { completion: 0, perfection: 0, stability: 0 },
+            immediateGains: { completion: 0, perfection: 0, stability: 0 },
+            effectiveCosts: { qi: 0, stability: 0 },
+            score: 80,
+            reasoning: 'End the craft now.',
+          },
+          alternativeSkills: [],
+          isTerminal: false,
+          targetsMet: false,
+        } as any,
+      }),
+    );
+
+    expect(executed).toHaveLength(0);
+    expect(controller.getUiState().phase).toBe('unsupported');
+    expect(controller.getUiState().armed).toBe(false);
+  });
+
   it('resets to the off state when the craft session ends', () => {
     const controller = createHarness();
 

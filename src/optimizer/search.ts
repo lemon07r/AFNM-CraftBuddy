@@ -2367,6 +2367,16 @@ function computeScoreTieWindow(totalTargetMagnitude: number): number {
   return Math.max(1e-6, totalTargetMagnitude * SCORING.RESOURCE_TIEBREAKER * 2);
 }
 
+function shouldUnsafeYieldToSafeRecommendation(
+  unsafeRecommendation: SkillRecommendation,
+  safeRecommendation: SkillRecommendation,
+): boolean {
+  // Guaranteed-safe stabilize and other live continuations should still outrank
+  // low-floor lines, but do not let Finish Craft jump ahead of a materially
+  // better continuation solely because that continuation was marked unsafe.
+  return !isFinishAction(safeRecommendation.skill);
+}
+
 function rankRecommendations(
   scored: SkillRecommendation[],
   scoreTieWindow: number = 0,
@@ -2381,7 +2391,16 @@ function rankRecommendations(
     const aUnsafe = unsafeKeys.has(a.skill.key);
     const bUnsafe = unsafeKeys.has(b.skill.key);
     if (aUnsafe !== bUnsafe) {
-      return aUnsafe ? 1 : -1;
+      const unsafeRecommendation = aUnsafe ? a : b;
+      const safeRecommendation = aUnsafe ? b : a;
+      if (
+        shouldUnsafeYieldToSafeRecommendation(
+          unsafeRecommendation,
+          safeRecommendation,
+        )
+      ) {
+        return aUnsafe ? 1 : -1;
+      }
     }
 
     const scoreDiff = b.score - a.score;
@@ -3912,7 +3931,16 @@ export function lookaheadSearch(
     const aUnsafe = unsafeRootRecommendationKeys.has(a.skill.key);
     const bUnsafe = unsafeRootRecommendationKeys.has(b.skill.key);
     if (aUnsafe !== bUnsafe) {
-      return aUnsafe ? 1 : -1;
+      const unsafeRecommendation = aUnsafe ? a : b;
+      const safeRecommendation = aUnsafe ? b : a;
+      if (
+        shouldUnsafeYieldToSafeRecommendation(
+          unsafeRecommendation,
+          safeRecommendation,
+        )
+      ) {
+        return aUnsafe ? 1 : -1;
+      }
     }
 
     const scoreDiff = b.score - a.score;
