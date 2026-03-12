@@ -17,6 +17,10 @@ A mod for **Ascend From Nine Mountains** that calculates and displays the recomm
 
 ![CraftBuddy Workshop Preview](pictures/workshop_preview.png)
 
+Now the most popular mod on steam workshop.
+<img width="828" height="970" alt="image" src="https://github.com/user-attachments/assets/4a251ba0-5929-4641-8f09-a83cdadfc2fd" />
+
+
 ## Installation
 
 ### Steam Workshop (Recommended)
