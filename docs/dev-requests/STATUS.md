@@ -26,7 +26,7 @@ related_files:
 | Buff definitions/effects payloads | Available | Integrated into buff simulation |
 | Condition effect payloads | Available | Integrated into condition handling |
 | Condition transition (`getNextCondition`) | Available (`afnm-types@0.6.45`) | Primary wiring now uses `modAPI.utils.getNextCondition`; legacy fallback probing remains for older runtimes |
-| Technique upgrade helper | Investigating (`afnm-types@0.6.45`) | `modAPI.utils.craftingTechniqueFromKnown` is documented, but live-technique conversion still lacks a strict known-technique mapping |
+| Technique resolution via known-technique name matching | Available (`afnm-types@0.6.45`) | Primary wiring now matches live `CraftingTechnique.name` to `player.player.craftingTechniques[*].technique` and resolves via `modAPI.utils.craftingTechniqueFromKnown`, with live fallback for missing matches |
 | Stable completion-bonus identifier | Available (`afnm-types@0.6.45`) | Wired via `modAPI.utils.completionBonusBuffName` with heuristic fallback |
 
 ## Open questions (dependency-gated)
@@ -42,7 +42,7 @@ These unresolved questions block specific improvements:
 ## Developer follow-up packet
 
 1. Request timeline for finalized post-modifier cost preview helpers.
-2. Confirm whether a direct live-technique upgrade helper is planned beyond `craftingTechniqueFromKnown`.
+2. Request docs that `CraftingTechnique.name` is a stable, non-localized canonical key matching `KnownCraftingTechnique.technique` and `modAPI.gameData.craftingTechniques`.
 
 ## Update rule
 

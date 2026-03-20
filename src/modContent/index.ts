@@ -15,6 +15,7 @@ import {
   CraftingEntity,
   ProgressState,
   CraftingTechnique,
+  KnownCraftingTechnique,
   CraftingRecipeStats,
   CraftingCondition,
   RecipeConditionEffect,
@@ -22,6 +23,7 @@ import {
   CraftingPillItem,
   CraftingReagentItem,
   RecipeItem,
+  type RootState,
 } from 'afnm-types';
 import {
   CraftingState,
@@ -90,6 +92,10 @@ import {
   type OptimizerReplayTurnSnapshot,
 } from './replaySnapshot';
 import { resolveConditionEffectsData } from './conditionEffects';
+import {
+  buildKnownCraftingTechniqueNameMap,
+  resolveLiveCraftingTechnique,
+} from './techniqueResolution';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 
@@ -130,7 +136,10 @@ interface IntegrationDiagnostics {
   completionBonusMismatchCount: number;
   usingModApiCompletionBonusBuffName: boolean;
   usingModApiGetNextCondition: boolean;
-  usingModApiTechniqueUpgradeResolver: boolean;
+  usingModApiTechniqueFromKnown: boolean;
+  techniqueFromKnownMatchCount: number;
+  techniqueFromKnownFallbackCount: number;
+  techniqueFromKnownResolverFailureCount: number;
   usingModApiScalingEvaluator: boolean;
   usingModApiOvercritHelper: boolean;
   usingModApiCanUseActionPrecheck: boolean;
@@ -163,7 +172,10 @@ const integrationDiagnostics: IntegrationDiagnostics = {
   completionBonusMismatchCount: 0,
   usingModApiCompletionBonusBuffName: false,
   usingModApiGetNextCondition: false,
-  usingModApiTechniqueUpgradeResolver: false,
+  usingModApiTechniqueFromKnown: false,
+  techniqueFromKnownMatchCount: 0,
+  techniqueFromKnownFallbackCount: 0,
+  techniqueFromKnownResolverFailureCount: 0,
   usingModApiScalingEvaluator: false,
   usingModApiOvercritHelper: false,
   usingModApiCanUseActionPrecheck: false,
@@ -313,6 +325,8 @@ let lastEntity: CraftingEntity | null = null;
 let lastProgressState: ProgressState | null = null;
 let lastRecipe: RecipeItem | undefined = undefined;
 let lastRecipeStats: CraftingRecipeStats | undefined = undefined;
+let lastKnownCraftingTechniques: KnownCraftingTechnique[] | undefined =
+  undefined;
 
 // DOM overlay elements
 let overlayContainer: HTMLDivElement | null = null;
@@ -1256,16 +1270,16 @@ function getModApiCompletionBonusBuffKey(): string | undefined {
   return normalizeBuffKey(rawName);
 }
 
-function getModApiTechniqueUpgradeResolver():
-  | ((technique: CraftingTechnique) => CraftingTechnique)
+function getModApiTechniqueFromKnownResolver():
+  | ((known: KnownCraftingTechnique | undefined) => CraftingTechnique)
   | undefined {
-  const modApi = (window as any)?.modAPI;
-  return findFirstFunction(modApi, [
-    ['crafting', 'applyTechniqueUpgrades'],
-    ['crafting', 'applyUpgradesToTechnique'],
-    ['crafting', 'applyTechniqueMasteryUpgrades'],
-    ['applyTechniqueUpgrades'],
-  ]) as ((technique: CraftingTechnique) => CraftingTechnique) | undefined;
+  const resolver = window.modAPI?.utils?.craftingTechniqueFromKnown;
+  if (typeof resolver !== 'function') {
+    return undefined;
+  }
+  return resolver.bind(window.modAPI.utils) as (
+    known: KnownCraftingTechnique | undefined,
+  ) => CraftingTechnique;
 }
 
 function configureNativeOptimizerProviders(): void {
@@ -1576,6 +1590,8 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
   else fallbackActive.push('maxToxicity');
   if (d.usingModApiItemTypeHarmonyMapping) nativeActive.push('itemTypeHarmony');
   else fallbackActive.push('itemTypeHarmony');
+  if (d.usingModApiTechniqueFromKnown) nativeActive.push('techniqueResolution');
+  else fallbackActive.push('techniqueResolution');
 
   const canUseActionErrorRate =
     d.nativeCanUseActionCalls > 0
@@ -1600,6 +1616,12 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
       source: d.completionBonusSource,
       mismatches: d.completionBonusMismatchCount,
       identifier: d.usingModApiCompletionBonusBuffName ? 'modApi' : 'heuristic',
+    },
+    techniqueResolution: {
+      source: d.usingModApiTechniqueFromKnown ? 'modApiFromKnown' : 'liveOnly',
+      matched: d.techniqueFromKnownMatchCount,
+      fallbacks: d.techniqueFromKnownFallbackCount,
+      resolverFailures: d.techniqueFromKnownResolverFailureCount,
     },
     conditionQueue: {
       normalized: d.conditionQueueNormalizedCount,
@@ -1957,11 +1979,34 @@ function extractCompletionBonusStacks(
   return { stacks: 0, source: 'none', mismatch: false };
 }
 
+function getKnownCraftingTechniquesFromState(
+  state: RootState | any,
+): KnownCraftingTechnique[] | undefined {
+  const knownTechniques = state?.player?.player?.craftingTechniques;
+  return Array.isArray(knownTechniques)
+    ? (knownTechniques as KnownCraftingTechnique[])
+    : undefined;
+}
+
+function getCurrentKnownCraftingTechniques():
+  | KnownCraftingTechnique[]
+  | undefined {
+  const state = cachedStore?.getState?.();
+  const knownTechniques = getKnownCraftingTechniquesFromState(state);
+  if (knownTechniques) {
+    lastKnownCraftingTechniques = knownTechniques;
+    return knownTechniques;
+  }
+
+  return lastKnownCraftingTechniques;
+}
+
 /**
  * Convert game CraftingTechnique array to our skill definitions.
  */
 function convertGameTechniques(
   techniques: CraftingTechnique[] | undefined,
+  knownTechniques?: KnownCraftingTechnique[],
 ): SkillDefinition[] {
   if (!techniques || techniques.length === 0) {
     console.warn('[CraftBuddy] No techniques provided');
@@ -1986,24 +2031,38 @@ function convertGameTechniques(
   );
 
   const skills: SkillDefinition[] = [];
-  const modApiUpgradeResolver = getModApiTechniqueUpgradeResolver();
+  const modApiTechniqueFromKnown = getModApiTechniqueFromKnownResolver();
+  const knownTechniqueByName =
+    buildKnownCraftingTechniqueNameMap(knownTechniques);
 
   for (const tech of techniques) {
     if (!tech) continue;
 
     let sourceTech = tech;
-    let usedModApiUpgradeResolver = false;
-    if (modApiUpgradeResolver) {
+    let usedModApiTechniqueFromKnown = false;
+    if (modApiTechniqueFromKnown && knownTechniqueByName.size > 0) {
       try {
-        const upgradedTech = modApiUpgradeResolver(tech);
-        if (upgradedTech && upgradedTech !== tech) {
-          sourceTech = upgradedTech;
-          usedModApiUpgradeResolver = true;
-          integrationDiagnostics.usingModApiTechniqueUpgradeResolver = true;
+        const resolvedTechnique = resolveLiveCraftingTechnique({
+          liveTechnique: tech,
+          knownTechniqueByName,
+          resolveTechniqueFromKnown: modApiTechniqueFromKnown,
+        });
+        if (resolvedTechnique.source === 'known') {
+          sourceTech = resolvedTechnique.technique;
+          usedModApiTechniqueFromKnown = true;
+          integrationDiagnostics.usingModApiTechniqueFromKnown = true;
+          integrationDiagnostics.techniqueFromKnownMatchCount++;
+        } else {
+          integrationDiagnostics.techniqueFromKnownFallbackCount++;
+          debugLog(
+            `[CraftBuddy] No known-technique name match for live technique "${tech.name}", using live payload`,
+          );
         }
       } catch (error) {
+        integrationDiagnostics.techniqueFromKnownFallbackCount++;
+        integrationDiagnostics.techniqueFromKnownResolverFailureCount++;
         console.warn(
-          '[CraftBuddy] ModAPI technique upgrade resolver failed, using raw technique:',
+          '[CraftBuddy] ModAPI craftingTechniqueFromKnown resolver failed, using live technique:',
           error,
         );
       }
@@ -2039,8 +2098,9 @@ function convertGameTechniques(
       ) {
         return false;
       }
-      // If the game already returned an upgraded technique snapshot, avoid double-applying upgrades.
-      if (usedModApiUpgradeResolver && kind === 'upgrade') {
+      // If we resolved a mastery-applied technique from known-technique data,
+      // avoid double-applying upgrade masteries in simulation.
+      if (usedModApiTechniqueFromKnown && kind === 'upgrade') {
         return false;
       }
       return true;
@@ -2328,7 +2388,13 @@ function buildConfigFromEntity(
     updateProgressCapsFromModApi(recipe, recipeStats, entity.realm as string);
   }
 
-  const skills = [...convertGameTechniques(entity.techniques), ...extraSkills];
+  const skills = [
+    ...convertGameTechniques(
+      entity.techniques,
+      getCurrentKnownCraftingTechniques(),
+    ),
+    ...extraSkills,
+  ];
   const pillsPerRound = Math.max(
     1,
     parseGameNumber((stats as any)?.pillsPerRound, 1),
@@ -2933,6 +2999,7 @@ function clearActiveCraftingRuntimeState(): void {
   recommendationSearchEpoch++;
   lastEntity = null;
   lastProgressState = null;
+  lastKnownCraftingTechniques = undefined;
   currentRecommendation = null;
   currentConfig = null;
   currentCondition = undefined;

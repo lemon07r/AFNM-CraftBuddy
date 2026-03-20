@@ -72,9 +72,14 @@ CraftBuddy now uses native provider-backed paths for exposed APIs with guarded f
 - native completion/perfection cap getters in integration layer
 - native crafting-variable seeding via `getVariablesFromCraftingEntity`
 - native condition-transition provider via documented `modAPI.utils.getNextCondition`, with legacy fallback
+- native known-technique resolution via `modAPI.utils.craftingTechniqueFromKnown`, keyed by the live `CraftingTechnique.name` contract and preserving live cooldown state
 - native completion-bonus identifier via `modAPI.utils.completionBonusBuffName`, with heuristic fallback
 - native alchemy max-toxicity fallback via `getMaxToxicity`
 
 Still pending exposure:
 
 - finalized post-modifier pool/stability cost preview helpers
+
+Documentation follow-up:
+
+- publish the contract that live `CraftingTechnique.name` is a stable non-localized identifier matching `KnownCraftingTechnique.technique` and `modAPI.gameData.craftingTechniques`

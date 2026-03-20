@@ -37,6 +37,7 @@ related_files:
 - native crafting variable snapshot seeding (`getVariablesFromCraftingEntity`)
 - canonical native-variable storage that strips state/buff/harmony mirrors from persisted optimizer state and re-derives those aliases at native-availability evaluation time
 - native condition transition provider via documented `modAPI.utils.getNextCondition`, with legacy fallback probing
+- native mastery-applied technique resolution via `modAPI.utils.craftingTechniqueFromKnown`, keyed by stable live technique names and preserving live cooldown/session state with fallback
 - native completion-bonus identifier via `modAPI.utils.completionBonusBuffName`, with heuristic fallback
 - native max toxicity getter (`getMaxToxicity`) for alchemy crafts
 - internal effective action-cost modeling (buff/harmony/condition aware) used by recommendation and follow-up previews
