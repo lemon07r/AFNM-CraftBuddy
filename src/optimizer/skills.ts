@@ -713,11 +713,15 @@ function buildNativeAvailabilityVariables(
     perfection: state.perfection,
     completionpercentage: Math.max(
       0,
-      Math.floor((completionInfo.guaranteed + completionInfo.bonusChance) * 100),
+      Math.floor(
+        (completionInfo.guaranteed + completionInfo.bonusChance) * 100,
+      ),
     ),
     perfectionpercentage: Math.max(
       0,
-      Math.floor((perfectionInfo.guaranteed + perfectionInfo.bonusChance) * 100),
+      Math.floor(
+        (perfectionInfo.guaranteed + perfectionInfo.bonusChance) * 100,
+      ),
     ),
     stability: state.stability,
     maxstability: state.maxStability,
@@ -773,6 +777,7 @@ function propagateNativeVariablesAfterAction(
   state: CraftingState,
   nextState: {
     qi: number;
+    maxPool: number;
     completion: number;
     perfection: number;
     stability: number;
@@ -801,6 +806,7 @@ function propagateNativeVariablesAfterAction(
   );
 
   variables.pool = nextState.qi;
+  variables.maxpool = Math.max(1, nextState.maxPool);
   variables.completion = nextState.completion;
   variables.perfection = nextState.perfection;
   variables.stability = nextState.stability;
@@ -977,11 +983,11 @@ function applyBuffStatContributions(
     intensity *= state.intensityBuffMultiplier;
   }
 
-  let critchance = vars.critchance;
-  let critmultiplier = vars.critmultiplier;
-  let successChanceBonus = vars.successChanceBonus;
-  let poolCostPercentage = vars.poolCostPercentage;
-  let stabilityCostPercentage = vars.stabilityCostPercentage;
+  const adjustedVars: ScalingVariables = {
+    ...vars,
+    control,
+    intensity,
+  };
 
   activeBuffs.forEach((tracked, buffKey) => {
     const definition = tracked.definition;
@@ -1004,45 +1010,59 @@ function applyBuffStatContributions(
         0,
       );
       switch (statKey) {
-        case 'control':
-          control += raw;
-          break;
-        case 'intensity':
-          intensity += raw;
-          break;
-        case 'critchance':
-          critchance += raw;
-          break;
-        case 'critmultiplier':
-          critmultiplier += raw;
-          break;
-        case 'successChanceBonus':
-          successChanceBonus += raw;
-          break;
         case 'poolCostPercentage':
-          poolCostPercentage = Math.floor(
-            (poolCostPercentage / 100) * (raw / 100) * 100,
+          adjustedVars.poolCostPercentage = Math.floor(
+            (adjustedVars.poolCostPercentage / 100) * (raw / 100) * 100,
           );
           break;
         case 'stabilityCostPercentage':
-          stabilityCostPercentage = Math.floor(
-            (stabilityCostPercentage / 100) * (raw / 100) * 100,
+          adjustedVars.stabilityCostPercentage = Math.floor(
+            (adjustedVars.stabilityCostPercentage / 100) * (raw / 100) * 100,
           );
           break;
+        default: {
+          const currentValue = adjustedVars[statKey];
+          if (
+            typeof currentValue !== 'number' ||
+            !Number.isFinite(currentValue)
+          ) {
+            break;
+          }
+          adjustedVars[statKey] = currentValue + raw;
+          break;
+        }
       }
     }
   });
 
-  return {
-    ...vars,
-    control,
-    intensity,
-    critchance,
-    critmultiplier,
-    successChanceBonus,
-    poolCostPercentage,
-    stabilityCostPercentage,
-  };
+  return adjustedVars;
+}
+
+function getEffectiveMaxPool(
+  state: CraftingState,
+  config: OptimizerConfig,
+  activeBuffs: ActiveBuffMap = getResolvedActiveBuffs(state, config),
+): number {
+  const baseVars = buildTechniqueScalingVariables(
+    state,
+    config,
+    config.baseControl * (1 + state.completionBonus * 0.1),
+    config.baseIntensity,
+    state.critChance,
+    state.critMultiplier,
+    activeBuffs,
+  );
+  const buffedVars = applyBuffStatContributions(
+    state,
+    baseVars,
+    EMPTY_MASTERY_UPGRADES,
+    activeBuffs,
+  );
+
+  return Math.max(
+    1,
+    Number.isFinite(buffedVars.maxpool) ? buffedVars.maxpool : config.maxQi,
+  );
 }
 
 function applyConditionEffectsToVariables(
@@ -1352,7 +1372,7 @@ export function calculateEffectiveActionCosts(
       (tracked) =>
         Boolean(
           tracked.definition?.stats?.poolCostPercentage ||
-            tracked.definition?.stats?.stabilityCostPercentage,
+          tracked.definition?.stats?.stabilityCostPercentage,
         ),
     );
     const harmonyMods = getHarmonyStatModifiers(
@@ -1963,7 +1983,7 @@ export function calculateActionSurvivabilityFloor(
   let newStability = state.stability - effectiveCosts.stabilityCost;
 
   // Track deterministic qi/toxicity for runtime-shaped buff conditions.
-  const qiCap = Math.max(0, config.maxQi);
+  let qiCap = getEffectiveMaxPool(state, config, resolvedActiveBuffs);
   const clampQi = (value: number): number =>
     Math.max(0, Math.min(qiCap, value));
   let newQi = clampQi(state.qi - effectiveCosts.qiCost);
@@ -2279,36 +2299,36 @@ export function calculateActionSurvivabilityFloor(
             actionMasteryUpgrades,
             actionVars,
             0,
-        );
-        guaranteedTechniqueStabilityDelta += resolveGuaranteedContribution(
-          amount,
-          actionSuccessChance * conditionResult.probability,
-        );
-        queueSurvivalEvent(
-          actionSuccessChance * conditionResult.probability,
-          amount,
-          0,
-        );
-        break;
-      }
-      case 'maxStability': {
+          );
+          guaranteedTechniqueStabilityDelta += resolveGuaranteedContribution(
+            amount,
+            actionSuccessChance * conditionResult.probability,
+          );
+          queueSurvivalEvent(
+            actionSuccessChance * conditionResult.probability,
+            amount,
+            0,
+          );
+          break;
+        }
+        case 'maxStability': {
           const amount = evaluateScalingWithMasteryUpgrades(
             effect.amount,
             actionMasteryUpgrades,
             actionVars,
             0,
           );
-        guaranteedTechniqueMaxStabilityDelta += resolveGuaranteedContribution(
-          amount,
-          actionSuccessChance * conditionResult.probability,
-        );
-        queueSurvivalEvent(
-          actionSuccessChance * conditionResult.probability,
-          0,
-          amount,
-        );
-        break;
-      }
+          guaranteedTechniqueMaxStabilityDelta += resolveGuaranteedContribution(
+            amount,
+            actionSuccessChance * conditionResult.probability,
+          );
+          queueSurvivalEvent(
+            actionSuccessChance * conditionResult.probability,
+            0,
+            amount,
+          );
+          break;
+        }
         case 'pool': {
           const amount = evaluateScalingWithMasteryUpgrades(
             effect.amount,
@@ -2390,6 +2410,17 @@ export function calculateActionSurvivabilityFloor(
   let buffMaxStabilityDelta = 0;
   let buffPoolDelta = 0;
   let buffToxicityDelta = 0;
+  qiCap = getEffectiveMaxPool(
+    state.copy({
+      qi: newQi,
+      stability: newStability,
+      stabilityPenalty: newStabilityPenalty,
+      toxicity: newToxicity,
+      buffs: newBuffs,
+    }),
+    config,
+    newBuffs,
+  );
 
   const applyGuaranteedBuffEffect = (
     effect: BuffEffect,
@@ -2512,7 +2543,7 @@ export function calculateActionSurvivabilityFloor(
       const scalingVars: ScalingVariables = {
         ...actionVars,
         pool: newQi,
-        maxpool: config.maxQi,
+        maxpool: qiCap,
         toxicity: newToxicity,
         maxtoxicity: config.maxToxicity || 0,
         poolCostPercentage: state.poolCostPercentage,
@@ -2823,7 +2854,7 @@ export function applySkill(
   const isItemAction = skill.actionKind === 'item';
   const consumesTurn = skill.consumesTurn ?? !isItemAction;
   const nextStep = state.step + (consumesTurn ? 1 : 0);
-  const qiCap = Math.max(0, config.maxQi);
+  let qiCap = getEffectiveMaxPool(state, config, resolvedActiveBuffs);
   const clampQi = (value: number): number =>
     Math.max(0, Math.min(qiCap, value));
 
@@ -3001,6 +3032,17 @@ export function applySkill(
   let buffPoolDelta = 0;
   let buffToxicityDelta = 0;
   let buffMaxStabilityDelta = 0;
+  qiCap = getEffectiveMaxPool(
+    state.copy({
+      qi: newQi,
+      stability: newStability,
+      stabilityPenalty: newStabilityPenalty,
+      toxicity: newToxicity,
+      buffs: newBuffs,
+    }),
+    config,
+    newBuffs,
+  );
 
   const upsertBuffFromDefinition = (
     definition: BuffDefinition | undefined,
@@ -3263,7 +3305,7 @@ export function applySkill(
       const scalingVars: ScalingVariables = {
         ...actionVars,
         pool: newQi,
-        maxpool: config.maxQi,
+        maxpool: qiCap,
         toxicity: newToxicity,
         maxtoxicity: config.maxToxicity || 0,
         poolCostPercentage: state.poolCostPercentage,
@@ -3400,10 +3442,26 @@ export function applySkill(
   const nextConsumedPillsThisTurn = consumesTurn
     ? 0
     : state.consumedPillsThisTurn + (isItemAction ? 1 : 0);
+  const propagatedMaxPool = getEffectiveMaxPool(
+    state.copy({
+      qi: newQi,
+      stability: newStability,
+      stabilityPenalty: newStabilityPenalty,
+      completion: newCompletion,
+      perfection: newPerfection,
+      toxicity: newToxicity,
+      buffs: newBuffs,
+      harmonyData: newHarmonyData,
+      completionBonus: newCompletionBonus,
+    }),
+    config,
+    newBuffs,
+  );
   const propagatedNativeVariables = propagateNativeVariablesAfterAction(
     state,
     {
       qi: newQi,
+      maxPool: propagatedMaxPool,
       completion: newCompletion,
       perfection: newPerfection,
       stability: newStability,

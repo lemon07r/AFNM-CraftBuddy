@@ -1381,6 +1381,109 @@ describe('applySkill', () => {
     expect(newState!.qi).toBe(100);
   });
 
+  it('should scale max-pool-based qi restores using active maxpool buffs', () => {
+    const harmoniousExpansion = {
+      name: 'Harmonious Expansion',
+      canStack: true,
+      effects: [],
+      onFusion: [],
+      onRefine: [],
+      stacks: 1,
+      displayLocation: 'none',
+      stats: {
+        maxpool: { value: 0.05, stat: 'maxpool', scaling: 'stacks' },
+        poolCostPercentage: {
+          value: 1,
+          stat: undefined,
+          eqn: '100 - (stacks * 5)',
+        },
+      },
+    } as any;
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      buffs: new Map([
+        [
+          'harmonious_expansion',
+          {
+            name: 'harmonious_expansion',
+            stacks: 2,
+            definition: harmoniousExpansion,
+          },
+        ],
+      ]),
+    });
+    const skill = createTestSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      type: 'support',
+      scalesWithIntensity: false,
+      effects: [
+        {
+          kind: 'pool',
+          amount: { value: 0.13, stat: 'maxpool' },
+        } as any,
+      ],
+    });
+
+    const newState = applySkill(state, skill, createTestConfig({ maxQi: 200 }));
+
+    expect(newState).not.toBeNull();
+    expect(newState!.qi).toBe(128);
+  });
+
+  it('should clamp qi against buffed maxpool when maxpool buffs are active', () => {
+    const harmoniousExpansion = {
+      name: 'Harmonious Expansion',
+      canStack: true,
+      effects: [],
+      onFusion: [],
+      onRefine: [],
+      stacks: 1,
+      displayLocation: 'none',
+      stats: {
+        maxpool: { value: 0.05, stat: 'maxpool', scaling: 'stacks' },
+      },
+    } as any;
+    const state = new CraftingState({
+      qi: 190,
+      stability: 50,
+      initialMaxStability: 60,
+      buffs: new Map([
+        [
+          'harmonious_expansion',
+          {
+            name: 'harmonious_expansion',
+            stacks: 2,
+            definition: harmoniousExpansion,
+          },
+        ],
+      ]),
+    });
+    const skill = createTestSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      type: 'support',
+      scalesWithIntensity: false,
+      effects: [
+        {
+          kind: 'pool',
+          amount: { value: 50, stat: undefined },
+        } as any,
+      ],
+    });
+
+    const newState = applySkill(state, skill, createTestConfig({ maxQi: 200 }));
+
+    expect(newState).not.toBeNull();
+    expect(newState!.qi).toBe(220);
+  });
+
   it('should restore max stability to initial max when skill requests full restore', () => {
     // State with penalty (initialMaxStability: 60, penalty: 30 → initialMaxStability: 30)
     const state = new CraftingState({

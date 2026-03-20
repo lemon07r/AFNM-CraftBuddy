@@ -22,9 +22,9 @@ Generated on: 2026-03-20
 | dev-request | 2 |
 | project-meta | 1 |
 | history | 6 |
-| reference | 19 |
+| reference | 20 |
 | root-or-other | 2 |
-| total | 39 |
+| total | 40 |
 
 ## Authoritative Docs
 
@@ -68,6 +68,7 @@ _Reference files are summarized by subtree to keep this inventory compact._
 | Reference Group | File Count |
 |---|---|
 | `docs/reference/afnm-crafting-guide/action_synergies.md` | 1 |
+| `docs/reference/afnm-crafting-guide/advanced_sublime_builds.md` | 1 |
 | `docs/reference/afnm-crafting-guide/agent_considerations.md` | 1 |
 | `docs/reference/afnm-crafting-guide/harmonies.md` | 1 |
 | `docs/reference/afnm-crafting-guide/index.md` | 1 |

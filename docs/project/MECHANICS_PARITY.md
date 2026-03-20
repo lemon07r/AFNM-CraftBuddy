@@ -19,6 +19,7 @@ related_files:
 - crit expected-value handling with excess crit conversion
 - technique effect simulation in transition path
 - buff stat contributions and per-turn/action-specific buff effect execution
+- dynamic max-pool buff evaluation for `% maxpool` restores and qi-cap clamping (for example `Harmonious Expansion` interacting with `Focused Opposition` / `Brilliant Respite`)
 - active-buff definition hydration from skill payloads when runtime snapshots omit buff definitions
 - harmony subsystem simulation (forge/alchemical/inscription/resonance)
 - authoritative harmony-data hydration from `progressState.harmonyTypeData`, with forge-only fallback recovery from verified runtime mirrors (`Heat` native variables / heat buff stacks) when the live payload omits forge heat
@@ -52,6 +53,8 @@ related_files:
 - Spiritual Resonance double-switch target shifting: implemented and covered in `harmony.test.ts`
 - partial completion / chance-based finish: verified against the installed runtime; completion and perfection resolve as independent nonlinear craft-end ladder rolls rather than deterministic hard bars, and search now matches that distribution directly
 - toxicity detox per-turn handling: implemented in `skills.ts` and explicitly covered for multi-turn active-buff cleansing in `skills.test.ts`
+- cost-percentage buff stacking order: verified against the installed runtime; `poolCostPercentage` / `stabilityCostPercentage` buffs floor after each buff application, then action costs apply condition multipliers in the same order the optimizer now uses
+- static `poolcost` / `stabilitycost` / `successchance` masteries: verified against the installed runtime as technique-construction modifiers that are already baked into the live technique payload; current integration filtering avoids double counting, and no conditional variants were found in the installed `0.6.45-d06ab6d` bundle
 
 ## Dependency-gated
 
