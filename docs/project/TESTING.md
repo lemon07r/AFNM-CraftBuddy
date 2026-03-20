@@ -3,7 +3,7 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-08
+last_verified: 2026-03-20
 source_of_truth: src/__tests__/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
 review_cycle_days: 30
 related_files:
@@ -69,6 +69,8 @@ Exported optimizer snapshots are only useful for bug reproduction if they preser
 - craft-context provenance (`craftingTypeSource`, sublime-detection signals, raw recipe/recipeStats fields) when a bug may be caused by hydration/integration drift
 - replay parity: round-tripped snapshot input should be exercised through the canonical replay helpers in `src/modContent/replaySnapshot.ts` so tests share the same serializer/reviver contract as production
 - result snapshots should preserve `actionKind` and `projectedSuccessChance` for finish recommendations so bug reports stay explainable
+- snapshot bundles should keep the current turn and newest previous turns under the configured turn/byte caps, dropping the oldest turns first when trimming is required
+- auto-mode debug context in snapshot bundles should preserve the per-turn auto state summary so stalled/executed transitions can be reconstructed from bug reports
 - real-user regressions should prefer full exported snapshots checked into `src/__tests__/__fixtures__/replay-snapshots/`; use reduced hand-shaped fixtures only when the raw export is unavailable
 
 Because search is wall-clock-budgeted, CI/browser/live runs can reach different frontiers before cutoff. Real-user regressions should use exported snapshot fixtures or explicit constrained budgets instead of assuming one machine's timing behavior generalizes.

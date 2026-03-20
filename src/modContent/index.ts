@@ -79,12 +79,15 @@ import {
 } from './craftingUiDetection';
 import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
 import {
+  buildOptimizerReplaySnapshotWithHistory,
   buildConfigSnapshot,
   buildResultSnapshot,
   buildStateSnapshot,
   sanitizeForJson,
+  type OptimizerReplayAutoCraftSnapshot,
   type OptimizerReplayInputSnapshot,
   type OptimizerReplaySnapshot,
+  type OptimizerReplayTurnSnapshot,
 } from './replaySnapshot';
 import { resolveConditionEffectsData } from './conditionEffects';
 import { debugLog } from '../utils/debug';
@@ -125,6 +128,7 @@ interface IntegrationDiagnostics {
   conditionProviderFallbackCount: number;
   completionBonusSource: CompletionBonusSource;
   completionBonusMismatchCount: number;
+  usingModApiCompletionBonusBuffName: boolean;
   usingModApiGetNextCondition: boolean;
   usingModApiTechniqueUpgradeResolver: boolean;
   usingModApiScalingEvaluator: boolean;
@@ -157,6 +161,7 @@ const integrationDiagnostics: IntegrationDiagnostics = {
   conditionProviderFallbackCount: 0,
   completionBonusSource: 'none',
   completionBonusMismatchCount: 0,
+  usingModApiCompletionBonusBuffName: false,
   usingModApiGetNextCondition: false,
   usingModApiTechniqueUpgradeResolver: false,
   usingModApiScalingEvaluator: false,
@@ -623,6 +628,8 @@ function stopAutoCraft(reason?: string): void {
 
 // LocalStorage key for caching targets (used for mid-craft save loads)
 const TARGETS_CACHE_KEY = 'craftbuddy_targets_cache';
+const OPTIMIZER_REPLAY_MAX_TURNS = 8;
+const OPTIMIZER_REPLAY_MAX_BYTES = 750_000;
 
 interface CachedTargets {
   completion: number;
@@ -633,7 +640,75 @@ interface CachedTargets {
 }
 
 let lastOptimizerReplaySnapshot: OptimizerReplaySnapshot | null = null;
+let currentOptimizerReplayTurn: OptimizerReplayTurnSnapshot | null = null;
+let optimizerReplayHistoryTurns: OptimizerReplayTurnSnapshot[] = [];
+let optimizerReplayHistoryDroppedTurns = 0;
+let optimizerReplayTurnSequence = 0;
 let debugToastTimeout: number | null = null;
+
+function buildOptimizerReplayAutoCraftSnapshot(): OptimizerReplayAutoCraftSnapshot {
+  return {
+    policy: autoCraftUiState.policy,
+    armed: autoCraftUiState.armed,
+    phase: autoCraftUiState.phase,
+    tone: autoCraftUiState.tone,
+    statusTitle: autoCraftUiState.statusTitle,
+    statusDetail: autoCraftUiState.statusDetail,
+    lastActionName: autoCraftUiState.lastActionName ?? null,
+    canArm: autoCraftUiState.canArm,
+    canStop: autoCraftUiState.canStop,
+    isRunning: autoCraftUiState.isRunning,
+    stopRequested: autoCraftUiState.stopRequested,
+  };
+}
+
+function refreshOptimizerReplaySnapshot(): void {
+  if (!currentOptimizerReplayTurn) {
+    lastOptimizerReplaySnapshot = null;
+    return;
+  }
+
+  const { snapshot, previousTurns, droppedTurns } =
+    buildOptimizerReplaySnapshotWithHistory({
+      currentTurn: currentOptimizerReplayTurn,
+      previousTurns: optimizerReplayHistoryTurns,
+      maxTurns: OPTIMIZER_REPLAY_MAX_TURNS,
+      maxBytes: OPTIMIZER_REPLAY_MAX_BYTES,
+      droppedTurns: optimizerReplayHistoryDroppedTurns,
+    });
+
+  optimizerReplayHistoryTurns = previousTurns;
+  optimizerReplayHistoryDroppedTurns = droppedTurns;
+  lastOptimizerReplaySnapshot = snapshot;
+}
+
+function archiveCurrentOptimizerReplayTurn(reason?: string): void {
+  if (!currentOptimizerReplayTurn) {
+    return;
+  }
+
+  let archivedTurn = currentOptimizerReplayTurn;
+  if (!archivedTurn.completedAt) {
+    archivedTurn = {
+      ...archivedTurn,
+      error: archivedTurn.output
+        ? archivedTurn.error
+        : (archivedTurn.error ?? reason),
+      completedAt: new Date().toISOString(),
+    };
+  }
+
+  optimizerReplayHistoryTurns = [...optimizerReplayHistoryTurns, archivedTurn];
+  currentOptimizerReplayTurn = null;
+}
+
+function resetOptimizerReplaySnapshots(): void {
+  lastOptimizerReplaySnapshot = null;
+  currentOptimizerReplayTurn = null;
+  optimizerReplayHistoryTurns = [];
+  optimizerReplayHistoryDroppedTurns = 0;
+  optimizerReplayTurnSequence = 0;
+}
 
 function buildRawCraftContextSnapshot(
   recipe: RecipeItem | undefined,
@@ -1163,11 +1238,22 @@ function getModApiNextConditionResolver():
   | undefined {
   const modApi = (window as any)?.modAPI;
   return findFirstFunction(modApi, [
+    ['utils', 'getNextCondition'],
     ['store', 'turnHandling', 'getNextCondition'],
     ['Store', 'turnHandling', 'getNextCondition'],
     ['crafting', 'getNextCondition'],
     ['getNextCondition'],
   ]) as ((progress: any) => any) | undefined;
+}
+
+function getModApiCompletionBonusBuffKey(): string | undefined {
+  const rawName = window.modAPI?.utils?.completionBonusBuffName;
+  if (typeof rawName !== 'string' || rawName.trim().length === 0) {
+    return undefined;
+  }
+
+  integrationDiagnostics.usingModApiCompletionBonusBuffName = true;
+  return normalizeBuffKey(rawName);
 }
 
 function getModApiTechniqueUpgradeResolver():
@@ -1478,6 +1564,9 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
   else fallbackActive.push('canUseAction');
   if (d.usingModApiGetNextCondition) nativeActive.push('conditionTransition');
   else fallbackActive.push('conditionTransition');
+  if (d.usingModApiCompletionBonusBuffName)
+    nativeActive.push('completionBonusIdentifier');
+  else fallbackActive.push('completionBonusIdentifier');
   if (d.usingModApiCapGetters) nativeActive.push('capGetters');
   else fallbackActive.push('capGetters');
   if (d.usingModApiCraftingVariableResolver)
@@ -1510,6 +1599,7 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
     completionBonus: {
       source: d.completionBonusSource,
       mismatches: d.completionBonusMismatchCount,
+      identifier: d.usingModApiCompletionBonusBuffName ? 'modApi' : 'heuristic',
     },
     conditionQueue: {
       normalized: d.conditionQueueNormalizedCount,
@@ -1807,6 +1897,7 @@ function extractCompletionBonusStacks(
       : undefined;
 
   let stacksFromBuff: number | undefined = undefined;
+  const completionBonusBuffKey = getModApiCompletionBonusBuffKey();
   if (buffs) {
     for (const buff of buffs) {
       const stacks = Number((buff as any)?.stacks ?? 0);
@@ -1814,6 +1905,7 @@ function extractCompletionBonusStacks(
 
       const key = normalizeBuffKey(buff?.name);
       const isNamedCompletionBonus =
+        key === completionBonusBuffKey ||
         key === 'completion_bonus' ||
         (key.includes('completion') && key.includes('bonus'));
 
@@ -2532,6 +2624,7 @@ function updateRecommendation(
     return;
   }
 
+  archiveCurrentOptimizerReplayTurn('Search superseded before completion.');
   const searchEpoch = ++recommendationSearchEpoch;
   const replayInputSnapshot = buildOptimizerReplayInputSnapshot({
     state,
@@ -2546,13 +2639,28 @@ function updateRecommendation(
     targetPerfectionAtSearchStart,
     maxStabilityAtSearchStart,
   });
-  lastOptimizerReplaySnapshot = { input: replayInputSnapshot };
+  currentOptimizerReplayTurn = {
+    sequence: ++optimizerReplayTurnSequence,
+    step: state.step,
+    capturedAt: replayInputSnapshot.createdAt,
+    stateFingerprint: buildAutoCraftStateFingerprint(),
+    autoCraft: buildOptimizerReplayAutoCraftSnapshot(),
+    input: replayInputSnapshot,
+  };
+  refreshOptimizerReplaySnapshot();
 
   // Set calculating state and render the loading shell before search. If the
   // host ReactDOM exposes flushSync we use it, otherwise we still wait for a
   // real paint before starting synchronous search work.
   isCalculating = true;
   syncAutoCraftController();
+  if (currentOptimizerReplayTurn) {
+    currentOptimizerReplayTurn = {
+      ...currentOptimizerReplayTurn,
+      autoCraft: buildOptimizerReplayAutoCraftSnapshot(),
+    };
+  }
+  refreshOptimizerReplaySnapshot();
   renderOverlay({ sync: true });
 
   // Cross a paint boundary before the expensive synchronous search so the
@@ -2579,8 +2687,15 @@ function updateRecommendation(
       }
 
       currentRecommendation = recommendation;
-      lastOptimizerReplaySnapshot = {
-        input: replayInputSnapshot,
+      currentOptimizerReplayTurn = {
+        ...(currentOptimizerReplayTurn ?? {
+          sequence: optimizerReplayTurnSequence,
+          step: state.step,
+          capturedAt: replayInputSnapshot.createdAt,
+          stateFingerprint: buildAutoCraftStateFingerprint(),
+          autoCraft: buildOptimizerReplayAutoCraftSnapshot(),
+          input: replayInputSnapshot,
+        }),
         output: buildResultSnapshot(recommendation),
         completedAt: new Date().toISOString(),
       };
@@ -2605,8 +2720,15 @@ function updateRecommendation(
       console.error('[CraftBuddy] Failed to calculate recommendation:', e);
       const errorMessage =
         e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-      lastOptimizerReplaySnapshot = {
-        input: replayInputSnapshot,
+      currentOptimizerReplayTurn = {
+        ...(currentOptimizerReplayTurn ?? {
+          sequence: optimizerReplayTurnSequence,
+          step: state.step,
+          capturedAt: replayInputSnapshot.createdAt,
+          stateFingerprint: buildAutoCraftStateFingerprint(),
+          autoCraft: buildOptimizerReplayAutoCraftSnapshot(),
+          input: replayInputSnapshot,
+        }),
         error: errorMessage,
         completedAt: new Date().toISOString(),
       };
@@ -2625,6 +2747,13 @@ function updateRecommendation(
       snapshotSearchSettings();
       checkIntegrationHealth();
       syncAutoCraftController();
+      if (currentOptimizerReplayTurn) {
+        currentOptimizerReplayTurn = {
+          ...currentOptimizerReplayTurn,
+          autoCraft: buildOptimizerReplayAutoCraftSnapshot(),
+        };
+      }
+      refreshOptimizerReplaySnapshot();
 
       // Update the overlay with results
       renderOverlay();
@@ -2815,7 +2944,7 @@ function clearActiveCraftingRuntimeState(): void {
   missingVisibleCraftingUiPolls = 0;
   wasVisibleCraftingUiLastPoll = false;
   hasConfirmedCraftSession = false;
-  lastOptimizerReplaySnapshot = null;
+  resetOptimizerReplaySnapshots();
   autoCraftController.reset();
   autoCraftUiState = autoCraftController.getUiState();
 }
@@ -4402,7 +4531,7 @@ try {
     console.log('=== CRAFTBUDDY OPTIMIZER REPLAY SNAPSHOT ===');
     console.log(prepared.json);
     console.log('=== END OPTIMIZER REPLAY SNAPSHOT ===');
-    showDebugToast('Optimizer snapshot dumped to console.', 'info');
+    showDebugToast('Optimizer snapshot bundle dumped to console.', 'info');
     return prepared.data;
   },
 
@@ -4422,9 +4551,12 @@ try {
     const copied = await copyTextToClipboard(prepared.json);
     if (copied) {
       console.log(
-        '[CraftBuddy] Optimizer replay snapshot copied to clipboard.',
+        '[CraftBuddy] Optimizer replay snapshot bundle copied to clipboard.',
       );
-      showDebugToast('Optimizer snapshot copied to clipboard.', 'success');
+      showDebugToast(
+        'Optimizer snapshot bundle copied to clipboard.',
+        'success',
+      );
       return true;
     }
 
@@ -4453,14 +4585,16 @@ try {
     const downloaded = downloadTextFile(fileName, prepared.json);
     if (downloaded) {
       console.log(
-        `[CraftBuddy] Optimizer replay snapshot downloaded as ${fileName}`,
+        `[CraftBuddy] Optimizer replay snapshot bundle downloaded as ${fileName}`,
       );
-      showDebugToast(`Snapshot downloaded: ${fileName}`, 'success');
+      showDebugToast(`Snapshot bundle downloaded: ${fileName}`, 'success');
       return true;
     }
 
-    console.warn('[CraftBuddy] Failed to download optimizer replay snapshot.');
-    showDebugToast('Snapshot download failed.', 'error');
+    console.warn(
+      '[CraftBuddy] Failed to download optimizer replay snapshot bundle.',
+    );
+    showDebugToast('Snapshot bundle download failed.', 'error');
     return false;
   },
 
@@ -4480,9 +4614,12 @@ try {
     const copied = await copyTextToClipboard(prepared.json);
     if (copied) {
       console.log(
-        '[CraftBuddy] Optimizer replay snapshot copied to clipboard.',
+        '[CraftBuddy] Optimizer replay snapshot bundle copied to clipboard.',
       );
-      showDebugToast('Snapshot copied to clipboard (Ctrl+Shift+Y).', 'success');
+      showDebugToast(
+        'Snapshot bundle copied to clipboard (Ctrl+Shift+Y).',
+        'success',
+      );
       return { copied: true, downloaded: false };
     }
 
@@ -4491,10 +4628,10 @@ try {
     const downloaded = downloadTextFile(fileName, prepared.json);
     if (downloaded) {
       console.log(
-        `[CraftBuddy] Clipboard unavailable. Downloaded snapshot as ${fileName}`,
+        `[CraftBuddy] Clipboard unavailable. Downloaded snapshot bundle as ${fileName}`,
       );
       showDebugToast(
-        `Clipboard unavailable, downloaded ${fileName}.`,
+        `Clipboard unavailable, downloaded snapshot bundle ${fileName}.`,
         'info',
         3200,
       );

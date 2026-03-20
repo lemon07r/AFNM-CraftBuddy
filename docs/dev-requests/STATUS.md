@@ -3,7 +3,7 @@ title: API Request Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-06
+last_verified: 2026-03-20
 source_of_truth: docs/dev-requests/API_EXPOSURE_REQUESTS.md
 review_cycle_days: 14
 related_files:
@@ -17,17 +17,17 @@ related_files:
 
 | Request | Status | Notes |
 | --- | --- | --- |
-| Game-native scaling evaluator | Available (`afnm-types@0.6.38`) | Not wired into optimizer search; local evaluator remains authoritative because the live provider is not hypothetical-state-safe |
-| Game-native overcrit helper | Available (`afnm-types@0.6.38`) | Native provider wired with EV-preserving fallback |
-| Game-native action availability precheck | Available (`afnm-types@0.6.38`) | All-depth native precheck wired with local fallback on errors |
-| Completion/perfection cap getters | Available (`afnm-types@0.6.38`) | ModAPI cap getters wired in integration with heuristic fallback |
+| Game-native scaling evaluator | Available (`afnm-types@0.6.45`) | Not wired into optimizer search; local evaluator remains authoritative because the live provider is not hypothetical-state-safe |
+| Game-native overcrit helper | Available (`afnm-types@0.6.45`) | Native provider wired with EV-preserving fallback |
+| Game-native action availability precheck | Available (`afnm-types@0.6.45`) | All-depth native precheck wired with local fallback on errors |
+| Completion/perfection cap getters | Available (`afnm-types@0.6.45`) | ModAPI cap getters wired in integration with heuristic fallback |
 | Finalized post-modifier cost preview helpers | **Pending** | Internal runtime cost modeling + cost-order/parity checks active |
 | Harmony state/config data | Available | Integrated into optimizer simulation |
 | Buff definitions/effects payloads | Available | Integrated into buff simulation |
 | Condition effect payloads | Available | Integrated into condition handling |
-| Condition transition (`getNextCondition`) | Guarded Path Wired | Confirm documented stable symbol/path |
-| Technique upgrade helper | Announced | Wire to documented ModAPI symbol when published |
-| Stable completion-bonus identifier | Deferred (Low Risk) | Buff-first extraction now primary path |
+| Condition transition (`getNextCondition`) | Available (`afnm-types@0.6.45`) | Primary wiring now uses `modAPI.utils.getNextCondition`; legacy fallback probing remains for older runtimes |
+| Technique upgrade helper | Investigating (`afnm-types@0.6.45`) | `modAPI.utils.craftingTechniqueFromKnown` is documented, but live-technique conversion still lacks a strict known-technique mapping |
+| Stable completion-bonus identifier | Available (`afnm-types@0.6.45`) | Wired via `modAPI.utils.completionBonusBuffName` with heuristic fallback |
 
 ## Open questions (dependency-gated)
 
@@ -39,13 +39,10 @@ These unresolved questions block specific improvements:
 
 **Q3: Post-modifier cost preview helpers** — When will canonical post-modifier pool/stability cost preview helpers be exposed? Current: internal runtime cost modeling with parity checks. Unblock: API availability + integration cutover tests.
 
-**Q4: Completion-bonus identifier** — Is the completion-bonus buff key/name stable across versions/locales? Current: buff-first extraction with computed fallback. Low risk — no longer blocks parity.
-
 ## Developer follow-up packet
 
 1. Request timeline for finalized post-modifier cost preview helpers.
-2. Capture final ModAPI symbol/path and signatures for `getNextCondition`.
-3. Confirm whether a documented technique-upgrade helper symbol should replace path probing.
+2. Confirm whether a direct live-technique upgrade helper is planned beyond `craftingTechniqueFromKnown`.
 
 ## Update rule
 

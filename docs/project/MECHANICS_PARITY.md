@@ -3,7 +3,7 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-09
+last_verified: 2026-03-20
 source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/search.ts
 review_cycle_days: 14
 related_files:
@@ -36,17 +36,17 @@ related_files:
 - native max completion/perfection cap getters in integration layer, with fallback
 - native crafting variable snapshot seeding (`getVariablesFromCraftingEntity`)
 - canonical native-variable storage that strips state/buff/harmony mirrors from persisted optimizer state and re-derives those aliases at native-availability evaluation time
-- guarded native condition transition provider (`getNextCondition` path probing), with fallback
+- native condition transition provider via documented `modAPI.utils.getNextCondition`, with legacy fallback probing
+- native completion-bonus identifier via `modAPI.utils.completionBonusBuffName`, with heuristic fallback
 - native max toxicity getter (`getMaxToxicity`) for alchemy crafts
 - internal effective action-cost modeling (buff/harmony/condition aware) used by recommendation and follow-up previews
 - voluntary `Finish Craft` modeling as a search-local action, using the runtime `getBonusAndChance(...)` ladder for both completion and perfection craft-end rolls; finished scoring now evaluates fail/basic/perfect/sublime EV from that exact distribution, and the persisted completion/perfection goal-priority bias slider (`-100` perfection to `100` completion, `0` balanced default) feeds the same underlying scorer
-- optimizer replay snapshots now include serialized `harmonyData` plus a `harmonyDataSource` tag so bug reports can distinguish authoritative harmony state from verified fallbacks
+- optimizer replay snapshots now include serialized `harmonyData` plus a `harmonyDataSource` tag, and exported snapshot bundles retain the newest bounded turn history plus auto-mode state so bug reports can distinguish authoritative parity data from fallback/debug context
 - installed runtime extraction from the current game bundle is the tiebreaker when UI/help text or older notes drift from executable behavior; forge low-control penalties are verified against the live bundle at heat `2-3`, not `1-3`
 
 ## Community guide validation status
 
-- percentage-buff order-of-operations: implemented and explicitly covered in `gameAccuracy.test.ts`
-  runtime-shaped percent buffs (`stat: 'intensity'` / `stat: 'control'`) scale the pre-craft base stat and do not multiply flat in-craft reagent/pill-style bonuses
+- percentage-buff order-of-operations: implemented and explicitly covered in `gameAccuracy.test.ts` runtime-shaped percent buffs (`stat: 'intensity'` / `stat: 'control'`) scale the pre-craft base stat and do not multiply flat in-craft reagent/pill-style bonuses
 - Inscribed Patterns stack-halving penalty: implemented and covered in `harmony.test.ts`
 - Spiritual Resonance double-switch target shifting: implemented and covered in `harmony.test.ts`
 - partial completion / chance-based finish: verified against the installed runtime; completion and perfection resolve as independent nonlinear craft-end ladder rolls rather than deterministic hard bars, and search now matches that distribution directly
@@ -58,8 +58,7 @@ See `docs/dev-requests/STATUS.md` for full status and open questions on pending 
 
 ## Heuristic/fallback-sensitive areas
 
-- integration fallback extraction paths when full runtime state is missing
-  forge heat fallback is verified against runtime mirrors; non-forge harmony state is treated as missing instead of guessed when authoritative subtype data is absent
+- integration fallback extraction paths when full runtime state is missing forge heat fallback is verified against runtime mirrors; non-forge harmony state is treated as missing instead of guessed when authoritative subtype data is absent
 - condition fallback table in `gameTypes.ts` (used when real condition data is unavailable)
 - local expression compilation path (internal evaluator for optimizer simulation)
 - native scaling is intentionally disabled in optimizer simulation because the live provider can diverge from hypothetical future-state variables

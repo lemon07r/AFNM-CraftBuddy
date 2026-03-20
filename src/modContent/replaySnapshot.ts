@@ -55,18 +55,62 @@ export interface OptimizerReplayInputSnapshot {
   };
 }
 
-export interface OptimizerReplaySnapshot {
-  input: OptimizerReplayInputSnapshot;
-  output?: {
-    recommendation?: {
-      skill?: {
-        key?: string;
-        name?: string;
-        type?: string;
-      } | null;
+export interface OptimizerReplayAutoCraftSnapshot {
+  policy: string;
+  armed: boolean;
+  phase: string;
+  tone: string;
+  statusTitle: string;
+  statusDetail: string;
+  lastActionName?: string | null;
+  canArm: boolean;
+  canStop: boolean;
+  isRunning: boolean;
+  stopRequested: boolean;
+}
+
+export interface OptimizerReplayOutputSnapshot {
+  recommendation?: {
+    skill?: {
+      key?: string;
+      name?: string;
+      type?: string;
     } | null;
-    [key: string]: unknown;
+  } | null;
+  [key: string]: unknown;
+}
+
+export interface OptimizerReplayTurnSnapshot {
+  sequence: number;
+  step: number;
+  capturedAt: string;
+  stateFingerprint: string;
+  autoCraft: OptimizerReplayAutoCraftSnapshot;
+  input: OptimizerReplayInputSnapshot;
+  output?: OptimizerReplayOutputSnapshot;
+  error?: string;
+  completedAt?: string;
+}
+
+export interface OptimizerReplayRecentTurnsSnapshot {
+  maxTurns: number;
+  maxBytes: number;
+  visibleTurnCount: number;
+  droppedTurns: number;
+  previousTurns: OptimizerReplayTurnSnapshot[];
+}
+
+export interface OptimizerReplaySnapshot {
+  turn?: {
+    sequence: number;
+    step: number;
+    capturedAt: string;
+    stateFingerprint: string;
+    autoCraft: OptimizerReplayAutoCraftSnapshot;
   };
+  recentTurns?: OptimizerReplayRecentTurnsSnapshot;
+  input: OptimizerReplayInputSnapshot;
+  output?: OptimizerReplayOutputSnapshot;
   error?: string;
   completedAt?: string;
 }
@@ -312,7 +356,7 @@ function summarizeRecommendation(
 
 export function buildResultSnapshot(
   result: SearchResult,
-): Record<string, unknown> {
+): OptimizerReplayOutputSnapshot {
   return {
     isTerminal: result.isTerminal,
     targetsMet: result.targetsMet,
@@ -329,8 +373,7 @@ export function buildResultSnapshot(
         qualityRating: recommendation.qualityRating ?? null,
         expectedGains: recommendation.expectedGains,
         immediateGains: recommendation.immediateGains,
-        projectedSuccessChance:
-          recommendation.projectedSuccessChance ?? null,
+        projectedSuccessChance: recommendation.projectedSuccessChance ?? null,
         effectiveCosts: recommendation.effectiveCosts ?? null,
         followUpSkill: recommendation.followUpSkill ?? null,
         consumesBuff: recommendation.consumesBuff ?? false,
@@ -341,6 +384,102 @@ export function buildResultSnapshot(
     optimalRotation: result.optimalRotation ?? [],
     expectedFinalState: result.expectedFinalState ?? null,
     searchMetrics: result.searchMetrics ?? null,
+  };
+}
+
+function estimateSanitizedJsonSize(value: unknown): number {
+  try {
+    return JSON.stringify(sanitizeForJson(value)).length;
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+function createReplaySnapshotWithHistory(params: {
+  currentTurn: OptimizerReplayTurnSnapshot;
+  previousTurns: OptimizerReplayTurnSnapshot[];
+  maxTurns: number;
+  maxBytes: number;
+  droppedTurns: number;
+}): OptimizerReplaySnapshot {
+  const { currentTurn, previousTurns, maxTurns, maxBytes, droppedTurns } =
+    params;
+
+  return {
+    turn: {
+      sequence: currentTurn.sequence,
+      step: currentTurn.step,
+      capturedAt: currentTurn.capturedAt,
+      stateFingerprint: currentTurn.stateFingerprint,
+      autoCraft: currentTurn.autoCraft,
+    },
+    recentTurns: {
+      maxTurns,
+      maxBytes,
+      visibleTurnCount: previousTurns.length + 1,
+      droppedTurns,
+      previousTurns,
+    },
+    input: currentTurn.input,
+    output: currentTurn.output,
+    error: currentTurn.error,
+    completedAt: currentTurn.completedAt,
+  };
+}
+
+export function buildOptimizerReplaySnapshotWithHistory(params: {
+  currentTurn: OptimizerReplayTurnSnapshot;
+  previousTurns: OptimizerReplayTurnSnapshot[];
+  maxTurns: number;
+  maxBytes: number;
+  droppedTurns?: number;
+}): {
+  snapshot: OptimizerReplaySnapshot;
+  previousTurns: OptimizerReplayTurnSnapshot[];
+  droppedTurns: number;
+} {
+  const maxTurns = Math.max(1, Math.floor(params.maxTurns));
+  const maxBytes =
+    Number.isFinite(params.maxBytes) && params.maxBytes > 0
+      ? Math.floor(params.maxBytes)
+      : Number.MAX_SAFE_INTEGER;
+  let droppedTurns = Math.max(0, Math.floor(params.droppedTurns ?? 0));
+  let previousTurns = params.previousTurns.slice();
+  const allowedPreviousTurns = Math.max(0, maxTurns - 1);
+
+  if (previousTurns.length > allowedPreviousTurns) {
+    const removedTurns = previousTurns.length - allowedPreviousTurns;
+    previousTurns = previousTurns.slice(removedTurns);
+    droppedTurns += removedTurns;
+  }
+
+  let snapshot = createReplaySnapshotWithHistory({
+    currentTurn: params.currentTurn,
+    previousTurns,
+    maxTurns,
+    maxBytes,
+    droppedTurns,
+  });
+
+  while (
+    previousTurns.length > 0 &&
+    estimateSanitizedJsonSize(snapshot) > maxBytes
+  ) {
+    previousTurns = previousTurns.slice(1);
+    droppedTurns++;
+    snapshot = createReplaySnapshotWithHistory({
+      currentTurn: params.currentTurn,
+      previousTurns,
+      maxTurns,
+      maxBytes,
+      droppedTurns,
+    });
+  }
+
+  return {
+    snapshot,
+    previousTurns,
+    droppedTurns,
   };
 }
 

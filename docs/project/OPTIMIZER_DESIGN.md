@@ -3,7 +3,7 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-09
+last_verified: 2026-03-20
 source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/settings/index.ts
 review_cycle_days: 30
 related_files:
@@ -50,7 +50,7 @@ related_files:
 - Condition queue is normalized to fixed length `3` (matches game UI/runtime visibility).
 - Beyond forecast queue, condition transitions are probability-weighted (`enableConditionBranchingAfterForecast`, `conditionBranchLimit`, `conditionBranchMinProbability`).
 - Non-turn item actions do not consume lookahead turn-depth/index.
-- Guarded ModAPI transition provider wiring is active (`getNextCondition` path probing with local fallback).
+- Documented ModAPI transition provider wiring is active (`modAPI.utils.getNextCondition` primary with legacy fallback).
 
 ## Scoring architecture
 

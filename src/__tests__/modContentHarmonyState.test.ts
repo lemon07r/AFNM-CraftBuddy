@@ -15,12 +15,15 @@ import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
 import { setNativeCraftingUtils } from '../optimizer/gameTypes';
 import { hydrateHarmonyData } from '../modContent/harmonyState';
 import {
+  buildOptimizerReplaySnapshotWithHistory,
   buildConfigSnapshot,
   buildResultSnapshot,
   buildStateSnapshot,
   replayOptimizerSnapshot,
   reviveConfigSnapshot,
   reviveStateSnapshot,
+  type OptimizerReplayInputSnapshot,
+  type OptimizerReplayTurnSnapshot,
 } from '../modContent/replaySnapshot';
 import {
   getReplaySearchInput,
@@ -64,6 +67,118 @@ function createForgeConfig(
     isSublimeCraft: true,
     craftingType: 'forge',
     targetMultiplier: 2,
+    ...overrides,
+  };
+}
+
+function createReplayInputSnapshot(
+  overrides: Partial<OptimizerReplayInputSnapshot> = {},
+): OptimizerReplayInputSnapshot {
+  const {
+    targets,
+    caps,
+    conditions,
+    searchConfig,
+    settings,
+    state,
+    config,
+    context,
+    ...rest
+  } = overrides;
+
+  return {
+    createdAt: '2026-03-20T12:00:00.000Z',
+    searchEpoch: 1,
+    lookaheadDepth: 4,
+    targets: {
+      completion: 100,
+      perfection: 100,
+      stability: 60,
+      ...(targets ?? {}),
+    },
+    caps: {
+      maxCompletionCap: null,
+      maxPerfectionCap: null,
+      ...(caps ?? {}),
+    },
+    conditions: {
+      current: 'neutral',
+      forecast: ['neutral', 'neutral', 'neutral'],
+      normalizedForecast: ['neutral', 'neutral', 'neutral'],
+      ...(conditions ?? {}),
+    },
+    searchConfig: {
+      timeBudgetMs: 250,
+      maxNodes: 20_000,
+      beamWidth: 8,
+      goalPriorityBias: 0,
+      ...(searchConfig ?? {}),
+    },
+    settings: {
+      lookaheadDepth: 4,
+      searchTimeBudgetMs: 250,
+      searchMaxNodes: 20_000,
+      searchBeamWidth: 8,
+      searchGoalPriorityBias: 0,
+      compactMode: false,
+      panelVisible: true,
+      ...(settings ?? {}),
+    },
+    state: {
+      step: 0,
+      ...(state ?? {}),
+    },
+    config: {
+      skills: [],
+      ...(config ?? {}),
+    },
+    context: {
+      recipeName: 'Test Recipe',
+      craftingType: 'forge',
+      craftingTypeSource: 'test',
+      isSublimeCraft: false,
+      sublimeTargetMultiplier: 1,
+      sublimeDetectionSignals: [],
+      targetStabilityAtSearchStart: 60,
+      integration: {},
+      rawCraftContext: {},
+      ...(context ?? {}),
+    },
+    ...rest,
+  };
+}
+
+function createReplayTurnSnapshot(
+  sequence: number,
+  overrides: Partial<OptimizerReplayTurnSnapshot> = {},
+): OptimizerReplayTurnSnapshot {
+  const input =
+    overrides.input ??
+    createReplayInputSnapshot({
+      createdAt: `2026-03-20T12:00:0${sequence}.000Z`,
+      searchEpoch: sequence,
+      state: { step: sequence - 1 },
+    });
+
+  return {
+    sequence,
+    step: sequence - 1,
+    capturedAt: input.createdAt,
+    stateFingerprint: `fingerprint-${sequence}`,
+    autoCraft: {
+      policy: 'techniquesOnly',
+      armed: false,
+      phase: 'off',
+      tone: 'neutral',
+      statusTitle: 'Auto mode off',
+      statusDetail: 'Auto mode is idle.',
+      lastActionName: null,
+      canArm: true,
+      canStop: false,
+      isRunning: false,
+      stopRequested: false,
+    },
+    input,
     ...overrides,
   };
 }
@@ -466,6 +581,92 @@ describe('optimizer replay state snapshots', () => {
         projectedSuccessChance: 0.69,
       },
     });
+  });
+
+  it('keeps the current turn plus the newest bounded previous turns', () => {
+    const turn1 = createReplayTurnSnapshot(1, {
+      completedAt: '2026-03-20T12:00:01.000Z',
+    });
+    const turn2 = createReplayTurnSnapshot(2, {
+      completedAt: '2026-03-20T12:00:02.000Z',
+    });
+    const turn3 = createReplayTurnSnapshot(3, {
+      completedAt: '2026-03-20T12:00:03.000Z',
+    });
+    const currentTurn = createReplayTurnSnapshot(4, {
+      completedAt: '2026-03-20T12:00:04.000Z',
+      output: {
+        recommendation: {
+          skill: {
+            key: 'forceful_stabilize',
+            name: 'Forceful Stabilize',
+            type: 'support',
+          },
+        },
+      },
+    });
+
+    const { snapshot, previousTurns, droppedTurns } =
+      buildOptimizerReplaySnapshotWithHistory({
+        currentTurn,
+        previousTurns: [turn1, turn2, turn3],
+        maxTurns: 3,
+        maxBytes: 200_000,
+      });
+
+    expect(snapshot.turn).toMatchObject({
+      sequence: 4,
+      step: 3,
+      stateFingerprint: 'fingerprint-4',
+    });
+    expect(snapshot.recentTurns).toMatchObject({
+      maxTurns: 3,
+      visibleTurnCount: 3,
+      droppedTurns: 1,
+    });
+    expect(previousTurns.map((turn) => turn.sequence)).toEqual([2, 3]);
+    expect(
+      snapshot.recentTurns?.previousTurns.map((turn) => turn.sequence),
+    ).toEqual([2, 3]);
+    expect(droppedTurns).toBe(1);
+  });
+
+  it('drops the oldest previous turns when the bundle exceeds the byte cap', () => {
+    const oversizedNote = 'x'.repeat(12_000);
+    const turn1 = createReplayTurnSnapshot(1, {
+      completedAt: '2026-03-20T12:00:01.000Z',
+      output: { oversizedNote },
+    });
+    const turn2 = createReplayTurnSnapshot(2, {
+      completedAt: '2026-03-20T12:00:02.000Z',
+      output: { oversizedNote },
+    });
+    const currentTurn = createReplayTurnSnapshot(3, {
+      completedAt: '2026-03-20T12:00:03.000Z',
+      output: {
+        recommendation: {
+          skill: {
+            key: 'simple_fusion',
+            name: 'Simple Fusion',
+            type: 'fusion',
+          },
+        },
+      },
+    });
+
+    const { snapshot, previousTurns, droppedTurns } =
+      buildOptimizerReplaySnapshotWithHistory({
+        currentTurn,
+        previousTurns: [turn1, turn2],
+        maxTurns: 4,
+        maxBytes: 4_000,
+      });
+
+    expect(snapshot.turn?.sequence).toBe(3);
+    expect(previousTurns).toEqual([]);
+    expect(snapshot.recentTurns?.previousTurns).toEqual([]);
+    expect(snapshot.recentTurns?.visibleTurnCount).toBe(1);
+    expect(droppedTurns).toBe(2);
   });
 });
 

@@ -908,7 +908,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                   </Box>
                 )}
                 <Tooltip
-                  title="Export optimizer replay snapshot for bug reports (same as Ctrl+Shift+Y; copies to clipboard when available, otherwise downloads a .json file)"
+                  title="Export optimizer replay snapshot with recent turns for bug reports (same as Ctrl+Shift+Y; copies to clipboard when available, otherwise downloads a .json file)"
                   enterDelay={300}
                   placement="bottom-end"
                   arrow
@@ -1248,7 +1248,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                       mt: 0.2,
                     }}
                   >
-                    Ctrl+Shift+Y - Export snapshot (clipboard or download)
+                    Ctrl+Shift+Y - Export snapshot bundle
                   </Typography>
                 </SettingsGroup>
               </Box>
@@ -1272,7 +1272,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                 sx={{ color: colors.textMuted, minHeight: 14 }}
               >
                 {snapshotCopied
-                  ? 'Snapshot exported for bug reports.'
+                  ? 'Snapshot bundle exported for bug reports.'
                   : 'Press Esc to close settings.'}
               </Typography>
 
