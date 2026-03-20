@@ -32,7 +32,6 @@ import {
   OptimizerConfig,
   SkillDefinition,
   SkillMastery,
-  parseRecipeConditionEffects,
   getBonusAndChance,
   normalizeForecastConditionQueue,
   setConditionTransitionProvider,
@@ -87,6 +86,7 @@ import {
   type OptimizerReplayInputSnapshot,
   type OptimizerReplaySnapshot,
 } from './replaySnapshot';
+import { resolveConditionEffectsData } from './conditionEffects';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 
@@ -2250,15 +2250,13 @@ function buildConfigFromEntity(
     }
   }
 
-  // Parse real condition effects from cached recipe data.
-  // This passes the actual game multipliers directly to the optimizer,
-  // avoiding the fragile reverse-engineering of condition type names.
-  let conditionEffectsData: Record<string, any[]> | undefined;
-  if (conditionEffectsCache?.conditionEffects) {
-    conditionEffectsData = parseRecipeConditionEffects(
-      conditionEffectsCache.conditionEffects,
-    );
-  }
+  // Prefer recipeStats-bound condition effects for the active craft. The
+  // separate difficulty hook can lag behind Redux recipe updates, so the
+  // global cache is only a fallback.
+  const conditionEffectsData = resolveConditionEffectsData(
+    recipeStats,
+    conditionEffectsCache,
+  );
 
   debugLog(
     `[CraftBuddy] Config: control=${baseControl} (raw=${resolvedStats.rawControl}), intensity=${baseIntensity} (raw=${resolvedStats.rawIntensity}), realmModifier=${resolvedStats.realmModifier}, source=${resolvedStats.source}, maxQi=${maxQi}, sublime=${isSublimeCraft}, multiplier=${sublimeTargetMultiplier}, conditionData=${conditionEffectsData ? 'real' : 'none'}, compCap=${maxCompletionCap ?? 'n/a'}, perfCap=${maxPerfectionCap ?? 'n/a'}`,
@@ -2813,6 +2811,7 @@ function clearActiveCraftingRuntimeState(): void {
   isCalculating = false;
   clearCraftStartPending();
   currentStep = 0;
+  conditionEffectsCache = null;
   missingVisibleCraftingUiPolls = 0;
   wasVisibleCraftingUiLastPoll = false;
   hasConfirmedCraftSession = false;
