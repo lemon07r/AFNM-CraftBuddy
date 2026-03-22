@@ -34,7 +34,6 @@ export interface OverlayLayoutResult {
 export const OVERLAY_EDGE_MARGIN_PX = 10;
 export const OVERLAY_SAFE_GUTTER_PX = 28;
 export const OVERLAY_PANEL_MAX_WIDTH_PX = {
-  regular: 420,
   compact: 320,
 } as const;
 export const OVERLAY_PANEL_BLEED_PX = {
@@ -70,10 +69,8 @@ function normalizeRect(rect: OverlayRectLike): OverlayRectLike | null {
   };
 }
 
-export function getOverlayPanelMaxWidth(compact: boolean = false): number {
-  return compact
-    ? OVERLAY_PANEL_MAX_WIDTH_PX.compact
-    : OVERLAY_PANEL_MAX_WIDTH_PX.regular;
+export function getOverlayPanelMaxWidth(compact: boolean = false): number | null {
+  return compact ? OVERLAY_PANEL_MAX_WIDTH_PX.compact : null;
 }
 
 export function getOverlayPanelBleed(compact: boolean = false): number {
@@ -225,7 +222,8 @@ export function computeOverlayLayout({
   return {
     top: OVERLAY_EDGE_MARGIN_PX,
     right: OVERLAY_EDGE_MARGIN_PX,
-    width: Math.min(maxPanelWidth, safeWidth),
+    width:
+      maxPanelWidth === null ? safeWidth : Math.min(maxPanelWidth, safeWidth),
     maxHeight: Math.max(
       0,
       safeViewportHeight - OVERLAY_EDGE_MARGIN_PX * 2,

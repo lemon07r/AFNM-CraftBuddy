@@ -12,7 +12,7 @@ import {
 } from '../utils/overlayLayout';
 
 describe('overlayLayout', () => {
-  it('caps the panel at the design max when ample safe width exists', () => {
+  it('uses the full safe lane when ample regular-width space exists', () => {
     const layout = computeOverlayLayout({
       viewportWidth: 1440,
       viewportHeight: 900,
@@ -27,7 +27,10 @@ describe('overlayLayout', () => {
       compact: false,
     });
 
-    expect(layout.width).toBe(getOverlayPanelMaxWidth(false));
+    const expectedWidth =
+      1440 - (520 + OVERLAY_SAFE_GUTTER_PX) - OVERLAY_EDGE_MARGIN_PX - getOverlayPanelBleed(false);
+
+    expect(layout.width).toBe(expectedWidth);
     expect(layout.safeLaneLeft).toBe(520 + OVERLAY_SAFE_GUTTER_PX);
     expect(layout.maxHeight).toBe(900 - OVERLAY_EDGE_MARGIN_PX * 2);
   });

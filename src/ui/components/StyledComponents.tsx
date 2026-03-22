@@ -87,7 +87,7 @@ export const PanelContainer = memo(function PanelContainer({
         p: compact ? 1.5 : 2,
         width: '100%',
         minWidth: 0,
-        maxWidth: maxPanelWidthPx,
+        maxWidth: maxPanelWidthPx ?? 'none',
         boxSizing: 'border-box',
         backgroundImage: gradients.panelBackground,
         border: `1px solid ${getBorderColor()}`,
