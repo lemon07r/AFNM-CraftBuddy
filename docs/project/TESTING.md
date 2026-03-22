@@ -35,6 +35,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 | `skills.test.ts` | Transition logic, buffs, masteries, effects |
 | `gameAccuracy.test.ts` | Formula/mechanics parity |
 | `harmony.test.ts` | Harmony subsystem |
+| `overlayLayout.test.ts` | Safe-lane overlay sizing and occupied-rect geometry helpers |
 | `state.test.ts` | State invariants, cache key behavior |
 | `gameTypes.test.ts` | Expression evaluation, helper behavior |
 | `largeNumbers.test.ts` | Numeric safety |
@@ -100,6 +101,14 @@ For visual/UI changes, do not rely only on static code review. Use the committed
 4. capture `agent-browser snapshot -i` / `agent-browser screenshot`
 
 The harness renders a stable recommendation/settings fixture that is good enough for layout regressions like card overflow, tooltip placement, settings panel size, and open/close cover transitions.
+
+For HUD-overlap regressions, use the constrained scene:
+
+```bash
+agent-browser open "http://127.0.0.1:4173/?scene=gamehud&viewport=975x768"
+```
+
+That scene renders a mocked in-game HUD footprint plus an on-page `layout-metrics` readout so overlap fixes can be verified at the exact narrower viewport class that used to regress.
 
 When the change touches auto mode, capture at least:
 

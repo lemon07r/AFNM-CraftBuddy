@@ -9,6 +9,11 @@ import {
   type CraftBuddySettings,
 } from '../../src/settings';
 import { type AutoCraftUiState } from '../../src/settings/autoCraft';
+import {
+  computeOverlayLayout,
+  unionOverlayRects,
+  type OverlayRectLike,
+} from '../../src/utils/overlayLayout';
 
 resetSettings();
 
@@ -88,6 +93,94 @@ const fixtureResult = {
 const harnessParams = new URLSearchParams(window.location.search);
 const harnessState = harnessParams.get('state') || 'default';
 const harnessCompactMode = harnessParams.get('compact');
+const harnessScene = harnessParams.get('scene') || 'default';
+
+function parseHarnessViewport(
+  value: string | null,
+): { width: number; height: number } {
+  const match = value?.match(/^(\d{3,4})x(\d{3,4})$/i);
+  if (!match) {
+    return { width: 975, height: 768 };
+  }
+
+  return {
+    width: Number(match[1]),
+    height: Number(match[2]),
+  };
+}
+
+const harnessViewport = parseHarnessViewport(harnessParams.get('viewport'));
+
+function buildGameHudRects(viewport: {
+  width: number;
+  height: number;
+}): OverlayRectLike[] {
+  const topHudWidth = Math.min(340, Math.round(viewport.width * 0.35));
+  const midHudWidth = Math.min(300, Math.round(viewport.width * 0.28));
+  const bottomHudWidth = Math.min(520, Math.round(viewport.width * 0.51));
+
+  return [
+    {
+      top: 20,
+      left: 20,
+      right: 20 + topHudWidth,
+      bottom: 286,
+      width: topHudWidth,
+      height: 266,
+    },
+    {
+      top: 288,
+      left: 30,
+      right: 30 + midHudWidth,
+      bottom: 430,
+      width: midHudWidth,
+      height: 142,
+    },
+    {
+      top: viewport.height - 170,
+      left: 16,
+      right: 16 + bottomHudWidth,
+      bottom: viewport.height - 18,
+      width: bottomHudWidth,
+      height: 152,
+    },
+  ];
+}
+
+function FakeHudBlock({
+  left,
+  top,
+  width,
+  height,
+  children,
+}: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left,
+        top,
+        width,
+        height,
+        borderRadius: 18,
+        border: '1px solid rgba(235, 197, 129, 0.38)',
+        background:
+          'linear-gradient(180deg, rgba(17, 16, 23, 0.9), rgba(8, 8, 13, 0.88))',
+        boxShadow:
+          'inset 0 1px 0 rgba(255,255,255,0.05), 0 16px 30px rgba(0,0,0,0.24)',
+        overflow: 'hidden',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 function buildAutoModeFixture(state: string): AutoCraftUiState {
   switch (state) {
@@ -195,6 +288,238 @@ function Harness() {
     };
   });
 
+  const panel = (
+    <RecommendationPanel
+      result={
+        harnessState === 'loading' || harnessState === 'loading-auto'
+          ? null
+          : fixtureResult
+      }
+      currentCompletion={20}
+      currentPerfection={10}
+      targetCompletion={60}
+      targetPerfection={60}
+      maxCompletionCap={60}
+      maxPerfectionCap={60}
+      currentStability={30}
+      currentMaxStability={57}
+      targetStability={60}
+      currentCondition="neutral"
+      nextConditions={['positive', 'veryPositive', 'neutral']}
+      currentToxicity={0}
+      maxToxicity={100}
+      settings={settings}
+      onSettingsChange={setSettings}
+      onSearchSettingsChange={setSettings}
+      isCalculating={
+        harnessState === 'loading' || harnessState === 'loading-auto'
+      }
+      onRecommendationAction={() => {}}
+      autoMode={buildAutoModeFixture(harnessState)}
+      onAutoModeArm={() => {}}
+      onAutoModeStop={() => {}}
+      onAutoModePolicyChange={() => {}}
+      version="4.1.8"
+    />
+  );
+
+  if (harnessScene === 'gamehud') {
+    const occupiedRect = unionOverlayRects(buildGameHudRects(harnessViewport));
+    const layout = computeOverlayLayout({
+      viewportWidth: harnessViewport.width,
+      viewportHeight: harnessViewport.height,
+      occupiedRect,
+      compact: settings.compactMode,
+    });
+
+    return (
+      <CraftBuddyThemeProvider>
+        <div
+          style={{
+            minHeight: '100vh',
+            padding: '24px',
+            background:
+              'radial-gradient(circle at 20% 18%, rgba(233, 191, 117, 0.18), transparent 24%), linear-gradient(135deg, #221a18 0%, #3a2d22 35%, #121520 100%)',
+            boxSizing: 'border-box',
+            fontFamily: 'system-ui, sans-serif',
+          }}
+        >
+          <div
+            data-testid="gamehud-scene"
+            style={{
+              position: 'relative',
+              width: harnessViewport.width,
+              height: harnessViewport.height,
+              borderRadius: 24,
+              overflow: 'hidden',
+              border: '1px solid rgba(255, 223, 160, 0.18)',
+              background:
+                'radial-gradient(circle at 56% 35%, rgba(255, 223, 160, 0.3), transparent 18%), radial-gradient(circle at 70% 20%, rgba(150, 206, 255, 0.16), transparent 20%), linear-gradient(180deg, rgba(60, 44, 30, 0.92) 0%, rgba(28, 20, 18, 0.96) 100%)',
+              boxShadow: '0 20px 46px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            <FakeHudBlock left={20} top={20} width={340} height={266}>
+              <div
+                style={{
+                  padding: '18px 18px 14px',
+                  color: '#f3e9d7',
+                  fontSize: 18,
+                  fontWeight: 700,
+                }}
+              >
+                Craft Status
+              </div>
+              {['Completion', 'Perfection', 'Stability', 'Condition'].map(
+                (label, index) => (
+                  <div
+                    key={label}
+                    style={{
+                      padding: '0 18px',
+                      marginTop: index === 0 ? 0 : 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: '#f0dcc1',
+                        fontSize: 15,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {label}
+                    </div>
+                    <div
+                      style={{
+                        height: 14,
+                        borderRadius: 999,
+                        background: 'rgba(255,255,255,0.12)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: ['78%', '54%', '91%', '36%'][index],
+                          height: '100%',
+                          background:
+                            index === 2
+                              ? 'linear-gradient(90deg, #e9c23d, #ffe77a)'
+                              : 'linear-gradient(90deg, #8fd7ff, #d9f0ff)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                ),
+              )}
+            </FakeHudBlock>
+
+            <FakeHudBlock left={30} top={288} width={270} height={142}>
+              <div
+                style={{
+                  padding: '14px 16px 8px',
+                  color: '#f3e9d7',
+                  fontSize: 15,
+                  fontWeight: 700,
+                }}
+              >
+                Buffs and Forecast
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  padding: '0 16px',
+                }}
+              >
+                {['Heat', 'Tidal', 'Control', 'Good'].map((token) => (
+                  <div
+                    key={token}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      color: '#f7efe2',
+                      background: 'rgba(117, 170, 228, 0.18)',
+                      border: '1px solid rgba(117, 170, 228, 0.35)',
+                    }}
+                  >
+                    {token}
+                  </div>
+                ))}
+              </div>
+            </FakeHudBlock>
+
+            <FakeHudBlock
+              left={16}
+              top={harnessViewport.height - 170}
+              width={Math.min(520, Math.round(harnessViewport.width * 0.51))}
+              height={152}
+            >
+              <div
+                style={{
+                  padding: '14px 16px 10px',
+                  color: '#f3e9d7',
+                  fontSize: 15,
+                  fontWeight: 700,
+                }}
+              >
+                Techniques
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                  gap: 12,
+                  padding: '0 16px 16px',
+                }}
+              >
+                {new Array(8).fill(null).map((_, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      height: 38,
+                      borderRadius: 10,
+                      border: '1px solid rgba(245, 203, 125, 0.45)',
+                      background:
+                        'linear-gradient(180deg, rgba(255, 204, 92, 0.2), rgba(117, 74, 15, 0.22))',
+                    }}
+                  />
+                ))}
+              </div>
+            </FakeHudBlock>
+
+            <div
+              style={{
+                position: 'absolute',
+                top: layout.top,
+                right: layout.right,
+                width: layout.width,
+              }}
+            >
+              {panel}
+            </div>
+
+            <div
+              data-testid="layout-metrics"
+              style={{
+                position: 'absolute',
+                left: 24,
+                bottom: 18,
+                padding: '8px 12px',
+                borderRadius: 999,
+                fontSize: 12,
+                color: '#ead8b2',
+                background: 'rgba(8, 8, 12, 0.74)',
+                border: '1px solid rgba(255, 215, 0, 0.18)',
+              }}
+            >
+              {`scene ${harnessViewport.width}x${harnessViewport.height} | safe lane ${Math.round(layout.availableWidth)}px | panel ${Math.round(layout.width)}px`}
+            </div>
+          </div>
+        </div>
+      </CraftBuddyThemeProvider>
+    );
+  }
+
   return (
     <CraftBuddyThemeProvider>
       <div
@@ -208,40 +533,7 @@ function Harness() {
           fontFamily: 'system-ui, sans-serif',
         }}
       >
-        <div style={{ width: 560 }}>
-          <RecommendationPanel
-            result={
-              harnessState === 'loading' || harnessState === 'loading-auto'
-                ? null
-                : fixtureResult
-            }
-            currentCompletion={20}
-            currentPerfection={10}
-            targetCompletion={60}
-            targetPerfection={60}
-            maxCompletionCap={60}
-            maxPerfectionCap={60}
-            currentStability={30}
-            currentMaxStability={57}
-            targetStability={60}
-            currentCondition="neutral"
-            nextConditions={['positive', 'veryPositive', 'neutral']}
-            currentToxicity={0}
-            maxToxicity={100}
-            settings={settings}
-            onSettingsChange={setSettings}
-            onSearchSettingsChange={setSettings}
-            isCalculating={
-              harnessState === 'loading' || harnessState === 'loading-auto'
-            }
-            onRecommendationAction={() => {}}
-            autoMode={buildAutoModeFixture(harnessState)}
-            onAutoModeArm={() => {}}
-            onAutoModeStop={() => {}}
-            onAutoModePolicyChange={() => {}}
-            version="4.1.7"
-          />
-        </div>
+        <div style={{ width: 560 }}>{panel}</div>
       </div>
     </CraftBuddyThemeProvider>
   );

@@ -29,6 +29,7 @@ import {
   progressGlow,
   transitions,
 } from '../animations';
+import { getOverlayPanelMaxWidth } from '../../utils/overlayLayout';
 
 // ============================================================================
 // Panel Components
@@ -53,8 +54,7 @@ export const PanelContainer = memo(function PanelContainer({
   animate = true,
   allowOverflowVisible = false,
 }: PanelContainerProps) {
-  const widePanelWidthPx = compact ? 280 : 360;
-  const narrowPanelWidthPx = compact ? 272 : 348;
+  const maxPanelWidthPx = getOverlayPanelMaxWidth(compact);
 
   const getBorderColor = () => {
     switch (variant) {
@@ -83,13 +83,11 @@ export const PanelContainer = memo(function PanelContainer({
       elevation={0}
       sx={{
         position: 'relative',
-        display: 'inline-block',
+        display: 'block',
         p: compact ? 1.5 : 2,
-        // Keep the panel on its intended design width so dynamic content
-        // cannot widen the overlay into neighboring game HUD elements.
-        width: widePanelWidthPx,
+        width: '100%',
         minWidth: 0,
-        maxWidth: 'calc(100vw - 24px)',
+        maxWidth: maxPanelWidthPx,
         boxSizing: 'border-box',
         backgroundImage: gradients.panelBackground,
         border: `1px solid ${getBorderColor()}`,
@@ -97,9 +95,6 @@ export const PanelContainer = memo(function PanelContainer({
         boxShadow: shadows.panel,
         overflow: allowOverflowVisible ? 'visible' : 'hidden',
         animation: animate ? `${slideInRight} 0.3s ease-out` : 'none',
-        '@media (max-aspect-ratio: 16/9)': {
-          width: narrowPanelWidthPx,
-        },
         // Decorative corner accents
         '&::before': {
           content: '""',

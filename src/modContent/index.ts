@@ -99,6 +99,12 @@ import {
 import { getCraftBuddyHotkeyAction } from './hotkeys';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
+import {
+  computeOverlayLayout,
+  expandOverlayRect,
+  unionOverlayRects,
+  type OverlayRectLike,
+} from '../utils/overlayLayout';
 
 declare const MOD_METADATA: {
   name: string;
@@ -106,6 +112,16 @@ declare const MOD_METADATA: {
   author: { name: string } | string;
   description: string;
 };
+
+const OVERLAY_OCCUPIED_RECT_PADDING = {
+  top: 8,
+  right: 28,
+  bottom: 8,
+  left: 12,
+} as const;
+const MAX_HUD_RECT_PARENT_DEPTH = 4;
+const MAX_HUD_RECT_VIEWPORT_WIDTH_RATIO = 0.72;
+const MAX_HUD_RECT_VIEWPORT_HEIGHT_RATIO = 0.72;
 
 // Global state for the optimizer
 let currentRecommendation: SearchResult | null = null;
@@ -2840,7 +2856,14 @@ function createOverlayContainer(): void {
     position: 'fixed',
     top: '10px',
     right: '10px',
+    width: '0px',
+    maxHeight: 'calc(100vh - 20px)',
     zIndex: '10000',
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'flex-start',
+    boxSizing: 'border-box',
+    overflow: 'visible',
     pointerEvents: 'auto',
   });
 
@@ -2885,6 +2908,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
 
   overlayContainer!.style.display = 'block';
   isOverlayVisible = true;
+  applyOverlayContainerLayout();
 
   const handleSettingsChange = (newSettings: CraftBuddySettings) => {
     currentSettings = newSettings;
@@ -2892,12 +2916,14 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     if (!newSettings.panelVisible && autoCraftUiState.armed) {
       stopAutoCraft('Auto mode stopped because the panel was hidden.');
     }
+    applyOverlayContainerLayout();
     renderOverlay();
   };
 
   const handleSearchSettingsChange = (newSettings: CraftBuddySettings) => {
     // Update settings and re-render to reflect stale state
     currentSettings = newSettings;
+    applyOverlayContainerLayout();
     renderOverlay();
   };
 
@@ -3301,6 +3327,176 @@ function isElementVisible(element: Element): boolean {
   });
 }
 
+function getElementRectSnapshot(element: Element): OverlayRectLike | null {
+  const rect = element.getBoundingClientRect();
+  if (!(rect.width > 0) || !(rect.height > 0)) {
+    return null;
+  }
+
+  return {
+    top: rect.top,
+    left: rect.left,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function pickCraftingHudAnchorRect(
+  element: Element,
+  viewportWidth: number,
+  viewportHeight: number,
+): OverlayRectLike | null {
+  let current: Element | null = element;
+  let best: OverlayRectLike | null = null;
+  let bestArea = 0;
+
+  for (
+    let depth = 0;
+    current && depth < MAX_HUD_RECT_PARENT_DEPTH;
+    depth++, current = current.parentElement
+  ) {
+    if (isElementInCraftBuddyOverlay(current) || !isElementVisible(current)) {
+      continue;
+    }
+
+    const rect = getElementRectSnapshot(current);
+    if (!rect) {
+      continue;
+    }
+
+    if (
+      rect.width > viewportWidth * MAX_HUD_RECT_VIEWPORT_WIDTH_RATIO ||
+      rect.height > viewportHeight * MAX_HUD_RECT_VIEWPORT_HEIGHT_RATIO
+    ) {
+      continue;
+    }
+
+    const area = rect.width * rect.height;
+    if (area > bestArea) {
+      best = rect;
+      bestArea = area;
+    }
+  }
+
+  return best ?? getElementRectSnapshot(element);
+}
+
+function findVisibleCraftingProgressElement(
+  gameRoot: ParentNode,
+  selector: string,
+  fallbackPattern: RegExp,
+): Element | undefined {
+  return (
+    Array.from(gameRoot.querySelectorAll(selector)).find(
+      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
+    ) ||
+    Array.from(gameRoot.querySelectorAll('*')).find(
+      (el) =>
+        !isElementInCraftBuddyOverlay(el) &&
+        isElementVisible(el) &&
+        fallbackPattern.test(el.textContent || '') &&
+        el.children.length < 5,
+    )
+  );
+}
+
+function getVisibleCraftingUiOccupiedRect(): OverlayRectLike | null {
+  const gameRoot = getGameRootElement();
+  const viewportWidth =
+    window.innerWidth || document.documentElement.clientWidth || 0;
+  const viewportHeight =
+    window.innerHeight || document.documentElement.clientHeight || 0;
+  if (!(viewportWidth > 0) || !(viewportHeight > 0)) {
+    return null;
+  }
+
+  const candidateElements = new Set<Element>();
+  const addCandidate = (element?: Element | null) => {
+    if (element) {
+      candidateElements.add(element);
+    }
+  };
+
+  addCandidate(
+    findVisibleCraftingProgressElement(
+      gameRoot,
+      '[class*="stability"]',
+      /Stability:/i,
+    ),
+  );
+  addCandidate(
+    findVisibleCraftingProgressElement(
+      gameRoot,
+      '[class*="completion"]',
+      /Completion:/i,
+    ),
+  );
+  addCandidate(
+    findVisibleCraftingProgressElement(
+      gameRoot,
+      '[class*="perfection"]',
+      /Perfection:/i,
+    ),
+  );
+  addCandidate(
+    findVisibleCraftingProgressElement(
+      gameRoot,
+      '[class*="pool"], [class*="qi"]',
+      /(?:Qi|Pool):/i,
+    ),
+  );
+
+  Array.from(
+    gameRoot.querySelectorAll(
+      'button, [role="button"], [class*="buff"], [class*="condition"]',
+    ),
+  ).forEach((element) => {
+    if (isElementInCraftBuddyOverlay(element) || !isElementVisible(element)) {
+      return;
+    }
+    candidateElements.add(element);
+  });
+
+  return unionOverlayRects(
+    Array.from(candidateElements).map((element) => {
+      const rect = pickCraftingHudAnchorRect(
+        element,
+        viewportWidth,
+        viewportHeight,
+      );
+      return rect
+        ? expandOverlayRect(rect, OVERLAY_OCCUPIED_RECT_PADDING)
+        : null;
+    }),
+  );
+}
+
+function applyOverlayContainerLayout(): void {
+  if (!overlayContainer) {
+    return;
+  }
+
+  const viewportWidth =
+    window.innerWidth || document.documentElement.clientWidth || 0;
+  const viewportHeight =
+    window.innerHeight || document.documentElement.clientHeight || 0;
+  const layout = computeOverlayLayout({
+    viewportWidth,
+    viewportHeight,
+    occupiedRect: getVisibleCraftingUiOccupiedRect(),
+    compact: currentSettings.compactMode,
+  });
+
+  Object.assign(overlayContainer.style, {
+    top: `${layout.top}px`,
+    right: `${layout.right}px`,
+    width: `${Math.max(0, Math.round(layout.width))}px`,
+    maxHeight: `${Math.max(0, Math.round(layout.maxHeight))}px`,
+  });
+}
+
 function detectCraftResultUi(): boolean {
   const gameRoot = getGameRootElement() as HTMLElement;
   const visibleText = gameRoot.innerText?.toLowerCase() || '';
@@ -3338,53 +3534,26 @@ function detectCraftResultUi(): boolean {
 function detectVisibleCraftingUi(): boolean {
   const gameRoot = getGameRootElement();
 
-  const stabilityElement =
-    Array.from(gameRoot.querySelectorAll('[class*="stability"]')).find(
-      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
-    ) ||
-    Array.from(gameRoot.querySelectorAll('*')).find(
-      (el) =>
-        !isElementInCraftBuddyOverlay(el) &&
-        isElementVisible(el) &&
-        el.textContent?.includes('Stability:') &&
-        el.children.length < 5,
-    );
-
-  const completionElement =
-    Array.from(gameRoot.querySelectorAll('[class*="completion"]')).find(
-      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
-    ) ||
-    Array.from(gameRoot.querySelectorAll('*')).find(
-      (el) =>
-        !isElementInCraftBuddyOverlay(el) &&
-        isElementVisible(el) &&
-        el.textContent?.includes('Completion:') &&
-        el.children.length < 5,
-    );
-
-  const perfectionElement =
-    Array.from(gameRoot.querySelectorAll('[class*="perfection"]')).find(
-      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
-    ) ||
-    Array.from(gameRoot.querySelectorAll('*')).find(
-      (el) =>
-        !isElementInCraftBuddyOverlay(el) &&
-        isElementVisible(el) &&
-        el.textContent?.includes('Perfection:') &&
-        el.children.length < 5,
-    );
-
-  const poolElement =
-    Array.from(
-      gameRoot.querySelectorAll('[class*="pool"], [class*="qi"]'),
-    ).find((el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el)) ||
-    Array.from(gameRoot.querySelectorAll('*')).find(
-      (el) =>
-        !isElementInCraftBuddyOverlay(el) &&
-        isElementVisible(el) &&
-        /(?:Qi|Pool):/i.test(el.textContent || '') &&
-        el.children.length < 5,
-    );
+  const stabilityElement = findVisibleCraftingProgressElement(
+    gameRoot,
+    '[class*="stability"]',
+    /Stability:/i,
+  );
+  const completionElement = findVisibleCraftingProgressElement(
+    gameRoot,
+    '[class*="completion"]',
+    /Completion:/i,
+  );
+  const perfectionElement = findVisibleCraftingProgressElement(
+    gameRoot,
+    '[class*="perfection"]',
+    /Perfection:/i,
+  );
+  const poolElement = findVisibleCraftingProgressElement(
+    gameRoot,
+    '[class*="pool"], [class*="qi"]',
+    /(?:Qi|Pool):/i,
+  );
 
   const interactiveElements = gameRoot.querySelectorAll(
     'button, [role="button"]',
