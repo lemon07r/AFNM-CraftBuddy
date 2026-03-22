@@ -12,7 +12,7 @@ import {
 } from '../utils/overlayLayout';
 
 describe('overlayLayout', () => {
-  it('uses the full safe lane when ample regular-width space exists', () => {
+  it('caps regular mode at the design width when the safe lane is much wider', () => {
     const layout = computeOverlayLayout({
       viewportWidth: 1440,
       viewportHeight: 900,
@@ -27,15 +27,12 @@ describe('overlayLayout', () => {
       compact: false,
     });
 
-    const expectedWidth =
-      1440 - (520 + OVERLAY_SAFE_GUTTER_PX) - OVERLAY_EDGE_MARGIN_PX - getOverlayPanelBleed(false);
-
-    expect(layout.width).toBe(expectedWidth);
+    expect(layout.width).toBe(getOverlayPanelMaxWidth(false));
     expect(layout.safeLaneLeft).toBe(520 + OVERLAY_SAFE_GUTTER_PX);
     expect(layout.maxHeight).toBe(900 - OVERLAY_EDGE_MARGIN_PX * 2);
   });
 
-  it('uses the full safe lane on tighter viewports instead of forcing a narrow preset width', () => {
+  it('uses the full safe lane on tighter viewports instead of forcing the wide-screen cap', () => {
     const occupiedRect = {
       top: 20,
       left: 20,
@@ -60,6 +57,7 @@ describe('overlayLayout', () => {
 
     expect(layout.width).toBe(expectedWidth);
     expect(layout.width).toBeGreaterThan(360);
+    expect(layout.width).toBeLessThan(getOverlayPanelMaxWidth(false)!);
   });
 
   it('keeps compact mode on its smaller max width when there is extra room', () => {

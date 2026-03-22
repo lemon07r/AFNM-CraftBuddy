@@ -34,6 +34,10 @@ export interface OverlayLayoutResult {
 export const OVERLAY_EDGE_MARGIN_PX = 10;
 export const OVERLAY_SAFE_GUTTER_PX = 28;
 export const OVERLAY_PANEL_MAX_WIDTH_PX = {
+  // Regular mode should expand on narrow lanes, but once the lane is wider
+  // than the panel's content model can use well, stop growing instead of
+  // turning the overlay into a full-screen slab.
+  regular: 680,
   compact: 320,
 } as const;
 export const OVERLAY_PANEL_BLEED_PX = {
@@ -70,7 +74,9 @@ function normalizeRect(rect: OverlayRectLike): OverlayRectLike | null {
 }
 
 export function getOverlayPanelMaxWidth(compact: boolean = false): number | null {
-  return compact ? OVERLAY_PANEL_MAX_WIDTH_PX.compact : null;
+  return compact
+    ? OVERLAY_PANEL_MAX_WIDTH_PX.compact
+    : OVERLAY_PANEL_MAX_WIDTH_PX.regular;
 }
 
 export function getOverlayPanelBleed(compact: boolean = false): number {
