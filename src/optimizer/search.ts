@@ -74,6 +74,8 @@ export interface SkillRecommendation {
   };
   /** Success chance if this recommendation ends the craft immediately. */
   projectedSuccessChance?: number;
+  /** Whether executing this action would resolve the craft immediately. */
+  endsCraft?: boolean;
   /** Whether the line depends on probabilistic survival rather than a guaranteed floor. */
   requiresProbabilisticSurvival?: boolean;
 }
@@ -2615,6 +2617,7 @@ export function greedySearch(
       ),
       reasoning: generateFinishReasoning(projectedSuccessChance),
       projectedSuccessChance,
+      endsCraft: true,
       isTerminal: false,
       isTerminalUnmet: false,
       requiresProbabilisticSurvival: false,
@@ -2828,6 +2831,7 @@ export function greedySearch(
       effectiveCosts,
       score,
       reasoning,
+      endsCraft: terminalState.isTerminal,
       requiresProbabilisticSurvival,
       ...terminalState,
     });
@@ -4270,6 +4274,7 @@ export function lookaheadSearch(
         consumesBuff: skill.isDisciplinedTouch === true,
         followUpSkill: undefined,
         projectedSuccessChance: candidate.projectedSuccessChance,
+        endsCraft: isFinishAction(skill) || terminalState.isTerminal,
         requiresProbabilisticSurvival: candidate.requiresProbabilisticSurvival,
         ...terminalState,
       });

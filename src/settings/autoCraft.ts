@@ -21,7 +21,7 @@ export const AUTO_CRAFT_POLICY_OPTIONS: readonly AutoCraftPolicyOption[] = [
     label: 'Techniques Only',
     shortLabel: 'Skills',
     description:
-      'Only uses crafting techniques. Stops if the best move is Finish Craft or an item.',
+      'Only uses techniques that keep the craft open. Stops before any craft-ending action or item.',
   },
   {
     value: 'techniquesAndFinish',

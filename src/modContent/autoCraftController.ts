@@ -55,6 +55,19 @@ function hasGuaranteedFinishAvailable(result: SearchResult): boolean {
   });
 }
 
+function recommendationEndsCraft(
+  recommendation: SearchResult['recommendation'],
+): boolean {
+  if (!recommendation) {
+    return false;
+  }
+
+  return (
+    recommendation.endsCraft === true ||
+    resolveExecutionKind(recommendation.skill) === 'finish'
+  );
+}
+
 export interface AutoCraftExecutionRequest {
   kind: AutoCraftExecutionKind;
   actionName: string;
@@ -193,6 +206,20 @@ function resolveActionPlan(
     };
   }
 
+  const actionKind = resolveExecutionKind(recommendation.skill);
+  if (
+    !isPolicyAllowed(policy, 'finish') &&
+    recommendationEndsCraft(recommendation)
+  ) {
+    return {
+      kind: 'stop',
+      phase: 'unsupported',
+      tone: 'success',
+      title: 'Manual finish required',
+      detail: `The best move is ${recommendation.skill.name}, but it would end the craft, so auto mode stopped before resolving it.`,
+    };
+  }
+
   if (
     !isPolicyAllowed(policy, 'finish') &&
     hasGuaranteedFinishAvailable(snapshot.result)
@@ -207,7 +234,6 @@ function resolveActionPlan(
     };
   }
 
-  const actionKind = resolveExecutionKind(recommendation.skill);
   if (!isPolicyAllowed(policy, actionKind)) {
     const policyLabel =
       actionKind === 'finish' ? 'finish crafts' : 'use item actions';

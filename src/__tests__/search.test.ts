@@ -1379,6 +1379,7 @@ describe('finish craft policy', () => {
     expect(result.isTerminal).toBe(false);
     expect(result.recommendation?.skill.name).toBe('Finish Craft');
     expect(result.recommendation?.projectedSuccessChance).toBeCloseTo(0.6);
+    expect(result.recommendation?.endsCraft).toBe(true);
   });
 
   it('does not offer Finish Craft after the craft is already dead', () => {
@@ -1398,6 +1399,34 @@ describe('finish craft policy', () => {
 
     expect(result.isTerminal).toBe(true);
     expect(result.recommendation).toBeNull();
+  });
+
+  it('marks regular technique recommendations that would end the craft', () => {
+    const finalPolish = createCustomSkill({
+      name: 'Final Polish',
+      key: 'final_polish',
+      type: 'support',
+      qiCost: 0,
+      stabilityCost: 5,
+      baseCompletionGain: 60,
+      basePerfectionGain: 60,
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [finalPolish],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 5,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+    const result = lookaheadSearch(state, config, 50, 50, 3);
+
+    expect(result.recommendation?.skill.name).toBe('Final Polish');
+    expect(result.recommendation?.endsCraft).toBe(true);
   });
 
   it('can continue below the sublime target when one more refine secures a perfect finish', () => {

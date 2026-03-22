@@ -547,6 +547,7 @@ describe('optimizer replay state snapshots', () => {
         score: 128,
         reasoning: 'End the craft now for 69% success chance',
         projectedSuccessChance: 0.69,
+        endsCraft: true,
       },
       alternativeSkills: [],
       isTerminal: false,
@@ -576,6 +577,7 @@ describe('optimizer replay state snapshots', () => {
           actionKind: 'finish',
         },
         projectedSuccessChance: 0.69,
+        endsCraft: true,
       },
       expectedFinalState: {
         projectedSuccessChance: 0.69,

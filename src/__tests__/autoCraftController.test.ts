@@ -290,6 +290,40 @@ describe('autoCraftController', () => {
     expect(controller.getUiState().armed).toBe(false);
   });
 
+  it('stops techniques-only auto mode before a regular technique that would end the craft', () => {
+    const controller = createHarness('techniquesOnly');
+
+    controller.arm();
+    controller.sync(
+      buildSnapshot({
+        result: {
+          recommendation: {
+            skill: {
+              name: 'Wait',
+              key: 'wait',
+              type: 'support',
+              actionKind: 'skill',
+            },
+            expectedGains: { completion: 0, perfection: 0, stability: 0 },
+            immediateGains: { completion: 0, perfection: 0, stability: 0 },
+            effectiveCosts: { qi: 0, stability: 10 },
+            score: 80,
+            reasoning: 'Advance the craft to resolution.',
+            endsCraft: true,
+          },
+          alternativeSkills: [],
+          isTerminal: false,
+          targetsMet: false,
+        } as any,
+      }),
+    );
+
+    expect(executed).toHaveLength(0);
+    expect(controller.getUiState().phase).toBe('unsupported');
+    expect(controller.getUiState().armed).toBe(false);
+    expect(controller.getUiState().statusTitle).toBe('Manual finish required');
+  });
+
   it('stops techniques-only auto mode once a guaranteed finish is available even if the top line is still a skill', () => {
     const controller = createHarness('techniquesOnly');
 
