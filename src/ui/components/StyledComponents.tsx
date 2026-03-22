@@ -85,11 +85,10 @@ export const PanelContainer = memo(function PanelContainer({
         position: 'relative',
         display: 'inline-block',
         p: compact ? 1.5 : 2,
-        // Keep the overlay content-sized so it can stay compact on simpler
-        // states, while still guaranteeing enough room for the heading and
-        // paired recommendation cards.
-        width: 'auto',
-        minWidth: widePanelWidthPx,
+        // Keep the panel on its intended design width so dynamic content
+        // cannot widen the overlay into neighboring game HUD elements.
+        width: widePanelWidthPx,
+        minWidth: 0,
         maxWidth: 'calc(100vw - 24px)',
         boxSizing: 'border-box',
         backgroundImage: gradients.panelBackground,
@@ -99,7 +98,7 @@ export const PanelContainer = memo(function PanelContainer({
         overflow: allowOverflowVisible ? 'visible' : 'hidden',
         animation: animate ? `${slideInRight} 0.3s ease-out` : 'none',
         '@media (max-aspect-ratio: 16/9)': {
-          minWidth: narrowPanelWidthPx,
+          width: narrowPanelWidthPx,
         },
         // Decorative corner accents
         '&::before': {

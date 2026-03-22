@@ -1760,6 +1760,9 @@ function scoreState(
   const resourceEstimatedProgressPerTurn = baseTargetsMet
     ? estimatedProgressPerTurn
     : estimateWeightedProgressPerTurn(baseCompNeedShare, basePerfNeedShare, ctx);
+  const survivabilityTargetMagnitude = baseTargetsMet
+    ? totalTargetMagnitude
+    : baseTargetMagnitude;
 
   if (sublimeTargetsMet) {
     score += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
@@ -1879,10 +1882,9 @@ function scoreState(
   }
 
   // ── 6. survivability ────────────────────────────────────────────────
-  // When targets are already met, the craft is done — stability penalties
-  // should not apply because we don't need any more turns.  This prevents
-  // the optimizer from preferring Stabilize over an immediate finishing move.
-  if (!baseTargetsMet) {
+  // Once the active mode goals are met, the craft is done. Until then, low
+  // runway still matters, including sublime continuation after base success.
+  if (!modeTargetsMet) {
     // Stability threshold derived from actual avg stability cost per turn.
     // At full remaining work: threshold ≈ (base + scale) × avgCost turns of runway.
     // At zero remaining work: threshold ≈ base × avgCost.
@@ -1893,7 +1895,7 @@ function scoreState(
       ? SCORING.STABILITY_THRESHOLD_TURNS_SCALE_TRAINING
       : SCORING.STABILITY_THRESHOLD_TURNS_SCALE;
     const stabilityThreshold =
-      (thresholdBase + baseRemainingWorkPct * thresholdScale) *
+      (thresholdBase + resourceRemainingWorkPct * thresholdScale) *
       ctx.avgStabilityCostPerTurn;
 
     const penaltyFraction = trainingMode
@@ -1904,7 +1906,7 @@ function scoreState(
       : SCORING.STABILITY_PENALTY_FLOOR;
     const stabilityPenaltyWeight = Math.max(
       penaltyFloor,
-      baseTargetMagnitude * penaltyFraction,
+      survivabilityTargetMagnitude * penaltyFraction,
     );
 
     if (state.stability < stabilityThreshold) {
@@ -1929,12 +1931,12 @@ function scoreState(
       ctx.avgStabilityCostPerTurn > 0
         ? Math.floor(Math.max(0, state.stability) / ctx.avgStabilityCostPerTurn)
         : Infinity;
-    if (baseEstimatedTurnsRemaining > estimatedRunwayTurns) {
-      const gap = baseEstimatedTurnsRemaining - estimatedRunwayTurns;
+    if (resourceEstimatedTurnsRemaining > estimatedRunwayTurns) {
+      const gap = resourceEstimatedTurnsRemaining - estimatedRunwayTurns;
       const gapFraction = trainingMode
         ? SCORING.RUNWAY_GAP_FRACTION_TRAINING
         : SCORING.RUNWAY_GAP_FRACTION;
-      score -= gap * baseTargetMagnitude * gapFraction;
+      score -= gap * survivabilityTargetMagnitude * gapFraction;
     }
   }
 

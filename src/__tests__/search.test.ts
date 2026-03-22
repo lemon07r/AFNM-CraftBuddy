@@ -1429,6 +1429,61 @@ describe('finish craft policy', () => {
     expect(finishCraft).toBeDefined();
     expect(finishCraft!.projectedSuccessChance).toBe(1);
   });
+
+  it('stabilizes before chasing sublime progress when base success is already secured but runway is gone', () => {
+    const stabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize_sublime_runway',
+      type: 'stabilize',
+      qiCost: 0,
+      stabilityCost: 0,
+      stabilityGain: 20,
+      preventsMaxStabilityDecay: true,
+    });
+    const riskyFusion = createCustomSkill({
+      name: 'Risky Fusion',
+      key: 'risky_fusion_sublime_runway',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 20,
+    });
+    const riskyRefine = createCustomSkill({
+      name: 'Risky Refine',
+      key: 'risky_refine_sublime_runway',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 20,
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 1,
+      baseControl: 1,
+      skills: [stabilize, riskyFusion, riskyRefine],
+      isSublimeCraft: true,
+      targetMultiplier: 2,
+      maxCompletion: 200,
+      maxPerfection: 200,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 5,
+      initialMaxStability: 40,
+      completion: 100,
+      perfection: 100,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 4);
+    const finishCraft = result.alternativeSkills.find(
+      (recommendation) => recommendation.skill.actionKind === 'finish',
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.name).toBe('Forceful Stabilize');
+    expect(finishCraft).toBeDefined();
+    expect(finishCraft!.projectedSuccessChance).toBe(1);
+  });
 });
 
 describe('craft-end ladder modeling', () => {

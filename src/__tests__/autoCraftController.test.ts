@@ -290,6 +290,54 @@ describe('autoCraftController', () => {
     expect(controller.getUiState().armed).toBe(false);
   });
 
+  it('stops techniques-only auto mode once a guaranteed finish is available even if the top line is still a skill', () => {
+    const controller = createHarness('techniquesOnly');
+
+    controller.arm();
+    controller.sync(
+      buildSnapshot({
+        result: {
+          recommendation: {
+            skill: {
+              name: 'Simple Refine',
+              key: 'simple_refine',
+              type: 'refine',
+              actionKind: 'skill',
+            },
+            expectedGains: { completion: 0, perfection: 25, stability: 0 },
+            immediateGains: { completion: 0, perfection: 25, stability: 0 },
+            effectiveCosts: { qi: 0, stability: 10 },
+            score: 90,
+            reasoning: 'Push quality a bit higher first.',
+          },
+          alternativeSkills: [
+            {
+              skill: {
+                name: 'Finish Craft',
+                key: '__finish_craft__',
+                type: 'support',
+                actionKind: 'finish',
+              },
+              expectedGains: { completion: 0, perfection: 0, stability: 0 },
+              immediateGains: { completion: 0, perfection: 0, stability: 0 },
+              effectiveCosts: { qi: 0, stability: 0 },
+              score: 80,
+              projectedSuccessChance: 1,
+              reasoning: 'Guaranteed craft success available now.',
+            },
+          ],
+          isTerminal: false,
+          targetsMet: false,
+        } as any,
+      }),
+    );
+
+    expect(executed).toHaveLength(0);
+    expect(controller.getUiState().phase).toBe('unsupported');
+    expect(controller.getUiState().armed).toBe(false);
+    expect(controller.getUiState().statusTitle).toBe('Manual finish required');
+  });
+
   it('resets to the off state when the craft session ends', () => {
     const controller = createHarness();
 

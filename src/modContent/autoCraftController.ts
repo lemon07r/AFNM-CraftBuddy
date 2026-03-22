@@ -11,6 +11,7 @@ const READY_DELAY_MS = 90;
 const STATE_ADVANCE_TIMEOUT_MS = 4500;
 
 type AutoCraftExecutionKind = 'skill' | 'item' | 'finish';
+const GUARANTEED_FINISH_EPSILON = 1e-9;
 
 function resolveExecutionKind(
   skill:
@@ -30,6 +31,28 @@ function resolveExecutionKind(
     return 'finish';
   }
   return 'skill';
+}
+
+function hasGuaranteedFinishAvailable(result: SearchResult): boolean {
+  const candidates = [
+    result.recommendation,
+    ...result.alternativeSkills,
+  ].filter(
+    (
+      candidate,
+    ): candidate is NonNullable<SearchResult['recommendation']> =>
+      candidate !== null,
+  );
+
+  return candidates.some((candidate) => {
+    if (resolveExecutionKind(candidate.skill) !== 'finish') {
+      return false;
+    }
+    return (
+      (candidate.projectedSuccessChance ?? 0) >=
+      1 - GUARANTEED_FINISH_EPSILON
+    );
+  });
 }
 
 export interface AutoCraftExecutionRequest {
@@ -167,6 +190,20 @@ function resolveActionPlan(
       title: 'Waiting for recommendation',
       detail:
         'Auto mode is armed and waiting for a fresh recommendation before acting.',
+    };
+  }
+
+  if (
+    !isPolicyAllowed(policy, 'finish') &&
+    hasGuaranteedFinishAvailable(snapshot.result)
+  ) {
+    return {
+      kind: 'stop',
+      phase: 'unsupported',
+      tone: 'success',
+      title: 'Manual finish required',
+      detail:
+        'The craft can already be finished successfully, so auto mode stopped before cashing it out.',
     };
   }
 

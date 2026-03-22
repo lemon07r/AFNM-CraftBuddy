@@ -96,6 +96,7 @@ import {
   buildKnownCraftingTechniqueNameMap,
   resolveLiveCraftingTechnique,
 } from './techniqueResolution';
+import { getCraftBuddyHotkeyAction } from './hotkeys';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 
@@ -4722,44 +4723,44 @@ try {
  */
 try {
   document.addEventListener('keydown', (event: KeyboardEvent) => {
-    if (event.ctrlKey && event.shiftKey) {
-      switch (event.key.toLowerCase()) {
-        case 'c':
-          event.preventDefault();
-          currentSettings = saveSettings({
-            panelVisible: !currentSettings.panelVisible,
+    switch (getCraftBuddyHotkeyAction(event)) {
+      case 'togglePanel':
+        event.preventDefault();
+        currentSettings = saveSettings({
+          panelVisible: !currentSettings.panelVisible,
+        });
+        if (currentSettings.panelVisible) {
+          showOverlay();
+        } else {
+          hideOverlay();
+        }
+        debugLog(
+          `[CraftBuddy] Panel visibility: ${currentSettings.panelVisible}`,
+        );
+        break;
+      case 'toggleCompactMode':
+        event.preventDefault();
+        currentSettings = saveSettings({
+          compactMode: !currentSettings.compactMode,
+        });
+        renderOverlay();
+        debugLog(`[CraftBuddy] Compact mode: ${currentSettings.compactMode}`);
+        break;
+      case 'exportReplaySnapshot':
+        event.preventDefault();
+        void (window as any).craftBuddyDebug
+          ?.exportOptimizerReplaySnapshot?.()
+          ?.catch((error: unknown) => {
+            console.warn(
+              '[CraftBuddy] Failed to export optimizer replay snapshot:',
+              error,
+            );
+            showDebugToast('Snapshot export failed.', 'error');
           });
-          if (currentSettings.panelVisible) {
-            showOverlay();
-          } else {
-            hideOverlay();
-          }
-          debugLog(
-            `[CraftBuddy] Panel visibility: ${currentSettings.panelVisible}`,
-          );
-          break;
-        case 'm':
-          event.preventDefault();
-          currentSettings = saveSettings({
-            compactMode: !currentSettings.compactMode,
-          });
-          renderOverlay();
-          debugLog(`[CraftBuddy] Compact mode: ${currentSettings.compactMode}`);
-          break;
-        case 'y':
-          event.preventDefault();
-          void (window as any).craftBuddyDebug
-            ?.exportOptimizerReplaySnapshot?.()
-            ?.catch((error: unknown) => {
-              console.warn(
-                '[CraftBuddy] Failed to export optimizer replay snapshot:',
-                error,
-              );
-              showDebugToast('Snapshot export failed.', 'error');
-            });
-          debugLog('[CraftBuddy] Exported optimizer snapshot (Ctrl+Shift+Y)');
-          break;
-      }
+        debugLog('[CraftBuddy] Exported optimizer snapshot (Ctrl+Shift+Y)');
+        break;
+      default:
+        break;
     }
   });
   debugLog('[CraftBuddy] Keyboard shortcuts registered');

@@ -680,6 +680,56 @@ describe('craft simulation — finish craft policy', () => {
     expect(sim.targetsMet).toBe(true);
   });
 
+  it('stabilizes first when a sublime continuation would otherwise strand the craft at one-turn runway', () => {
+    const stabilize = createCustomSkill({
+      name: 'Forceful Stabilize',
+      key: 'forceful_stabilize_sublime_runway',
+      type: 'stabilize',
+      qiCost: 0,
+      stabilityCost: 0,
+      stabilityGain: 20,
+      preventsMaxStabilityDecay: true,
+    });
+    const riskyFusion = createCustomSkill({
+      name: 'Risky Fusion',
+      key: 'risky_fusion_sublime_runway',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 10,
+      baseCompletionGain: 20,
+    });
+    const riskyRefine = createCustomSkill({
+      name: 'Risky Refine',
+      key: 'risky_refine_sublime_runway',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 10,
+      basePerfectionGain: 20,
+    });
+    const config = fullConfig({
+      minStability: 0,
+      baseIntensity: 1,
+      baseControl: 1,
+      skills: [stabilize, riskyFusion, riskyRefine],
+      isSublimeCraft: true,
+      targetMultiplier: 2,
+      maxCompletion: 200,
+      maxPerfection: 200,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 5,
+      initialMaxStability: 40,
+      completion: 100,
+      perfection: 100,
+    });
+
+    const sim = simulateCraft(state, config, 200, 200, ['neutral'], 2, 4);
+
+    expect(sim.history[0]).toBe('Forceful Stabilize');
+    expect(sim.finalState.stability).toBeGreaterThan(5);
+  });
+
   it('honors the completion vs perfection goal priority bias', () => {
     const config = fullConfig({
       minStability: 0,
