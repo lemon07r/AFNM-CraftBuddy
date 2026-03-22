@@ -102,6 +102,8 @@ import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
 import {
   computeOverlayLayout,
   expandOverlayRect,
+  isOverlayParentRectUsable,
+  isRectInOverlayHudCluster,
   unionOverlayRects,
   type OverlayRectLike,
 } from '../utils/overlayLayout';
@@ -3348,6 +3350,11 @@ function pickCraftingHudAnchorRect(
   viewportWidth: number,
   viewportHeight: number,
 ): OverlayRectLike | null {
+  const elementRect = getElementRectSnapshot(element);
+  if (!elementRect) {
+    return null;
+  }
+
   let current: Element | null = element;
   let best: OverlayRectLike | null = null;
   let bestArea = 0;
@@ -3373,6 +3380,10 @@ function pickCraftingHudAnchorRect(
       continue;
     }
 
+    if (!isOverlayParentRectUsable({ elementRect, candidateRect: rect })) {
+      continue;
+    }
+
     const area = rect.width * rect.height;
     if (area > bestArea) {
       best = rect;
@@ -3380,7 +3391,7 @@ function pickCraftingHudAnchorRect(
     }
   }
 
-  return best ?? getElementRectSnapshot(element);
+  return best ?? elementRect;
 }
 
 function findVisibleCraftingProgressElement(
@@ -3412,65 +3423,63 @@ function getVisibleCraftingUiOccupiedRect(): OverlayRectLike | null {
     return null;
   }
 
-  const candidateElements = new Set<Element>();
-  const addCandidate = (element?: Element | null) => {
-    if (element) {
-      candidateElements.add(element);
-    }
-  };
-
-  addCandidate(
+  const progressElements = [
     findVisibleCraftingProgressElement(
       gameRoot,
       '[class*="stability"]',
       /Stability:/i,
     ),
-  );
-  addCandidate(
     findVisibleCraftingProgressElement(
       gameRoot,
       '[class*="completion"]',
       /Completion:/i,
     ),
-  );
-  addCandidate(
     findVisibleCraftingProgressElement(
       gameRoot,
       '[class*="perfection"]',
       /Perfection:/i,
     ),
-  );
-  addCandidate(
     findVisibleCraftingProgressElement(
       gameRoot,
       '[class*="pool"], [class*="qi"]',
       /(?:Qi|Pool):/i,
     ),
-  );
+  ].filter((element): element is Element => !!element);
 
-  Array.from(
+  const progressRects = progressElements
+    .map((element) =>
+      pickCraftingHudAnchorRect(element, viewportWidth, viewportHeight),
+    )
+    .map((rect) =>
+      rect ? expandOverlayRect(rect, OVERLAY_OCCUPIED_RECT_PADDING) : null,
+    );
+  const progressRect = unionOverlayRects(progressRects);
+
+  const supplementalRects = Array.from(
     gameRoot.querySelectorAll(
       'button, [role="button"], [class*="buff"], [class*="condition"]',
     ),
-  ).forEach((element) => {
-    if (isElementInCraftBuddyOverlay(element) || !isElementVisible(element)) {
-      return;
-    }
-    candidateElements.add(element);
-  });
-
-  return unionOverlayRects(
-    Array.from(candidateElements).map((element) => {
-      const rect = pickCraftingHudAnchorRect(
-        element,
-        viewportWidth,
-        viewportHeight,
+  )
+    .filter(
+      (element) =>
+        !isElementInCraftBuddyOverlay(element) && isElementVisible(element),
+    )
+    .map((element) =>
+      pickCraftingHudAnchorRect(element, viewportWidth, viewportHeight),
+    )
+    .filter((rect): rect is OverlayRectLike => {
+      return (
+        !!rect &&
+        isRectInOverlayHudCluster({
+          rect,
+          progressRect,
+          viewportWidth,
+        })
       );
-      return rect
-        ? expandOverlayRect(rect, OVERLAY_OCCUPIED_RECT_PADDING)
-        : null;
-    }),
-  );
+    })
+    .map((rect) => expandOverlayRect(rect, OVERLAY_OCCUPIED_RECT_PADDING));
+
+  return unionOverlayRects([...progressRects, ...supplementalRects]);
 }
 
 function applyOverlayContainerLayout(): void {

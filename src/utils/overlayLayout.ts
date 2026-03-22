@@ -41,6 +41,14 @@ export const OVERLAY_PANEL_BLEED_PX = {
   regular: 16,
   compact: 12,
 } as const;
+export const OVERLAY_HUD_CLUSTER_VIEWPORT_RATIO = 0.46;
+export const OVERLAY_HUD_CLUSTER_EXTRA_WIDTH_PX = 180;
+export const OVERLAY_PARENT_RECT_SLACK_PX = {
+  left: 80,
+  right: 220,
+  top: 80,
+  bottom: 220,
+} as const;
 
 function normalizeRect(rect: OverlayRectLike): OverlayRectLike | null {
   const width = Number(rect.width ?? rect.right - rect.left);
@@ -127,6 +135,56 @@ export function unionOverlayRects(
     width: Math.max(0, right - left),
     height: Math.max(0, bottom - top),
   };
+}
+
+export function isOverlayParentRectUsable({
+  elementRect,
+  candidateRect,
+}: {
+  elementRect: OverlayRectLike;
+  candidateRect: OverlayRectLike;
+}): boolean {
+  const normalizedElementRect = normalizeRect(elementRect);
+  const normalizedCandidateRect = normalizeRect(candidateRect);
+  if (!normalizedElementRect || !normalizedCandidateRect) {
+    return false;
+  }
+
+  return (
+    normalizedCandidateRect.left >=
+      normalizedElementRect.left - OVERLAY_PARENT_RECT_SLACK_PX.left &&
+    normalizedCandidateRect.right <=
+      normalizedElementRect.right + OVERLAY_PARENT_RECT_SLACK_PX.right &&
+    normalizedCandidateRect.top >=
+      normalizedElementRect.top - OVERLAY_PARENT_RECT_SLACK_PX.top &&
+    normalizedCandidateRect.bottom <=
+      normalizedElementRect.bottom + OVERLAY_PARENT_RECT_SLACK_PX.bottom
+  );
+}
+
+export function isRectInOverlayHudCluster({
+  rect,
+  progressRect,
+  viewportWidth,
+}: {
+  rect: OverlayRectLike;
+  progressRect?: OverlayRectLike | null;
+  viewportWidth: number;
+}): boolean {
+  const normalizedRect = normalizeRect(rect);
+  if (!normalizedRect) {
+    return false;
+  }
+
+  const normalizedProgressRect = progressRect ? normalizeRect(progressRect) : null;
+  const clusterRightBoundary = normalizedProgressRect
+    ? Math.max(
+        normalizedProgressRect.right + OVERLAY_HUD_CLUSTER_EXTRA_WIDTH_PX,
+        viewportWidth * OVERLAY_HUD_CLUSTER_VIEWPORT_RATIO,
+      )
+    : viewportWidth * OVERLAY_HUD_CLUSTER_VIEWPORT_RATIO;
+
+  return normalizedRect.left <= clusterRightBoundary;
 }
 
 export function computeOverlayLayout({

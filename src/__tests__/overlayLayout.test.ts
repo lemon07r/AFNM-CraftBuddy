@@ -5,6 +5,8 @@ import {
   expandOverlayRect,
   getOverlayPanelBleed,
   getOverlayPanelMaxWidth,
+  isOverlayParentRectUsable,
+  isRectInOverlayHudCluster,
   unionOverlayRects,
 } from '../utils/overlayLayout';
 
@@ -114,5 +116,90 @@ describe('overlayLayout', () => {
       width: 180,
       height: 288,
     });
+  });
+
+  it('rejects parent rects that balloon far beyond the element cluster', () => {
+    expect(
+      isOverlayParentRectUsable({
+        elementRect: {
+          top: 24,
+          left: 1080,
+          right: 1120,
+          bottom: 56,
+          width: 40,
+          height: 32,
+        },
+        candidateRect: {
+          top: 0,
+          left: 0,
+          right: 1180,
+          bottom: 96,
+          width: 1180,
+          height: 96,
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      isOverlayParentRectUsable({
+        elementRect: {
+          top: 24,
+          left: 36,
+          right: 180,
+          bottom: 56,
+          width: 144,
+          height: 32,
+        },
+        candidateRect: {
+          top: 16,
+          left: 20,
+          right: 240,
+          bottom: 104,
+          width: 220,
+          height: 88,
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps right-side decoy controls out of the crafting hud cluster', () => {
+    const progressRect = {
+      top: 10,
+      left: 20,
+      right: 336,
+      bottom: 286,
+      width: 316,
+      height: 276,
+    };
+
+    expect(
+      isRectInOverlayHudCluster({
+        rect: {
+          top: 620,
+          left: 16,
+          right: 512,
+          bottom: 752,
+          width: 496,
+          height: 132,
+        },
+        progressRect,
+        viewportWidth: 975,
+      }),
+    ).toBe(true);
+
+    expect(
+      isRectInOverlayHudCluster({
+        rect: {
+          top: 18,
+          left: 880,
+          right: 940,
+          bottom: 56,
+          width: 60,
+          height: 38,
+        },
+        progressRect,
+        viewportWidth: 975,
+      }),
+    ).toBe(false);
   });
 });

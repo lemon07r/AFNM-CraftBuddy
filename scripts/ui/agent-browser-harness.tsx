@@ -11,6 +11,7 @@ import {
 import { type AutoCraftUiState } from '../../src/settings/autoCraft';
 import {
   computeOverlayLayout,
+  isRectInOverlayHudCluster,
   unionOverlayRects,
   type OverlayRectLike,
 } from '../../src/utils/overlayLayout';
@@ -114,12 +115,15 @@ const harnessViewport = parseHarnessViewport(harnessParams.get('viewport'));
 function buildGameHudRects(viewport: {
   width: number;
   height: number;
-}): OverlayRectLike[] {
+}): {
+  progressRects: OverlayRectLike[];
+  supplementalRects: OverlayRectLike[];
+} {
   const topHudWidth = Math.min(340, Math.round(viewport.width * 0.35));
   const midHudWidth = Math.min(300, Math.round(viewport.width * 0.28));
   const bottomHudWidth = Math.min(520, Math.round(viewport.width * 0.51));
 
-  return [
+  const progressRects = [
     {
       top: 20,
       left: 20,
@@ -128,6 +132,9 @@ function buildGameHudRects(viewport: {
       width: topHudWidth,
       height: 266,
     },
+  ];
+
+  const supplementalRects = [
     {
       top: 288,
       left: 30,
@@ -144,7 +151,20 @@ function buildGameHudRects(viewport: {
       width: bottomHudWidth,
       height: 152,
     },
+    {
+      top: 18,
+      left: viewport.width - 106,
+      right: viewport.width - 30,
+      bottom: 58,
+      width: 76,
+      height: 40,
+    },
   ];
+
+  return {
+    progressRects,
+    supplementalRects,
+  };
 }
 
 function FakeHudBlock({
@@ -319,12 +339,25 @@ function Harness() {
       onAutoModeArm={() => {}}
       onAutoModeStop={() => {}}
       onAutoModePolicyChange={() => {}}
-      version="4.1.8"
+      version="4.1.9"
     />
   );
 
   if (harnessScene === 'gamehud') {
-    const occupiedRect = unionOverlayRects(buildGameHudRects(harnessViewport));
+    const { progressRects, supplementalRects } = buildGameHudRects(
+      harnessViewport,
+    );
+    const progressRect = unionOverlayRects(progressRects);
+    const occupiedRect = unionOverlayRects([
+      ...progressRects,
+      ...supplementalRects.filter((rect) =>
+        isRectInOverlayHudCluster({
+          rect,
+          progressRect,
+          viewportWidth: harnessViewport.width,
+        }),
+      ),
+    ]);
     const layout = computeOverlayLayout({
       viewportWidth: harnessViewport.width,
       viewportHeight: harnessViewport.height,
@@ -486,6 +519,28 @@ function Harness() {
                 ))}
               </div>
             </FakeHudBlock>
+
+            <div
+              style={{
+                position: 'absolute',
+                top: 18,
+                right: 30,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 76,
+                height: 40,
+                borderRadius: 999,
+                fontSize: 13,
+                fontWeight: 700,
+                color: '#f3ead7',
+                background: 'rgba(19, 22, 31, 0.85)',
+                border: '1px solid rgba(255, 215, 0, 0.22)',
+                boxShadow: '0 10px 22px rgba(0, 0, 0, 0.22)',
+              }}
+            >
+              Menu
+            </div>
 
             <div
               style={{
