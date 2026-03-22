@@ -3399,17 +3399,42 @@ function findVisibleCraftingProgressElement(
   selector: string,
   fallbackPattern: RegExp,
 ): Element | undefined {
-  return (
-    Array.from(gameRoot.querySelectorAll(selector)).find(
-      (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
-    ) ||
-    Array.from(gameRoot.querySelectorAll('*')).find(
+  const pickSmallestVisible = (elements: Element[]): Element | undefined => {
+    return elements
+      .filter(
+        (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
+      )
+      .map((el) => ({
+        element: el,
+        rect: getElementRectSnapshot(el),
+      }))
+      .filter(
+        (
+          candidate,
+        ): candidate is {
+          element: Element;
+          rect: OverlayRectLike;
+        } => candidate.rect !== null,
+      )
+      .sort((a, b) => {
+        const areaA = a.rect.width * a.rect.height;
+        const areaB = b.rect.width * b.rect.height;
+        return areaA - areaB;
+      })[0]?.element;
+  };
+
+  const selectorMatch = pickSmallestVisible(
+    Array.from(gameRoot.querySelectorAll(selector)),
+  );
+  if (selectorMatch) {
+    return selectorMatch;
+  }
+
+  return pickSmallestVisible(
+    Array.from(gameRoot.querySelectorAll('*')).filter(
       (el) =>
-        !isElementInCraftBuddyOverlay(el) &&
-        isElementVisible(el) &&
-        fallbackPattern.test(el.textContent || '') &&
-        el.children.length < 5,
-    )
+        fallbackPattern.test(el.textContent || '') && el.children.length < 5,
+    ),
   );
 }
 
@@ -3447,9 +3472,7 @@ function getVisibleCraftingUiOccupiedRect(): OverlayRectLike | null {
   ].filter((element): element is Element => !!element);
 
   const progressRects = progressElements
-    .map((element) =>
-      pickCraftingHudAnchorRect(element, viewportWidth, viewportHeight),
-    )
+    .map((element) => getElementRectSnapshot(element))
     .map((rect) =>
       rect ? expandOverlayRect(rect, OVERLAY_OCCUPIED_RECT_PADDING) : null,
     );
@@ -3464,9 +3487,7 @@ function getVisibleCraftingUiOccupiedRect(): OverlayRectLike | null {
       (element) =>
         !isElementInCraftBuddyOverlay(element) && isElementVisible(element),
     )
-    .map((element) =>
-      pickCraftingHudAnchorRect(element, viewportWidth, viewportHeight),
-    )
+    .map((element) => getElementRectSnapshot(element))
     .filter((rect): rect is OverlayRectLike => {
       return (
         !!rect &&

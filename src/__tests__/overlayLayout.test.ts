@@ -1,6 +1,7 @@
 import {
   OVERLAY_EDGE_MARGIN_PX,
   OVERLAY_SAFE_GUTTER_PX,
+  OVERLAY_SAFE_LANE_LEFT_MAX_RATIO,
   computeOverlayLayout,
   expandOverlayRect,
   getOverlayPanelBleed,
@@ -74,6 +75,28 @@ describe('overlayLayout', () => {
     });
 
     expect(layout.width).toBe(getOverlayPanelMaxWidth(true));
+  });
+
+  it('clamps suspicious occupied widths so the panel cannot collapse off-screen', () => {
+    const layout = computeOverlayLayout({
+      viewportWidth: 975,
+      viewportHeight: 768,
+      occupiedRect: {
+        top: 10,
+        left: 20,
+        right: 950,
+        bottom: 760,
+        width: 930,
+        height: 750,
+      },
+      compact: false,
+    });
+
+    expect(layout.safeLaneLeft).toBeCloseTo(
+      975 * OVERLAY_SAFE_LANE_LEFT_MAX_RATIO,
+      5,
+    );
+    expect(layout.width).toBeGreaterThan(0);
   });
 
   it('expands and unions occupied rects for a stable safe-lane boundary', () => {
@@ -196,6 +219,21 @@ describe('overlayLayout', () => {
           bottom: 56,
           width: 60,
           height: 38,
+        },
+        progressRect,
+        viewportWidth: 975,
+      }),
+    ).toBe(false);
+
+    expect(
+      isRectInOverlayHudCluster({
+        rect: {
+          top: 160,
+          left: 24,
+          right: 780,
+          bottom: 228,
+          width: 756,
+          height: 68,
         },
         progressRect,
         viewportWidth: 975,

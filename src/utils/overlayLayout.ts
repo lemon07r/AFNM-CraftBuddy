@@ -41,8 +41,10 @@ export const OVERLAY_PANEL_BLEED_PX = {
   regular: 16,
   compact: 12,
 } as const;
+export const OVERLAY_SAFE_LANE_LEFT_MAX_RATIO = 0.58;
 export const OVERLAY_HUD_CLUSTER_VIEWPORT_RATIO = 0.46;
 export const OVERLAY_HUD_CLUSTER_EXTRA_WIDTH_PX = 180;
+export const OVERLAY_HUD_CLUSTER_MAX_RECT_WIDTH_RATIO = 0.58;
 export const OVERLAY_PARENT_RECT_SLACK_PX = {
   left: 80,
   right: 220,
@@ -176,6 +178,10 @@ export function isRectInOverlayHudCluster({
     return false;
   }
 
+  if (normalizedRect.width > viewportWidth * OVERLAY_HUD_CLUSTER_MAX_RECT_WIDTH_RATIO) {
+    return false;
+  }
+
   const normalizedProgressRect = progressRect ? normalizeRect(progressRect) : null;
   const clusterRightBoundary = normalizedProgressRect
     ? Math.max(
@@ -197,10 +203,17 @@ export function computeOverlayLayout({
   const safeViewportHeight = Math.max(0, viewportHeight);
   const maxPanelWidth = getOverlayPanelMaxWidth(compact);
   const panelBleed = getOverlayPanelBleed(compact);
+  const maxSafeLaneLeft = Math.max(
+    OVERLAY_EDGE_MARGIN_PX,
+    safeViewportWidth * OVERLAY_SAFE_LANE_LEFT_MAX_RATIO,
+  );
   const safeLaneLeft = occupiedRect
     ? Math.min(
         Math.max(OVERLAY_EDGE_MARGIN_PX, occupiedRect.right + OVERLAY_SAFE_GUTTER_PX),
-        Math.max(OVERLAY_EDGE_MARGIN_PX, safeViewportWidth - OVERLAY_EDGE_MARGIN_PX),
+        Math.min(
+          Math.max(OVERLAY_EDGE_MARGIN_PX, safeViewportWidth - OVERLAY_EDGE_MARGIN_PX),
+          maxSafeLaneLeft,
+        ),
       )
     : OVERLAY_EDGE_MARGIN_PX;
   const availableWidth = Math.max(
