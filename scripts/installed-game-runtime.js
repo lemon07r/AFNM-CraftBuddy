@@ -69,22 +69,39 @@ function readJson(filePath) {
   return JSON.parse(readText(filePath));
 }
 
+function readDistElectronJsBundle(extractDir) {
+  const distElectronDir = path.join(extractDir, 'dist-electron');
+  const jsFiles = fs
+    .readdirSync(distElectronDir)
+    .filter((fileName) => fileName.endsWith('.js'))
+    .sort();
+
+  return jsFiles
+    .map((fileName) => readText(path.join(distElectronDir, fileName)))
+    .join('\n');
+}
+
 function extractSummary(extractDir, gameDir, asarPath) {
   const packageJsonPath = path.join(extractDir, 'package.json');
-  const mainIndexPath = path.join(extractDir, 'dist-electron', 'main', 'index.js');
+  const mainIndexPath = path.join(
+    extractDir,
+    'dist-electron',
+    'main',
+    'index.js',
+  );
   const gameJsPath = path.join(extractDir, 'dist-electron', 'Game.js');
 
   const packageJson = readJson(packageJsonPath);
   const mainIndex = readText(mainIndexPath);
   const gameJs = readText(gameJsPath);
+  const runtimeText = readDistElectronJsBundle(extractDir);
 
   const buildVersion = mainIndex.match(/const ce="([^"]+)"/)?.[1] ?? null;
-  const forgeLowPenalty =
-    gameJs.includes('forgeWorks.heat>=2&&t.forgeWorks.heat<=3') ||
-    gameJs.includes('forgeWorks.heat>=2&&e.forgeWorks.heat<=3');
+  const forgeLowPenalty = /forgeWorks\.heat>=2&&[te]\.forgeWorks\.heat<=3/.test(
+    runtimeText,
+  );
   const forgeRecommendFusionThrough4 =
-    gameJs.includes('forgeWorks.heat<=4?t.recommendedTechniqueTypes=["fusion"]') ||
-    gameJs.includes('forgeWorks.heat<=4?e.recommendedTechniqueTypes=["fusion"]');
+    /forgeWorks\.heat<=4\?[te]\.recommendedTechniqueTypes/.test(runtimeText);
 
   return {
     gameDir,
@@ -104,6 +121,14 @@ function extractSummary(extractDir, gameDir, asarPath) {
       recommendsFusionThroughHeat: forgeRecommendFusionThrough4 ? 4 : null,
     },
     modApi: {
+      hasRootStateSubscribe: runtimeText.includes(
+        'subscribe:e=>{let t=window.gameStore',
+      ),
+      hasRootStateSnapshot: runtimeText.includes(
+        'getGameStateSnapshot:()=>window.gameStore?.getState()??null',
+      ),
+      hasInjectUI: runtimeText.includes('injectUI:('),
+      hasOnReduxActionHook: runtimeText.includes('onReduxAction:'),
       hasHarmonyConfigs: gameJs.includes('harmonyConfigs'),
       hasItemTypeToHarmonyType: gameJs.includes('itemTypeToHarmonyType'),
       hasRecipeConditionEffects: gameJs.includes('recipeConditionEffects'),
@@ -114,6 +139,18 @@ function extractSummary(extractDir, gameDir, asarPath) {
       hasEvaluateCraftingCondition: gameJs.includes(
         'evaluateCraftingCondition',
       ),
+    },
+    crafting: {
+      hasRecipeBestCompletionTracking:
+        runtimeText.includes('basicBestCompletion') &&
+        runtimeText.includes('perfectBestCompletion') &&
+        runtimeText.includes('sublimeBestCompletion'),
+      instantCraftMaterialRefundCapPercent: runtimeText.includes(
+        'Math.min((n-1)*20,80)',
+      )
+        ? 80
+        : null,
+      hasPoolCostFlatStat: runtimeText.includes('poolCostFlat'),
     },
   };
 }
@@ -137,7 +174,10 @@ function main() {
   ensureExists(gameDir, 'Installed game directory');
   ensureExists(asarPath, 'Installed app.asar');
 
-  const extractDir = extractRuntime(asarPath, getExtractDir(getCacheFingerprint(asarPath)));
+  const extractDir = extractRuntime(
+    asarPath,
+    getExtractDir(getCacheFingerprint(asarPath)),
+  );
 
   switch (command) {
     case 'summary': {

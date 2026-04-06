@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+## Code Search
+
+This project is indexed with Vera. Use `vera search "query"` for semantic code search and `vera grep "pattern"` for regex search. Run `vera update .` after code changes. For query tips and output format details, see the Vera skill in your skills directory.
+
 ## Project Structure & Module Organization
 
 - `src/mod.ts` is the entry point for mod metadata and bootstrapping.
@@ -38,6 +42,7 @@
 - Use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` before opening any other reference docs.
 - Use `archive/` only when the curated/active docs are insufficient.
 - When a task is finished, do a lean docs pass for any changed behavior, workflow, or tooling. Update stale/inaccurate docs if needed, but keep additions concise and avoid padding.
+- If patch notes, documentation, and runtime behavior disagree, verify against the installed-runtime oracle before changing mechanics/tests, then update the authoritative docs to match the observed runtime.
 - If you change docs, run `bun run docs:inventory` and `bun run docs:check` before committing.
 - Use `docs/project/RELEASE_PROCESS.md` for the concrete version bump, commit, push, tag, GitHub release, and Workshop upload pipeline.
 - See `docs/project/DOCS_GOVERNANCE.md` for the full docs model, metadata requirements, and update policy.
@@ -57,6 +62,7 @@
 - Run `bun run test` before pushing; use coverage checks for larger refactors.
 - For `src/ui/` layout or interaction changes, also use the committed browser harness with `agent-browser`; see `docs/project/TESTING.md`.
 - For runtime/mechanics parity work, prefer the installed-runtime oracle in `docs/project/TESTING.md`; do not launch the installed game UI by default.
+- For ModAPI/localization/integration work, prefer documented root-state APIs (`window.modAPI.subscribe`, `window.modAPI.getGameStateSnapshot`) over DOM/fiber probing. If DOM fallback is unavoidable, prefer structural selectors and numeric `X/Y` parsing over English-only labels.
 - Any change to scoring or move ordering in `search.ts` must pass **both** the simulation tests (`craftSimulation.test.ts`) and the regression tests at the bottom of `search.test.ts`.
 - See `docs/project/TESTING.md` for simulation vs. unit test guidance, test ownership by area, and validation requirements.
 
@@ -119,7 +125,7 @@ if (baseTargetsMet) score += totalTargetMagnitude * 2;
 
 ```typescript
 // BAD — permanently removes a skill before the tree can evaluate it
-const filtered = skills.filter(s => !shouldFilterSkill(s));
+const filtered = skills.filter((s) => !shouldFilterSkill(s));
 
 // GOOD — keep all legal skills, then improve the live post-move evaluation
 // so the beam orders them correctly without hiding them.
@@ -178,7 +184,12 @@ const heuristic = rawGain * 8 + buffBonus - stallPenalty;
 
 // GOOD — evaluate the actual post-action state with the same scoring model
 // the tree search uses, then let tie-breakers handle near-equal moves.
-const orderingScore = estimatePostMoveStateScore(nextState, skill, condition, queue);
+const orderingScore = estimatePostMoveStateScore(
+  nextState,
+  skill,
+  condition,
+  queue,
+);
 ```
 
 Signs you are creating heuristic soup:

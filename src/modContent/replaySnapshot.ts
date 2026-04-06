@@ -282,6 +282,7 @@ export function buildStateSnapshot(
     critChance: state.critChance,
     critMultiplier: state.critMultiplier,
     successChanceBonus: state.successChanceBonus,
+    poolCostFlat: state.poolCostFlat,
     poolCostPercentage: state.poolCostPercentage,
     stabilityCostPercentage: state.stabilityCostPercentage,
     controlBuffTurns: state.controlBuffTurns,

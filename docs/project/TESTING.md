@@ -3,7 +3,7 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-20
+last_verified: 2026-04-04
 source_of_truth: src/__tests__/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
 review_cycle_days: 30
 related_files:
@@ -160,9 +160,16 @@ When UI text, historical notes, and live behavior disagree, verify against the i
    bun run runtime:grep -- "forgeWorks\\.heat>=2&&t\\.forgeWorks\\.heat<=3|recommendedTechniqueTypes|itemTypeToHarmonyType"
    ```
 
-The summary includes the installed game version, whether the app writes a relative `settings.json`, whether Steam restart can be disabled via sentinel file, forge heat-band signals, and key ModAPI crafting exposures.
+The summary includes the installed game version, whether the app writes a relative `settings.json`, whether Steam restart can be disabled via sentinel file, forge heat-band signals, key ModAPI crafting exposures, root-state API availability (`subscribe`, `getGameStateSnapshot`, `injectUI`), and recent crafting-parity fields such as recipe best-completion tracking and `poolCostFlat`.
 
-This is the recommended parity check when older curated/history docs or on-screen text drift. Example: the installed runtime verified on March 6, 2026 uses Forge low-control penalties at heat `2-3`, not `1-3`.
+This is the recommended parity check when older curated/history docs or on-screen text drift. It is also the default validation path for ModAPI upgrades, crafting patch-note follow-up, and locale-sensitive integration bugs because it avoids Steam/UI launch issues entirely. Example: the installed runtime verified on April 4, 2026 uses Forge low-control penalties at heat `2-3`, not `1-3`.
+
+For current ModAPI/runtime audits, start with:
+
+```bash
+bun run runtime:oracle
+bun run runtime:grep -- "getGameStateSnapshot|injectUI|basicBestCompletion|perfectBestCompletion|sublimeBestCompletion|poolCostFlat"
+```
 
 ## Validation requirements
 

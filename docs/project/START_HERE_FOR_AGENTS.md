@@ -3,7 +3,7 @@ title: Start Here For Agents
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-22
+last_verified: 2026-04-04
 source_of_truth: src/modContent/index.ts, src/optimizer/*, src/__tests__/*
 review_cycle_days: 14
 related_files:
@@ -32,6 +32,7 @@ Fast, low-noise onboarding for implementation work on AFNM-CraftBuddy.
 ## Task-specific docs
 
 - testing + harness + installed runtime oracle + optional live UI verification: `docs/project/TESTING.md`
+- ModAPI/root-state integration, runtime migration targets, and locale-safe fallback rules: `docs/project/INTEGRATION_MODAPI.md`
 - release/version bump/tag/workshop flow: `docs/project/RELEASE_PROCESS.md`
 
 ## Community guide context
@@ -43,6 +44,7 @@ Fast, low-noise onboarding for implementation work on AFNM-CraftBuddy.
 ## Key code entrypoints
 
 - integration: `src/modContent/index.ts`
+- root-state/session helpers: `src/modContent/craftingStoreState.ts`
 - search: `src/optimizer/search.ts`
 - transitions: `src/optimizer/skills.ts`
 - formulas/types: `src/optimizer/gameTypes.ts`

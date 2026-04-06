@@ -5,11 +5,7 @@
  * Based on authoritative CraftingStuff game source code.
  */
 
-import {
-  BuffDefinition,
-  HarmonyData,
-  ScalingVariables,
-} from './gameTypes';
+import { BuffDefinition, HarmonyData, ScalingVariables } from './gameTypes';
 
 function stableStringify(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -19,25 +15,33 @@ function stableStringify(value: unknown): string {
   }
   const obj = value as Record<string, unknown>;
   const keys = Object.keys(obj).sort();
-  const parts = keys.map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`);
+  const parts = keys.map(
+    (key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`,
+  );
   return `{${parts.join(',')}}`;
 }
 
 function cloneHarmonyData(hd: HarmonyData): HarmonyData {
-  const clone: HarmonyData = { recommendedTechniqueTypes: [...hd.recommendedTechniqueTypes] };
+  const clone: HarmonyData = {
+    recommendedTechniqueTypes: [...hd.recommendedTechniqueTypes],
+  };
   if (hd.forgeWorks) clone.forgeWorks = { ...hd.forgeWorks };
-  if (hd.alchemicalArts) clone.alchemicalArts = {
-    charges: [...hd.alchemicalArts.charges],
-    lastCombo: [...hd.alchemicalArts.lastCombo],
-  };
-  if (hd.inscribedPatterns) clone.inscribedPatterns = {
-    currentBlock: [...hd.inscribedPatterns.currentBlock],
-    completedBlocks: hd.inscribedPatterns.completedBlocks,
-    stacks: hd.inscribedPatterns.stacks,
-  };
+  if (hd.alchemicalArts)
+    clone.alchemicalArts = {
+      charges: [...hd.alchemicalArts.charges],
+      lastCombo: [...hd.alchemicalArts.lastCombo],
+    };
+  if (hd.inscribedPatterns)
+    clone.inscribedPatterns = {
+      currentBlock: [...hd.inscribedPatterns.currentBlock],
+      completedBlocks: hd.inscribedPatterns.completedBlocks,
+      stacks: hd.inscribedPatterns.stacks,
+    };
   if (hd.resonance) clone.resonance = { ...hd.resonance };
   if (hd.additionalData !== undefined) {
-    clone.additionalData = JSON.parse(JSON.stringify(hd.additionalData)) as Record<string, unknown>;
+    clone.additionalData = JSON.parse(
+      JSON.stringify(hd.additionalData),
+    ) as Record<string, unknown>;
   }
   return clone;
 }
@@ -51,7 +55,9 @@ function cloneTrackedBuff(buff: TrackedBuff): TrackedBuff {
   return Object.freeze(cloned);
 }
 
-function cloneBuffMap(source: Map<string, TrackedBuff>): Map<string, TrackedBuff> {
+function cloneBuffMap(
+  source: Map<string, TrackedBuff>,
+): Map<string, TrackedBuff> {
   const cloned = new Map<string, TrackedBuff>();
   source.forEach((buff, key) => {
     cloned.set(key, cloneTrackedBuff(buff));
@@ -60,7 +66,7 @@ function cloneBuffMap(source: Map<string, TrackedBuff>): Map<string, TrackedBuff
 }
 
 function cloneNativeVariables(
-  source: Record<string, number> | undefined
+  source: Record<string, number> | undefined,
 ): Record<string, number> | undefined {
   if (!source) return undefined;
   const cloned: Record<string, number> = {};
@@ -103,6 +109,8 @@ export interface CraftingStateData {
   critMultiplier: number;
   /** Bonus added to technique success chance (0-1). */
   successChanceBonus: number;
+  /** Flat Qi cost added after percentage modifiers. */
+  poolCostFlat: number;
   /** Pool cost percentage modifier (100 = normal). */
   poolCostPercentage: number;
   /** Stability cost percentage modifier (100 = normal). */
@@ -147,8 +155,6 @@ export interface CraftingStateData {
   history: string[];
 }
 
-
-
 /**
  * Immutable crafting state for optimization calculations.
  * All mutations return new state instances.
@@ -165,6 +171,7 @@ export class CraftingState implements CraftingStateData {
   readonly critChance: number;
   readonly critMultiplier: number;
   readonly successChanceBonus: number;
+  readonly poolCostFlat: number;
   readonly poolCostPercentage: number;
   readonly stabilityCostPercentage: number;
   readonly controlBuffTurns: number;
@@ -196,6 +203,7 @@ export class CraftingState implements CraftingStateData {
     this.critChance = data.critChance ?? 0;
     this.critMultiplier = data.critMultiplier ?? 150; // 150% = 1.5x multiplier
     this.successChanceBonus = data.successChanceBonus ?? 0;
+    this.poolCostFlat = data.poolCostFlat ?? 0;
     this.poolCostPercentage = data.poolCostPercentage ?? 100;
     this.stabilityCostPercentage = data.stabilityCostPercentage ?? 100;
     this.controlBuffTurns = data.controlBuffTurns ?? 0;
@@ -213,7 +221,9 @@ export class CraftingState implements CraftingStateData {
       this.buffs = new Map();
     }
     this.harmony = data.harmony ?? 0;
-    this.harmonyData = data.harmonyData ? cloneHarmonyData(data.harmonyData) : undefined;
+    this.harmonyData = data.harmonyData
+      ? cloneHarmonyData(data.harmonyData)
+      : undefined;
     this.step = data.step ?? 0;
     this.completionBonus = data.completionBonus ?? 0;
     this.nativeVariables = cloneNativeVariables(data.nativeVariables);
@@ -232,7 +242,8 @@ export class CraftingState implements CraftingStateData {
    * Create a copy with optional overrides
    */
   copy(overrides: Partial<CraftingStateData> = {}): CraftingState {
-    const newInitialMaxStability = overrides.initialMaxStability ?? this.initialMaxStability;
+    const newInitialMaxStability =
+      overrides.initialMaxStability ?? this.initialMaxStability;
     return new CraftingState({
       qi: overrides.qi ?? this.qi,
       stability: overrides.stability ?? this.stability,
@@ -242,18 +253,26 @@ export class CraftingState implements CraftingStateData {
       perfection: overrides.perfection ?? this.perfection,
       critChance: overrides.critChance ?? this.critChance,
       critMultiplier: overrides.critMultiplier ?? this.critMultiplier,
-      successChanceBonus: overrides.successChanceBonus ?? this.successChanceBonus,
-      poolCostPercentage: overrides.poolCostPercentage ?? this.poolCostPercentage,
-      stabilityCostPercentage: overrides.stabilityCostPercentage ?? this.stabilityCostPercentage,
+      successChanceBonus:
+        overrides.successChanceBonus ?? this.successChanceBonus,
+      poolCostFlat: overrides.poolCostFlat ?? this.poolCostFlat,
+      poolCostPercentage:
+        overrides.poolCostPercentage ?? this.poolCostPercentage,
+      stabilityCostPercentage:
+        overrides.stabilityCostPercentage ?? this.stabilityCostPercentage,
       controlBuffTurns: overrides.controlBuffTurns ?? this.controlBuffTurns,
-      intensityBuffTurns: overrides.intensityBuffTurns ?? this.intensityBuffTurns,
-      controlBuffMultiplier: overrides.controlBuffMultiplier ?? this.controlBuffMultiplier,
-      intensityBuffMultiplier: overrides.intensityBuffMultiplier ?? this.intensityBuffMultiplier,
+      intensityBuffTurns:
+        overrides.intensityBuffTurns ?? this.intensityBuffTurns,
+      controlBuffMultiplier:
+        overrides.controlBuffMultiplier ?? this.controlBuffMultiplier,
+      intensityBuffMultiplier:
+        overrides.intensityBuffMultiplier ?? this.intensityBuffMultiplier,
       toxicity: overrides.toxicity ?? this.toxicity,
       maxToxicity: overrides.maxToxicity ?? this.maxToxicity,
       cooldowns: overrides.cooldowns ?? this.cooldowns,
       items: overrides.items ?? this.items,
-      consumedPillsThisTurn: overrides.consumedPillsThisTurn ?? this.consumedPillsThisTurn,
+      consumedPillsThisTurn:
+        overrides.consumedPillsThisTurn ?? this.consumedPillsThisTurn,
       buffs: overrides.buffs ?? this.buffs,
       harmony: overrides.harmony ?? this.harmony,
       harmonyData: overrides.harmonyData ?? this.harmonyData,
@@ -319,7 +338,9 @@ export class CraftingState implements CraftingStateData {
    * Check if both targets have been reached
    */
   targetsMet(targetCompletion: number, targetPerfection: number): boolean {
-    return this.completion >= targetCompletion && this.perfection >= targetPerfection;
+    return (
+      this.completion >= targetCompletion && this.perfection >= targetPerfection
+    );
   }
 
   /**
@@ -370,7 +391,7 @@ export class CraftingState implements CraftingStateData {
    * - Resources: qi, stability, stabilityPenalty, toxicity
    * - Buffs: all tracked buffs with stacks
    * - Cooldowns: which skills are available
-   * - Modifiers: crit, success, cost percentages
+   * - Modifiers: crit, success, flat/percentage costs
    * - Completion bonus (affects control calculations)
    */
   getCacheKey(): string {
@@ -392,8 +413,12 @@ export class CraftingState implements CraftingStateData {
 
     // Include buff multipliers in cache key - different multipliers produce different gains
     // Round multipliers to 2 decimal places to avoid floating point comparison issues
-    const ctrlMult = this.controlBuffTurns > 0 ? this.controlBuffMultiplier.toFixed(2) : '0';
-    const intMult = this.intensityBuffTurns > 0 ? this.intensityBuffMultiplier.toFixed(2) : '0';
+    const ctrlMult =
+      this.controlBuffTurns > 0 ? this.controlBuffMultiplier.toFixed(2) : '0';
+    const intMult =
+      this.intensityBuffTurns > 0
+        ? this.intensityBuffMultiplier.toFixed(2)
+        : '0';
 
     // Include all tracked buffs (sorted) because they can:
     // - gate skill availability (requirements)
@@ -411,6 +436,7 @@ export class CraftingState implements CraftingStateData {
     const successBonusKey = this.successChanceBonus.toFixed(3);
 
     // Include cost modifiers
+    const poolCostFlatKey = this.poolCostFlat;
     const poolCostKey = this.poolCostPercentage;
     const stabCostKey = this.stabilityCostPercentage;
 
@@ -419,11 +445,13 @@ export class CraftingState implements CraftingStateData {
 
     // Include initial max stability + harmony fields to avoid cache collisions between
     // states that have different future trajectories but identical visible resources.
-    const harmonyDataKey = this.harmonyData ? stableStringify(this.harmonyData) : '';
+    const harmonyDataKey = this.harmonyData
+      ? stableStringify(this.harmonyData)
+      : '';
     const nativeVarsKey = this.nativeVariables
       ? stableStringify(this.nativeVariables)
       : '';
-    this._cacheKey = `${this.qi}:${this.stability}:${this.initialMaxStability}:${this.stabilityPenalty}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${this.harmony}:${harmonyDataKey}:${critChanceKey}:${critMultKey}:${successBonusKey}:${poolCostKey}:${stabCostKey}:${compBonusKey}:${nativeVarsKey}:${this.consumedPillsThisTurn}:${cooldownStr}:${itemStr}:${buffStr}`;
+    this._cacheKey = `${this.qi}:${this.stability}:${this.initialMaxStability}:${this.stabilityPenalty}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${this.harmony}:${harmonyDataKey}:${critChanceKey}:${critMultKey}:${successBonusKey}:${poolCostFlatKey}:${poolCostKey}:${stabCostKey}:${compBonusKey}:${nativeVarsKey}:${this.consumedPillsThisTurn}:${cooldownStr}:${itemStr}:${buffStr}`;
     return this._cacheKey;
   }
 
@@ -455,6 +483,7 @@ export interface CreateStateOptions {
   critChance?: number;
   critMultiplier?: number;
   successChanceBonus?: number;
+  poolCostFlat?: number;
   poolCostPercentage?: number;
   stabilityCostPercentage?: number;
   harmony?: number;
@@ -488,6 +517,7 @@ export function createStateFromGame(opts: CreateStateOptions): CraftingState {
     critChance: opts.critChance ?? 0,
     critMultiplier: opts.critMultiplier ?? 150,
     successChanceBonus: opts.successChanceBonus ?? 0,
+    poolCostFlat: opts.poolCostFlat ?? 0,
     poolCostPercentage: opts.poolCostPercentage ?? 100,
     stabilityCostPercentage: opts.stabilityCostPercentage ?? 100,
     harmony: opts.harmony ?? 0,
@@ -507,7 +537,7 @@ export function buildScalingVariables(
   state: CraftingState,
   baseControl: number,
   baseIntensity: number,
-  maxPool: number
+  maxPool: number,
 ): ScalingVariables {
   // Apply completion bonus to control (+10% per stack)
   const controlWithBonus = baseControl * (1 + state.completionBonus * 0.1);
@@ -524,6 +554,7 @@ export function buildScalingVariables(
     resistance: 0,
     itemEffectiveness: 100,
     pillsPerRound: 1,
+    poolCostFlat: state.poolCostFlat,
     poolCostPercentage: state.poolCostPercentage,
     stabilityCostPercentage: state.stabilityCostPercentage,
     successChanceBonus: state.successChanceBonus,

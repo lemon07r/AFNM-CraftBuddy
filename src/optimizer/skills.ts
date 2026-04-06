@@ -912,6 +912,7 @@ function buildTechniqueScalingVariables(
     resistance: 0,
     itemEffectiveness: 100,
     pillsPerRound: config.pillsPerRound || 1,
+    poolCostFlat: Math.max(0, Math.floor(state.poolCostFlat)),
     poolCostPercentage: normalizeRuntimeCostPercentage(
       state.poolCostPercentage,
     ),
@@ -1358,6 +1359,7 @@ export function calculateEffectiveActionCosts(
   config?: OptimizerConfig,
 ): EffectiveActionCosts {
   const activeBuffs = getResolvedActiveBuffs(state, config);
+  let poolCostFlat = Math.max(0, Math.floor(state.poolCostFlat));
   let poolCostPercentage = normalizeRuntimeCostPercentage(
     state.poolCostPercentage,
   );
@@ -1371,6 +1373,7 @@ export function calculateEffectiveActionCosts(
     const hasCostAffectingBuff = Array.from(activeBuffs.values()).some(
       (tracked) =>
         Boolean(
+          tracked.definition?.stats?.poolCostFlat ||
           tracked.definition?.stats?.poolCostPercentage ||
           tracked.definition?.stats?.stabilityCostPercentage,
         ),
@@ -1390,6 +1393,7 @@ export function calculateEffectiveActionCosts(
         [],
         harmonyMods,
       );
+      poolCostFlat = Math.max(0, Math.floor(runtimeVars.poolCostFlat ?? 0));
       poolCostPercentage = normalizeRuntimeCostPercentage(
         runtimeVars.poolCostPercentage,
       );
@@ -1408,6 +1412,9 @@ export function calculateEffectiveActionCosts(
   }
   if (poolCostPercentage !== 100) {
     qiCost = Math.floor((qiCost * poolCostPercentage) / 100);
+  }
+  if (poolCostFlat > 0) {
+    qiCost += poolCostFlat;
   }
 
   if (stabilityDelta < 0 && stabilityCostPercentage !== 100) {
@@ -2546,6 +2553,7 @@ export function calculateActionSurvivabilityFloor(
         maxpool: qiCap,
         toxicity: newToxicity,
         maxtoxicity: config.maxToxicity || 0,
+        poolCostFlat: state.poolCostFlat,
         poolCostPercentage: state.poolCostPercentage,
         stabilityCostPercentage: state.stabilityCostPercentage,
         stacks: buff.stacks,
@@ -3308,6 +3316,7 @@ export function applySkill(
         maxpool: qiCap,
         toxicity: newToxicity,
         maxtoxicity: config.maxToxicity || 0,
+        poolCostFlat: state.poolCostFlat,
         poolCostPercentage: state.poolCostPercentage,
         stabilityCostPercentage: state.stabilityCostPercentage,
         stacks: buff.stacks,

@@ -11,6 +11,7 @@ const DERIVED_NATIVE_VARIABLE_KEYS = new Set([
   'stabilitypenalty',
   'toxicity',
   'maxtoxicity',
+  'poolcostflat',
   'poolcostpercentage',
   'stabilitycostpercentage',
   'consumedpills',

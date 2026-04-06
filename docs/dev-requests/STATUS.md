@@ -3,7 +3,7 @@ title: API Request Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-20
+last_verified: 2026-04-04
 source_of_truth: docs/dev-requests/API_EXPOSURE_REQUESTS.md
 review_cycle_days: 14
 related_files:
@@ -17,17 +17,20 @@ related_files:
 
 | Request | Status | Notes |
 | --- | --- | --- |
-| Game-native scaling evaluator | Available (`afnm-types@0.6.45`) | Not wired into optimizer search; local evaluator remains authoritative because the live provider is not hypothetical-state-safe |
-| Game-native overcrit helper | Available (`afnm-types@0.6.45`) | Native provider wired with EV-preserving fallback |
-| Game-native action availability precheck | Available (`afnm-types@0.6.45`) | All-depth native precheck wired with local fallback on errors |
-| Completion/perfection cap getters | Available (`afnm-types@0.6.45`) | ModAPI cap getters wired in integration with heuristic fallback |
+| Game-native scaling evaluator | Available (`afnm-types@0.6.49`) | Not wired into optimizer search; local evaluator remains authoritative because the live provider is not hypothetical-state-safe |
+| Game-native overcrit helper | Available (`afnm-types@0.6.49`) | Native provider wired with EV-preserving fallback |
+| Game-native action availability precheck | Available (`afnm-types@0.6.49`) | All-depth native precheck wired with local fallback on errors |
+| Completion/perfection cap getters | Available (`afnm-types@0.6.49`) | ModAPI cap getters wired in integration with heuristic fallback |
+| Root-state subscribe/snapshot APIs | Available (`afnm-types@0.6.49`) | `window.modAPI.subscribe(...)` / `getGameStateSnapshot()` are now the primary crafting-session/store path |
+| UI injection host | Available (`afnm-types@0.6.49`) | Not adopted yet; candidate replacement for the manual overlay container |
+| Redux action hook | Available (`afnm-types@0.6.49`) | Not adopted yet; candidate replacement for some polling/manual transition observation |
 | Finalized post-modifier cost preview helpers | **Pending** | Internal runtime cost modeling + cost-order/parity checks active |
 | Harmony state/config data | Available | Integrated into optimizer simulation |
 | Buff definitions/effects payloads | Available | Integrated into buff simulation |
 | Condition effect payloads | Available | Integrated into condition handling |
-| Condition transition (`getNextCondition`) | Available (`afnm-types@0.6.45`) | Primary wiring now uses `modAPI.utils.getNextCondition`; legacy fallback probing remains for older runtimes |
-| Technique resolution via known-technique name matching | Available (`afnm-types@0.6.45`) | Primary wiring now matches live `CraftingTechnique.name` to `player.player.craftingTechniques[*].technique` and resolves via `modAPI.utils.craftingTechniqueFromKnown`, with live fallback for missing matches |
-| Stable completion-bonus identifier | Available (`afnm-types@0.6.45`) | Wired via `modAPI.utils.completionBonusBuffName` with heuristic fallback |
+| Condition transition (`getNextCondition`) | Available (`afnm-types@0.6.49`) | Primary wiring now uses `modAPI.utils.getNextCondition`; legacy fallback probing remains for older runtimes |
+| Technique resolution via known-technique name matching | Available (`afnm-types@0.6.49`) | Primary wiring now matches live `CraftingTechnique.name` to `player.player.craftingTechniques[*].technique` and resolves via `modAPI.utils.craftingTechniqueFromKnown`, with live fallback for missing matches |
+| Stable completion-bonus identifier | Available (`afnm-types@0.6.49`) | Wired via `modAPI.utils.completionBonusBuffName` with heuristic fallback |
 
 ## Open questions (dependency-gated)
 

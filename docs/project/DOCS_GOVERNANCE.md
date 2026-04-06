@@ -3,7 +3,7 @@ title: Docs Governance
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-02-28
+last_verified: 2026-04-04
 source_of_truth: package.json, scripts/docs/*
 review_cycle_days: 30
 related_files:
@@ -42,6 +42,7 @@ For `docs/project/*`, `docs/dev-requests/*`, and `docs/history/*`:
 
 - Do not bulk-load `docs/reference/*` unless blocked.
 - Do not use `archive/*` by default.
+- Do not leave generated scrape/output markdown (for example `.firecrawl/*`) in the worktree when running docs checks; docs validation is for repository docs, not transient research artifacts.
 - Never cite historical docs as current truth without re-verification.
 
 ## Update policy

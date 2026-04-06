@@ -8,7 +8,7 @@ describe('CraftingState', () => {
   describe('constructor', () => {
     it('should create state with default values', () => {
       const state = new CraftingState();
-      
+
       expect(state.qi).toBe(0);
       expect(state.stability).toBe(0);
       expect(state.maxStability).toBe(60);
@@ -17,6 +17,7 @@ describe('CraftingState', () => {
       expect(state.controlBuffTurns).toBe(0);
       expect(state.intensityBuffTurns).toBe(0);
       expect(state.toxicity).toBe(0);
+      expect(state.poolCostFlat).toBe(0);
       expect(state.cooldowns.size).toBe(0);
     });
 
@@ -27,16 +28,18 @@ describe('CraftingState', () => {
         initialMaxStability: 60,
         completion: 30,
         perfection: 20,
+        poolCostFlat: 3,
         controlBuffTurns: 2,
         intensityBuffTurns: 0,
         toxicity: 10,
         maxToxicity: 100,
       });
-      
+
       expect(state.qi).toBe(100);
       expect(state.stability).toBe(50);
       expect(state.completion).toBe(30);
       expect(state.perfection).toBe(20);
+      expect(state.poolCostFlat).toBe(3);
       expect(state.controlBuffTurns).toBe(2);
       expect(state.toxicity).toBe(10);
     });
@@ -65,13 +68,13 @@ describe('CraftingState', () => {
         stability: 50,
         completion: 30,
       });
-      
+
       const copy = original.copy();
-      
+
       expect(copy.qi).toBe(100);
       expect(copy.stability).toBe(50);
       expect(copy.completion).toBe(30);
-      
+
       // Verify independence - modifying copy shouldn't affect original
       const modified = copy.copy({ qi: 50 });
       expect(modified.qi).toBe(50);
@@ -83,12 +86,12 @@ describe('CraftingState', () => {
         qi: 100,
         stability: 50,
       });
-      
+
       const modified = original.copy({
         qi: 80,
         completion: 25,
       });
-      
+
       expect(modified.qi).toBe(80);
       expect(modified.stability).toBe(50); // Unchanged
       expect(modified.completion).toBe(25);
@@ -270,14 +273,14 @@ describe('CraftingState', () => {
       const cooldowns = new Map<string, number>();
       cooldowns.set('stabilize', 2);
       const state = new CraftingState({ cooldowns });
-      
+
       expect(state.isOnCooldown('stabilize')).toBe(true);
       expect(state.getCooldown('stabilize')).toBe(2);
     });
 
     it('should detect skill not on cooldown', () => {
       const state = new CraftingState();
-      
+
       expect(state.isOnCooldown('stabilize')).toBe(false);
       expect(state.getCooldown('stabilize')).toBe(0);
     });
@@ -286,7 +289,7 @@ describe('CraftingState', () => {
       const cooldowns = new Map<string, number>();
       cooldowns.set('stabilize', 0);
       const state = new CraftingState({ cooldowns });
-      
+
       expect(state.isOnCooldown('stabilize')).toBe(false);
     });
   });
@@ -327,25 +330,35 @@ describe('CraftingState', () => {
         intensityBuffTurns: 0,
         toxicity: 10,
       });
-      
+
       const key1 = state.getCacheKey();
       const key2 = state.getCacheKey();
-      
+
       expect(key1).toBe(key2);
     });
 
     it('should generate different keys for different states', () => {
       const state1 = new CraftingState({ qi: 100, stability: 50 });
       const state2 = new CraftingState({ qi: 90, stability: 50 });
-      
+
       expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
     });
 
     it('should include stabilityPenalty in cache key', () => {
       // Cache key uses stabilityPenalty (not maxStability directly)
       // maxStability is derived from initialMaxStability - stabilityPenalty
-      const state1 = new CraftingState({ qi: 100, stability: 50, initialMaxStability: 60, stabilityPenalty: 0 });
-      const state2 = new CraftingState({ qi: 100, stability: 50, initialMaxStability: 60, stabilityPenalty: 5 });
+      const state1 = new CraftingState({
+        qi: 100,
+        stability: 50,
+        initialMaxStability: 60,
+        stabilityPenalty: 0,
+      });
+      const state2 = new CraftingState({
+        qi: 100,
+        stability: 50,
+        initialMaxStability: 60,
+        stabilityPenalty: 5,
+      });
 
       expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
     });
@@ -363,6 +376,13 @@ describe('CraftingState', () => {
         initialMaxStability: 80,
         stabilityPenalty: 5,
       });
+
+      expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
+    });
+
+    it('should include poolCostFlat in cache key', () => {
+      const state1 = new CraftingState({ qi: 100, poolCostFlat: 0 });
+      const state2 = new CraftingState({ qi: 100, poolCostFlat: 2 });
 
       expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
     });
@@ -404,11 +424,11 @@ describe('CraftingState', () => {
       const cooldowns1 = new Map<string, number>();
       cooldowns1.set('stabilize', 2);
       const state1 = new CraftingState({ qi: 100, cooldowns: cooldowns1 });
-      
+
       const cooldowns2 = new Map<string, number>();
       cooldowns2.set('stabilize', 1);
       const state2 = new CraftingState({ qi: 100, cooldowns: cooldowns2 });
-      
+
       expect(state1.getCacheKey()).not.toBe(state2.getCacheKey());
     });
   });

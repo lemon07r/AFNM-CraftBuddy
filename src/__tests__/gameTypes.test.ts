@@ -16,6 +16,7 @@ const testVariables: ScalingVariables = {
   resistance: 0,
   itemEffectiveness: 0,
   pillsPerRound: 1,
+  poolCostFlat: 0,
   poolCostPercentage: 100,
   stabilityCostPercentage: 100,
   successChanceBonus: 0,

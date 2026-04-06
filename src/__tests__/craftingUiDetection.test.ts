@@ -2,6 +2,7 @@ import {
   hasCraftingActionCue,
   hasVisibleCraftingUiSignals,
   isRenderableOnscreenElement,
+  parseCraftingProgressPair,
 } from '../modContent/craftingUiDetection';
 
 describe('crafting UI detection', () => {
@@ -88,6 +89,28 @@ describe('crafting UI detection', () => {
           visibleButtonCount: 4,
         }),
       ).toBe(false);
+    });
+  });
+
+  describe('parseCraftingProgressPair', () => {
+    it('parses structural X/Y progress text without relying on English labels', () => {
+      expect(parseCraftingProgressPair('45 / 120')).toEqual({
+        current: 45,
+        target: 120,
+      });
+      expect(parseCraftingProgressPair('45/120')).toEqual({
+        current: 45,
+        target: 120,
+      });
+    });
+
+    it('accepts localized text as long as the visible numbers are present', () => {
+      expect(
+        parseCraftingProgressPair('Vervollkommnung 1 234 / 5 678'),
+      ).toEqual({
+        current: 1234,
+        target: 5678,
+      });
     });
   });
 

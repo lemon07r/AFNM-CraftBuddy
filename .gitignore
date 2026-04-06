@@ -94,6 +94,8 @@ coverage/
 .vibe/
 .windsurf/
 .zencoder/
+.vera/
+.firecrawl/
 skills/
 skills-lock.json
 

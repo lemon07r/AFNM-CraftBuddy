@@ -78,7 +78,13 @@ import {
   hasCraftingActionCue,
   hasVisibleCraftingUiSignals,
   isRenderableOnscreenElement,
+  parseCraftingProgressPair,
 } from './craftingUiDetection';
+import {
+  createModApiStateStore,
+  extractActiveCraftingState,
+  hasStateBackedCraftingUi,
+} from './craftingStoreState';
 import { hydrateHarmonyData, type HarmonyDataSource } from './harmonyState';
 import {
   buildOptimizerReplaySnapshotWithHistory,
@@ -570,7 +576,7 @@ function buildAutoCraftStateFingerprint(): string {
 }
 
 function buildAutoCraftSnapshot() {
-  const hasVisibleCraftingUi = detectVisibleCraftingUi();
+  const hasVisibleCraftingUi = detectActiveCraftingUi();
   const craftActive =
     hasConfirmedCraftSession &&
     lastEntity !== null &&
@@ -2585,6 +2591,10 @@ function updateRecommendation(
   const poolCostPercentage = normalizeRuntimeCostPercentage(
     (entity as any)?.stats?.poolCostPercentage,
   );
+  const poolCostFlat = Math.max(
+    0,
+    parseGameNumber((entity as any)?.stats?.poolCostFlat, 0),
+  );
   const stabilityCostPercentage = normalizeRuntimeCostPercentage(
     (entity as any)?.stats?.stabilityCostPercentage,
   );
@@ -2671,6 +2681,7 @@ function updateRecommendation(
     critChance,
     critMultiplier,
     successChanceBonus,
+    poolCostFlat,
     poolCostPercentage,
     stabilityCostPercentage,
     controlBuffTurns,
@@ -2885,7 +2896,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
   // Show the overlay only while the crafting UI is still on-screen (or while a
   // craft is still bootstrapping). This prevents cached Redux craft data from
   // leaving stale panels visible on library/result transitions.
-  const hasVisibleCraftingUi = detectVisibleCraftingUi();
+  const hasVisibleCraftingUi = detectActiveCraftingUi();
   const hasLiveCraftState =
     hasConfirmedCraftSession &&
     lastEntity !== null &&
@@ -3095,14 +3106,14 @@ function handleCraftResultUiDetected(source: 'polling' | 'redux'): void {
 function findReduxStore(): any {
   const win = window as any;
 
+  const modApiStateStore = getModApiStateStore();
+  if (modApiStateStore) return modApiStateStore;
+
   // Check common locations for Redux store
   if (win.store) return win.store;
   if (win.__REDUX_STORE__) return win.__REDUX_STORE__;
   if (win.reduxStore) return win.reduxStore;
   if (win.__store__) return win.__store__;
-
-  // Check if modAPI exposes any state access
-  if (win.modAPI?.gameState) return { getState: () => win.modAPI.gameState };
 
   // Try to find store from React fiber tree
   try {
@@ -3164,6 +3175,7 @@ function findReduxStore(): any {
 
 // Cache the Redux store once found
 let cachedStore: any = null;
+let modApiStateStoreAdapter: ReturnType<typeof createModApiStateStore> = null;
 let unsubscribeFromReduxStore: (() => void) | null = null;
 let reduxStoreReconnectChecks = 0;
 const REDUX_STORE_RECHECK_INTERVAL_POLLS = 4;
@@ -3177,6 +3189,34 @@ function isReduxStoreLike(store: any): store is {
     typeof store.getState === 'function' &&
     typeof store.subscribe === 'function'
   );
+}
+
+function getModApiStateStore(): ReturnType<typeof createModApiStateStore> {
+  const existingSnapshot = modApiStateStoreAdapter?.getState?.();
+  if (existingSnapshot) {
+    return modApiStateStoreAdapter;
+  }
+
+  modApiStateStoreAdapter = createModApiStateStore((window as any)?.modAPI);
+  return modApiStateStoreAdapter;
+}
+
+function getCurrentRootState(): any | null {
+  if (!isReduxStoreLike(cachedStore)) {
+    return null;
+  }
+
+  try {
+    return cachedStore.getState();
+  } catch {
+    return null;
+  }
+}
+
+function detectActiveCraftingUi(
+  rootState: any = getCurrentRootState(),
+): boolean {
+  return detectVisibleCraftingUi() || hasStateBackedCraftingUi(rootState);
 }
 
 function disconnectReduxStoreSubscription(): void {
@@ -3205,7 +3245,7 @@ function processCraftingStateFromStore(store: any): void {
       return;
     }
 
-    const hasVisibleCraftingUi = detectVisibleCraftingUi();
+    const hasVisibleCraftingUi = detectActiveCraftingUi(state);
     if (hasVisibleCraftingUi) {
       hasConfirmedCraftSession = true;
     }
@@ -3401,9 +3441,7 @@ function findVisibleCraftingProgressElement(
 ): Element | undefined {
   const pickSmallestVisible = (elements: Element[]): Element | undefined => {
     return elements
-      .filter(
-        (el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el),
-      )
+      .filter((el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el))
       .map((el) => ({
         element: el,
         rect: getElementRectSnapshot(el),
@@ -3436,6 +3474,30 @@ function findVisibleCraftingProgressElement(
         fallbackPattern.test(el.textContent || '') && el.children.length < 5,
     ),
   );
+}
+
+function extractCraftingProgressPair(
+  element: Element | undefined,
+): { current: number; target: number } | undefined {
+  if (!element) {
+    return undefined;
+  }
+
+  const candidates = [
+    (element as HTMLElement).innerText,
+    element.textContent,
+    element.getAttribute('aria-label'),
+    element.parentElement?.textContent,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = parseCraftingProgressPair(candidate || '');
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return undefined;
 }
 
 function getVisibleCraftingUiOccupiedRect(): OverlayRectLike | null {
@@ -3647,33 +3709,6 @@ function detectVisibleCraftingUi(): boolean {
   });
 }
 
-function extractActiveCraftingState(state: any): any | null {
-  const gameHasCraftingSlice =
-    !!state?.game &&
-    Object.prototype.hasOwnProperty.call(state.game, 'crafting');
-
-  if (gameHasCraftingSlice) {
-    const gameCrafting = state.game?.crafting;
-    if (gameCrafting?.player && gameCrafting?.progressState) {
-      return gameCrafting;
-    }
-    // Some runtime versions expose both state.game.crafting and state.crafting.
-    // If the modern slice is present but empty, fall back to the active legacy slice.
-    const rootCrafting = state?.crafting;
-    if (rootCrafting?.player && rootCrafting?.progressState) {
-      return rootCrafting;
-    }
-    return null;
-  }
-
-  const rootCrafting = state?.crafting;
-  if (rootCrafting?.player && rootCrafting?.progressState) {
-    return rootCrafting;
-  }
-
-  return null;
-}
-
 /**
  * Try to extract crafting state from Redux store or DOM.
  */
@@ -3688,8 +3723,6 @@ function detectCraftingState(): {
   consumedPillsThisTurn?: number;
   trainingMode?: boolean;
 } {
-  const hasVisibleCraftingUi = detectVisibleCraftingUi();
-
   if (!cachedStore) {
     refreshReduxStoreConnection(true);
   }
@@ -3698,6 +3731,7 @@ function detectCraftingState(): {
   if (isReduxStoreLike(cachedStore)) {
     try {
       const state = cachedStore.getState();
+      const hasVisibleCraftingUi = detectActiveCraftingUi(state);
       const craftingState = extractActiveCraftingState(state);
 
       // Check if we have an active crafting session with player and progressState
@@ -3722,6 +3756,7 @@ function detectCraftingState(): {
     }
   }
 
+  const hasVisibleCraftingUi = detectActiveCraftingUi();
   return { isActive: hasVisibleCraftingUi, hasVisibleCraftingUi };
 }
 
@@ -3740,11 +3775,50 @@ function parseCraftingValuesFromDOM(): {
   maxPool?: number;
 } | null {
   try {
-    // Look for progress bars or text showing crafting values
     const gameRoot = getGameRootElement();
-    const allText = (gameRoot as HTMLElement).innerText || '';
+    const completionPair = extractCraftingProgressPair(
+      findVisibleCraftingProgressElement(
+        gameRoot,
+        '[class*="completion"]',
+        /Completion:/i,
+      ),
+    );
+    const perfectionPair = extractCraftingProgressPair(
+      findVisibleCraftingProgressElement(
+        gameRoot,
+        '[class*="perfection"]',
+        /Perfection:/i,
+      ),
+    );
+    const stabilityPair = extractCraftingProgressPair(
+      findVisibleCraftingProgressElement(
+        gameRoot,
+        '[class*="stability"]',
+        /Stability:/i,
+      ),
+    );
+    const poolPair = extractCraftingProgressPair(
+      findVisibleCraftingProgressElement(
+        gameRoot,
+        '[class*="pool"], [class*="qi"]',
+        /(?:Qi|Pool):/i,
+      ),
+    );
 
-    // Try to find patterns like "Completion: 45/100" or "45 / 100"
+    if (completionPair || perfectionPair || stabilityPair) {
+      return {
+        completion: completionPair?.current ?? 0,
+        perfection: perfectionPair?.current ?? 0,
+        stability: stabilityPair?.current ?? 0,
+        pool: poolPair?.current ?? 0,
+        targetCompletion: completionPair?.target,
+        targetPerfection: perfectionPair?.target,
+        targetStability: stabilityPair?.target,
+        maxPool: poolPair?.target,
+      };
+    }
+
+    const allText = (gameRoot as HTMLElement).innerText || '';
     const completionMatch = allText.match(
       /Completion[:\s]+(\d+)\s*[\/]\s*(\d+)/i,
     );
@@ -3762,7 +3836,6 @@ function parseCraftingValuesFromDOM(): {
         perfection: perfectionMatch ? parseInt(perfectionMatch[1]) : 0,
         stability: stabilityMatch ? parseInt(stabilityMatch[1]) : 0,
         pool: poolMatch ? parseInt(poolMatch[1]) : 0,
-        // Also extract target values (the second number in X/Y patterns)
         targetCompletion: completionMatch
           ? parseInt(completionMatch[2])
           : undefined,
@@ -4165,7 +4238,7 @@ try {
         `[CraftBuddy] Craft context: type=${currentCraftingType} (${integrationDiagnostics.lastCraftingTypeDetectionSource}), sublime=${isSublimeCraft} [${integrationDiagnostics.lastSublimeDetectionSignals.join(', ') || 'none'}], multiplier=${sublimeTargetMultiplier}`,
       );
 
-      const hasVisibleCraftingUi = detectVisibleCraftingUi();
+      const hasVisibleCraftingUi = detectActiveCraftingUi();
       if (
         !shouldPrimeCraftSessionFromRecipeDifficultyHook({
           hasVisibleCraftingUi,
@@ -5353,7 +5426,7 @@ function processCraftingState(craftingState: any): void {
     // Only bootstrap the loading shell from hidden Redux state when a craft
     // start is already pending. This prevents stale persisted crafting slices
     // from resurfacing the panel off-screen.
-    const isCraftingUiVisible = detectVisibleCraftingUi();
+    const isCraftingUiVisible = detectActiveCraftingUi();
     if (
       currentSettings.panelVisible &&
       !isOverlayVisible &&

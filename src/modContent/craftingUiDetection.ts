@@ -12,6 +12,11 @@ export interface VisibleCraftingUiSignals {
   visibleButtonCount: number;
 }
 
+export interface ParsedCraftingProgressPair {
+  current: number;
+  target: number;
+}
+
 export interface ElementVisibilityRectLike {
   top: number;
   left: number;
@@ -45,6 +50,33 @@ const CRAFTING_ACTION_PATTERNS = [
 
 function normalizeCuePart(value?: string): string {
   return (value || '').toLowerCase();
+}
+
+function parseProgressValue(value: string | undefined): number | undefined {
+  const normalized = String(value || '').replace(/[,\s]/g, '');
+  if (!/^\d+$/.test(normalized)) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function parseCraftingProgressPair(
+  text: string | undefined,
+): ParsedCraftingProgressPair | null {
+  const match = String(text || '').match(/(\d[\d,\s]*)\s*\/\s*(\d[\d,\s]*)/);
+  if (!match) {
+    return null;
+  }
+
+  const current = parseProgressValue(match[1]);
+  const target = parseProgressValue(match[2]);
+  if (current === undefined || target === undefined) {
+    return null;
+  }
+
+  return { current, target };
 }
 
 export function hasCraftingActionCue({
@@ -103,7 +135,11 @@ export function isRenderableOnscreenElement({
     return false;
   }
 
-  if (display === 'none' || visibility === 'hidden' || visibility === 'collapse') {
+  if (
+    display === 'none' ||
+    visibility === 'hidden' ||
+    visibility === 'collapse'
+  ) {
     return false;
   }
 
@@ -114,7 +150,9 @@ export function isRenderableOnscreenElement({
   }
 
   const maxViewportWidth =
-    viewportWidth && viewportWidth > 0 ? viewportWidth : Number.POSITIVE_INFINITY;
+    viewportWidth && viewportWidth > 0
+      ? viewportWidth
+      : Number.POSITIVE_INFINITY;
   const maxViewportHeight =
     viewportHeight && viewportHeight > 0
       ? viewportHeight

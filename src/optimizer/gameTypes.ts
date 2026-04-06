@@ -131,6 +131,7 @@ export interface BuffStats {
   intensity?: Scaling;
   critchance?: Scaling;
   critmultiplier?: Scaling;
+  poolCostFlat?: Scaling;
   poolCostPercentage?: Scaling;
   stabilityCostPercentage?: Scaling;
   successChanceBonus?: Scaling;
@@ -204,7 +205,12 @@ export type TechniqueMastery =
   | { kind: 'poolcost'; change: number }
   | { kind: 'stabilitycost'; change: number }
   | { kind: 'successchance'; change: number }
-  | { kind: 'upgrade'; upgradeKey: string; change: number; shouldMultiply?: boolean };
+  | {
+      kind: 'upgrade';
+      upgradeKey: string;
+      change: number;
+      shouldMultiply?: boolean;
+    };
 
 /**
  * Complete technique definition matching game structure.
@@ -314,6 +320,7 @@ export interface ScalingVariables {
   resistance: number;
   itemEffectiveness: number;
   pillsPerRound: number;
+  poolCostFlat: number;
   poolCostPercentage: number;
   stabilityCostPercentage: number;
   successChanceBonus: number;
@@ -331,11 +338,11 @@ export interface NativeCraftingUtils {
     scaling: Record<string, unknown>,
     variables: Record<string, number>,
     stanceLength: number,
-    preMaxTransform?: (value: number) => number
+    preMaxTransform?: (value: number) => number,
   ) => number;
   calculateCraftingOvercrit?: (
     critChance: number,
-    critMultiplier: number
+    critMultiplier: number,
   ) => {
     multiplier: number;
     critCount: number;
@@ -347,7 +354,7 @@ let activeNativeCraftingUtils: NativeCraftingUtils | undefined;
 let warnedNativeOvercritFailure = false;
 
 export function setNativeCraftingUtils(
-  nativeUtils: NativeCraftingUtils | undefined
+  nativeUtils: NativeCraftingUtils | undefined,
 ): void {
   activeNativeCraftingUtils = nativeUtils;
   warnedNativeOvercritFailure = false;
@@ -359,7 +366,7 @@ export function setNativeCraftingUtils(
  */
 export function getBonusAndChance(
   value: number,
-  target: number
+  target: number,
 ): { guaranteed: number; bonusChance: number; nextThreshold: number } {
   if (target <= 0) {
     return { guaranteed: 0, bonusChance: 0, nextThreshold: 0 };
@@ -369,7 +376,11 @@ export function getBonusAndChance(
   let remainingValue = value;
   let guaranteed = 0;
 
-  while (remainingValue > 0 && currentTarget > 0 && remainingValue >= currentTarget) {
+  while (
+    remainingValue > 0 &&
+    currentTarget > 0 &&
+    remainingValue >= currentTarget
+  ) {
     remainingValue -= currentTarget;
     guaranteed++;
     currentTarget = Math.floor(currentTarget * EXPONENTIAL_SCALING_FACTOR);
@@ -391,7 +402,7 @@ export function getBonusAndChance(
  */
 export function calculateExpectedCritMultiplier(
   critChance: number,
-  critMultiplier: number
+  critMultiplier: number,
 ): number {
   const nativeOvercrit = activeNativeCraftingUtils?.calculateCraftingOvercrit;
   if (nativeOvercrit) {
@@ -401,15 +412,13 @@ export function calculateExpectedCritMultiplier(
       if (Number.isFinite(nativeCritMultiplier) && nativeCritMultiplier > 0) {
         const actualCritChance = Math.min(Math.max(critChance, 0), 100) / 100;
         const critMultiplierAsRatio = nativeCritMultiplier / 100;
-        return (
-          1 - actualCritChance + actualCritChance * critMultiplierAsRatio
-        );
+        return 1 - actualCritChance + actualCritChance * critMultiplierAsRatio;
       }
     } catch (error) {
       if (!warnedNativeOvercritFailure) {
         console.warn(
           '[CraftBuddy] Native calculateCraftingOvercrit failed, using local fallback:',
-          error
+          error,
         );
         warnedNativeOvercritFailure = true;
       }
@@ -433,11 +442,15 @@ export function calculateExpectedCritMultiplier(
  * Expression compiler for trusted game-authored formulas.
  * Uses `new Function` with constrained input checks and guarded scope access.
  */
-const EXPRESSION_CACHE = new Map<string, (scope: Record<string, number | ((...args: number[]) => number)>) => number>();
+const EXPRESSION_CACHE = new Map<
+  string,
+  (scope: Record<string, number | ((...args: number[]) => number)>) => number
+>();
 const MAX_EXPRESSION_CACHE_SIZE = 256;
 const MAX_EXPRESSION_LENGTH = 1024;
 const ALLOWED_EXPRESSION_CHARS = /^[\w\s+\-*/%().,<>=!&|:{}]+$/;
-const BLOCKED_EXPRESSION_KEYWORDS = /\b(?:while|for|do|switch|try|catch|finally|class|function|new|return|throw|import|export|await|yield|with|const|let|var|delete|this|super)\b/i;
+const BLOCKED_EXPRESSION_KEYWORDS =
+  /\b(?:while|for|do|switch|try|catch|finally|class|function|new|return|throw|import|export|await|yield|with|const|let|var|delete|this|super)\b/i;
 const ASSIGNMENT_OPERATOR_RE = /(^|[^=!<>])=($|[^=])/;
 const JS_RESERVED_WORDS = new Set([
   'true',
@@ -487,10 +500,17 @@ function normalizeVariableKey(key: string): string {
 
 function cacheCompiledExpression(
   eqn: string,
-  compiled: (scope: Record<string, number | ((...args: number[]) => number)>) => number
+  compiled: (
+    scope: Record<string, number | ((...args: number[]) => number)>,
+  ) => number,
 ): void {
-  if (!EXPRESSION_CACHE.has(eqn) && EXPRESSION_CACHE.size >= MAX_EXPRESSION_CACHE_SIZE) {
-    const oldestKey = EXPRESSION_CACHE.keys().next().value as string | undefined;
+  if (
+    !EXPRESSION_CACHE.has(eqn) &&
+    EXPRESSION_CACHE.size >= MAX_EXPRESSION_CACHE_SIZE
+  ) {
+    const oldestKey = EXPRESSION_CACHE.keys().next().value as
+      | string
+      | undefined;
     if (oldestKey !== undefined) {
       EXPRESSION_CACHE.delete(oldestKey);
     }
@@ -514,7 +534,13 @@ function getVariableValue(variables: ScalingVariables, key: string): number {
   return 0;
 }
 
-function compileExpression(eqn: string): ((scope: Record<string, number | ((...args: number[]) => number)>) => number) | null {
+function compileExpression(
+  eqn: string,
+):
+  | ((
+      scope: Record<string, number | ((...args: number[]) => number)>,
+    ) => number)
+  | null {
   if (EXPRESSION_CACHE.has(eqn)) {
     return EXPRESSION_CACHE.get(eqn)!;
   }
@@ -550,20 +576,27 @@ function compileExpression(eqn: string): ((scope: Record<string, number | ((...a
         symbol !== 'round' &&
         symbol !== 'min' &&
         symbol !== 'max' &&
-        symbol !== 'abs'
-    )
+        symbol !== 'abs',
+    ),
   );
 
   try {
     const fn = new Function(
       'scope',
-      `with (scope) { return (${normalized}); }`
-    ) as (scope: Record<string, number | ((...args: number[]) => number)>) => number;
+      `with (scope) { return (${normalized}); }`,
+    ) as (
+      scope: Record<string, number | ((...args: number[]) => number)>,
+    ) => number;
 
-    const wrapped = (scope: Record<string, number | ((...args: number[]) => number)>): number => {
+    const wrapped = (
+      scope: Record<string, number | ((...args: number[]) => number)>,
+    ): number => {
       const proxy = new Proxy(scope, {
         has: () => true,
-        get: (target, prop: string | symbol): number | ((...args: number[]) => number) => {
+        get: (
+          target,
+          prop: string | symbol,
+        ): number | ((...args: number[]) => number) => {
           if (typeof prop !== 'string') return 0;
           if (prop in target) {
             return target[prop]!;
@@ -588,7 +621,10 @@ function compileExpression(eqn: string): ((scope: Record<string, number | ((...a
  * Expression evaluator for game equations with variable substitution.
  * Returns 0 for invalid or blocked expressions.
  */
-export function evalExpression(eqn: string, variables: ScalingVariables): number {
+export function evalExpression(
+  eqn: string,
+  variables: ScalingVariables,
+): number {
   if (!eqn) return 1;
   const compiled = compileExpression(eqn);
   if (!compiled) {
@@ -615,7 +651,7 @@ export function evalExpression(eqn: string, variables: ScalingVariables): number
 export function evaluateScaling(
   scaling: Scaling | undefined,
   variables: ScalingVariables,
-  defaultValue: number = 0
+  defaultValue: number = 0,
 ): number {
   if (!scaling) return defaultValue;
 
@@ -644,7 +680,10 @@ export function evaluateScaling(
 
   // Apply custom scaling with multiplier
   if (scaling.customScaling) {
-    const scaleValue = getVariableValue(variables, scaling.customScaling.scaling);
+    const scaleValue = getVariableValue(
+      variables,
+      scaling.customScaling.scaling,
+    );
     result *= 1 + scaling.customScaling.multiplier * scaleValue;
   }
 
@@ -667,7 +706,8 @@ export function evaluateScaling(
   // Apply max cap
   if (scaling.max) {
     const maxValue = evaluateScaling(scaling.max, variables, Infinity);
-    result = maxValue < 0 ? Math.max(result, maxValue) : Math.min(result, maxValue);
+    result =
+      maxValue < 0 ? Math.max(result, maxValue) : Math.min(result, maxValue);
   }
 
   if (scaling.divideByStanceLength) {
@@ -682,7 +722,10 @@ export function evaluateScaling(
  * This extracts the real multiplier values from game data so we don't rely on hardcoded tables.
  */
 export function parseRecipeConditionEffects(
-  conditionEffects: Record<string, { effects?: Array<{ kind: string; multiplier?: number; bonus?: number }> }>
+  conditionEffects: Record<
+    string,
+    { effects?: Array<{ kind: string; multiplier?: number; bonus?: number }> }
+  >,
 ): Record<CraftingCondition, ConditionEffect[]> {
   const result: Record<CraftingCondition, ConditionEffect[]> = {
     neutral: [],
@@ -692,14 +735,22 @@ export function parseRecipeConditionEffects(
     veryNegative: [],
   };
 
-  const conditions: CraftingCondition[] = ['neutral', 'positive', 'negative', 'veryPositive', 'veryNegative'];
+  const conditions: CraftingCondition[] = [
+    'neutral',
+    'positive',
+    'negative',
+    'veryPositive',
+    'veryNegative',
+  ];
   for (const cond of conditions) {
     const data = conditionEffects[cond];
     if (!data?.effects) continue;
     result[cond] = data.effects
-      .filter(e => e && e.kind)
-      .map(e => {
-        const effect: ConditionEffect = { kind: e.kind as ConditionEffect['kind'] };
+      .filter((e) => e && e.kind)
+      .map((e) => {
+        const effect: ConditionEffect = {
+          kind: e.kind as ConditionEffect['kind'],
+        };
         if (e.kind === 'chance') {
           effect.bonus = e.bonus;
         } else {
@@ -718,10 +769,13 @@ export function parseRecipeConditionEffects(
  */
 export function getConditionEffects(
   conditionType: RecipeConditionEffectType,
-  condition: CraftingCondition
+  condition: CraftingCondition,
 ): ConditionEffect[] {
   // Default condition effects by type
-  const effects: Record<RecipeConditionEffectType, Record<CraftingCondition, ConditionEffect[]>> = {
+  const effects: Record<
+    RecipeConditionEffectType,
+    Record<CraftingCondition, ConditionEffect[]>
+  > = {
     perfectable: {
       neutral: [],
       positive: [{ kind: 'control', multiplier: 0.5 }],

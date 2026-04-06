@@ -433,6 +433,25 @@ describe('calculateEffectiveActionCosts', () => {
     expect(costs.stabilityCost).toBe(9);
   });
 
+  it('should add poolCostFlat after percentage modifiers', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      poolCostFlat: 3,
+      poolCostPercentage: 80,
+    });
+    const skill = createTestSkill({ qiCost: 17, stabilityCost: 0 });
+    const conditionEffects = [{ kind: 'pool' as const, multiplier: 1.3 }];
+
+    const costs = calculateEffectiveActionCosts(
+      state,
+      skill,
+      0,
+      conditionEffects,
+    );
+    expect(costs.qiCost).toBe(20); // floor(floor(17 * 1.3) * 0.8) + 3
+  });
+
   it('should include buff-derived pool cost modifiers when config is provided', () => {
     const skill = createTestSkill({
       key: 'forceful_stabilize',
@@ -482,6 +501,44 @@ describe('calculateEffectiveActionCosts', () => {
       config,
     );
     expect(energized.qiCost).toBe(27); // floor(floor(62 * 0.5) * 0.88)
+  });
+
+  it('should include buff-derived poolCostFlat modifiers when config is provided', () => {
+    const skill = createTestSkill({
+      qiCost: 20,
+      stabilityCost: 0,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      buffs: new Map([
+        [
+          'soft_cap',
+          {
+            name: 'Soft Cap',
+            stacks: 2,
+            definition: {
+              name: 'Soft Cap',
+              canStack: true,
+              effects: [],
+              stats: {
+                poolCostFlat: { value: 2 },
+              },
+            },
+          },
+        ],
+      ]),
+    });
+
+    const costs = calculateEffectiveActionCosts(
+      state,
+      skill,
+      0,
+      [],
+      createTestConfig({ skills: [skill] }),
+    );
+
+    expect(costs.qiCost).toBe(22);
   });
 
   it('should hydrate missing active buff definitions from config skill data', () => {
