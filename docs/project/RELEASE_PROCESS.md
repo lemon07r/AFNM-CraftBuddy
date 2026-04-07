@@ -3,7 +3,7 @@ title: Release Process
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-07
+last_verified: 2026-04-06
 source_of_truth: package.json, scripts/workshop-upload.ts, scripts/installed-game-runtime.js, .github/workflows/release.yml, ../ModUploader-AFNM/package.json, ../ModUploader-AFNM/electron/main/cli.ts
 review_cycle_days: 30
 related_files:

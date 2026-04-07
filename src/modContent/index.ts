@@ -3106,9 +3106,6 @@ function handleCraftResultUiDetected(source: 'polling' | 'redux'): void {
 function findReduxStore(): any {
   const win = window as any;
 
-  const modApiStateStore = getModApiStateStore();
-  if (modApiStateStore) return modApiStateStore;
-
   // Check common locations for Redux store
   if (win.store) return win.store;
   if (win.__REDUX_STORE__) return win.__REDUX_STORE__;
@@ -3169,6 +3166,14 @@ function findReduxStore(): any {
   } catch (e) {
     console.warn('[CraftBuddy] Fiber traversal failed:', e);
   }
+
+  // Fall back to modAPI state store adapter when no direct Redux store is
+  // reachable. The modAPI wrapper provides getState/subscribe, but its
+  // subscribe notifications may lag behind the synchronous Redux dispatch
+  // cycle, which can cause the auto-craft controller's state-advance timeout
+  // to fire before the snapshot updates.
+  const modApiStateStore = getModApiStateStore();
+  if (modApiStateStore) return modApiStateStore;
 
   return null;
 }
