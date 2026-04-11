@@ -3,7 +3,7 @@ title: Mod API Integration
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-06
+last_verified: 2026-04-11
 source_of_truth: src/modContent/index.ts, src/modContent/craftingStoreState.ts
 review_cycle_days: 21
 related_files:
@@ -47,12 +47,20 @@ Fallback handling exists for targets/progress extraction, condition transitions,
 
 Craft-session visibility now treats the root-state `screen.screen === 'recipe'` plus a live crafting slice as the primary language-agnostic signal. DOM text parsing remains for target/progress recovery, but it should parse structural `X/Y` progress values from visible widgets before trying any English-label regex fallback.
 
-Installed runtime `0.6.49-727424c` also exposes additional parity-relevant fields that are not necessarily search inputs by themselves:
+Installed runtime `0.6.50` also exposes additional parity-relevant fields that are not necessarily search inputs by themselves:
 
 - root ModAPI state APIs: `subscribe`, `getGameStateSnapshot`, `injectUI`
 - `hooks.onReduxAction`
 - recipe best-completion tracking: `basicBestCompletion`, `perfectBestCompletion`, `sublimeBestCompletion`
 - flat crafting Qi-cost stat: `poolCostFlat`
+
+New in `0.6.50`:
+
+- `modAPI.utils.getActionCost` — native post-modifier action cost preview
+- `modAPI.utils.evaluateCraftingCondition` — native crafting condition evaluation
+- `modAPI.utils.getActualCraftingStat` — native crafting stat resolution
+- `noQiCost` technique field — marks techniques that cost no Qi (integration now skips Qi-cost evaluation for these)
+- `craftingTeamUpOverride` companion buff integration — companion crafting buffs now flow into optimizer state
 
 Replay snapshots are expected to be parity-grade bug reports, not just light debug summaries. They should preserve runtime-shaped skill fields (including mastery/granted-buff payloads), active buff definitions when those change optimizer gains or costs, and craft-context provenance (crafting-type source, sublime-detection signals, integration diagnostics, raw recipe/recipeStats fields). Exported snapshot bundles now keep the current turn plus a bounded recent-turn history with auto-mode state so bug reports can show how a bad line developed without growing unbounded.
 

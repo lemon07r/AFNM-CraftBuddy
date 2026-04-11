@@ -134,6 +134,7 @@ Reasons:
 
 - direct app launch is disruptive on the desktop unless a separate virtual display/Xvfb-style path is available
 - the installed app restarts through Steam by default unless a `disable_steam` sentinel file exists next to the binary
+  - **CRITICAL:** When finished testing, delete the `disable_steam` file so the game can communicate with Steam again. If left behind, workshop mods will not load.
 - if launched from the repo as the current working directory, the game writes its own `./settings.json` there
 
 If live UI verification is explicitly requested in the future, use a non-repo working directory, prefer a hidden display/virtual display, and only proceed if the flow is actually automated and non-disruptive.

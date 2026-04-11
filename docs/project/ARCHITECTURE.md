@@ -3,7 +3,7 @@ title: Architecture
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-08
+last_verified: 2026-04-11
 source_of_truth: src/mod.ts, src/modContent/*, src/optimizer/*, src/ui/*, src/settings/index.ts, src/utils/*
 review_cycle_days: 30
 related_files:

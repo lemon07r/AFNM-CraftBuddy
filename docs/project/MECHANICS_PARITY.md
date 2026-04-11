@@ -3,7 +3,7 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-04
+last_verified: 2026-04-11
 source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/search.ts
 review_cycle_days: 14
 related_files:
@@ -47,7 +47,10 @@ related_files:
 - voluntary `Finish Craft` modeling as a search-local action, using the runtime `getBonusAndChance(...)` ladder for both completion and perfection craft-end rolls; finished scoring now evaluates fail/basic/perfect/sublime EV from that exact distribution, and the persisted completion/perfection goal-priority bias slider (`-100` perfection to `100` completion, `0` balanced default) feeds the same underlying scorer
 - optimizer replay snapshots now include serialized `harmonyData` plus a `harmonyDataSource` tag, and exported snapshot bundles retain the newest bounded turn history plus auto-mode state so bug reports can distinguish authoritative parity data from fallback/debug context
 - installed runtime extraction from the current game bundle is the tiebreaker when UI/help text or older notes drift from executable behavior; forge low-control penalties are verified against the live bundle at heat `2-3`, not `1-3`
-- installed runtime `0.6.49-727424c` exposes recipe `basicBestCompletion` / `perfectBestCompletion` / `sublimeBestCompletion`; this affects craft-result/material-return parity, not turn-to-turn optimizer choice, so it is currently tracked in docs/oracle rather than search scoring
+- installed runtime `0.6.50` exposes recipe `basicBestCompletion` / `perfectBestCompletion` / `sublimeBestCompletion`; this affects craft-result/material-return parity, not turn-to-turn optimizer choice, so it is currently tracked in docs/oracle rather than search scoring
+- native provider detection for `getActionCost`, `evaluateCraftingCondition`, `getActualCraftingStat` (new in `0.6.50`)
+- `noQiCost` technique field handling — techniques marked with `noQiCost` skip Qi-cost evaluation
+- `craftingTeamUpOverride` companion buff integration — companion crafting buffs flow into optimizer state
 
 ## Community guide validation status
 
@@ -58,8 +61,8 @@ related_files:
 - toxicity detox per-turn handling: implemented in `skills.ts` and explicitly covered for multi-turn active-buff cleansing in `skills.test.ts`
 - cost-percentage buff stacking order: verified against the installed runtime; `poolCostPercentage` / `stabilityCostPercentage` buffs floor after each buff application, then action costs apply condition multipliers in the same order the optimizer now uses
 - soft-cap Qi surcharge: implemented via the runtime `poolCostFlat` crafting stat; action-cost evaluation now carries the flat additive tax alongside the older percentage modifier path
-- static `poolcost` / `stabilitycost` / `successchance` masteries: verified against the installed runtime as technique-construction modifiers that are already baked into the live technique payload; current integration filtering avoids double counting, and no conditional variants were found in the installed `0.6.49-727424c` bundle
-- instant-craft material returns: verified against installed runtime `0.6.49-727424c` as best-completion-tier based with an `80%` cap; no optimizer/search adjustment is needed because the effect resolves after craft completion, but replay/docs/oracle should treat it as current runtime behavior
+- static `poolcost` / `stabilitycost` / `successchance` masteries: verified against the installed runtime as technique-construction modifiers that are already baked into the live technique payload; current integration filtering avoids double counting, and no conditional variants were found in the installed `0.6.50` bundle
+- instant-craft material returns: verified against installed runtime `0.6.50` as best-completion-tier based with an `80%` cap; no optimizer/search adjustment is needed because the effect resolves after craft completion, but replay/docs/oracle should treat it as current runtime behavior
 
 ## Dependency-gated
 

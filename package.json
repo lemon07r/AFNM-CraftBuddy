@@ -1,6 +1,6 @@
 {
   "name": "afnm-craftbuddy",
-  "version": "4.1.15",
+  "version": "4.2.0",
   "description": "Automatically calculates and displays the optimal next skill to use during crafting in Ascend From Nine Mountains",
   "author": {
     "name": "lemon07r"
@@ -28,7 +28,7 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/react-dom": "^19.2.3",
-    "afnm-types": "0.6.49",
+    "afnm-types": "0.6.50",
     "file-loader": "^6.2.0",
     "jest": "^30.2.0",
     "prettier": "^3.8.1",

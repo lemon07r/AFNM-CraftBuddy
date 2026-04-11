@@ -121,12 +121,12 @@ function extractSummary(extractDir, gameDir, asarPath) {
       recommendsFusionThroughHeat: forgeRecommendFusionThrough4 ? 4 : null,
     },
     modApi: {
-      hasRootStateSubscribe: runtimeText.includes(
-        'subscribe:e=>{let t=window.gameStore',
-      ),
-      hasRootStateSnapshot: runtimeText.includes(
-        'getGameStateSnapshot:()=>window.gameStore?.getState()??null',
-      ),
+      hasRootStateSubscribe:
+        runtimeText.includes('subscribe:e=>{let t=window.gameStore') ||
+        (runtimeText.includes('subscribe:') && runtimeText.includes('gameStore.subscribe')),
+      hasRootStateSnapshot:
+        runtimeText.includes('getGameStateSnapshot:()=>window.gameStore?.getState()??null') ||
+        (runtimeText.includes('getGameStateSnapshot:') && runtimeText.includes('gameStore')),
       hasInjectUI: runtimeText.includes('injectUI:('),
       hasOnReduxActionHook: runtimeText.includes('onReduxAction:'),
       hasHarmonyConfigs: gameJs.includes('harmonyConfigs'),
@@ -139,6 +139,9 @@ function extractSummary(extractDir, gameDir, asarPath) {
       hasEvaluateCraftingCondition: gameJs.includes(
         'evaluateCraftingCondition',
       ),
+      hasGetActionCost: gameJs.includes('getActionCost'),
+      hasGetActualCraftingStat: gameJs.includes('getActualCraftingStat'),
+      hasGetBonusAndChance: gameJs.includes('getBonusAndChance'),
     },
     crafting: {
       hasRecipeBestCompletionTracking:

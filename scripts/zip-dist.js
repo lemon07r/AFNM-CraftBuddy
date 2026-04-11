@@ -21,6 +21,29 @@ async function zipDist() {
     fs.copyFileSync(packageJsonPath, distPackageJsonPath);
     console.log('Copied package.json to dist folder');
 
+    // Copy translations folder if it exists (game auto-loads from translations/)
+    const translationsDir = path.resolve(__dirname, '../translations');
+    const distTranslationsDir = path.resolve(distPath, 'translations');
+    if (fs.existsSync(translationsDir)) {
+      if (!fs.existsSync(distTranslationsDir)) {
+        fs.mkdirSync(distTranslationsDir, { recursive: true });
+      }
+      const translationFiles = fs.readdirSync(translationsDir).filter(
+        (f) => f.endsWith('.json'),
+      );
+      for (const file of translationFiles) {
+        fs.copyFileSync(
+          path.resolve(translationsDir, file),
+          path.resolve(distTranslationsDir, file),
+        );
+      }
+      if (translationFiles.length > 0) {
+        console.log(
+          `Copied ${translationFiles.length} translation file(s) to dist folder`,
+        );
+      }
+    }
+
     await zip(distPath, zipPath);
     console.log(`Successfully zipped ${package.name} to ${zipPath}`);
   } catch (err) {

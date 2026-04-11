@@ -172,6 +172,11 @@ interface IntegrationDiagnostics {
   usingModApiCraftingVariableResolver: boolean;
   usingModApiMaxToxicityGetter: boolean;
   usingModApiItemTypeHarmonyMapping: boolean;
+  usingModApiGetActionCost: boolean;
+  usingModApiEvaluateCraftingCondition: boolean;
+  usingModApiGetActualCraftingStat: boolean;
+  nativeGetActionCostCalls: number;
+  nativeGetActionCostErrors: number;
   nativeCanUseActionCalls: number;
   nativeCanUseActionBlocked: number;
   nativeCanUseActionErrors: number;
@@ -208,6 +213,11 @@ const integrationDiagnostics: IntegrationDiagnostics = {
   usingModApiCraftingVariableResolver: false,
   usingModApiMaxToxicityGetter: false,
   usingModApiItemTypeHarmonyMapping: false,
+  usingModApiGetActionCost: false,
+  usingModApiEvaluateCraftingCondition: false,
+  usingModApiGetActualCraftingStat: false,
+  nativeGetActionCostCalls: 0,
+  nativeGetActionCostErrors: 0,
   nativeCanUseActionCalls: 0,
   nativeCanUseActionBlocked: 0,
   nativeCanUseActionErrors: 0,
@@ -329,6 +339,15 @@ function checkIntegrationHealth(): void {
     if (failureRate > 0.2) {
       console.warn(
         `[CraftBuddy] High condition provider failure rate: ${(failureRate * 100).toFixed(1)}%`,
+      );
+    }
+  }
+  if (d.nativeGetActionCostCalls > 10 && d.nativeGetActionCostErrors > 0) {
+    const errorRate =
+      d.nativeGetActionCostErrors / d.nativeGetActionCostCalls;
+    if (errorRate > 0.1) {
+      console.warn(
+        `[CraftBuddy] High native getActionCost error rate: ${(errorRate * 100).toFixed(1)}% (${d.nativeGetActionCostErrors}/${d.nativeGetActionCostCalls})`,
       );
     }
   }
@@ -1439,6 +1458,16 @@ function configureNativeOptimizerProviders(): void {
       return [];
     },
   );
+
+  // Detect 0.6.50 native utils availability (integration-layer only; these
+  // require live game state and cannot be used in the optimizer's pure
+  // simulation pipeline).
+  integrationDiagnostics.usingModApiGetActionCost =
+    typeof modUtils?.getActionCost === 'function';
+  integrationDiagnostics.usingModApiEvaluateCraftingCondition =
+    typeof modUtils?.evaluateCraftingCondition === 'function';
+  integrationDiagnostics.usingModApiGetActualCraftingStat =
+    typeof modUtils?.getActualCraftingStat === 'function';
 }
 
 function normalizeNextConditionQueue(
@@ -1510,10 +1539,62 @@ function ensureNativeProvidersInitialized(): void {
     integrationDiagnostics.usingModApiScalingEvaluator ||
     integrationDiagnostics.usingModApiOvercritHelper ||
     integrationDiagnostics.usingModApiCanUseActionPrecheck ||
-    integrationDiagnostics.usingModApiGetNextCondition;
+    integrationDiagnostics.usingModApiGetNextCondition ||
+    integrationDiagnostics.usingModApiGetActionCost ||
+    integrationDiagnostics.usingModApiEvaluateCraftingCondition ||
+    integrationDiagnostics.usingModApiGetActualCraftingStat;
   if (nativeProvidersInitialized) {
     debugLog('[CraftBuddy] Native providers initialized on deferred attempt');
   }
+}
+
+/**
+ * Use native getActionCost to get the game's actual computed costs for a
+ * technique. Returns undefined if the native API is unavailable or fails.
+ * Only usable in the integration layer with live game state.
+ */
+function getNativeActionCost(
+  technique: CraftingTechnique,
+  entity: CraftingEntity,
+  recipeStats: CraftingRecipeStats | undefined,
+  progressState: ProgressState | undefined,
+): { poolCost: number; stabilityCost: number } | undefined {
+  const modUtils = (window as any)?.modAPI?.utils;
+  if (
+    typeof modUtils?.getActionCost !== 'function' ||
+    !recipeStats ||
+    !progressState
+  ) {
+    return undefined;
+  }
+
+  integrationDiagnostics.nativeGetActionCostCalls++;
+  try {
+    const result = modUtils.getActionCost(
+      technique,
+      entity,
+      recipeStats,
+      progressState,
+    );
+    if (
+      result &&
+      typeof result.poolCost === 'number' &&
+      typeof result.stabilityCost === 'number'
+    ) {
+      return {
+        poolCost: Math.max(0, result.poolCost),
+        stabilityCost: Math.max(0, result.stabilityCost),
+      };
+    }
+  } catch (error) {
+    integrationDiagnostics.nativeGetActionCostErrors++;
+    debugLog(
+      '[CraftBuddy] ModAPI getActionCost failed, using local costs:',
+      error,
+    );
+  }
+
+  return undefined;
 }
 
 function toFinitePositiveNumber(value: unknown): number | undefined {
@@ -1617,6 +1698,13 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
   else fallbackActive.push('itemTypeHarmony');
   if (d.usingModApiTechniqueFromKnown) nativeActive.push('techniqueResolution');
   else fallbackActive.push('techniqueResolution');
+  if (d.usingModApiGetActionCost) nativeActive.push('actionCost');
+  else fallbackActive.push('actionCost');
+  if (d.usingModApiEvaluateCraftingCondition)
+    nativeActive.push('conditionEvaluation');
+  else fallbackActive.push('conditionEvaluation');
+  if (d.usingModApiGetActualCraftingStat) nativeActive.push('actualCraftingStat');
+  else fallbackActive.push('actualCraftingStat');
 
   const canUseActionErrorRate =
     d.nativeCanUseActionCalls > 0
@@ -1631,6 +1719,11 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
       blocked: d.nativeCanUseActionBlocked,
       errors: d.nativeCanUseActionErrors,
       errorRate: canUseActionErrorRate,
+    },
+    actionCostStats: {
+      available: d.usingModApiGetActionCost,
+      calls: d.nativeGetActionCostCalls,
+      errors: d.nativeGetActionCostErrors,
     },
     conditionProvider: {
       used: d.conditionProviderUsedCount,
@@ -2093,7 +2186,7 @@ function convertGameTechniques(
       }
     }
 
-    const qiCost = sourceTech.poolCost || 0;
+    const qiCost = sourceTech.noQiCost ? 0 : (sourceTech.poolCost || 0);
     const stabilityCost = sourceTech.stabilityCost || 0;
     const toxicityCost = sourceTech.toxicityCost || 0;
     const techType = sourceTech.type || 'support';
@@ -2500,7 +2593,24 @@ function updateRecommendation(
   const normalizedCondition = normalizeConditionKey(
     condition as unknown as string | undefined,
   );
-  const buffs = entity?.buffs;
+  const entityBuffs = entity?.buffs;
+
+  // Include craftingTeamUpOverride from event state when a crafting companion is active
+  const craftingTeamUpOverride = (() => {
+    try {
+      const rootState = getCurrentRootState();
+      return (
+        rootState?.gameEvent?.craftingTeamUpOverride ??
+        rootState?.game?.gameEvent?.craftingTeamUpOverride ??
+        null
+      );
+    } catch {
+      return null;
+    }
+  })() as CraftingBuff | null;
+  const buffs: CraftingBuff[] | undefined = craftingTeamUpOverride
+    ? [...(entityBuffs || []), craftingTeamUpOverride]
+    : entityBuffs;
 
   // Check for very large numbers that might cause precision issues
   checkPrecision(completion, 'completion');
