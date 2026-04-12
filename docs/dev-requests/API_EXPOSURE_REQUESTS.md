@@ -88,4 +88,4 @@ Still pending exposure:
 
 Documentation follow-up:
 
-- publish the contract that live `CraftingTechnique.name` is a stable non-localized identifier matching `KnownCraftingTechnique.technique` and `modAPI.gameData.craftingTechniques`
+- [x] publish the contract that live `CraftingTechnique.name` is a stable non-localized identifier matching `KnownCraftingTechnique.technique` and `modAPI.gameData.craftingTechniques` (Added to upstream `AfnmExampleMod` docs)
