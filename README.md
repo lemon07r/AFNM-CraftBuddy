@@ -158,6 +158,17 @@ CraftBuddy prefers direct game data when available and uses documented fallback 
 - Archived full reference/deprecated snapshots: `archive/` (traceability only)
 - Agent entrypoint: `docs/project/START_HERE_FOR_AGENTS.md`
 
+## My Other Mods
+
+- [ElderGPT Spirit Ring](https://github.com/lemon07r/ElderGPT-Spirit-Ring) — AI-powered contextual advisor overlay. Chat with any AI model inside the game. ([Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3701616500))
+- [Lucky All Around](https://github.com/lemon07r/LuckyAllAround) — Configurable pity-event luck weighting for Explore events. ([Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3694065051))
+
+[View all my mods in my AFNM mod collection](https://steamcommunity.com/sharedfiles/filedetails/?id=3704747572)
+
+## Make Your Own Mod
+
+Want to build your own AFNM mod? Use the [AFNM Agent Mod Template](https://github.com/lemon07r/AfnmAgentModTemplate) — a ready-to-go scaffold with ModAPI reference docs, runtime validation scripts, Workshop packaging, and built-in support for AI coding agents.
+
 ## License
 
 MIT License
