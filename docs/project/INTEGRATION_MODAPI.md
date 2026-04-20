@@ -3,7 +3,7 @@ title: Mod API Integration
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-11
+last_verified: 2026-04-19
 source_of_truth: src/modContent/index.ts, src/modContent/craftingStoreState.ts
 review_cycle_days: 21
 related_files:
@@ -45,7 +45,7 @@ All fallback extraction and game-object adaptation logic is centralized here —
 
 Fallback handling exists for targets/progress extraction, condition transitions, optional payload fields when game objects are incomplete, and local scaling evaluation. `modAPI.utils.evaluateScaling` is not used by optimizer simulation because the live provider can drift from hypothetical future-state variables and already-upgraded payloads. Live crafting techniques now prefer `modAPI.utils.craftingTechniqueFromKnown` by matching the active `CraftingTechnique.name` to `player.player.craftingTechniques[*].technique`, then reattaching live cooldown/session state; if that name match misses or the resolver throws, the raw live technique payload remains the fallback. Condition transitions now prefer the documented `modAPI.utils.getNextCondition` helper, with legacy fallback probing retained only for older runtimes. Completion-bonus extraction now prefers `modAPI.utils.completionBonusBuffName`, with the old name/signature heuristic retained as fallback.
 
-Craft-session visibility now treats the root-state `screen.screen === 'recipe'` plus a live crafting slice as the primary language-agnostic signal. DOM text parsing remains for target/progress recovery, but it should parse structural `X/Y` progress values from visible widgets before trying any English-label regex fallback.
+Craft-session visibility now treats the root-state `screen.screen === 'recipe'` plus a live crafting slice as the primary language-agnostic signal. DOM text parsing remains for target/progress recovery, but it should parse structural `X/Y` progress values from visible widgets before trying any English-label regex fallback. Those DOM fallbacks must also accept compact HUD number formats such as `31K`, and when the craft explicitly cannot overcraft they should reconcile rounded HUD text against the exact completion/perfection caps instead of trusting the abbreviated display as the exact target.
 
 Installed runtime `0.6.50` also exposes additional parity-relevant fields that are not necessarily search inputs by themselves:
 

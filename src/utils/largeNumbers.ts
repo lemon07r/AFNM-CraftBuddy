@@ -32,6 +32,34 @@ const SUFFIXES = [
   { value: 1e3, suffix: 'K' },   // Thousand
 ];
 
+const SUFFIX_MULTIPLIERS = new Map(
+  SUFFIXES.map(({ value, suffix }) => [suffix.toLowerCase(), value] as const),
+);
+
+function parseFormattedNumberString(value: string): number | undefined {
+  const normalized = value.trim().replace(/[\s,]/g, '');
+  if (!normalized) {
+    return undefined;
+  }
+
+  const match = normalized.match(
+    /^([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?)([kmbtq])?$/i,
+  );
+  if (!match) {
+    return undefined;
+  }
+
+  const baseValue = Number(match[1]);
+  if (!Number.isFinite(baseValue)) {
+    return undefined;
+  }
+
+  const multiplier = match[2]
+    ? SUFFIX_MULTIPLIERS.get(match[2].toLowerCase()) ?? 1
+    : 1;
+  return clampToSafe(baseValue * multiplier).value;
+}
+
 /**
  * Check if a number is within safe integer range for precise arithmetic.
  */
@@ -247,8 +275,8 @@ export function parseGameNumber(value: unknown, defaultValue: number = 0): numbe
   }
   
   if (typeof value === 'string') {
-    const parsed = parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : defaultValue;
+    const parsed = parseFormattedNumberString(value);
+    return parsed !== undefined ? parsed : defaultValue;
   }
   
   if (typeof value === 'bigint') {

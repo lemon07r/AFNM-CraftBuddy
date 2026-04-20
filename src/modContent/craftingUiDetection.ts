@@ -1,3 +1,5 @@
+import { parseGameNumber } from '../utils/largeNumbers';
+
 export interface CraftingActionCueLike {
   text?: string;
   className?: string;
@@ -48,24 +50,30 @@ const CRAFTING_ACTION_PATTERNS = [
   /finish craft/,
 ];
 
+const PROGRESS_VALUE_PATTERN =
+  String.raw`[+-]?(?:\d[\d,\s]*(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*[KMBTQkmbtq])?`;
+
 function normalizeCuePart(value?: string): string {
   return (value || '').toLowerCase();
 }
 
 function parseProgressValue(value: string | undefined): number | undefined {
-  const normalized = String(value || '').replace(/[,\s]/g, '');
-  if (!/^\d+$/.test(normalized)) {
+  const parsed = parseGameNumber(value, Number.NaN);
+  if (!Number.isFinite(parsed)) {
     return undefined;
   }
 
-  const parsed = Number.parseInt(normalized, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return parsed;
 }
 
 export function parseCraftingProgressPair(
   text: string | undefined,
 ): ParsedCraftingProgressPair | null {
-  const match = String(text || '').match(/(\d[\d,\s]*)\s*\/\s*(\d[\d,\s]*)/);
+  const match = String(text || '').match(
+    new RegExp(
+      `(${PROGRESS_VALUE_PATTERN})\\s*\\/\\s*(${PROGRESS_VALUE_PATTERN})`,
+    ),
+  );
   if (!match) {
     return null;
   }

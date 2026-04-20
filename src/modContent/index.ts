@@ -65,6 +65,7 @@ import {
   resolveCraftingType,
   resolveSublimeCraftState,
   sanitizeItemTypeHarmonyMap,
+  shouldUseCapAsTargetFallback,
   type CraftingType,
   type CraftingTypeDetectionSource,
   type SublimeDetectionSignal,
@@ -1631,17 +1632,65 @@ function parsePositiveGameNumber(value: unknown): number | undefined {
   return parsed;
 }
 
-function pickPositiveGameNumber(
-  candidates: unknown[],
-  fallback: number,
-): number {
+function findPositiveGameNumber(candidates: unknown[]): number | undefined {
   for (const candidate of candidates) {
     const parsed = parsePositiveGameNumber(candidate);
     if (parsed !== undefined) {
       return parsed;
     }
   }
-  return fallback;
+  return undefined;
+}
+
+function pickPositiveGameNumber(
+  candidates: unknown[],
+  fallback: number,
+): number {
+  return findPositiveGameNumber(candidates) ?? fallback;
+}
+
+function applyCapTargetFallbacks(params: {
+  recipe: RecipeItem | undefined;
+  recipeStats: CraftingRecipeStats | undefined;
+  hasExplicitCompletionTarget: boolean;
+  hasExplicitPerfectionTarget: boolean;
+}): { completion: boolean; perfection: boolean } {
+  if (!shouldUseCapAsTargetFallback(params)) {
+    return { completion: false, perfection: false };
+  }
+
+  let usedCompletionCap = false;
+  let usedPerfectionCap = false;
+
+  if (!params.hasExplicitCompletionTarget && maxCompletionCap !== undefined) {
+    targetCompletion = maxCompletionCap;
+    usedCompletionCap = true;
+  }
+  if (!params.hasExplicitPerfectionTarget && maxPerfectionCap !== undefined) {
+    targetPerfection = maxPerfectionCap;
+    usedPerfectionCap = true;
+  }
+
+  return {
+    completion: usedCompletionCap,
+    perfection: usedPerfectionCap,
+  };
+}
+
+function resolveDomProgressTarget(params: {
+  domTarget: number | undefined;
+  cap: number | undefined;
+  recipe: RecipeItem | undefined;
+  recipeStats: CraftingRecipeStats | undefined;
+}): number | undefined {
+  const { domTarget, cap, recipe, recipeStats } = params;
+  if (domTarget === undefined || domTarget <= 0) {
+    return undefined;
+  }
+  if (cap !== undefined && shouldUseCapAsTargetFallback({ recipe, recipeStats })) {
+    return cap;
+  }
+  return domTarget;
 }
 
 function getLiveItemTypeHarmonyMapping(): Partial<
@@ -3890,6 +3939,17 @@ function parseCraftingValuesFromDOM(): {
   maxPool?: number;
 } | null {
   try {
+    const progressValuePattern =
+      '([+-]?(?:\\d[\\d,\\s]*(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?(?:\\s*[KMBTQkmbtq])?)';
+    const parseDomLabeledValue = (
+      match: RegExpMatchArray | null,
+      index: number,
+    ): number | undefined => {
+      if (!match) {
+        return undefined;
+      }
+      return parsePositiveGameNumber(match[index]);
+    };
     const gameRoot = getGameRootElement();
     const completionPair = extractCraftingProgressPair(
       findVisibleCraftingProgressElement(
@@ -3935,32 +3995,40 @@ function parseCraftingValuesFromDOM(): {
 
     const allText = (gameRoot as HTMLElement).innerText || '';
     const completionMatch = allText.match(
-      /Completion[:\s]+(\d+)\s*[\/]\s*(\d+)/i,
+      new RegExp(
+        `Completion[:\\s]+${progressValuePattern}\\s*[\\/]\\s*${progressValuePattern}`,
+        'i',
+      ),
     );
     const perfectionMatch = allText.match(
-      /Perfection[:\s]+(\d+)\s*[\/]\s*(\d+)/i,
+      new RegExp(
+        `Perfection[:\\s]+${progressValuePattern}\\s*[\\/]\\s*${progressValuePattern}`,
+        'i',
+      ),
     );
     const stabilityMatch = allText.match(
-      /Stability[:\s]+(\d+)\s*[\/]\s*(\d+)/i,
+      new RegExp(
+        `Stability[:\\s]+${progressValuePattern}\\s*[\\/]\\s*${progressValuePattern}`,
+        'i',
+      ),
     );
-    const poolMatch = allText.match(/(?:Qi|Pool)[:\s]+(\d+)\s*[\/]\s*(\d+)/i);
+    const poolMatch = allText.match(
+      new RegExp(
+        `(?:Qi|Pool)[:\\s]+${progressValuePattern}\\s*[\\/]\\s*${progressValuePattern}`,
+        'i',
+      ),
+    );
 
     if (completionMatch || perfectionMatch || stabilityMatch) {
       return {
-        completion: completionMatch ? parseInt(completionMatch[1]) : 0,
-        perfection: perfectionMatch ? parseInt(perfectionMatch[1]) : 0,
-        stability: stabilityMatch ? parseInt(stabilityMatch[1]) : 0,
-        pool: poolMatch ? parseInt(poolMatch[1]) : 0,
-        targetCompletion: completionMatch
-          ? parseInt(completionMatch[2])
-          : undefined,
-        targetPerfection: perfectionMatch
-          ? parseInt(perfectionMatch[2])
-          : undefined,
-        targetStability: stabilityMatch
-          ? parseInt(stabilityMatch[2])
-          : undefined,
-        maxPool: poolMatch ? parseInt(poolMatch[2]) : undefined,
+        completion: parseDomLabeledValue(completionMatch, 1) ?? 0,
+        perfection: parseDomLabeledValue(perfectionMatch, 1) ?? 0,
+        stability: parseDomLabeledValue(stabilityMatch, 1) ?? 0,
+        pool: parseDomLabeledValue(poolMatch, 1) ?? 0,
+        targetCompletion: parseDomLabeledValue(completionMatch, 2),
+        targetPerfection: parseDomLabeledValue(perfectionMatch, 2),
+        targetStability: parseDomLabeledValue(stabilityMatch, 2),
+        maxPool: parseDomLabeledValue(poolMatch, 2),
       };
     }
   } catch (e) {
@@ -4191,24 +4259,36 @@ function pollCraftingState(): void {
       // ALWAYS update target values from DOM - these are the live values from the game UI
       // The second number in "Stability: X/Y" is the CURRENT max stability (which decreases as skills are used)
       let targetsChanged = false;
+      const domCompletionTarget = resolveDomProgressTarget({
+        domTarget: domValues.targetCompletion,
+        cap: maxCompletionCap,
+        recipe: lastRecipe,
+        recipeStats: lastRecipeStats,
+      });
+      const domPerfectionTarget = resolveDomProgressTarget({
+        domTarget: domValues.targetPerfection,
+        cap: maxPerfectionCap,
+        recipe: lastRecipe,
+        recipeStats: lastRecipeStats,
+      });
 
       if (
-        domValues.targetCompletion &&
-        domValues.targetCompletion > 0 &&
-        domValues.targetCompletion !== targetCompletion
+        domCompletionTarget &&
+        domCompletionTarget > 0 &&
+        domCompletionTarget !== targetCompletion
       ) {
-        targetCompletion = domValues.targetCompletion;
+        targetCompletion = domCompletionTarget;
         debugLog(
           `[CraftBuddy] Updated targetCompletion from DOM: ${targetCompletion}`,
         );
         targetsChanged = true;
       }
       if (
-        domValues.targetPerfection &&
-        domValues.targetPerfection > 0 &&
-        domValues.targetPerfection !== targetPerfection
+        domPerfectionTarget &&
+        domPerfectionTarget > 0 &&
+        domPerfectionTarget !== targetPerfection
       ) {
-        targetPerfection = domValues.targetPerfection;
+        targetPerfection = domPerfectionTarget;
         debugLog(
           `[CraftBuddy] Updated targetPerfection from DOM: ${targetPerfection}`,
         );
@@ -4294,34 +4374,27 @@ try {
       maxPerfectionCap = undefined;
 
       if (recipeStats) {
-        // Try multiple possible property names for targets
         const statsAny = recipeStats as any;
         lastRecipe = recipe as RecipeItem | undefined;
         lastRecipeStats = recipeStats as CraftingRecipeStats;
-        targetCompletion = pickPositiveGameNumber(
-          [
-            statsAny.completionTarget,
-            statsAny.targetCompletion,
-            statsAny.completion,
-          ],
-          100,
-        );
-        targetPerfection = pickPositiveGameNumber(
-          [
-            statsAny.perfectionTarget,
-            statsAny.targetPerfection,
-            statsAny.perfection,
-          ],
-          100,
-        );
-        targetStability = pickPositiveGameNumber(
-          [
-            statsAny.stabilityTarget,
-            statsAny.targetStability,
-            statsAny.stability,
-          ],
-          60,
-        );
+        const explicitCompletionTarget = findPositiveGameNumber([
+          statsAny.completionTarget,
+          statsAny.targetCompletion,
+          statsAny.completion,
+        ]);
+        const explicitPerfectionTarget = findPositiveGameNumber([
+          statsAny.perfectionTarget,
+          statsAny.targetPerfection,
+          statsAny.perfection,
+        ]);
+        const explicitStabilityTarget = findPositiveGameNumber([
+          statsAny.stabilityTarget,
+          statsAny.targetStability,
+          statsAny.stability,
+        ]);
+        targetCompletion = explicitCompletionTarget ?? 100;
+        targetPerfection = explicitPerfectionTarget ?? 100;
+        targetStability = explicitStabilityTarget ?? 60;
         updateProgressCapsFromRecipeStats(statsAny);
         updateProgressCapsFromModApi(
           recipe as RecipeItem | undefined,
@@ -4329,6 +4402,12 @@ try {
           (lastEntity?.realm as string | undefined) ||
             ((recipe as any)?.realm as string | undefined),
         );
+        applyCapTargetFallbacks({
+          recipe: recipe as RecipeItem | undefined,
+          recipeStats: recipeStats as CraftingRecipeStats,
+          hasExplicitCompletionTarget: explicitCompletionTarget !== undefined,
+          hasExplicitPerfectionTarget: explicitPerfectionTarget !== undefined,
+        });
 
         const conditionType = (recipeStats as any)?.conditionType;
         conditionEffectsCache = conditionType?.conditionEffects
@@ -5285,6 +5364,8 @@ function processCraftingState(craftingState: any): void {
 
   // Try multiple sources for targets
   let foundTargets = false;
+  let hasExplicitCompletionTarget = false;
+  let hasExplicitPerfectionTarget = false;
 
   // Source 1: recipeStats (preferred) - this is the authoritative source from Redux
   // recipeStats is calculated by deriveRecipeDifficulty() when crafting starts and IS persisted in saves
@@ -5293,11 +5374,13 @@ function processCraftingState(craftingState: any): void {
     if (completionTarget !== undefined) {
       targetCompletion = completionTarget;
       foundTargets = true;
+      hasExplicitCompletionTarget = true;
     }
     const perfectionTarget = parsePositiveGameNumber(recipeStats.perfection);
     if (perfectionTarget !== undefined) {
       targetPerfection = perfectionTarget;
       foundTargets = true;
+      hasExplicitPerfectionTarget = true;
     }
     const stabilityTarget = parsePositiveGameNumber(recipeStats.stability);
     if (stabilityTarget !== undefined) {
@@ -5331,11 +5414,13 @@ function processCraftingState(craftingState: any): void {
       if (completionTarget !== undefined) {
         targetCompletion = completionTarget;
         foundTargets = true;
+        hasExplicitCompletionTarget = true;
       }
       const perfectionTarget = parsePositiveGameNumber(recipe.stats.perfection);
       if (perfectionTarget !== undefined) {
         targetPerfection = perfectionTarget;
         foundTargets = true;
+        hasExplicitPerfectionTarget = true;
       }
       const stabilityTarget = parsePositiveGameNumber(recipe.stats.stability);
       if (stabilityTarget !== undefined) {
@@ -5351,6 +5436,7 @@ function processCraftingState(craftingState: any): void {
       if (completionTarget !== undefined) {
         targetCompletion = completionTarget;
         foundTargets = true;
+        hasExplicitCompletionTarget = true;
       }
       const perfectionTarget = parsePositiveGameNumber(
         recipe.difficulty.perfection,
@@ -5358,6 +5444,7 @@ function processCraftingState(craftingState: any): void {
       if (perfectionTarget !== undefined) {
         targetPerfection = perfectionTarget;
         foundTargets = true;
+        hasExplicitPerfectionTarget = true;
       }
       const stabilityTarget = parsePositiveGameNumber(
         recipe.difficulty.stability,
@@ -5372,17 +5459,29 @@ function processCraftingState(craftingState: any): void {
     if (completionTarget !== undefined) {
       targetCompletion = completionTarget;
       foundTargets = true;
+      hasExplicitCompletionTarget = true;
     }
     const perfectionTarget = parsePositiveGameNumber(recipe.perfection);
     if (perfectionTarget !== undefined) {
       targetPerfection = perfectionTarget;
       foundTargets = true;
+      hasExplicitPerfectionTarget = true;
     }
     const stabilityTarget = parsePositiveGameNumber(recipe.stability);
     if (stabilityTarget !== undefined) {
       targetStability = stabilityTarget;
       foundTargets = true;
     }
+  }
+
+  const capFallbacks = applyCapTargetFallbacks({
+    recipe,
+    recipeStats: recipeStats as CraftingRecipeStats | undefined,
+    hasExplicitCompletionTarget,
+    hasExplicitPerfectionTarget,
+  });
+  if (capFallbacks.completion || capFallbacks.perfection) {
+    foundTargets = true;
   }
 
   // Source 3: localStorage cache (for mid-craft save loads)
@@ -5401,29 +5500,41 @@ function processCraftingState(craftingState: any): void {
   const domValues = parseCraftingValuesFromDOM();
   if (domValues) {
     let domUpdated = false;
+    const domCompletionTarget = resolveDomProgressTarget({
+      domTarget: domValues.targetCompletion,
+      cap: maxCompletionCap,
+      recipe,
+      recipeStats: recipeStats as CraftingRecipeStats | undefined,
+    });
+    const domPerfectionTarget = resolveDomProgressTarget({
+      domTarget: domValues.targetPerfection,
+      cap: maxPerfectionCap,
+      recipe,
+      recipeStats: recipeStats as CraftingRecipeStats | undefined,
+    });
 
     // Update targets from DOM if they differ from current values
     // DOM values are authoritative since they show what the game is actually displaying
     if (
-      domValues.targetCompletion &&
-      domValues.targetCompletion > 0 &&
-      domValues.targetCompletion !== targetCompletion
+      domCompletionTarget &&
+      domCompletionTarget > 0 &&
+      domCompletionTarget !== targetCompletion
     ) {
       debugLog(
-        `[CraftBuddy] DOM targetCompletion: ${domValues.targetCompletion} (was ${targetCompletion})`,
+        `[CraftBuddy] DOM targetCompletion: ${domCompletionTarget} (was ${targetCompletion})`,
       );
-      targetCompletion = domValues.targetCompletion;
+      targetCompletion = domCompletionTarget;
       domUpdated = true;
     }
     if (
-      domValues.targetPerfection &&
-      domValues.targetPerfection > 0 &&
-      domValues.targetPerfection !== targetPerfection
+      domPerfectionTarget &&
+      domPerfectionTarget > 0 &&
+      domPerfectionTarget !== targetPerfection
     ) {
       debugLog(
-        `[CraftBuddy] DOM targetPerfection: ${domValues.targetPerfection} (was ${targetPerfection})`,
+        `[CraftBuddy] DOM targetPerfection: ${domPerfectionTarget} (was ${targetPerfection})`,
       );
-      targetPerfection = domValues.targetPerfection;
+      targetPerfection = domPerfectionTarget;
       domUpdated = true;
     }
     // For stability, the DOM shows current/currentMax - update currentMaxStability

@@ -3,7 +3,7 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-03-20
+last_verified: 2026-04-19
 source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/settings/index.ts
 review_cycle_days: 30
 related_files:

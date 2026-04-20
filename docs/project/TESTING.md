@@ -3,7 +3,7 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-04
+last_verified: 2026-04-19
 source_of_truth: src/__tests__/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
 review_cycle_days: 30
 related_files:
@@ -69,6 +69,7 @@ Exported optimizer snapshots are only useful for bug reproduction if they preser
 - runtime-shaped config fields that affect gains/search (`mastery`, `masteryEntries`, granted buff payloads)
 - active buff definitions when current-state buffs change stats/costs
 - craft-context provenance (`craftingTypeSource`, sublime-detection signals, raw recipe/recipeStats fields) when a bug may be caused by hydration/integration drift
+- compact HUD target regressions should prove `K/M/...` display strings round-trip to the intended numeric progress values, and that non-overcraft crafts still preserve exact completion/perfection targets when caps are available
 - replay parity: round-tripped snapshot input should be exercised through the canonical replay helpers in `src/modContent/replaySnapshot.ts` so tests share the same serializer/reviver contract as production
 - result snapshots should preserve `actionKind` and `projectedSuccessChance` for finish recommendations so bug reports stay explainable
 - snapshot bundles should keep the current turn and newest previous turns under the configured turn/byte caps, dropping the oldest turns first when trimming is required

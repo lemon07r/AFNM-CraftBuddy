@@ -112,6 +112,17 @@ describe('crafting UI detection', () => {
         target: 5678,
       });
     });
+
+    it('accepts compact suffixed progress values from the live HUD', () => {
+      expect(parseCraftingProgressPair('Completion 4.34K / 31K')).toEqual({
+        current: 4340,
+        target: 31000,
+      });
+      expect(parseCraftingProgressPair('4.34K/31.13K')).toEqual({
+        current: 4340,
+        target: 31130,
+      });
+    });
   });
 
   describe('isRenderableOnscreenElement', () => {

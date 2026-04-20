@@ -253,6 +253,13 @@ describe('parseGameNumber', () => {
     expect(parseGameNumber('1.5e6')).toBe(1500000);
   });
 
+  it('should parse formatted and suffixed strings', () => {
+    expect(parseGameNumber('1,234')).toBe(1234);
+    expect(parseGameNumber('1 234')).toBe(1234);
+    expect(parseGameNumber('31k')).toBe(31000);
+    expect(parseGameNumber('31.13K')).toBe(31130);
+  });
+
   it('should handle invalid inputs', () => {
     expect(parseGameNumber(undefined)).toBe(0);
     expect(parseGameNumber(null)).toBe(0);

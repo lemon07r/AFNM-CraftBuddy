@@ -4,6 +4,7 @@ import {
   resolveCraftingType,
   resolveSublimeCraftState,
   sanitizeItemTypeHarmonyMap,
+  shouldUseCapAsTargetFallback,
 } from '../modContent/craftingContext';
 
 describe('crafting context resolution', () => {
@@ -130,5 +131,35 @@ describe('crafting context resolution', () => {
       isEquipmentCraft: false,
       signals: ['sublimeOutput'],
     });
+  });
+
+  it('uses exact cap targets as a fallback only for non-overcraft crafts', () => {
+    expect(
+      shouldUseCapAsTargetFallback({
+        recipe: { canOvercraft: false } as unknown as RecipeItem,
+        recipeStats: undefined,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldUseCapAsTargetFallback({
+        recipe: { canOvercraft: true } as unknown as RecipeItem,
+        recipeStats: undefined,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldUseCapAsTargetFallback({
+        recipe: { isSublimeCraft: false } as unknown as RecipeItem,
+        recipeStats: undefined,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldUseCapAsTargetFallback({
+        recipe: { isSublimeCraft: true } as unknown as RecipeItem,
+        recipeStats: undefined,
+      }),
+    ).toBe(false);
   });
 });

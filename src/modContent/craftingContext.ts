@@ -34,6 +34,20 @@ export interface SublimeCraftResolution {
 
 type ItemHarmonyTypeMap = Partial<Record<string, CraftingType>>;
 
+function getExplicitSublimeFlag(
+  recipe: Record<string, unknown> | undefined,
+  recipeStats: Record<string, unknown> | undefined,
+): boolean | undefined {
+  return (
+    [recipe?.isSublimeCraft, recipe?.isSublime, recipe?.sublime].find(
+      (entry) => typeof entry === 'boolean',
+    ) ??
+    [recipeStats?.isSublime, recipeStats?.sublime].find(
+      (entry) => typeof entry === 'boolean',
+    )
+  ) as boolean | undefined;
+}
+
 export function normalizeCraftingType(
   value: unknown,
 ): CraftingType | undefined {
@@ -70,6 +84,24 @@ export function sanitizeItemTypeHarmonyMap(raw: unknown): ItemHarmonyTypeMap {
   }
 
   return result;
+}
+
+export function shouldUseCapAsTargetFallback(params: {
+  recipe: RecipeItem | undefined;
+  recipeStats: CraftingRecipeStats | undefined;
+}): boolean {
+  const recipeAny = params.recipe as Record<string, unknown> | undefined;
+  const recipeStatsAny = params.recipeStats as Record<string, unknown> | undefined;
+  const explicitSublimeFlag = getExplicitSublimeFlag(recipeAny, recipeStatsAny);
+
+  if (recipeAny?.canOvercraft === true || recipeStatsAny?.canOvercraft === true) {
+    return false;
+  }
+  if (recipeAny?.canOvercraft === false || recipeStatsAny?.canOvercraft === false) {
+    return true;
+  }
+
+  return explicitSublimeFlag === false;
 }
 
 function getMappedCraftingTypeFromItemKind(
@@ -194,15 +226,10 @@ export function resolveSublimeCraftState(params: {
   const recipeStatsAny = recipeStats as Record<string, unknown> | undefined;
 
   const signals: SublimeDetectionSignal[] = [];
-  const explicitSublimeSignal =
-    [
-      recipeAny?.isSublimeCraft,
-      recipeAny?.isSublime,
-      recipeAny?.sublime,
-    ].find((entry) => typeof entry === 'boolean') ??
-    [recipeStatsAny?.isSublime, recipeStatsAny?.sublime].find(
-      (entry) => typeof entry === 'boolean',
-    );
+  const explicitSublimeSignal = getExplicitSublimeFlag(
+    recipeAny,
+    recipeStatsAny,
+  );
 
   if (explicitSublimeSignal === true) {
     signals.push('explicitTrue');

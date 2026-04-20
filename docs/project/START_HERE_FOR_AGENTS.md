@@ -3,7 +3,7 @@ title: Start Here For Agents
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-04
+last_verified: 2026-04-19
 source_of_truth: src/modContent/index.ts, src/optimizer/*, src/__tests__/*
 review_cycle_days: 14
 related_files:
