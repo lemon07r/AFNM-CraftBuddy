@@ -11,20 +11,20 @@ import type { SxProps, Theme } from '@mui/material/styles';
 // Subtle pulse glow for primary recommendation - uses GPU-accelerated box-shadow
 export const pulseGlow = keyframes`
   0%, 100% {
-    box-shadow: 0 0 8px rgba(0, 255, 0, 0.25), inset 0 0 4px rgba(0, 255, 0, 0.08);
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.2), inset 0 0 3px rgba(74, 222, 128, 0.06);
   }
   50% {
-    box-shadow: 0 0 14px rgba(0, 255, 0, 0.4), inset 0 0 6px rgba(0, 255, 0, 0.12);
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.32), inset 0 0 5px rgba(74, 222, 128, 0.1);
   }
 `;
 
 // Gold pulse for headers/accents
 export const pulseGold = keyframes`
   0%, 100% {
-    box-shadow: 0 0 6px rgba(255, 215, 0, 0.2);
+    box-shadow: 0 0 4px rgba(197, 160, 89, 0.2);
   }
   50% {
-    box-shadow: 0 0 12px rgba(255, 215, 0, 0.35);
+    box-shadow: 0 0 10px rgba(197, 160, 89, 0.35);
   }
 `;
 
@@ -110,13 +110,13 @@ export const versionBadgeReveal = keyframes`
     opacity: 1;
     transform: translateY(-1px) scale(1.04);
     filter: blur(0.5px);
-    text-shadow: 0 0 12px rgba(255, 223, 140, 0.45);
+    text-shadow: 0 0 10px rgba(210, 185, 130, 0.4);
   }
   100% {
     opacity: 0.9;
     transform: translateY(0) scale(1);
     filter: blur(0);
-    text-shadow: 0 0 7px rgba(255, 223, 140, 0.28);
+    text-shadow: 0 0 6px rgba(210, 185, 130, 0.25);
   }
 `;
 
@@ -145,11 +145,11 @@ export const progressFill = keyframes`
 export const progressGlow = keyframes`
   0%, 100% {
     opacity: 0.5;
-    box-shadow: 0 0 4px rgba(255, 215, 0, 0.25);
+    box-shadow: 0 0 4px rgba(197, 160, 89, 0.25);
   }
   50% {
     opacity: 1;
-    box-shadow: 0 0 8px rgba(255, 215, 0, 0.45), 0 0 16px rgba(255, 215, 0, 0.2);
+    box-shadow: 0 0 8px rgba(197, 160, 89, 0.4), 0 0 14px rgba(197, 160, 89, 0.18);
   }
 `;
 

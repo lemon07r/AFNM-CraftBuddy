@@ -59,7 +59,7 @@ export const PanelContainer = memo(function PanelContainer({
   const getBorderColor = () => {
     switch (variant) {
       case 'success':
-        return 'rgba(0, 255, 0, 0.5)';
+        return 'rgba(74, 222, 128, 0.45)';
       case 'error':
         return 'rgba(255, 100, 100, 0.5)';
       default:
@@ -797,7 +797,7 @@ export const LoadingSkeletonCard = memo(function LoadingSkeletonCard({
           left: 0,
           right: 0,
           bottom: 0,
-          background: `linear-gradient(90deg, transparent 0%, ${colors.goldDark}15 50%, transparent 100%)`,
+          background: `linear-gradient(90deg, transparent 0%, ${colors.goldDark}12 50%, transparent 100%)`,
           animation: `${loadingShimmer} 1.5s ease-in-out infinite`,
           pointerEvents: 'none',
         }}
@@ -983,7 +983,7 @@ export const SearchProgressBar = memo(function SearchProgressBar({
             left: 0,
             right: 0,
             bottom: 0,
-            background: `linear-gradient(90deg, transparent 0%, rgba(255, 215, 0, 0.08) 50%, transparent 100%)`,
+            background: `linear-gradient(90deg, transparent 0%, rgba(197, 160, 89, 0.07) 50%, transparent 100%)`,
             animation: `${loadingShimmer} 1.5s ease-in-out infinite`,
             pointerEvents: 'none',
           }}
@@ -1031,7 +1031,7 @@ export const RecalculateButton = memo(function RecalculateButton({
           width: '100%',
           py: 0.75,
           px: 1.5,
-          backgroundColor: 'rgba(255, 215, 0, 0.1)',
+          backgroundColor: 'rgba(197, 160, 89, 0.1)',
           border: `1px solid ${colors.gold}50`,
           borderRadius: 1,
           color: colors.gold,
@@ -1041,7 +1041,7 @@ export const RecalculateButton = memo(function RecalculateButton({
           cursor: 'pointer',
           transition: transitions.smooth,
           '&:hover': {
-            backgroundColor: 'rgba(255, 215, 0, 0.2)',
+            backgroundColor: 'rgba(197, 160, 89, 0.2)',
             borderColor: colors.gold,
             boxShadow: `0 0 8px ${colors.goldGlow}`,
           },

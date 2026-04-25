@@ -253,7 +253,7 @@ const CommunityLinks = memo(function CommunityLinks({
               '&:hover': {
                 color: colors.gold,
                 borderColor: colors.borderMedium,
-                backgroundColor: 'rgba(222, 184, 135, 0.1)',
+                backgroundColor: 'rgba(197, 160, 89, 0.1)',
               },
             }}
           >
@@ -286,7 +286,7 @@ const PanelVersionBadge = memo(function PanelVersionBadge({
         overflow: 'hidden',
         isolation: 'isolate',
         fontSize: '0.66rem',
-        color: 'rgba(222, 205, 168, 0.94)',
+        color: 'rgba(210, 192, 150, 0.94)',
         letterSpacing: '0.04em',
         lineHeight: 1,
         pointerEvents: 'none',
@@ -296,8 +296,8 @@ const PanelVersionBadge = memo(function PanelVersionBadge({
           : 'translateY(5px) scale(0.9)',
         filter: visible ? 'blur(0)' : 'blur(3px)',
         textShadow: visible
-          ? '0 0 8px rgba(255, 223, 140, 0.25)'
-          : '0 0 0 rgba(255, 223, 140, 0)',
+          ? '0 0 8px rgba(210, 185, 130, 0.22)'
+          : '0 0 0 rgba(210, 185, 130, 0)',
         transition: visible
           ? 'opacity 0.38s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.38s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.38s cubic-bezier(0.2, 0.8, 0.2, 1), text-shadow 0.46s ease'
           : 'opacity 0.12s ease, transform 0.12s ease, filter 0.12s ease, text-shadow 0.14s ease',
@@ -1565,7 +1565,7 @@ const RotationSection = memo(function RotationSection({
               size="small"
               sx={{
                 backgroundColor:
-                  idx === 0 ? 'rgba(0, 255, 0, 0.15)' : 'rgba(60, 65, 80, 0.6)',
+                  idx === 0 ? 'rgba(74, 222, 128, 0.12)' : 'rgba(60, 65, 80, 0.6)',
                 color: idx === 0 ? colors.completion : colors.textSecondary,
                 fontSize: '0.7rem',
                 height: 22,

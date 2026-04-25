@@ -41,18 +41,18 @@ declare module '@mui/material/styles' {
 
 // Pre-computed color values for performance
 export const colors = {
-  // Primary accent
-  gold: '#FFD700',
-  goldLight: '#FFE44D',
-  goldDark: '#B8860B',
-  goldGlow: 'rgba(255, 215, 0, 0.4)',
+  // Primary accent (warm amber-gold, inspired by Spirit Ring)
+  gold: '#C5A059',
+  goldLight: '#D4B87A',
+  goldDark: '#9B7D3F',
+  goldGlow: 'rgba(197, 160, 89, 0.4)',
 
   // Status colors
-  completion: '#00FF7F',
-  completionLight: '#90EE90',
+  completion: '#4ade80',
+  completionLight: '#86efac',
   perfection: '#87CEEB',
   stability: '#FFA500',
-  error: '#FF6B6B',
+  error: '#f87171',
   qi: '#ADD8E6',
 
   // Skill type colors (matching game UI)
@@ -62,62 +62,62 @@ export const colors = {
   support: '#EB34DB',
 
   // Condition colors
-  veryPositive: '#00FF00',
-  positive: '#90EE90',
+  veryPositive: '#4ade80',
+  positive: '#86efac',
   neutral: '#FFFFFF',
   negative: '#FFA500',
-  veryNegative: '#FF6B6B',
+  veryNegative: '#f87171',
 
   // Quality rating colors
-  optimal: '#00FF00',
-  good: '#90EE90',
-  okay: '#FFD700',
+  optimal: '#4ade80',
+  good: '#86efac',
+  okay: '#C5A059',
   suboptimal: '#FFA500',
-  poor: '#FF6B6B',
+  poor: '#f87171',
 
   // Background colors
-  panelBg: 'rgba(12, 12, 18, 0.96)',
-  panelBgLight: 'rgba(20, 20, 30, 0.95)',
-  cardBg: 'rgba(25, 28, 35, 0.9)',
-  cardBgHover: 'rgba(30, 35, 45, 0.95)',
+  panelBg: 'rgba(15, 15, 20, 0.96)',
+  panelBgLight: 'rgba(20, 20, 25, 0.95)',
+  cardBg: 'rgba(25, 25, 30, 0.9)',
+  cardBgHover: 'rgba(30, 30, 38, 0.95)',
 
   // Border colors
-  borderSubtle: 'rgba(255, 215, 0, 0.15)',
-  borderMedium: 'rgba(255, 215, 0, 0.3)',
-  borderHighlight: 'rgba(0, 255, 0, 0.4)',
+  borderSubtle: 'rgba(197, 160, 89, 0.2)',
+  borderMedium: 'rgba(197, 160, 89, 0.35)',
+  borderHighlight: 'rgba(74, 222, 128, 0.4)',
 
   // Text colors
-  textPrimary: 'rgba(255, 255, 255, 0.95)',
-  textSecondary: 'rgba(255, 255, 255, 0.7)',
-  textMuted: 'rgba(255, 255, 255, 0.5)',
-  textDisabled: 'rgba(255, 255, 255, 0.35)',
+  textPrimary: '#ddd',
+  textSecondary: '#b9b0a0',
+  textMuted: '#a69d8c',
+  textDisabled: 'rgba(140, 130, 115, 0.65)',
 } as const;
 
 // Pre-computed gradients
 export const gradients = {
   panelBackground:
-    'linear-gradient(135deg, rgba(20, 22, 32, 0.98) 0%, rgba(12, 12, 18, 0.98) 100%)',
+    'linear-gradient(135deg, rgba(20, 20, 28, 0.98) 0%, rgba(15, 15, 20, 0.98) 100%)',
   headerUnderline:
-    'linear-gradient(90deg, rgba(255, 215, 0, 0.6) 0%, rgba(255, 215, 0, 0) 100%)',
+    'linear-gradient(90deg, rgba(197, 160, 89, 0.6) 0%, rgba(197, 160, 89, 0) 100%)',
   primaryCard:
-    'linear-gradient(135deg, rgba(0, 60, 0, 0.4) 0%, rgba(0, 40, 0, 0.3) 100%)',
+    'linear-gradient(135deg, rgba(0, 50, 0, 0.35) 0%, rgba(0, 35, 0, 0.25) 100%)',
   alternativeCard:
-    'linear-gradient(135deg, rgba(40, 40, 50, 0.5) 0%, rgba(30, 30, 40, 0.4) 100%)',
+    'linear-gradient(135deg, rgba(38, 38, 46, 0.5) 0%, rgba(28, 28, 36, 0.4) 100%)',
   successGlow:
-    'radial-gradient(ellipse at center, rgba(0, 255, 0, 0.15) 0%, transparent 70%)',
+    'radial-gradient(ellipse at center, rgba(74, 222, 128, 0.12) 0%, transparent 70%)',
   errorGlow:
-    'radial-gradient(ellipse at center, rgba(255, 100, 100, 0.15) 0%, transparent 70%)',
+    'radial-gradient(ellipse at center, rgba(248, 113, 113, 0.12) 0%, transparent 70%)',
 } as const;
 
 // Pre-computed shadows for performance
 export const shadows = {
-  panel: '0 4px 24px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 215, 0, 0.2)',
-  panelInner: 'inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+  panel: '0 4px 20px rgba(0, 0, 0, 0.7), 0 0 1px rgba(197, 160, 89, 0.15)',
+  panelInner: 'inset 0 1px 0 rgba(255, 255, 255, 0.04)',
   card: '0 2px 8px rgba(0, 0, 0, 0.3)',
   cardHover: '0 4px 16px rgba(0, 0, 0, 0.4)',
   primaryGlow:
-    '0 0 12px rgba(0, 255, 0, 0.3), inset 0 0 6px rgba(0, 255, 0, 0.1)',
-  goldGlow: '0 0 12px rgba(255, 215, 0, 0.3)',
+    '0 0 10px rgba(74, 222, 128, 0.25), inset 0 0 5px rgba(74, 222, 128, 0.08)',
+  goldGlow: '0 0 10px rgba(197, 160, 89, 0.3)',
   iconGlow: '0 2px 8px rgba(0, 0, 0, 0.4)',
 } as const;
 

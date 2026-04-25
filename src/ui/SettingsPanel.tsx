@@ -361,8 +361,8 @@ const SettingsGroup = memo(function SettingsGroup({
         height: '100%',
         borderRadius: 1.75,
         background:
-          'linear-gradient(180deg, rgba(255, 215, 0, 0.05) 0%, rgba(17, 21, 30, 0.72) 22%, rgba(13, 16, 24, 0.92) 100%)',
-        border: '1px solid rgba(255, 215, 0, 0.13)',
+          'linear-gradient(180deg, rgba(197, 160, 89, 0.05) 0%, rgba(17, 21, 30, 0.72) 22%, rgba(13, 16, 24, 0.92) 100%)',
+        border: '1px solid rgba(197, 160, 89, 0.13)',
         boxShadow:
           'inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 24px rgba(0, 0, 0, 0.16)',
       }}
@@ -876,7 +876,7 @@ export const SettingsPanel = memo(function SettingsPanel({
             flexDirection: 'column',
             overflow: 'hidden',
             background:
-              'radial-gradient(circle at top right, rgba(255, 215, 0, 0.08), transparent 26%), radial-gradient(circle at top left, rgba(114, 162, 255, 0.08), transparent 28%), linear-gradient(160deg, rgba(20, 22, 32, 0.985) 0%, rgba(12, 12, 18, 0.99) 100%)',
+              'radial-gradient(circle at top right, rgba(197, 160, 89, 0.06), transparent 26%), radial-gradient(circle at top left, rgba(114, 162, 255, 0.06), transparent 28%), linear-gradient(160deg, rgba(20, 20, 28, 0.985) 0%, rgba(15, 15, 20, 0.99) 100%)',
             border: `1px solid ${colors.borderMedium}`,
             borderRadius: 2.2,
             boxShadow: '0 20px 46px rgba(0, 0, 0, 0.42)',
@@ -892,7 +892,7 @@ export const SettingsPanel = memo(function SettingsPanel({
               position: 'absolute',
               inset: 0,
               background:
-                'linear-gradient(120deg, transparent 22%, rgba(255, 244, 202, 0.08) 40%, rgba(152, 218, 255, 0.12) 52%, transparent 70%)',
+                'linear-gradient(120deg, transparent 22%, rgba(210, 195, 160, 0.07) 40%, rgba(152, 218, 255, 0.1) 52%, transparent 70%)',
               opacity: isOpen ? 1 : 0,
               transform: 'translateX(-140%)',
               animation: isOpen
@@ -907,9 +907,9 @@ export const SettingsPanel = memo(function SettingsPanel({
               position: 'relative',
               px: compact ? 1.25 : 1.45,
               py: compact ? 1.05 : 1.15,
-              borderBottom: '1px solid rgba(255, 215, 0, 0.14)',
+              borderBottom: '1px solid rgba(197, 160, 89, 0.14)',
               background:
-                'linear-gradient(180deg, rgba(255, 215, 0, 0.07) 0%, rgba(255, 215, 0, 0.02) 70%, transparent 100%)',
+                'linear-gradient(180deg, rgba(197, 160, 89, 0.07) 0%, rgba(197, 160, 89, 0.02) 70%, transparent 100%)',
             }}
           >
             <FlexRow
@@ -948,15 +948,15 @@ export const SettingsPanel = memo(function SettingsPanel({
                     sx={{
                       color: snapshotCopied
                         ? colors.gold
-                        : 'rgba(222, 205, 168, 0.7)',
+                        : 'rgba(210, 192, 150, 0.7)',
                       transition: transitions.smooth,
                       padding: '4px',
-                      border: '1px solid rgba(255, 215, 0, 0.16)',
+                      border: '1px solid rgba(197, 160, 89, 0.16)',
                       backgroundColor: 'rgba(18, 22, 32, 0.55)',
                       '&:hover': {
                         color: colors.gold,
                         borderColor: colors.borderMedium,
-                        backgroundColor: 'rgba(222, 184, 135, 0.1)',
+                        backgroundColor: 'rgba(197, 160, 89, 0.1)',
                       },
                     }}
                   >
@@ -973,12 +973,12 @@ export const SettingsPanel = memo(function SettingsPanel({
                   onClick={handleClose}
                   sx={{
                     color: colors.textSecondary,
-                    border: '1px solid rgba(255, 215, 0, 0.16)',
+                    border: '1px solid rgba(197, 160, 89, 0.16)',
                     backgroundColor: 'rgba(18, 22, 32, 0.55)',
                     '&:hover': {
                       color: colors.gold,
                       borderColor: colors.borderMedium,
-                      backgroundColor: 'rgba(222, 184, 135, 0.1)',
+                      backgroundColor: 'rgba(197, 160, 89, 0.1)',
                     },
                   }}
                 >
@@ -1051,7 +1051,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                                 borderColor: colors.gold,
                                 backgroundColor: active
                                   ? colors.goldDark
-                                  : 'rgba(222, 184, 135, 0.12)',
+                                  : 'rgba(197, 160, 89, 0.12)',
                               },
                             }}
                           >
@@ -1104,7 +1104,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                                 borderColor: colors.gold,
                                 backgroundColor: active
                                   ? colors.goldDark
-                                  : 'rgba(222, 184, 135, 0.12)',
+                                  : 'rgba(197, 160, 89, 0.12)',
                               },
                             }}
                           >
@@ -1344,7 +1344,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                borderTop: '1px solid rgba(255, 215, 0, 0.12)',
+                borderTop: '1px solid rgba(197, 160, 89, 0.12)',
                 backgroundColor: 'rgba(12, 14, 22, 0.65)',
               }}
             >
@@ -1365,7 +1365,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                     overflow: 'hidden',
                     isolation: 'isolate',
                     fontSize: '0.66rem',
-                    color: 'rgba(222, 205, 168, 0.96)',
+                    color: 'rgba(210, 192, 150, 0.96)',
                     letterSpacing: '0.04em',
                     lineHeight: 1,
                     pointerEvents: 'none',
@@ -1375,8 +1375,8 @@ export const SettingsPanel = memo(function SettingsPanel({
                       : 'translateY(5px) scale(0.9)',
                     filter: showVersion ? 'blur(0)' : 'blur(3px)',
                     textShadow: showVersion
-                      ? '0 0 10px rgba(255, 223, 140, 0.36)'
-                      : '0 0 0 rgba(255, 223, 140, 0)',
+                      ? '0 0 10px rgba(210, 185, 130, 0.32)'
+                      : '0 0 0 rgba(210, 185, 130, 0)',
                     transition:
                       'opacity 0.12s ease, transform 0.12s ease, filter 0.12s ease, text-shadow 0.14s ease',
                     animation: showVersion
@@ -1388,7 +1388,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                       inset: 0,
                       pointerEvents: 'none',
                       background:
-                        'linear-gradient(110deg, transparent 22%, rgba(152, 218, 255, 0.25) 42%, rgba(255, 236, 166, 0.48) 50%, rgba(152, 218, 255, 0.24) 58%, transparent 78%)',
+                        'linear-gradient(110deg, transparent 22%, rgba(152, 218, 255, 0.2) 42%, rgba(210, 195, 140, 0.4) 50%, rgba(152, 218, 255, 0.2) 58%, transparent 78%)',
                       mixBlendMode: 'screen',
                       opacity: showVersion ? 1 : 0,
                       transform: 'translateX(-130%)',
