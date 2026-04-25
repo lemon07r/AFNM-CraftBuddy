@@ -9,6 +9,7 @@ review_cycle_days: 30
 related_files:
   - AGENTS.md
   - docs/project/TESTING.md
+  - scripts/optimizer/benchmark-engines.ts
 ---
 
 # Optimizer Design
@@ -36,6 +37,7 @@ related_files:
 - beam-limited exploration
 - adaptive beam width at deeper layers
 - iterative deepening option (only fully completed deeper passes replace shallower results)
+- conservative stable-recommendation early exit can stop iterative deepening only after several completed depths keep the same top move with a large score margin and no risky/terminal near-top line
 - node/time budget constraints
 - node budget counts cache-miss frontier expansions rather than cache probes
 - terminal-state shortcuts
@@ -55,7 +57,7 @@ related_files:
 
 ## Scoring architecture
 
-`scoreState()` uses a layered architecture where each layer handles one concern. It accepts an optional `ScoringContext` parameter carrying precomputed craft-specific estimates (`avgStabilityCostPerTurn`, `avgCompletionGainPerTurn`, `avgPerfectionGainPerTurn`, `avgGainPerTurn`) so that survivability and qi/runway calculations use representative live skill gains instead of bare base stats. `buildScoringContext()` samples the strongest currently-usable productive moves (with current state/condition effects when available) rather than averaging every low-output filler action, which keeps long-craft runway estimates grounded on real progress throughput. All scoring weights are defined in the `SCORING` named constants block at the top of `search.ts`. Use `.agents/skills/craftbuddy-optimizer/SKILL.md` for the active design rules, anti-patterns, and validation workflow.
+`scoreState()` uses a layered architecture where each layer handles one concern. It accepts an optional `ScoringContext` parameter carrying precomputed craft-specific estimates (`avgStabilityCostPerTurn`, `avgCompletionGainPerTurn`, `avgPerfectionGainPerTurn`, `avgGainPerTurn`) so that survivability and qi/runway calculations use representative live skill gains instead of bare base stats. `buildScoringContext()` samples the strongest currently-usable productive moves (with current state/condition effects when available) rather than averaging every low-output filler action; it now averages the top three productive samples so one or two outlier skills do not dominate large-skill-set runway estimates. All scoring weights are defined in the `SCORING` named constants block at the top of `search.ts`. Use `.agents/skills/craftbuddy-optimizer/SKILL.md` for the active design rules, anti-patterns, and validation workflow.
 
 ### Layers (in evaluation order)
 
@@ -65,7 +67,7 @@ related_files:
 4. **Resource value** — qi and stability as future-progress enablers (only when targets not yet met)
 5. **Overshoot penalty** — penalise going beyond effective caps
 6. **Survivability** — stability risk penalties using grounded estimates from `ScoringContext` (skipped entirely when targets are met). Includes: quadratic threshold penalty, death penalty (`totalTargetMagnitude × SCORING.DEATH_PENALTY_MULTIPLIER`), near-death linear penalty, and proportional uncapped runway gap penalty (`gap × totalTargetMagnitude × SCORING.RUNWAY_GAP_FRACTION`)
-7. **Toxicity & harmony** — proportional toxicity penalty (`totalTargetMagnitude × SCORING.TOXICITY_PENALTY_FRACTION`) + sublime harmony signal + harmony sub-system quality term (`evaluateHarmonySubsystemQuality()` × remaining-work% × `totalTargetMagnitude × SCORING.HARMONY_SUBSYSTEM_QUALITY_WEIGHT`). That harmony-quality evaluator now uses subsystem-specific state where needed, so forge heat, inscription stacks, partial alchemical charge progress, and resonance target/strength state can all influence frontier scoring instead of only raw intensity/control multipliers. For sublime crafts, these continuation terms stay active until sublime targets are met, not merely until base success is secured, so forge heat recovery and other harmony setup can still outrank shallow “play safe now” lines when overcraft EV is genuinely better.
+7. **Toxicity & harmony** — proportional toxicity penalty (`totalTargetMagnitude × SCORING.TOXICITY_PENALTY_FRACTION`) + sublime harmony signal + harmony sub-system quality term (`evaluateHarmonySubsystemQuality()` × remaining-work% × `totalTargetMagnitude × SCORING.HARMONY_SUBSYSTEM_QUALITY_WEIGHT`). That harmony-quality evaluator now uses subsystem-specific state where needed: normalized forge heat distance from the sweet spot, inscription stack and partial-block progress, partial alchemical charge progress, and resonance target/strength/pending-switch state can all influence frontier scoring instead of only raw intensity/control multipliers. For sublime crafts, these continuation terms stay active until sublime targets are met, not merely until base success is secured, so forge heat recovery and other harmony setup can still outrank shallow “play safe now” lines when overcraft EV is genuinely better.
 
 ### Move ordering
 
@@ -77,7 +79,7 @@ No skills are hard-filtered out of the search tree before evaluation. If a move 
 
 ### Budget ownership
 
-Recommendation budget is reserved for ranking first moves. Follow-up suggestions are generated only after a root frontier is accepted, using cached `bestMove` entries first and shallow fallback only when needed. Auxiliary UI data must not consume the search budget that determines the actual recommendation.
+Recommendation budget is reserved for ranking first moves. Follow-up suggestions are generated only after a root frontier is accepted, using cached `bestMove` entries first and shallow ordering fallback only when needed. Follow-up display does not run an extra deep search after ranking, so auxiliary UI data does not consume the search budget that determines the actual recommendation.
 
 ## User goal-priority bias
 
@@ -111,9 +113,10 @@ Identical state + config inputs should produce stable recommendations within the
 - branch limit: `2`
 - branch min probability: `0.15`
 - engine mode: `legacy` by default; `experimental` enables the native MCTS root policy when bundled inline WASM is available and the search is large or sublime
+- conservative stable-recommendation early exit: enabled for non-MCTS iterative-deepening searches after multiple completed stable frontiers with a large margin and no unsafe/terminal near-top branch; reported in `searchMetrics.earlyExit`
 - legacy default preset: Fast (`48` depth, `2,000ms`, `1,000,000` nodes, beam `5`)
 - experimental preset ceiling: Max uses `4,000ms`, below the `4,500ms` responsiveness cap
-- MCTS defaults: up to `250` requested iterations, rollout depth `8-16` from preset depth, exploration `1.15`, node cap `5,000`; runtime dispatch now caps the actual native request to roughly 20% of remaining budget (`500ms` maximum) before TypeScript search owns the final ranking.
+- MCTS defaults: up to `250` requested iterations, rollout depth `8-16` from preset depth, exploration `1.15`, node cap `5,000`; runtime dispatch scales the actual native request by craft complexity and caps it to roughly 15-20% of remaining budget (`500ms` maximum) before TypeScript search owns the final ranking.
 - Detailed Rust/WASM findings and follow-up work: `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
 
 ### Cost/quality tuning order

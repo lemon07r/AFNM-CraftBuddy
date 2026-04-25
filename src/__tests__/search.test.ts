@@ -3928,6 +3928,71 @@ describe('scoreState (isolated)', () => {
     expect(quality).toBeGreaterThan(0.4);
   });
 
+  it('values forge heat by normalized distance from the sweet spot', () => {
+    const heatZero = evaluateHarmonySubsystemQuality(
+      {
+        forgeWorks: { heat: 0 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+      0.2,
+      0.8,
+    );
+    const heatOne = evaluateHarmonySubsystemQuality(
+      {
+        forgeWorks: { heat: 1 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+      0.2,
+      0.8,
+    );
+    const heatFour = evaluateHarmonySubsystemQuality(
+      {
+        forgeWorks: { heat: 4 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+      0.2,
+      0.8,
+    );
+
+    expect(heatOne).toBeGreaterThan(heatZero);
+    expect(heatFour).toBeGreaterThan(heatOne);
+  });
+
+  it('values partial inscription block progress before the next stack is awarded', () => {
+    const noBlockProgress = evaluateHarmonySubsystemQuality(
+      {
+        inscribedPatterns: {
+          currentBlock: ['stabilize', 'support', 'fusion', 'refine', 'refine'],
+          completedBlocks: 0,
+          stacks: 0,
+        },
+        recommendedTechniqueTypes: [
+          'stabilize',
+          'support',
+          'fusion',
+          'refine',
+          'refine',
+        ],
+      },
+      0.5,
+      0.5,
+    );
+    const partialBlockProgress = evaluateHarmonySubsystemQuality(
+      {
+        inscribedPatterns: {
+          currentBlock: ['fusion', 'refine', 'refine'],
+          completedBlocks: 0,
+          stacks: 0,
+        },
+        recommendedTechniqueTypes: ['fusion', 'refine', 'refine'],
+      },
+      0.5,
+      0.5,
+    );
+
+    expect(partialBlockProgress).toBeGreaterThan(noBlockProgress);
+  });
+
   it('replays the user resonance snapshot and prefers refine over explosive fusion', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'user-report-resonance-regression.snapshot.json',

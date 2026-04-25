@@ -18,7 +18,7 @@ related_files:
 # Optimizer Engine Findings and Improvement Brief
 
 Last updated: 2026-04-25  
-Release context: `v5.0.2`
+Release context: `v5.1.0`
 
 ## Purpose
 
@@ -30,7 +30,7 @@ This brief captures the preset tuning, benchmark observations, and recommended n
 - Because TypeScript still owns exact scoring, transitions, legality, and final recommendation ranking, Rust/WASM usually does **not** make the same quality result happen at a much lower budget yet.
 - The MCTS prior can help at tight budgets when root ordering is the bottleneck, but it can also consume budget before TypeScript has reached a stable frontier.
 - The largest current quality risks are high-realm, long-horizon, harmony-heavy, and large-skill-set crafts where the TypeScript beam/frontier is shallow and the Rust rollout model is too compact to be authoritative.
-- `v5.0.2` keeps the conservative experimental presets below the requested `4.5s` ceiling while reducing native MCTS budget pressure and tightening root-policy safety.
+- `v5.1.0` adds a tracked replay benchmark harness, tightens harmony setup scoring, keeps experimental presets conservative, and continues treating Rust/WASM as a bounded root-policy prior.
 
 ## Current Presets
 
@@ -165,9 +165,19 @@ More precise:
 - Finished craft scoring now probability-weights the sublime finish bonus by resolved craft-end bonus bands instead of treating raw `200/200` overcraft as equivalent to the guaranteed second-band `230/230` threshold.
 - Rust MCTS expansion now previews deeper nodes with their actual condition queue and avoids cloning the full `MctsInput` for every preview score.
 
-### P0: Add a Real Benchmark Harness
+### Implemented in `v5.1.0`
 
-Create a tracked benchmark script under `scripts/optimizer/` or `src/__tests__/benchmarks/` that can:
+- Added `scripts/optimizer/benchmark-engines.ts` plus `optimizer:bench` / `optimizer:bench:verbose` package scripts for repeatable replay-snapshot comparisons.
+- The benchmark harness emits JSON and Markdown reports, validates flexible per-fixture contracts, supports custom fixture directories, includes same-budget MCTS on/off configs, and rejects unknown config IDs.
+- Harmony subsystem scoring now values normalized Forge Works heat distance, partial Inscribed Patterns block progress, and imminent Spiritual Resonance switches more accurately.
+- `buildScoringContext(...)` samples the top three productive moves to reduce outlier effects in high-skill-count crafts.
+- Follow-up display no longer runs an extra deep search after root ranking; it uses cached best moves first and shallow fallback to preserve recommendation budget.
+- Native MCTS dispatch now scales the requested work by craft complexity while keeping the actual request capped to roughly `15-20%` of remaining TypeScript search budget.
+- Non-MCTS iterative deepening can report a conservative stable-recommendation early exit via `searchMetrics.earlyExit`.
+
+### P0: Maintain the Real Benchmark Harness
+
+Maintain the tracked benchmark script under `scripts/optimizer/benchmark-engines.ts`. It can:
 
 1. Load replay snapshots.
 2. Run legacy and experimental configs.
@@ -185,7 +195,7 @@ Create a tracked benchmark script under `scripts/optimizer/` or `src/__tests__/b
 Suggested command shape:
 
 ```bash
-bun run scripts/optimizer/benchmark-engines.ts --fixtures replay --json tmp/engine-benchmark.json
+bun run optimizer:bench -- --json tmp/engine-benchmark.json --markdown tmp/engine-benchmark.md
 ```
 
 Do not assert strict wall-clock times in CI. Use local reports for tuning and CI assertions for deterministic quality contracts.
@@ -229,12 +239,12 @@ Only after this can Rust search replace large parts of TypeScript search instead
 
 ### P1: Make Native Search Budget-Aware
 
-Current MCTS can consume too much of small budgets. Improve by:
+Current MCTS remains bounded and complexity-scaled. Continue improving by:
 
 - skipping native MCTS below a minimum budget/complexity threshold,
-- scaling iterations by remaining time after WASM warmup,
-- capping MCTS to a fraction of the user budget, e.g. `min(500ms, 20% budget)` for low presets,
-- increasing MCTS only for high-skill-count, sublime, or harmony crafts.
+- measuring WASM warmup separately,
+- adapting iterations from observed rollout speed rather than a fixed ms-per-iteration estimate,
+- increasing MCTS only after parity improves for high-skill-count, sublime, or harmony crafts.
 
 ### P2: Use MCTS More Intelligently
 
@@ -245,14 +255,13 @@ Possible improvements:
 - Reuse MCTS trees across adjacent turns when state fingerprints match expected transitions.
 - Keep a small native policy cache keyed by state/config/condition fingerprint.
 
-### P2: Add Early Exit / Stability Detection
+### P2: Refine Early Exit / Stability Detection
 
-TypeScript often spends the full time budget. Add early return when:
+TypeScript can still spend the full time budget. A conservative non-MCTS early exit exists; refine it only with replay evidence. It returns early when:
 
 - top recommendation stays stable across multiple completed iterative-deepening frontiers,
 - score margin is well above tie window,
-- no unsafe terminal branch is near the top,
-- follow-up cache has enough depth for the displayed rotation.
+- no unsafe/probabilistic/terminal branch is near the top.
 
 This may improve perceived speed more than tuning MCTS alone.
 
@@ -276,9 +285,9 @@ Use `craftbuddy-optimizer` skill and add replay tests before changing heuristics
 bun run jest src/__tests__/search.test.ts src/__tests__/craftSimulation.test.ts
 ```
 
-2. Add a benchmark harness, not more ad-hoc temp scripts.
+2. Run `bun run optimizer:bench` before and after candidate changes; avoid ad-hoc temp scripts.
 3. Add or curate at least 10 high-realm/harmony replay fixtures.
-4. Establish baseline tables for:
+4. Establish/refresh baseline tables for:
    - legacy presets,
    - experimental presets,
    - same-budget legacy vs MCTS,

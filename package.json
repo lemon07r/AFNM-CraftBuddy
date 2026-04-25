@@ -1,6 +1,6 @@
 {
   "name": "afnm-craftbuddy",
-  "version": "5.0.2",
+  "version": "5.1.0",
   "description": "Automatically calculates and displays the optimal next skill to use during crafting in Ascend From Nine Mountains",
   "author": {
     "name": "lemon07r"
@@ -29,6 +29,8 @@
     "docs:check-authority": "bun run scripts/docs/check-authority.js",
     "docs:check": "bun run docs:check-links && bun run docs:check-freshness && bun run docs:check-authority",
     "docs:inventory": "bun run scripts/docs/generate-inventory.js",
+    "optimizer:bench": "bun run scripts/optimizer/benchmark-engines.ts",
+    "optimizer:bench:verbose": "bun run scripts/optimizer/benchmark-engines.ts --verbose",
     "release:validate": "bun run typecheck && bun run test && bun run build && bun run docs:check"
   },
   "devDependencies": {

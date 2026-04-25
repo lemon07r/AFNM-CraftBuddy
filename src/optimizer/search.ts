@@ -28,7 +28,7 @@ import {
   getBlockedSkillReasons,
   getConditionEffectsForConfig,
 } from './skills';
-import { getHarmonyStatModifiers } from './harmony';
+import { INSCRIBED_PATTERN_BLOCK, getHarmonyStatModifiers } from './harmony';
 import {
   clampSearchGoalPriorityBias,
   DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
@@ -128,6 +128,13 @@ export interface SearchResult {
       rolloutDepth: number;
       bestSkillKey?: string;
       policyCount: number;
+    };
+    /** Iterative-deepening exited after a stable completed frontier. */
+    earlyExit?: {
+      reason: 'stableRecommendation';
+      depth: number;
+      stablePasses: number;
+      scoreMargin: number;
     };
   };
 }
@@ -381,7 +388,9 @@ interface ProgressScoringSample {
   stabilityCost: number;
 }
 
-const SCORING_CONTEXT_PROGRESS_SAMPLE_SIZE = 2;
+// Use a wider sample for gain estimates so the top 2 outlier skills don't
+// dominate the survivability/runway estimates in large skill sets.
+const SCORING_CONTEXT_PROGRESS_SAMPLE_SIZE = 3;
 
 function average(values: number[]): number {
   if (values.length === 0) {
@@ -1484,19 +1493,41 @@ function evaluateHarmonySubsystemQuality(
         normalizeMultiplierQuality(mods.intensityMultiplier) +
       perfectionPriorityShare *
         normalizeMultiplierQuality(mods.controlMultiplier);
+    // Normalize correction pressure by the maximum possible distance so that
+    // neutral heat states (e.g., heat=1) are penalized proportionally, not
+    // as much as collapse states (heat=0 or heat=10).
+    // Max distance below sweet spot: 2 fusions from heat=0 → heat=4.
+    // Max distance above sweet spot: 4 refines from heat=10 → heat=6.
     const turnsToSweetSpot =
       heat < 4 ? Math.ceil((4 - heat) / 2) : heat > 6 ? heat - 6 : 0;
+    const maxDistanceBelow = 2; // heat=0 needs 2 fusions
+    const maxDistanceAbove = 4; // heat=10 needs 4 refines
     const correctionPressure =
       heat < 4
-        ? turnsToSweetSpot * perfectionPriorityShare
-        : turnsToSweetSpot * completionPriorityShare;
+        ? (turnsToSweetSpot / maxDistanceBelow) * perfectionPriorityShare
+        : (turnsToSweetSpot / maxDistanceAbove) * completionPriorityShare;
     return clampQuality(weightedMultiplierQuality - correctionPressure);
   }
 
   // Inscription: stacks provide a scaling bonus.
+  // Also factor in how far through the current block we are, since being
+  // partway through a valid block (fewer remaining moves to complete it)
+  // represents concrete setup progress toward the next stack batch.
   if (harmonyData.inscribedPatterns) {
     const mods = getHarmonyStatModifiers(harmonyData, 'inscription');
-    return clampQuality((mods.controlMultiplier - 1) * 5);
+    const stackQuality = (mods.controlMultiplier - 1) * 5;
+    const totalBlockSize = INSCRIBED_PATTERN_BLOCK.length;
+    const currentBlockRemaining =
+      harmonyData.inscribedPatterns.currentBlock?.length ?? totalBlockSize;
+    const blockProgress = Math.max(
+      0,
+      (totalBlockSize - currentBlockRemaining) / totalBlockSize,
+    );
+    // Blend current stack quality with block completion progress so the scorer
+    // values states that are partway through a valid block more than zero-stack
+    // starting states.
+    const progressBonus = blockProgress * 0.3;
+    return clampQuality(stackQuality + progressBonus);
   }
 
   if (harmonyData.alchemicalArts) {
@@ -1557,8 +1588,21 @@ function evaluateHarmonySubsystemQuality(
         completionPriorityShare,
         perfectionPriorityShare,
       );
-      const discountedSwitchQuality = (currentAlignment + pendingAlignment) / 2;
-      quality = clampQuality((quality + discountedSwitchQuality) / 2);
+      // Weight the pending alignment based on how soon the switch happens.
+      // pendingCount=1 → switch is imminent: weight pending heavily (0.8).
+      // pendingCount=3+ → switch is further away: blend current and pending.
+      // This avoids the double-average that previously made even an imminent
+      // good switch look negative when the current resonance is misaligned.
+      const switchWeight = Math.max(
+        0.2,
+        Math.min(0.8, 1 - (resonanceState.pendingCount - 1) * 0.25),
+      );
+      const switchAlignmentQuality = clampQuality(
+        currentAlignment * (1 - switchWeight) + pendingAlignment * switchWeight,
+      );
+      // Blend the alignment quality with the strength-based modifier quality so
+      // that high-strength resonance still provides value even during a switch.
+      quality = clampQuality((modifierQuality + switchAlignmentQuality) / 2);
     }
 
     return quality;
@@ -3030,7 +3074,18 @@ export function lookaheadSearch(
       0,
       cfg.timeBudgetMs - (Date.now() - startTime),
     );
-    const nativeBudgetMs = Math.min(500, Math.floor(remainingBudgetMs * 0.2));
+    // Scale the MCTS budget share with craft complexity: more skills or sublime
+    // crafts deserve a larger policy investment; simple short crafts need less.
+    const skillCountFactor = Math.min(
+      1.0,
+      Math.max(0.5, config.skills.length / 20),
+    );
+    const complexityFactor = isSublime ? 1.0 : skillCountFactor;
+    const nativeBudgetFraction = Math.min(0.2, 0.15 + 0.05 * complexityFactor);
+    const nativeBudgetMs = Math.min(
+      500,
+      Math.floor(remainingBudgetMs * nativeBudgetFraction),
+    );
     if (remainingBudgetMs < 250 || nativeBudgetMs < 100) {
       return;
     }
@@ -3039,9 +3094,15 @@ export function lookaheadSearch(
       1,
       Math.floor(cfg.mctsIterations ?? 250),
     );
+    // Scale iteration count by complexity: more complex crafts benefit from
+    // more rollouts to find a reliable root-policy signal.
+    const complexityScaledIterations = Math.max(
+      32,
+      Math.floor(requestedIterations * complexityFactor),
+    );
     const budgetedIterations = Math.max(
       32,
-      Math.min(requestedIterations, Math.floor(nativeBudgetMs / 3)),
+      Math.min(complexityScaledIterations, Math.floor(nativeBudgetMs / 3)),
     );
     const requestedMaxNodes = Math.max(1, Math.floor(cfg.mctsMaxNodes ?? 5000));
     const budgetedMaxNodes = Math.max(
@@ -4656,7 +4717,10 @@ export function lookaheadSearch(
         initialConditionQueue,
         rec.skill,
       );
-      const canUseDeepLookahead = index === 0 && !checkBudget();
+      // Follow-up display must not consume the remaining search budget after
+      // ranking is finished. Use cache-probed best moves first, then the
+      // shallow ordered fallback inside findFollowUpSkill.
+      const canUseDeepLookahead = false;
       rec.followUpSkill = findFollowUpSkill(
         stateAfterSkill,
         depthToSearch,
@@ -4693,6 +4757,18 @@ export function lookaheadSearch(
     metrics.depthReached = baselineResult.evaluatedDepth;
   }
 
+  // Early exit stability tracking: stop deepening when the top recommendation
+  // has been the same for several consecutive fully completed passes with a
+  // comfortable score margin. Requires a minimum depth so trivial 1-step states
+  // don't exit before a meaningful frontier is established.
+  const EARLY_EXIT_STABLE_PASSES = 4;
+  const EARLY_EXIT_MIN_DEPTH = Math.max(
+    baselineDepth + 6,
+    Math.min(depth, Math.floor(depth * 0.35)),
+  );
+  const EARLY_EXIT_MARGIN_MULTIPLIER = 10;
+  const recentTopKeys: string[] = [];
+
   for (const candidateDepth of depthPlan) {
     if (candidateDepth <= baselineDepth) {
       continue;
@@ -4713,6 +4789,57 @@ export function lookaheadSearch(
       usedDepth = evaluatedDepth;
       acceptedCache = new Map(cache);
       metrics.depthReached = evaluatedDepth;
+
+      // Track the top recommendation for early exit detection.
+      // Only check stability at meaningful depths and when MCTS is not relied
+      // upon for root ordering (MCTS might need a full budget to converge).
+      if (
+        evaluatedDepth >= EARLY_EXIT_MIN_DEPTH &&
+        !shouldConsiderNativeMctsPolicy
+      ) {
+        const topRecommendation = candidateSkills[0];
+        const topKey = topRecommendation?.skill?.key ?? '';
+        recentTopKeys.push(topKey);
+        if (recentTopKeys.length > EARLY_EXIT_STABLE_PASSES) {
+          recentTopKeys.shift();
+        }
+        // Exit early when the top recommendation is stable, has a comfortable
+        // score margin over the runner-up, and no risky/terminal line is close
+        // enough to plausibly change the recommendation at a deeper frontier.
+        const topScore = topRecommendation?.score ?? -Infinity;
+        const runnerUpScore = candidateSkills[1]?.score ?? -Infinity;
+        const margin = topScore - runnerUpScore;
+        const stableMarginThreshold = Math.max(
+          EARLY_EXIT_MARGIN_MULTIPLIER * scoreTieWindow,
+          scoringCtx.avgGainPerTurn * 2,
+        );
+        const isTopKeyStable =
+          recentTopKeys.length === EARLY_EXIT_STABLE_PASSES &&
+          recentTopKeys.every((k) => k === recentTopKeys[0]) &&
+          recentTopKeys[0] !== '';
+        const hasRiskyNearTopLine = candidateSkills
+          .slice(0, Math.min(4, candidateSkills.length))
+          .some(
+            (rec) =>
+              topScore - rec.score <= stableMarginThreshold &&
+              (rec.endsCraft ||
+                rec.requiresProbabilisticSurvival === true ||
+                candidateUnsafeKeys.has(rec.skill.key)),
+          );
+        if (
+          isTopKeyStable &&
+          margin > stableMarginThreshold &&
+          !hasRiskyNearTopLine
+        ) {
+          metrics.earlyExit = {
+            reason: 'stableRecommendation',
+            depth: evaluatedDepth,
+            stablePasses: EARLY_EXIT_STABLE_PASSES,
+            scoreMargin: margin,
+          };
+          break;
+        }
+      }
     }
 
     if (shouldTerminate) {

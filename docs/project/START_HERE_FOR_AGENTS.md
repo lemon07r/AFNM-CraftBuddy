@@ -12,6 +12,7 @@ related_files:
   - docs/project/ARCHITECTURE.md
   - docs/project/OPTIMIZER_DESIGN.md
   - docs/project/OPTIMIZER_ENGINE_FINDINGS.md
+  - docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md
   - docs/project/RELEASE_PROCESS.md
 ---
 
@@ -39,6 +40,7 @@ related_files:
 - harmony logic: `src/optimizer/harmony.ts`
 - Rust MCTS policy prior: `crates/craftbuddy-engine/`
 - optimizer engine performance and Rust/WASM follow-up: `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
+- optimizer improvement handoff and next workstreams: `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md`
 
 ## Context rules
 
