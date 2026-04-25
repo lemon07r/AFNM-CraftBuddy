@@ -60,4 +60,5 @@ Fast, low-noise onboarding for AFNM-CraftBuddy.
 
 - `docs/project/*` is authoritative; `docs/history/*` and `docs/reference/*` are non-authoritative context only.
 - Do not bulk-load `archive/` or the full reference corpus. Start with `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` only when modding reference docs are needed.
+- If any doc or skill is wrong, stale, duplicated, or misleading, correct it immediately in the same change and keep the fix concise.
 - See `docs/project/DOCS_GOVERNANCE.md` for metadata and update policy.

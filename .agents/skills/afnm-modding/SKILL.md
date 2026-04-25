@@ -60,6 +60,10 @@ Only run the commands relevant to the change. For docs/skills-only changes, pref
 4. Use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` before opening broader reference docs.
 5. Do not launch the installed game UI by default. Use runtime oracle first; live UI is opt-in.
 
+## Documentation And Skill Stewardship
+
+Docs and skills are editable working assets. If this skill, another skill, or any project doc is wrong, stale, duplicated, or unclear, correct it as soon as you notice it instead of deferring it to a later agent. Verify against the installed runtime, code, tests, or package scripts; keep skill bodies concise and move long details to references when needed.
+
 ## Gotchas
 
 1. **Template skills can be stale in this repo**: use CraftBuddy-specific skills for optimizer, runtime, UI, and release tasks.

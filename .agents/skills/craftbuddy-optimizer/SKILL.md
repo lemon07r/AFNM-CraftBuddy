@@ -27,6 +27,7 @@ Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN
 4. Run targeted tests while iterating, then `bun run test` before completion.
 5. Run `bun run build` if TypeScript/Rust/WASM source or generated WASM changes.
 6. If mechanics/parity docs change, update docs and run `bun run docs:check`.
+7. If you notice stale or inaccurate optimizer docs/skills while working, correct them in the same pass; do not leave known bad guidance for future agents.
 
 ## Scoring Rules
 

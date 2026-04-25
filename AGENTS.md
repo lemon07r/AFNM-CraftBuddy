@@ -53,6 +53,7 @@ Use Vera before opening many files or running broad text search when you need to
 - Use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` before opening any other reference docs.
 - Use `archive/` only when the curated/active docs are insufficient.
 - When a task is finished, do a lean docs pass for any changed behavior, workflow, or tooling. Update stale/inaccurate docs if needed, but keep additions concise and avoid padding.
+- If you find inaccurate, stale, duplicated, or misleading information in any doc or `.agents/skills/*` file while working, fix it in the same change. Agents have standing permission to edit, correct, prune, or improve docs and skills; do not leave known traps for later agents.
 - If patch notes, documentation, and runtime behavior disagree, verify against the installed-runtime oracle before changing mechanics/tests, then update the authoritative docs to match the observed runtime.
 - If you change docs, run `bun run docs:inventory` and `bun run docs:check` before committing.
 - Use `docs/project/RELEASE_PROCESS.md` for the concrete version bump, commit, push, tag, GitHub release, and Workshop upload pipeline.
