@@ -12,74 +12,57 @@ related_files:
 
 # Mod API Integration
 
+For the active workflow when editing `src/modContent/*`, load the `craftbuddy-runtime-integration` skill. For ModAPI surface lookups, load `modapi-lookup`. This doc is the deep reference for integration architecture and migration state.
+
 ## Role
 
-`src/modContent/index.ts` is the sole adapter from game runtime objects to optimizer input/output.
-
-All fallback extraction and game-object adaptation logic is centralized here — never duplicated in optimizer modules. This is a deliberate design decision to maintain a single drift boundary and clearer parity auditing.
-
-## Responsibilities
-
-- read live crafting state and recipe data
-- use direct Redux store access only where synchronous dispatch notifications are required, and otherwise prefer `window.modAPI.subscribe(...)` / `window.modAPI.getGameStateSnapshot()` for store-like reads
-- resolve crafting type/sublime context from live recipe fields plus `modAPI.gameData.itemTypeToHarmonyType` when explicit harmony fields are missing
-- normalize techniques/masteries/buffs into optimizer action definitions
-- collect condition effects and forecasted conditions
-- prefer documented crafting helpers such as `modAPI.utils.getNextCondition`, `modAPI.utils.craftingTechniqueFromKnown`, and `modAPI.utils.completionBonusBuffName` when they are available
-- seed optimizer state with native variable snapshots when available
-- keep locale-sensitive DOM logic as structural fallback only; never make English UI copy the sole source of craft-session truth when root-state APIs or stable selectors exist
-- register guarded native provider seams (overcrit, availability, condition transitions)
-- pass harmony/training mode fields to optimizer config/state
-- map settings to search config
-- update overlay UI and debug surface
+`src/modContent/index.ts` is the sole adapter from game runtime objects to optimizer input/output. All fallback extraction and game-object adaptation logic is centralized here to maintain a single drift boundary.
 
 ## Data source priority
 
-1. direct game/Redux store only when synchronous dispatch notifications are required, such as auto-craft state-advance detection
-2. ModAPI root-state adapter (`subscribe`, `getGameStateSnapshot`) for normal store-like reads and state-backed craft-session detection
-3. hook-provided payloads for recipe/condition context
-4. controlled DOM-derived fallback for visible `X/Y` values and UI-only recovery
-5. local cache fallback for resilience during mid-craft restoration
+1. Direct game/Redux store only when synchronous dispatch notifications are required (e.g. auto-craft state-advance detection).
+2. `window.modAPI.subscribe(...)` / `window.modAPI.getGameStateSnapshot()` for normal store-like reads.
+3. Hook-provided payloads for recipe/condition context.
+4. Controlled DOM-derived fallback for visible `X/Y` values and UI-only recovery.
+5. Local cache fallback for resilience during mid-craft restoration.
 
 ## Known fallback paths
 
-Fallback handling exists for targets/progress extraction, condition transitions, optional payload fields when game objects are incomplete, and local scaling evaluation. `modAPI.utils.evaluateScaling` is not used by optimizer simulation because the live provider can drift from hypothetical future-state variables and already-upgraded payloads. Live crafting techniques now prefer `modAPI.utils.craftingTechniqueFromKnown` by matching the active `CraftingTechnique.name` to `player.player.craftingTechniques[*].technique`, then reattaching live cooldown/session state; if that name match misses or the resolver throws, the raw live technique payload remains the fallback. Condition transitions now prefer the documented `modAPI.utils.getNextCondition` helper, with legacy fallback probing retained only for older runtimes. Completion-bonus extraction now prefers `modAPI.utils.completionBonusBuffName`, with the old name/signature heuristic retained as fallback.
+Live crafting techniques prefer `modAPI.utils.craftingTechniqueFromKnown` by matching the active `CraftingTechnique.name` to `player.player.craftingTechniques[*].technique`, then reattaching live cooldown/session state; the raw live technique payload remains the fallback if the resolver misses or throws. Condition transitions prefer `modAPI.utils.getNextCondition`, with legacy fallback probing for older runtimes. Completion-bonus extraction prefers `modAPI.utils.completionBonusBuffName`, with heuristic fallback.
 
-Craft-session visibility now treats the root-state `screen.screen === 'recipe'` plus a live crafting slice as the primary language-agnostic signal. DOM text parsing remains for target/progress recovery, but it should parse structural `X/Y` progress values from visible widgets before trying any English-label regex fallback. Those DOM fallbacks must also accept compact HUD number formats such as `31K`, and when the craft explicitly cannot overcraft they should reconcile rounded HUD text against the exact completion/perfection caps instead of trusting the abbreviated display as the exact target.
+Craft-session visibility treats root-state `screen.screen === 'recipe'` plus a live crafting slice as the primary language-agnostic signal. DOM text parsing remains for target/progress recovery but must parse structural `X/Y` progress values before English-label regex fallback, accept compact HUD formats like `31K`, and reconcile rounded HUD text against exact caps for non-overcraft crafts.
 
-Installed runtime `0.6.50` also exposes additional parity-relevant fields that are not necessarily search inputs by themselves:
+`modAPI.utils.evaluateScaling` is intentionally not used by optimizer simulation because the live provider can drift from hypothetical future-state variables.
 
-- root ModAPI state APIs: `subscribe`, `getGameStateSnapshot`, `injectUI`
+## Runtime 0.6.50 additions
+
+- Root ModAPI state APIs: `subscribe`, `getGameStateSnapshot`, `injectUI`
 - `hooks.onReduxAction`
-- recipe best-completion tracking: `basicBestCompletion`, `perfectBestCompletion`, `sublimeBestCompletion`
-- flat crafting Qi-cost stat: `poolCostFlat`
-
-New in `0.6.50`:
-
+- Recipe best-completion tracking: `basicBestCompletion`, `perfectBestCompletion`, `sublimeBestCompletion`
+- Flat crafting Qi-cost stat: `poolCostFlat`
 - `modAPI.utils.getActionCost` — native post-modifier action cost preview
 - `modAPI.utils.evaluateCraftingCondition` — native crafting condition evaluation
 - `modAPI.utils.getActualCraftingStat` — native crafting stat resolution
-- `noQiCost` technique field — marks techniques that cost no Qi (integration now skips Qi-cost evaluation for these)
-- `craftingTeamUpOverride` companion buff integration — companion crafting buffs now flow into optimizer state
-
-Replay snapshots are expected to be parity-grade bug reports, not just light debug summaries. They should preserve runtime-shaped skill fields (including mastery/granted-buff payloads), active buff definitions when those change optimizer gains or costs, and craft-context provenance (crafting-type source, sublime-detection signals, integration diagnostics, raw recipe/recipeStats fields). Exported snapshot bundles now keep the current turn plus a bounded recent-turn history with auto-mode state so bug reports can show how a bad line developed without growing unbounded.
-
-When the runtime UI/help text, older reference notes, and executable behavior disagree, the installed game bundle is authoritative. Use the extraction flow in `docs/project/TESTING.md` before changing mechanics constants or parity tests.
+- `noQiCost` technique field — marks techniques that cost no Qi
+- `craftingTeamUpOverride` companion buff integration
 
 ## Migration targets
 
-Adopted in current code:
+**Adopted:**
+- `subscribe` / `getGameStateSnapshot` for store-like reads and state-backed craft-session detection
+- Runtime `poolCostFlat` flows through state/cache/replay/effective-cost evaluation
 
-- `window.modAPI.subscribe(...)` / `window.modAPI.getGameStateSnapshot()` are available for normal store-like reads; state-backed craft-session detection (`hasStateBackedCraftingUi`) removes locale-sensitive dependency on English DOM text
-- runtime `poolCostFlat` now flows through optimizer state, cache keys, replay snapshots, and effective-action-cost evaluation
+**Good next candidates:**
+- `injectUI` to replace manual overlay container when layout flexibility is sufficient
+- `actions.addTranslation` for CraftBuddy-owned string localization
+- `hooks.onReduxAction` to replace some polling once action lifecycle guarantees are documented
 
-Good next migration candidates:
+**Pending game API follow-up** — see `docs/dev-requests/API_EXPOSURE_REQUESTS.md`:
+- Finalized post-modifier pool/stability cost preview helpers
+- Published contract that live `CraftingTechnique.name` is the canonical non-localized key
 
-- `window.modAPI.injectUI(...)` can eventually replace the manual overlay container when the injected-host layout is flexible enough for the recommendation panel
-- `window.modAPI.actions.addTranslation(...)` and related font controls can localize CraftBuddy-owned strings instead of relying on English-only panel copy
-- `window.modAPI.hooks.onReduxAction(...)` can replace some polling/manual transition observation once the needed action names and lifecycle guarantees are documented
+## Replay snapshot expectations
 
-Pending game API/documentation follow-up — see `docs/dev-requests/API_EXPOSURE_REQUESTS.md` for full details and status:
+Snapshots must be parity-grade bug reports preserving runtime-shaped skill fields, active buff definitions, craft-context provenance, current turn, bounded recent-turn history, and auto-mode state. See `docs/project/TESTING.md` replay-parity section for test coverage expectations.
 
-- finalized post-modifier pool/stability cost preview helpers
-- published contract that live `CraftingTechnique.name` is the canonical non-localized key shared with `KnownCraftingTechnique.technique`
+When runtime UI/help text, older reference notes, and executable behavior disagree, the installed game bundle is authoritative. Use `runtime-oracle` skill to verify.

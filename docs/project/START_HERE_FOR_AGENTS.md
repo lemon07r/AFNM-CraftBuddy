@@ -16,35 +16,17 @@ related_files:
 
 # Start Here For Agents
 
-Fast, low-noise onboarding for AFNM-CraftBuddy.
-
 ## Critical first read
 
-1. `AGENTS.md` — compact repo conventions, commands, and safety rules.
-2. `.agents/skills/afnm-modding/SKILL.md` — task routing into project skills.
-3. Load only the task-specific skill/doc below; avoid bulk-loading the reference corpus.
+1. `AGENTS.md` — commands and hard rules (always loaded).
+2. Load the `afnm-modding` skill — task routing, project rules, repo map.
+3. Load only the task-specific skill routed by `afnm-modding`; avoid bulk-loading docs.
 
-## Skill-first routing
-
-| Task | Load this skill first | Then read |
-| --- | --- | --- |
-| Optimizer/search/MCTS behavior | `craftbuddy-optimizer` | `docs/project/OPTIMIZER_DESIGN.md` |
-| Runtime state, ModAPI, auto-action bridge | `craftbuddy-runtime-integration` | `docs/project/INTEGRATION_MODAPI.md` |
-| UI layout, harness, visual checks | `craftbuddy-ui-validation` | `docs/project/TESTING.md` |
-| Release/Workshop publish | `craftbuddy-release` | `docs/project/RELEASE_PROCESS.md` |
-| ModAPI surface verification | `runtime-oracle`, `modapi-lookup` | installed runtime grep output |
-
-## Recommended doc load order when no skill applies
+## When no skill applies
 
 1. `docs/project/ARCHITECTURE.md` — module map and dependency direction.
 2. `docs/project/MECHANICS_PARITY.md` — implemented/pending mechanics parity.
 3. `docs/project/ROADMAP.md` — active priorities.
-
-## Community guide context
-
-- `docs/reference/afnm-crafting-guide/` is a hypothesis source for optimizer and parity work.
-- Treat `docs/reference/afnm-crafting-guide/agent_considerations.md` as triage input only.
-- Before acting on any guide claim, confirm its status in `docs/project/MECHANICS_PARITY.md` and tests.
 
 ## Key code entrypoints
 
@@ -60,5 +42,6 @@ Fast, low-noise onboarding for AFNM-CraftBuddy.
 
 - `docs/project/*` is authoritative; `docs/history/*` and `docs/reference/*` are non-authoritative context only.
 - Do not bulk-load `archive/` or the full reference corpus. Start with `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` only when modding reference docs are needed.
-- If any doc or skill is wrong, stale, duplicated, or misleading, correct it immediately in the same change and keep the fix concise.
+- Community guide (`docs/reference/afnm-crafting-guide/`) is a hypothesis source only. Confirm claims in `docs/project/MECHANICS_PARITY.md` and tests before acting.
+- If any doc or skill is wrong, stale, duplicated, or misleading, correct it in the same change.
 - See `docs/project/DOCS_GOVERNANCE.md` for metadata and update policy.

@@ -1,11 +1,11 @@
 ---
 name: craftbuddy-release
-description: CraftBuddy release and Workshop publishing workflow. Activate when bumping versions, packaging, uploading to Steam Workshop item 3661729323, pushing release commits, tagging GitHub releases, or changing Workshop description copy.
+description: CraftBuddy release and Workshop publishing workflow. Activate when bumping versions, packaging, uploading to Steam Workshop item 3661729323, pushing release commits, tagging GitHub releases, changing Workshop description copy, or for any Steam Workshop upload mechanics.
 ---
 
 # CraftBuddy Release
 
-Use this for release operations only after implementation validation is complete.
+Use this for release operations only after implementation validation is complete. See `docs/project/RELEASE_PROCESS.md` for the full detailed reference.
 
 ## Version Sources
 
@@ -31,12 +31,15 @@ Update both version strings together:
 5. Push tag `vX.Y.Z` to trigger `.github/workflows/release.yml` and GitHub Release artifact upload.
 6. Confirm package version, tag, Workshop note, and uploaded zip all match.
 
-## Workshop Wrapper Facts
+## Workshop Upload Mechanics
 
-- Builds CraftBuddy unless `--skip-build` is passed.
+- The wrapper builds CraftBuddy unless `--skip-build` is passed.
 - Prepares sibling `../ModUploader-AFNM` unless `--skip-uploader-prepare` is passed.
 - Uses Workshop item `3661729323` by default.
 - Requires Steam running and logged into the owning account.
+- Never commit Steam credentials, login files, or local uploader artifacts.
+- Do not sync title/description unless explicitly intended.
+- Preview images should stay small; the uploader can compress large images.
 
 ## Gotchas
 
@@ -51,3 +54,5 @@ Update both version strings together:
 - `scripts/workshop-upload.ts`
 - `docs/project/WORKSHOP_DESCRIPTION.md`
 - `../ModUploader-AFNM`
+- `pre-commit-validation` skill — validation before publishing
+- `conventional-git` skill — release commit/tag naming

@@ -16,14 +16,7 @@ Use curated docs first, then verify uncertain symbols with the installed runtime
    bun run runtime:grep -- "<method-or-hook-name>"
    ```
 4. Keep adoption and fallbacks centralized in `src/modContent/*`.
-
-## API Preference Order
-
-1. `window.modAPI.getGameStateSnapshot()`
-2. `window.modAPI.subscribe()`
-3. `window.modAPI.injectUI()` / `registerOptionsUI()` / documented actions and utils
-4. Verified direct store access when synchronous action observation is required
-5. DOM/React fiber fallback only for confirmed gaps
+5. For data-source priority and runtime boundary rules, load `craftbuddy-runtime-integration`.
 
 ## Hook Rules
 
@@ -34,16 +27,17 @@ Use curated docs first, then verify uncertain symbols with the installed runtime
 
 ## CraftBuddy-Specific Helpers
 
-- `getNextCondition`
-- `craftingTechniqueFromKnown`
-- `completionBonusBuffName`
-- `getActionCost`
-- `evaluateCraftingCondition`
-- `getActualCraftingStat`
+- `getNextCondition` — condition transitions
+- `craftingTechniqueFromKnown` — live technique resolution by canonical name
+- `completionBonusBuffName` — completion bonus extraction
+- `getActionCost` — native post-modifier action cost preview
+- `evaluateCraftingCondition` — native crafting condition evaluation
+- `getActualCraftingStat` — native crafting stat resolution
 
 ## References
 
-- `docs/project/INTEGRATION_MODAPI.md`
-- `docs/reference/afnm-modding/`
-- `src/modContent/index.ts`
-- `runtime-oracle` skill
+- `docs/project/INTEGRATION_MODAPI.md` — deep integration reference
+- `docs/reference/afnm-modding/` — upstream AFNM modding docs
+- `src/modContent/index.ts` — integration boundary implementation
+- `runtime-oracle` skill — verify against installed runtime
+- `craftbuddy-runtime-integration` skill — active workflow for modContent changes

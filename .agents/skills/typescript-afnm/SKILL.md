@@ -11,7 +11,6 @@ This repo runs TypeScript in strict mode and uses runtime-shaped AFNM data. Keep
 
 - Writing or reviewing TypeScript/TSX
 - Adding globals, ModAPI calls, replay snapshot shapes, or runtime adapters
-- Touching `src/modContent/*`, `src/optimizer/*`, `src/ui/*`, or settings mapping
 - Considering `any`, `@ts-ignore`, unchecked casts, or bundled externals
 
 ## Rules
@@ -38,7 +37,7 @@ Never assume hook/util presence without a guard. Verify questionable APIs with `
 
 ## CraftBuddy Globals
 
-Declare project globals in `src/global.d.ts`. CraftBuddy's public debug surface is `window.craftBuddyDebug`; avoid template-only names such as `__afnmModDebug`.
+Declare project globals in `src/global.d.ts`. CraftBuddy's public debug surface is `window.craftBuddyDebug`.
 
 ```typescript
 declare global {
@@ -49,8 +48,6 @@ declare global {
 }
 ```
 
-Keep the debug API useful for replay export, current recommendation context, auto-mode state, and runtime diagnostics, but do not expose secrets or local-only paths.
-
 ## AFNM Types
 
 Use `afnm-types` for runtime contracts and import type-only symbols with `import type` when possible:
@@ -60,14 +57,7 @@ import type { ModAPI, RootState, CraftingTechnique } from 'afnm-types';
 import { GAME_VERSION } from 'afnm-types';
 ```
 
-If installed runtime behavior disagrees with types, verify with `runtime:oracle`/`runtime:grep`, then narrow at the adapter boundary instead of spreading casts.
-
-## Runtime Boundary
-
-- Direct Redux store access is allowed only for synchronous dispatch notifications such as auto-craft state-advance detection.
-- Prefer `modAPI.subscribe()` / `getGameStateSnapshot()` for store-like reads, then hook payloads, controlled DOM fallback, and local cache fallback.
-- `onReduxAction` is reducer-time observation only; do not dispatch, mutate state, or perform async side effects inside it.
-- DOM-derived values must be structurally parsed and locale-tolerant; English labels are a last resort.
+If installed runtime behavior disagrees with types, verify with `runtime-oracle` / `runtime:grep`, then narrow at the adapter boundary instead of spreading casts.
 
 ## Build Externals
 
@@ -76,3 +66,8 @@ React, ReactDOM, MUI, and MUI Icons are runtime externals in `webpack.config.js`
 ## Style
 
 Formatting is controlled by `.prettierrc`: 2 spaces, single quotes, trailing commas, LF endings, no tabs.
+
+## Related Skills
+
+- `craftbuddy-runtime-integration` — data-source priority and runtime boundary rules
+- `typescript-best-practices` — general TypeScript patterns
