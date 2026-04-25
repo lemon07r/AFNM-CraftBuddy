@@ -48,6 +48,10 @@ interface ActionCostPreview {
   stability: number;
 }
 
+type ActionSurvivabilityFloor = ReturnType<
+  typeof calculateActionSurvivabilityFloor
+>;
+
 export interface SkillRecommendation {
   skill: SkillDefinition;
   /** Projected expected-value gain (includes RNG EV). */
@@ -2144,6 +2148,23 @@ function scoreFinishedOutcome(
         (finishedCompShortfall + finishedPerfShortfall) *
         SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
 
+      const outcomeModeTargetsMet =
+        isSublimeCraft &&
+        isRawGoalSecuredByOutcome(
+          completionOutcome.guaranteed,
+          effectiveCompGoal,
+          targetCompletion,
+        ) &&
+        isRawGoalSecuredByOutcome(
+          perfectionOutcome.guaranteed,
+          effectivePerfGoal,
+          targetPerfection,
+        );
+
+      if (outcomeModeTargetsMet) {
+        outcomeScore += targetMetBonus * (SCORING.SUBLIME_MET_EXTRA - 1);
+      }
+
       expectedScore += probability * outcomeScore;
     }
   }
@@ -2151,14 +2172,8 @@ function scoreFinishedOutcome(
   const currentBaseTargetsMet =
     (baseCompGoal <= 0 || state.completion >= baseCompGoal) &&
     (basePerfGoal <= 0 || state.perfection >= basePerfGoal);
-  const currentModeTargetsMet =
-    isSublimeCraft &&
-    (effectiveCompGoal <= 0 || state.completion >= effectiveCompGoal) &&
-    (effectivePerfGoal <= 0 || state.perfection >= effectivePerfGoal);
 
-  if (currentModeTargetsMet) {
-    expectedScore += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
-  } else if (currentBaseTargetsMet) {
+  if (currentBaseTargetsMet) {
     expectedScore += targetMetBonus;
     if (isSublimeCraft) {
       const compBeyondBase = Math.max(0, effectiveCompProgress - baseCompGoal);
@@ -2236,6 +2251,7 @@ interface SearchMoveCandidate {
   skill: SkillDefinition;
   nextState: CraftingState;
   searchState: CraftingState;
+  survivabilityFloor: ActionSurvivabilityFloor;
   orderingScore: number;
   immediateProgress: number;
   requiresProbabilisticSurvival: boolean;
@@ -2245,9 +2261,7 @@ interface SearchMoveCandidate {
 
 function applySurvivabilityFloorToState(
   displayState: CraftingState,
-  survivabilityFloor: ReturnType<
-    typeof calculateActionSurvivabilityFloor
-  > | null,
+  survivabilityFloor: ActionSurvivabilityFloor,
 ): CraftingState {
   if (!survivabilityFloor) {
     return displayState;
@@ -2319,10 +2333,8 @@ function shouldUseSurvivabilityFloorForContinuation(params: {
     return false;
   }
 
-  // If a guaranteed-safe stabilize exists, do not let an immediate floor-death
-  // branch masquerade as a live continuation line just because EV-only recovery
-  // procs would keep it alive. Without that stabilize alternative, sublime
-  // overcraft lines may still intentionally accept the immediate risk.
+  // Do not let an immediate floor-death branch masquerade as a live
+  // continuation line just because EV-only recovery procs would keep it alive.
   if (floorStability <= 0) {
     return hasGuaranteedSafeStabilize || !baseSuccessSecuredAfterAction;
   }
@@ -2332,7 +2344,7 @@ function shouldUseSurvivabilityFloorForContinuation(params: {
     hasProbabilisticRunwayGap &&
     floorStability < minimumGuaranteedContinuationStability
   ) {
-    return true;
+    return !baseSuccessSecuredAfterAction;
   }
 
   return (
@@ -2347,6 +2359,7 @@ function shouldDeprioritizeAgainstGuaranteedSafeStabilize(params: {
   displayStability: number;
   floorStability: number;
   goalsMetAfterAction: boolean;
+  baseSuccessSecuredAfterAction: boolean;
   hasGuaranteedSafeStabilize: boolean;
   minimumGuaranteedContinuationStability: number;
 }): boolean {
@@ -2355,6 +2368,7 @@ function shouldDeprioritizeAgainstGuaranteedSafeStabilize(params: {
     displayStability,
     floorStability,
     goalsMetAfterAction,
+    baseSuccessSecuredAfterAction,
     hasGuaranteedSafeStabilize,
     minimumGuaranteedContinuationStability,
   } = params;
@@ -2373,6 +2387,10 @@ function shouldDeprioritizeAgainstGuaranteedSafeStabilize(params: {
 
   if (floorStability <= 0) {
     return true;
+  }
+
+  if (baseSuccessSecuredAfterAction) {
+    return false;
   }
 
   return floorStability < minimumGuaranteedContinuationStability;
@@ -2805,6 +2823,7 @@ export function greedySearch(
         displayStability: displayState.stability,
         floorStability,
         goalsMetAfterAction,
+        baseSuccessSecuredAfterAction,
         hasGuaranteedSafeStabilize,
         minimumGuaranteedContinuationStability,
       });
@@ -2995,30 +3014,62 @@ export function lookaheadSearch(
   const scoreTieWindow = computeScoreTieWindow(
     Math.max(1, effectiveCompGoal + effectivePerfGoal),
   );
-  const shouldUseNativeMctsPolicy =
+  const shouldConsiderNativeMctsPolicy =
     cfg.useMonteCarloTreeSearch !== false &&
     depth > 1 &&
     config.skills.length > 0 &&
     (isSublime || depth >= 16 || config.skills.length >= 8);
-  const nativeMctsPolicy: NativeMctsPolicy | null = shouldUseNativeMctsPolicy
-    ? getNativeMctsPolicy({
-        state,
-        config,
-        targetCompletion,
-        targetPerfection,
-        currentConditionType: normalizedCurrentCondition,
-        forecastedConditionTypes,
-        goalPriorityBias: cfg.goalPriorityBias,
-        search: {
-          iterations: cfg.mctsIterations,
-          rolloutDepth: Math.min(depth, cfg.mctsRolloutDepth ?? depth),
-          exploration: cfg.mctsExploration,
-          maxNodes: cfg.mctsMaxNodes,
-          timeBudgetMs: cfg.timeBudgetMs,
-        },
-      })
-    : null;
-  if (nativeMctsPolicy) {
+  let rootMctsPolicyBySkillKey: NativeMctsPolicy['policyBySkillKey'] =
+    new Map();
+  const initializeNativeMctsPolicy = (): void => {
+    if (!shouldConsiderNativeMctsPolicy || rootMctsPolicyBySkillKey.size > 0) {
+      return;
+    }
+
+    const remainingBudgetMs = Math.max(
+      0,
+      cfg.timeBudgetMs - (Date.now() - startTime),
+    );
+    const nativeBudgetMs = Math.min(500, Math.floor(remainingBudgetMs * 0.2));
+    if (remainingBudgetMs < 250 || nativeBudgetMs < 100) {
+      return;
+    }
+
+    const requestedIterations = Math.max(
+      1,
+      Math.floor(cfg.mctsIterations ?? 250),
+    );
+    const budgetedIterations = Math.max(
+      32,
+      Math.min(requestedIterations, Math.floor(nativeBudgetMs / 3)),
+    );
+    const requestedMaxNodes = Math.max(1, Math.floor(cfg.mctsMaxNodes ?? 5000));
+    const budgetedMaxNodes = Math.max(
+      250,
+      Math.min(requestedMaxNodes, budgetedIterations * 20),
+    );
+    const nativeMctsPolicy = getNativeMctsPolicy({
+      state,
+      config,
+      targetCompletion,
+      targetPerfection,
+      currentConditionType: normalizedCurrentCondition,
+      forecastedConditionTypes,
+      goalPriorityBias: cfg.goalPriorityBias,
+      search: {
+        iterations: budgetedIterations,
+        rolloutDepth: Math.min(depth, cfg.mctsRolloutDepth ?? depth),
+        exploration: cfg.mctsExploration,
+        maxNodes: budgetedMaxNodes,
+        timeBudgetMs: nativeBudgetMs,
+      },
+    });
+
+    if (!nativeMctsPolicy) {
+      return;
+    }
+
+    rootMctsPolicyBySkillKey = nativeMctsPolicy.policyBySkillKey;
     metrics.mcts = {
       backend: nativeMctsPolicy.backend,
       iterations: nativeMctsPolicy.iterations,
@@ -3027,9 +3078,7 @@ export function lookaheadSearch(
       bestSkillKey: nativeMctsPolicy.bestSkillKey,
       policyCount: nativeMctsPolicy.orderedPolicies.length,
     };
-  }
-  const rootMctsPolicyBySkillKey =
-    nativeMctsPolicy?.policyBySkillKey ?? new Map<string, never>();
+  };
   const sameConditionQueue = (
     left: CraftingConditionType[],
     right: CraftingConditionType[],
@@ -3049,9 +3098,13 @@ export function lookaheadSearch(
     aSkillKey: string,
     bSkillKey: string,
   ): number => {
-    const aPolicy = rootMctsPolicyBySkillKey.get(aSkillKey)?.policy ?? 0;
-    const bPolicy = rootMctsPolicyBySkillKey.get(bSkillKey)?.policy ?? 0;
-    const policyDiff = aPolicy - bPolicy;
+    const aPolicy = rootMctsPolicyBySkillKey.get(aSkillKey);
+    const bPolicy = rootMctsPolicyBySkillKey.get(bSkillKey);
+    if (!aPolicy || !bPolicy) {
+      return 0;
+    }
+
+    const policyDiff = aPolicy.policy - bPolicy.policy;
     // Ignore single-rollout noise; only use MCTS when it has a visible root
     // preference and the authoritative score already considers the moves tied.
     return Math.abs(policyDiff) >= 0.02 ? policyDiff : 0;
@@ -3173,11 +3226,13 @@ export function lookaheadSearch(
     minimumGuaranteedContinuationStability: number = 0,
   ): {
     searchState: CraftingState;
+    survivabilityFloor: ActionSurvivabilityFloor;
     requiresProbabilisticSurvival: boolean;
   } => {
     if (isFinishAction(skill)) {
       return {
         searchState: displayState,
+        survivabilityFloor: null,
         requiresProbabilisticSurvival: false,
       };
     }
@@ -3212,7 +3267,50 @@ export function lookaheadSearch(
       searchState: requiresProbabilisticSurvival
         ? applySurvivabilityFloorToState(displayState, survivabilityFloor)
         : displayState,
+      survivabilityFloor,
       requiresProbabilisticSurvival,
+    };
+  };
+  const getGuaranteedSafeStabilizeContext = (
+    currentState: CraftingState,
+    availableSkills: SkillDefinition[],
+    conditionEffectsAtDepth: ReturnType<typeof getConditionEffectsForConfig>,
+    currentConditionAtDepth: CraftingConditionType,
+    enabled: boolean,
+  ): {
+    hasGuaranteedSafeStabilize: boolean;
+    minimumGuaranteedContinuationStability: number;
+  } => {
+    const gateThreshold = Math.max(
+      SCORING.NEAR_DEATH_STABILITY,
+      Math.ceil(scoringCtx.avgStabilityCostPerTurn),
+    );
+    if (
+      !enabled ||
+      currentState.stability > gateThreshold ||
+      (currentState !== state &&
+        isSublime &&
+        goalsMet(currentState, targetCompletion, targetPerfection))
+    ) {
+      return {
+        hasGuaranteedSafeStabilize: false,
+        minimumGuaranteedContinuationStability: 0,
+      };
+    }
+
+    const hasGuaranteedSafeStabilize = hasGuaranteedSafeStabilizeAction(
+      currentState,
+      availableSkills,
+      config,
+      conditionEffectsAtDepth,
+      currentConditionAtDepth,
+    );
+
+    return {
+      hasGuaranteedSafeStabilize,
+      minimumGuaranteedContinuationStability: hasGuaranteedSafeStabilize
+        ? Math.max(1, scoringCtx.avgStabilityCostPerTurn)
+        : 0,
     };
   };
   const getFinishAction = (
@@ -3237,6 +3335,7 @@ export function lookaheadSearch(
       skill: FINISH_CRAFT_SKILL,
       nextState: candidate,
       searchState: candidate,
+      survivabilityFloor: null,
       orderingScore: scoreFinishedOutcome(
         candidate,
         targetCompletion,
@@ -3370,19 +3469,16 @@ export function lookaheadSearch(
       config,
       currentConditionAtDepth,
     );
-    const hasGuaranteedSafeStabilize = useGuaranteedSafeStabilizeGate
-      ? hasGuaranteedSafeStabilizeAction(
-          currentState,
-          availableSkills,
-          config,
-          conditionEffectsAtDepth,
-          currentConditionAtDepth,
-        )
-      : false;
-    const minimumGuaranteedContinuationStability =
-      useGuaranteedSafeStabilizeGate && hasGuaranteedSafeStabilize
-        ? Math.max(1, scoringCtx.avgStabilityCostPerTurn)
-        : 0;
+    const {
+      hasGuaranteedSafeStabilize,
+      minimumGuaranteedContinuationStability,
+    } = getGuaranteedSafeStabilizeContext(
+      currentState,
+      availableSkills,
+      conditionEffectsAtDepth,
+      currentConditionAtDepth,
+      useGuaranteedSafeStabilizeGate,
+    );
     const candidates: SearchMoveCandidate[] = [];
 
     for (const skill of availableSkills) {
@@ -3397,7 +3493,7 @@ export function lookaheadSearch(
       if (nextState === null) {
         continue;
       }
-      const { searchState, requiresProbabilisticSurvival } =
+      const { searchState, survivabilityFloor, requiresProbabilisticSurvival } =
         buildSearchStateForContinuation(
           currentState,
           skill,
@@ -3408,19 +3504,19 @@ export function lookaheadSearch(
           minimumGuaranteedContinuationStability,
         );
       const floorStability =
-        calculateActionSurvivabilityFloor(
-          currentState,
-          skill,
-          config,
-          conditionEffectsAtDepth,
-          currentConditionAtDepth,
-        )?.stability ?? nextState.stability;
+        survivabilityFloor?.stability ?? nextState.stability;
+      const baseSuccessSecuredAfterAction = goalsMet(
+        nextState,
+        targetCompletion,
+        targetPerfection,
+      );
       const unsafeWithGuaranteedSafeAlternative =
         shouldDeprioritizeAgainstGuaranteedSafeStabilize({
           currentStability: currentState.stability,
           displayStability: nextState.stability,
           floorStability,
           goalsMetAfterAction: targetsMetForCurrentMode(nextState),
+          baseSuccessSecuredAfterAction,
           hasGuaranteedSafeStabilize,
           minimumGuaranteedContinuationStability,
         });
@@ -3438,6 +3534,7 @@ export function lookaheadSearch(
         skill,
         nextState,
         searchState,
+        survivabilityFloor,
         orderingScore: estimatePostMoveStateScore(
           searchState,
           skill,
@@ -3535,6 +3632,8 @@ export function lookaheadSearch(
       searchMetrics: metrics,
     };
   }
+
+  initializeNativeMctsPolicy();
 
   // Flag to signal early termination due to time/node budget
   let shouldTerminate = false;
@@ -3664,6 +3763,7 @@ export function lookaheadSearch(
       currentConditionAtDepth,
       nextConditionQueueAtDepth,
       conditionEffectsAtDepth,
+      true,
     );
     if (orderedCandidates.length === 0) {
       return scoreStateConsideringFinish(currentState, currentConditionAtDepth);
@@ -3874,6 +3974,16 @@ export function lookaheadSearch(
       );
       const skills = getAvailableSkills(currentState, config, conditionAtDepth);
       if (skills.length === 0) break;
+      const {
+        hasGuaranteedSafeStabilize,
+        minimumGuaranteedContinuationStability,
+      } = getGuaranteedSafeStabilizeContext(
+        currentState,
+        skills,
+        conditionEffectsAtDepth,
+        conditionAtDepth,
+        true,
+      );
 
       // Try to use the transposition table's recorded best move.
       // With iterative deepening, the exact remaining depth may not have
@@ -3917,7 +4027,8 @@ export function lookaheadSearch(
                 nextState,
                 conditionEffectsAtDepth,
                 conditionAtDepth,
-                false,
+                hasGuaranteedSafeStabilize,
+                minimumGuaranteedContinuationStability,
               );
               chosenSkill = cachedSkill;
               chosenNextState = searchState;
@@ -3936,6 +4047,7 @@ export function lookaheadSearch(
           conditionAtDepth,
           conditionQueueAtDepth,
           conditionEffectsAtDepth,
+          true,
         );
         for (const candidate of orderedFallbackCandidates) {
           const skill = candidate.skill;
@@ -4167,6 +4279,7 @@ export function lookaheadSearch(
       conditionAtDepth,
       nextConditionQueueAtDepth,
       followUpConditionEffects,
+      true,
     );
     if (orderedFollowUpCandidates.length === 0) {
       return undefined;
@@ -4307,16 +4420,16 @@ export function lookaheadSearch(
       config,
       normalizedCurrentCondition,
     );
-    const hasGuaranteedSafeStabilize = hasGuaranteedSafeStabilizeAction(
+    const {
+      hasGuaranteedSafeStabilize,
+      minimumGuaranteedContinuationStability,
+    } = getGuaranteedSafeStabilizeContext(
       state,
       rootAvailableSkills,
-      config,
       currentConditionEffects,
       normalizedCurrentCondition,
+      true,
     );
-    const minimumGuaranteedContinuationStability = hasGuaranteedSafeStabilize
-      ? Math.max(1, scoringCtx.avgStabilityCostPerTurn)
-      : 0;
     const orderedCandidates = buildOrderedMoveCandidates(
       state,
       depthToSearch,
@@ -4489,6 +4602,21 @@ export function lookaheadSearch(
       config,
       normalizedCurrentCondition,
     );
+    const rootAvailableSkills = getAvailableSkills(
+      state,
+      config,
+      normalizedCurrentCondition,
+    );
+    const {
+      hasGuaranteedSafeStabilize,
+      minimumGuaranteedContinuationStability,
+    } = getGuaranteedSafeStabilizeContext(
+      state,
+      rootAvailableSkills,
+      currentConditionEffects,
+      normalizedCurrentCondition,
+      true,
+    );
     const fallbackFollowUpCount = 3;
 
     for (
@@ -4518,7 +4646,8 @@ export function lookaheadSearch(
         displayStateAfterSkill,
         currentConditionEffects,
         normalizedCurrentCondition,
-        false,
+        hasGuaranteedSafeStabilize,
+        minimumGuaranteedContinuationStability,
       );
 
       const followUpConditionState = getMostLikelyConditionStateAfterSkill(
@@ -4662,6 +4791,22 @@ export function lookaheadSearch(
         targetCompletion,
         normalizedCurrentCondition,
       );
+  const rootAvailableSkillsForRotation = getAvailableSkills(
+    state,
+    config,
+    normalizedCurrentCondition,
+  );
+  const {
+    hasGuaranteedSafeStabilize: rotationHasGuaranteedSafeStabilize,
+    minimumGuaranteedContinuationStability:
+      rotationMinimumGuaranteedContinuationStability,
+  } = getGuaranteedSafeStabilizeContext(
+    state,
+    rootAvailableSkillsForRotation,
+    currentConditionEffects,
+    normalizedCurrentCondition,
+    true,
+  );
 
   let optimalRotation: string[] = [bestFirstMove.name];
   let expectedFinalState: SearchResult['expectedFinalState'] = undefined;
@@ -4674,7 +4819,8 @@ export function lookaheadSearch(
         stateAfterFirstMoveDisplay,
         currentConditionEffects,
         normalizedCurrentCondition,
-        false,
+        rotationHasGuaranteedSafeStabilize,
+        rotationMinimumGuaranteedContinuationStability,
       );
     const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
       stateAfterFirstMove,

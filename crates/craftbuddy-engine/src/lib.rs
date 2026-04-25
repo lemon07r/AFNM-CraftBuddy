@@ -391,14 +391,16 @@ impl Engine {
 
     fn run(&mut self) -> MctsResult {
         let mut nodes = Vec::<Node>::new();
+        let root_queue = normalize_queue(&self.input.forecasted_conditions);
         let root_untried = self.ordered_legal_actions(
             &self.input.state,
             &self.input.current_condition,
+            &root_queue,
         );
         nodes.push(Node {
             state: self.input.state.clone(),
             condition: normalize_condition(&self.input.current_condition),
-            queue: normalize_queue(&self.input.forecasted_conditions),
+            queue: root_queue,
             parent: None,
             action: None,
             children: Vec::new(),
@@ -446,7 +448,8 @@ impl Engine {
                     &nodes[selected].queue,
                     &action,
                 ) {
-                    let child_untried = self.ordered_legal_actions(&next_state, &next_condition);
+                    let child_untried =
+                        self.ordered_legal_actions(&next_state, &next_condition, &next_queue);
                     let child_index = nodes.len();
                     nodes.push(Node {
                         state: next_state,
@@ -521,7 +524,7 @@ impl Engine {
             if self.goals_met(&state) {
                 break;
             }
-            let actions = self.ordered_legal_actions(&state, &condition);
+            let actions = self.ordered_legal_actions(&state, &condition, &queue);
             if actions.is_empty() {
                 break;
             }
@@ -582,7 +585,12 @@ impl Engine {
         scored[top_index].1.clone()
     }
 
-    fn ordered_legal_actions(&self, state: &EngineState, condition: &str) -> Vec<Action> {
+    fn ordered_legal_actions(
+        &self,
+        state: &EngineState,
+        condition: &str,
+        queue: &[String],
+    ) -> Vec<Action> {
         if state.finished || state.stability <= 0.0 || self.goals_met(state) {
             return Vec::new();
         }
@@ -607,28 +615,21 @@ impl Engine {
             });
         }
 
-        actions.sort_by(|a, b| {
-            let a_score = self
-                .preview_action_score(
-                    state,
-                    condition,
-                    &self.input.forecasted_conditions,
-                    a,
-                )
-                .unwrap_or(f64::NEG_INFINITY);
-            let b_score = self
-                .preview_action_score(
-                    state,
-                    condition,
-                    &self.input.forecasted_conditions,
-                    b,
-                )
-                .unwrap_or(f64::NEG_INFINITY);
-            a_score
-                .partial_cmp(&b_score)
+        let mut scored: Vec<(f64, Action)> = actions
+            .into_iter()
+            .map(|action| {
+                let score = self
+                    .preview_action_score(state, condition, queue, &action)
+                    .unwrap_or(f64::NEG_INFINITY);
+                (score, action)
+            })
+            .collect();
+        scored.sort_by(|a, b| {
+            a.0.partial_cmp(&b.0)
                 .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| b.1.key.cmp(&a.1.key))
         });
-        actions
+        scored.into_iter().map(|(_, action)| action).collect()
     }
 
     fn preview_action_score(
@@ -638,19 +639,10 @@ impl Engine {
         queue: &[String],
         action: &Action,
     ) -> Option<f64> {
-        let mut preview = self.clone_for_preview();
         let mut rng = SmallRng::new(0x9E37_79B9_7F4A_7C15);
-        preview.rng = rng.clone();
-        let (next_state, _, _) = preview.apply_action_with_rng(state, condition, queue, action, &mut rng)?;
-        Some(preview.score_state(&next_state))
-    }
-
-    fn clone_for_preview(&self) -> Self {
-        Self {
-            input: self.input.clone(),
-            rng: SmallRng::new(1),
-            score_scale: self.score_scale,
-        }
+        let (next_state, _, _) =
+            self.apply_action_with_rng(state, condition, queue, action, &mut rng)?;
+        Some(self.score_state(&next_state))
     }
 
     fn can_apply_skill(
@@ -734,7 +726,11 @@ impl Engine {
         next.step += if consumes_turn { 1 } else { 0 };
         next.qi = clamp(next.qi - costs.qi, 0.0, self.max_qi_for_state(state));
         if skill.restores_qi && skill.qi_restore > 0.0 {
-            next.qi = clamp(next.qi + skill.qi_restore, 0.0, self.max_qi_for_state(state));
+            next.qi = clamp(
+                next.qi + skill.qi_restore,
+                0.0,
+                self.max_qi_for_state(state),
+            );
         }
 
         if consumes_turn && !skill.prevents_max_stability_decay {
@@ -785,11 +781,12 @@ impl Engine {
 
         if skill.buff_type == 1 {
             next.control_buff_turns = skill.buff_duration;
-            next.control_buff_multiplier = if skill.buff_multiplier > 0.0 && skill.buff_multiplier != 1.0 {
-                skill.buff_multiplier
-            } else {
-                self.input.config.default_buff_multiplier
-            };
+            next.control_buff_multiplier =
+                if skill.buff_multiplier > 0.0 && skill.buff_multiplier != 1.0 {
+                    skill.buff_multiplier
+                } else {
+                    self.input.config.default_buff_multiplier
+                };
         } else if skill.buff_type == 2 {
             next.intensity_buff_turns = skill.buff_duration;
             next.intensity_buff_multiplier =
@@ -832,7 +829,11 @@ impl Engine {
                 &skill.technique_type,
             );
             next.harmony = clamp(next.harmony + harmony_result.harmony_delta, -100.0, 100.0);
-            next.qi = clamp(next.qi + harmony_result.pool_delta, 0.0, self.max_qi_for_state(&next));
+            next.qi = clamp(
+                next.qi + harmony_result.pool_delta,
+                0.0,
+                self.max_qi_for_state(&next),
+            );
             next.stability = clamp(
                 next.stability + harmony_result.stability_delta,
                 0.0,
@@ -871,7 +872,8 @@ impl Engine {
         qi_cost = (qi_cost * effects.pool_cost_multiplier).floor();
         let mut pool_cost_percentage = normalize_cost_percentage(state.pool_cost_percentage);
         if harmony_mods.pool_cost_percentage != 100.0 {
-            pool_cost_percentage = (pool_cost_percentage * harmony_mods.pool_cost_percentage / 100.0).floor();
+            pool_cost_percentage =
+                (pool_cost_percentage * harmony_mods.pool_cost_percentage / 100.0).floor();
         }
         if pool_cost_percentage != 100.0 {
             qi_cost = (qi_cost * pool_cost_percentage / 100.0).floor();
@@ -885,7 +887,8 @@ impl Engine {
             normalize_cost_percentage(state.stability_cost_percentage);
         if harmony_mods.stability_cost_percentage != 100.0 {
             stability_cost_percentage =
-                (stability_cost_percentage * harmony_mods.stability_cost_percentage / 100.0).floor();
+                (stability_cost_percentage * harmony_mods.stability_cost_percentage / 100.0)
+                    .floor();
         }
         if stability_delta < 0.0 && stability_cost_percentage != 100.0 {
             stability_delta = (stability_delta * stability_cost_percentage / 100.0).ceil();
@@ -908,7 +911,8 @@ impl Engine {
             &state.harmony_data,
             self.input.config.crafting_type.as_deref(),
         );
-        let mut control = self.input.config.base_control * (1.0 + state.completion_bonus as f64 * 0.1);
+        let mut control =
+            self.input.config.base_control * (1.0 + state.completion_bonus as f64 * 0.1);
         if state.control_buff_turns > 0 {
             control = (control * state.control_buff_multiplier).floor();
         }
@@ -928,7 +932,10 @@ impl Engine {
         let crit_multiplier = state.crit_multiplier;
         let crit_factor = expected_crit_multiplier(crit_chance, crit_multiplier);
         let success_chance = clamp(
-            skill.success_chance + state.success_chance_bonus + harmony_mods.success_chance_bonus + effects.success_chance_bonus,
+            skill.success_chance
+                + state.success_chance_bonus
+                + harmony_mods.success_chance_bonus
+                + effects.success_chance_bonus,
             0.0,
             1.0,
         );
@@ -987,9 +994,11 @@ impl Engine {
         let mut score = state.completion.min(goals.mode_completion) * completion_weight
             + state.perfection.min(goals.mode_perfection) * perfection_weight;
 
-        let base_targets_met = (goals.base_completion <= 0.0 || state.completion >= goals.base_completion)
+        let base_targets_met = (goals.base_completion <= 0.0
+            || state.completion >= goals.base_completion)
             && (goals.base_perfection <= 0.0 || state.perfection >= goals.base_perfection);
-        let mode_targets_met = (goals.mode_completion <= 0.0 || state.completion >= goals.mode_completion)
+        let mode_targets_met = (goals.mode_completion <= 0.0
+            || state.completion >= goals.mode_completion)
             && (goals.mode_perfection <= 0.0 || state.perfection >= goals.mode_perfection);
         let target_met_bonus = total_target_magnitude * TARGET_MET_MULTIPLIER;
 
@@ -1016,10 +1025,12 @@ impl Engine {
             } else {
                 let average_turn_cost = self.estimate_average_stability_cost().max(1.0);
                 let runway_turns = state.stability / average_turn_cost;
-                let estimated_turns = (total_remaining / self.estimate_average_gain().max(1.0)).ceil();
+                let estimated_turns =
+                    (total_remaining / self.estimate_average_gain().max(1.0)).ceil();
                 if estimated_turns > runway_turns {
-                    score -=
-                        (estimated_turns - runway_turns) * total_target_magnitude * RUNWAY_GAP_FRACTION;
+                    score -= (estimated_turns - runway_turns)
+                        * total_target_magnitude
+                        * RUNWAY_GAP_FRACTION;
                 }
             }
         } else {
@@ -1085,9 +1096,11 @@ impl Engine {
             }
         }
 
-        let base_targets_met = (goals.base_completion <= 0.0 || state.completion >= goals.base_completion)
+        let base_targets_met = (goals.base_completion <= 0.0
+            || state.completion >= goals.base_completion)
             && (goals.base_perfection <= 0.0 || state.perfection >= goals.base_perfection);
-        let mode_targets_met = (goals.mode_completion <= 0.0 || state.completion >= goals.mode_completion)
+        let mode_targets_met = (goals.mode_completion <= 0.0
+            || state.completion >= goals.mode_completion)
             && (goals.mode_perfection <= 0.0 || state.perfection >= goals.mode_perfection);
         let target_met_bonus = total_target_magnitude * TARGET_MET_MULTIPLIER;
         if mode_targets_met {
@@ -1262,7 +1275,9 @@ impl Engine {
             .input
             .skills
             .iter()
-            .filter(|skill| skill.consumes_turn && skill.base_completion_gain + skill.base_perfection_gain > 0.0)
+            .filter(|skill| {
+                skill.consumes_turn && skill.base_completion_gain + skill.base_perfection_gain > 0.0
+            })
             .map(|skill| skill.stability_cost.max(0.0))
             .filter(|cost| *cost > 0.0)
             .collect();
@@ -1485,10 +1500,16 @@ fn get_harmony_stat_modifiers(
 ) -> HarmonyStatModifiers {
     match harmony_type.unwrap_or("") {
         "forge" => {
-            let heat = harmony_data.forge_works.as_ref().map(|fw| fw.heat).unwrap_or(0);
+            let heat = harmony_data
+                .forge_works
+                .as_ref()
+                .map(|fw| fw.heat)
+                .unwrap_or(0);
             forge_modifiers(heat)
         }
-        "alchemical" => harmony_data.alchemical_reaction_modifiers.unwrap_or_default(),
+        "alchemical" => harmony_data
+            .alchemical_reaction_modifiers
+            .unwrap_or_default(),
         "inscription" => {
             let stacks = harmony_data
                 .inscribed_patterns
@@ -1575,10 +1596,7 @@ fn process_forge(harmony_data: &mut HarmonyData, technique_type: &str) -> Harmon
     }
 }
 
-fn process_alchemical(
-    harmony_data: &mut HarmonyData,
-    technique_type: &str,
-) -> HarmonyEffectResult {
+fn process_alchemical(harmony_data: &mut HarmonyData, technique_type: &str) -> HarmonyEffectResult {
     let mut arts = harmony_data.alchemical_arts.clone().unwrap_or_default();
     arts.charges.push(normalize_technique_type(technique_type));
     arts.charges.sort();
@@ -1638,7 +1656,11 @@ fn process_inscription(
     let mut pool_delta = -25.0;
     let mut stability_penalty_delta = 1.0;
 
-    if let Some(index) = patterns.current_block.iter().position(|entry| *entry == technique) {
+    if let Some(index) = patterns
+        .current_block
+        .iter()
+        .position(|entry| *entry == technique)
+    {
         patterns.current_block.remove(index);
         patterns.stacks += 1;
         harmony_delta = 10.0;
@@ -1866,7 +1888,11 @@ fn default_inscribed_patterns() -> InscribedPatternsData {
 fn harmony_quality(harmony_data: &HarmonyData, harmony_type: Option<&str>) -> f64 {
     match harmony_type.unwrap_or("") {
         "forge" => {
-            let heat = harmony_data.forge_works.as_ref().map(|fw| fw.heat).unwrap_or(0);
+            let heat = harmony_data
+                .forge_works
+                .as_ref()
+                .map(|fw| fw.heat)
+                .unwrap_or(0);
             match forge_heat_band(heat) {
                 ForgeHeatBand::Optimal => 1.0,
                 ForgeHeatBand::Neutral => 0.2,
@@ -2029,9 +2055,7 @@ fn most_likely_condition(distribution: &[(String, f64)]) -> String {
 
 fn normalize_condition(condition: &str) -> String {
     match condition.trim().to_ascii_lowercase().as_str() {
-        "verypositive" | "very_positive" | "excellent" | "brilliant" => {
-            "veryPositive".to_string()
-        }
+        "verypositive" | "very_positive" | "excellent" | "brilliant" => "veryPositive".to_string(),
         "verynegative" | "very_negative" | "corrupted" => "veryNegative".to_string(),
         "positive" | "harmonious" => "positive".to_string(),
         "negative" | "resistant" => "negative".to_string(),
@@ -2041,7 +2065,10 @@ fn normalize_condition(condition: &str) -> String {
 }
 
 fn normalize_queue(queue: &[String]) -> Vec<String> {
-    queue.iter().map(|condition| normalize_condition(condition)).collect()
+    queue
+        .iter()
+        .map(|condition| normalize_condition(condition))
+        .collect()
 }
 
 fn normalize_technique_type(technique_type: &str) -> String {

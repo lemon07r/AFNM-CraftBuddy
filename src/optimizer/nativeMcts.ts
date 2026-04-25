@@ -359,13 +359,13 @@ function convertHarmonyData(
 
 function deriveMctsIterations(options: NativeMctsSearchOptions): number {
   if (options.iterations !== undefined) {
-    return Math.max(250, Math.floor(options.iterations));
+    return Math.max(1, Math.floor(options.iterations));
   }
   const timeBudget = finiteNumber(options.timeBudgetMs, 2000);
   const maxNodes = finiteNumber(options.maxNodes, 750000);
   return Math.max(
-    1500,
-    Math.min(30000, Math.floor(Math.min(maxNodes / 35, timeBudget * 6))),
+    64,
+    Math.min(30000, Math.floor(Math.min(maxNodes / 35, timeBudget / 3))),
   );
 }
 
@@ -519,7 +519,7 @@ export function buildNativeMctsInput(params: {
       exploration: Math.max(0, finiteNumber(search.exploration, 1.15)),
       seed: Math.max(0, Math.floor(finiteNumber(search.seed))),
       max_nodes: Math.max(
-        1000,
+        100,
         Math.floor(finiteNumber(search.maxNodes, 50000)),
       ),
     },
@@ -652,6 +652,7 @@ export function getNativeMctsPolicy(params: {
 
 export const __testing = {
   buildNativeMctsInput,
+  deriveMctsIterations,
   normalizeConditionForMcts,
   summarizeConditionEffects,
   convertHarmonyData,

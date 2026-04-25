@@ -18,7 +18,7 @@ related_files:
 # Optimizer Engine Findings and Improvement Brief
 
 Last updated: 2026-04-25  
-Release context: `v5.0.1`
+Release context: `v5.0.2`
 
 ## Purpose
 
@@ -30,7 +30,7 @@ This brief captures the preset tuning, benchmark observations, and recommended n
 - Because TypeScript still owns exact scoring, transitions, legality, and final recommendation ranking, Rust/WASM usually does **not** make the same quality result happen at a much lower budget yet.
 - The MCTS prior can help at tight budgets when root ordering is the bottleneck, but it can also consume budget before TypeScript has reached a stable frontier.
 - The largest current quality risks are high-realm, long-horizon, harmony-heavy, and large-skill-set crafts where the TypeScript beam/frontier is shallow and the Rust rollout model is too compact to be authoritative.
-- `v5.0.1` ships conservative experimental presets that stay below the requested `4.5s` ceiling and avoid overfitting to one PC.
+- `v5.0.2` keeps the conservative experimental presets below the requested `4.5s` ceiling while reducing native MCTS budget pressure and tightening root-policy safety.
 
 ## Current Presets
 
@@ -38,25 +38,25 @@ Defined in `src/settings/index.ts`.
 
 ### Legacy Presets
 
-| Preset | Depth | Time | Nodes | Beam |
-| --- | ---: | ---: | ---: | ---: |
-| Instant | 32 | 1.0s | 400k | 5 |
-| Fast | 48 | 2.0s | 1.0M | 5 |
-| Balanced | 64 | 4.5s | 2.0M | 5 |
-| High Accuracy | 80 | 8.0s | 3.5M | 9 |
-| Max | 96 | 10.0s | 5.0M | 12 |
+| Preset        | Depth |  Time | Nodes | Beam |
+| ------------- | ----: | ----: | ----: | ---: |
+| Instant       |    32 |  1.0s |  400k |    5 |
+| Fast          |    48 |  2.0s |  1.0M |    5 |
+| Balanced      |    64 |  4.5s |  2.0M |    5 |
+| High Accuracy |    80 |  8.0s |  3.5M |    9 |
+| Max           |    96 | 10.0s |  5.0M |   12 |
 
 Legacy default was changed to `Fast` (`48`, `2.0s`, `1.0M`, beam `5`).
 
 ### Experimental / Rust-WASM Presets
 
-| Preset | Depth | Time | Nodes | Beam |
-| --- | ---: | ---: | ---: | ---: |
-| Instant | 32 | 1.25s | 400k | 5 |
-| Fast | 32 | 1.5s | 500k | 5 |
-| Balanced | 48 | 2.25s | 800k | 5 |
-| High Accuracy | 64 | 3.25s | 1.3M | 5 |
-| Max | 80 | 4.0s | 2.0M | 5 |
+| Preset        | Depth |  Time | Nodes | Beam |
+| ------------- | ----: | ----: | ----: | ---: |
+| Instant       |    32 | 1.25s |  400k |    5 |
+| Fast          |    32 |  1.5s |  500k |    5 |
+| Balanced      |    48 | 2.25s |  800k |    5 |
+| High Accuracy |    64 | 3.25s |  1.3M |    5 |
+| Max           |    80 |  4.0s |  2.0M |    5 |
 
 Experimental MCTS config:
 
@@ -81,13 +81,13 @@ The presets are intentionally conservative:
 
 Using `user-report-resonance-regression.snapshot.json` as a hard harmony proxy:
 
-| Experimental preset | Observed elapsed | Recommendation | Depth reached |
-| --- | ---: | --- | ---: |
-| Instant | ~1.25s | `focused_refine` | 3 |
-| Fast | ~1.50s | `focused_refine` | 3 |
-| Balanced | ~2.25s | `explosive_fusion` | 4 |
-| High Accuracy | ~3.25s | `explosive_fusion` | 4 |
-| Max | ~4.00s | `explosive_fusion` | 4 |
+| Experimental preset | Observed elapsed | Recommendation     | Depth reached |
+| ------------------- | ---------------: | ------------------ | ------------: |
+| Instant             |           ~1.25s | `focused_refine`   |             3 |
+| Fast                |           ~1.50s | `focused_refine`   |             3 |
+| Balanced            |           ~2.25s | `explosive_fusion` |             4 |
+| High Accuracy       |           ~3.25s | `explosive_fusion` |             4 |
+| Max                 |           ~4.00s | `explosive_fusion` |             4 |
 
 Important: the existing `search.test.ts` regression expects this snapshot to prefer `focused_refine` under a stable legacy budget. The fact that deeper experimental presets still return fusion here means the current MCTS prior is not a general quality fix for harmony-heavy cases.
 
@@ -111,12 +111,12 @@ Useful observations:
 On the resonance replay, approximate direct MCTS timings were:
 
 | Rollout depth | Iterations | Approx elapsed |
-| ---: | ---: | ---: |
-| 12 | 250 | ~0.75s |
-| 12 | 500 | ~1.45s |
-| 12 | 1000 | ~2.64s |
-| 12 | 1500 | ~3.71s |
-| 12 | 2000 | ~4.72s |
+| ------------: | ---------: | -------------: |
+|            12 |        250 |         ~0.75s |
+|            12 |        500 |         ~1.45s |
+|            12 |       1000 |         ~2.64s |
+|            12 |       1500 |         ~3.71s |
+|            12 |       2000 |         ~4.72s |
 
 This is why `250` iterations was selected. Higher values are not viable inside a 1–4 second shared search budget unless MCTS becomes the primary search or moves off the main path.
 
@@ -156,6 +156,14 @@ More precise:
 - **Same-budget speed is not meaningfully better**: because MCTS is additive and TypeScript still spends the configured budget, same-budget runs usually take about the same wall time.
 
 ## What To Improve Next
+
+### Implemented in `v5.0.2`
+
+- Native MCTS is now requested only after cheap terminal/target checks, and the actual request is capped to a small share of remaining search budget so TypeScript frontier search keeps priority.
+- MCTS policy tie-breaking now requires both candidate actions to be present in the native policy, preventing unmodeled item or mechanics-heavy actions from losing a near-tie solely because Rust did not represent them.
+- The TypeScript move-ordering path reuses each candidate's guaranteed survivability floor instead of recomputing it while sorting, and recursive search applies the safe-stabilize guard to unresolved base-goal states without suppressing already-secured sublime forge recovery lines.
+- Finished craft scoring now probability-weights the sublime finish bonus by resolved craft-end bonus bands instead of treating raw `200/200` overcraft as equivalent to the guaranteed second-band `230/230` threshold.
+- Rust MCTS expansion now previews deeper nodes with their actual condition queue and avoids cloning the full `MctsInput` for every preview score.
 
 ### P0: Add a Real Benchmark Harness
 

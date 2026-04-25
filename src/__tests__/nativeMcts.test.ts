@@ -105,4 +105,24 @@ describe('native MCTS bridge', () => {
       success_chance_bonus: 0.25,
     });
   });
+
+  it('honors low explicit MCTS budgets for short searches', () => {
+    const input = nativeMctsTesting.buildNativeMctsInput({
+      state: new CraftingState({ qi: 100, stability: 60 }),
+      config: createConfig(),
+      targetCompletion: 100,
+      targetPerfection: 80,
+      search: {
+        iterations: 48,
+        maxNodes: 240,
+        timeBudgetMs: 150,
+      },
+    });
+
+    expect(input.search.iterations).toBe(48);
+    expect(input.search.max_nodes).toBe(240);
+    expect(nativeMctsTesting.deriveMctsIterations({ timeBudgetMs: 150 })).toBe(
+      64,
+    );
+  });
 });

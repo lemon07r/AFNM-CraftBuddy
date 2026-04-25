@@ -1552,6 +1552,40 @@ describe('craft-end ladder modeling', () => {
     expect(getProgressTowardRawGoal(200, 200, 100)).toBeCloseTo(200, 5);
   });
 
+  it('weights sublime finish bonuses by resolved craft-end bands', () => {
+    const partialSecondBand = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 200,
+      perfection: 200,
+    });
+    const guaranteedSecondBand = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 230,
+      perfection: 230,
+    });
+
+    const partialScore = scoreFinishedOutcome(
+      partialSecondBand,
+      100,
+      100,
+      true,
+      2,
+    );
+    const guaranteedScore = scoreFinishedOutcome(
+      guaranteedSecondBand,
+      100,
+      100,
+      true,
+      2,
+    );
+
+    expect(guaranteedScore).toBeGreaterThan(partialScore + 50);
+  });
+
   it('treats a last-step refine as a forced craft resolution instead of a dead branch', () => {
     const lastRefine = createCustomSkill({
       name: 'Last Refine',
@@ -4042,7 +4076,9 @@ describe('scoreState (isolated)', () => {
       (recommendation) => recommendation.skill.key === '__finish_craft__',
     );
 
-    expect(snapshot.output?.recommendation?.skill?.key).toBe('__finish_craft__');
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      '__finish_craft__',
+    );
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.actionKind).not.toBe('finish');
     expect(finishCraft).toBeDefined();
@@ -4091,12 +4127,16 @@ describe('scoreState (isolated)', () => {
       (recommendation) => recommendation.skill.key === "fairy's_blessing",
     );
 
-    expect(snapshot.output?.recommendation?.skill?.key).toBe('__finish_craft__');
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      '__finish_craft__',
+    );
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.actionKind).not.toBe('finish');
-    expect(
-      ['delayed_fusion', "fairy's_blessing", 'overbearing_stabilization'],
-    ).toContain(result.recommendation!.skill.key);
+    expect([
+      'delayed_fusion',
+      "fairy's_blessing",
+      'overbearing_stabilization',
+    ]).toContain(result.recommendation!.skill.key);
     expect(finishCraft).toBeDefined();
     expect(fairyRecovery).toBeDefined();
     expect(
