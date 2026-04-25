@@ -11,6 +11,7 @@ related_files:
   - .agents/skills/afnm-modding/SKILL.md
   - docs/project/ARCHITECTURE.md
   - docs/project/OPTIMIZER_DESIGN.md
+  - docs/project/OPTIMIZER_ENGINE_FINDINGS.md
   - docs/project/RELEASE_PROCESS.md
 ---
 
@@ -37,6 +38,7 @@ related_files:
 - formulas/types: `src/optimizer/gameTypes.ts`
 - harmony logic: `src/optimizer/harmony.ts`
 - Rust MCTS policy prior: `crates/craftbuddy-engine/`
+- optimizer engine performance and Rust/WASM follow-up: `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
 
 ## Context rules
 

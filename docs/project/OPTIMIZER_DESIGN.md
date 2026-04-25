@@ -94,9 +94,9 @@ Identical state + config inputs should produce stable recommendations within the
 
 ### User-tunable controls
 
-- `lookaheadDepth` (`1-96`, default `64`)
-- `searchTimeBudgetMs` (`100-10,000`, default `4,500`)
-- `searchMaxNodes` (`1,000-5,000,000`, default `2,000,000`)
+- `lookaheadDepth` (`1-96`, default `48`)
+- `searchTimeBudgetMs` (`100-10,000`, default `2,000`)
+- `searchMaxNodes` (`1,000-5,000,000`, default `1,000,000`)
 - `searchBeamWidth` (`3-20`, default `5`)
 - `searchGoalPriorityBias` (`0` by default)
 - Settings sliders persist on commit (not every drag event) to reduce UI churn.
@@ -111,7 +111,10 @@ Identical state + config inputs should produce stable recommendations within the
 - branch limit: `2`
 - branch min probability: `0.15`
 - engine mode: `legacy` by default; `experimental` enables the native MCTS root policy when bundled inline WASM is available and the search is large or sublime
-- MCTS defaults: `12,000` iterations, rollout depth `32`, exploration `1.15`, node cap `50,000`
+- legacy default preset: Fast (`48` depth, `2,000ms`, `1,000,000` nodes, beam `5`)
+- experimental preset ceiling: Max uses `4,000ms`, below the `4,500ms` responsiveness cap
+- MCTS defaults: `250` iterations, rollout depth `8-16` from preset depth, exploration `1.15`, node cap `5,000`
+- Detailed Rust/WASM findings and follow-up work: `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
 
 ### Cost/quality tuning order
 
