@@ -3,8 +3,8 @@ title: Architecture
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-11
-source_of_truth: src/mod.ts, src/modContent/*, src/optimizer/*, src/ui/*, src/settings/index.ts, src/utils/*
+last_verified: 2026-04-25
+source_of_truth: src/mod.ts, src/modContent/*, src/optimizer/*, crates/craftbuddy-engine/*, src/ui/*, src/settings/index.ts, src/utils/*
 review_cycle_days: 30
 related_files:
   - docs/project/OPTIMIZER_DESIGN.md
@@ -28,7 +28,9 @@ related_files:
 - `src/optimizer/skills.ts` — action transition engine (`calculateSkillGains`, `applySkill`, mastery + buff + harmony handling).
 - `src/optimizer/harmony.ts` — deterministic harmony subsystem simulation for forge/alchemical/inscription/resonance.
 - `src/optimizer/nativeVariables.ts` — canonical native-variable storage + runtime re-derivation of buff/harmony aliases for native availability checks.
+- `src/optimizer/nativeMcts.ts` — experimental Rust/WASM MCTS bridge: serializes a compact craft model, invokes the bundled inline native engine when the Experimental engine is selected, and returns root policy priors with a TypeScript fallback path.
 - `src/optimizer/search.ts` — recommendation search (`greedySearch`, `lookaheadSearch`, `findBestSkill`) with memoization, pruning, branching.
+- `crates/craftbuddy-engine/` — Rust MCTS policy engine compiled to inline WASM by `bun run wasm:build`; it mirrors scalar action costs/gains, condition generation, craft-end EV, and harmony subsystem state well enough to guide root move ordering, while TypeScript remains the authoritative mechanics scorer.
 - `src/ui/RecommendationPanel.tsx`, `src/ui/SettingsPanel.tsx` — recommendation and settings panels.
 - `src/ui/theme.ts` — MUI theme configuration with custom palette and component overrides.
 - `src/ui/ThemeProvider.tsx` — theme provider wrapper for UI components.
@@ -44,10 +46,11 @@ related_files:
 
 1. Craft state detection/refresh in integration layer.
 2. Conversion of live game payloads -> optimizer model, including harmony hydration and canonical native-variable extraction.
-3. Search execution for best next action.
-4. Optional auto-craft controller sync against the latest recommendation/live craft fingerprint.
-5. UI render/update with recommendation + alternatives + auto-mode status.
-6. Repeat on craft-state changes.
+3. Optional native MCTS root-policy pass for large/harmony searches when the user selects the Experimental engine and bundled inline WASM is available.
+4. Search execution for best next action.
+5. Optional auto-craft controller sync against the latest recommendation/live craft fingerprint.
+6. UI render/update with recommendation + alternatives + auto-mode status.
+7. Repeat on craft-state changes.
 
 ## Key integration functions (in `src/modContent/index.ts`)
 

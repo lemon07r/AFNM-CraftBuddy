@@ -35,6 +35,7 @@ import {
   SEARCH_GOAL_PRIORITY_BIAS_MAX,
 } from '../utils/searchGoalPriority';
 import { getBonusAndChance, TechniqueType } from './gameTypes';
+import { getNativeMctsPolicy, type NativeMctsPolicy } from './nativeMcts';
 
 interface GainPreview {
   completion: number;
@@ -115,6 +116,15 @@ export interface SearchResult {
     /** Deepest fully completed frontier kept for the returned result set. */
     depthReached: number;
     pruned: number;
+    /** Optional native MCTS root policy metrics when the WASM engine is available. */
+    mcts?: {
+      backend: string;
+      iterations: number;
+      nodes: number;
+      rolloutDepth: number;
+      bestSkillKey?: string;
+      policyCount: number;
+    };
   };
 }
 
@@ -164,6 +174,20 @@ export interface SearchConfig {
    * Minimum branch probability retained before top-N fallback.
    */
   conditionBranchMinProbability: number;
+  /**
+   * Enable the native Rust/WASM Monte Carlo Tree Search root policy prior.
+   * The TypeScript scorer remains authoritative; MCTS only influences
+   * root ordering inside the normal score tie window.
+   */
+  useMonteCarloTreeSearch?: boolean;
+  /** Number of MCTS iterations for the native root policy. */
+  mctsIterations?: number;
+  /** MCTS rollout depth. Defaults lower than lookahead depth for speed. */
+  mctsRolloutDepth?: number;
+  /** UCT exploration constant for native MCTS. */
+  mctsExploration?: number;
+  /** Native MCTS node cap. */
+  mctsMaxNodes?: number;
 }
 
 /** Game UI + runtime always expose 3 future conditions. */
@@ -183,6 +207,11 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   enableConditionBranchingAfterForecast: true,
   conditionBranchLimit: 2,
   conditionBranchMinProbability: 0.15,
+  useMonteCarloTreeSearch: false,
+  mctsIterations: 12000,
+  mctsRolloutDepth: 32,
+  mctsExploration: 1.15,
+  mctsMaxNodes: 50000,
 };
 
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
@@ -1023,7 +1052,10 @@ function filterUnfinishedTerminalCandidates<
   return candidates;
 }
 
-function getBonusTierProgress(value: number, target: number): BonusTierProgress {
+function getBonusTierProgress(
+  value: number,
+  target: number,
+): BonusTierProgress {
   if (!Number.isFinite(target) || target <= 0) {
     return {
       guaranteed: 0,
@@ -1761,7 +1793,11 @@ function scoreState(
     : baseEstimatedTurnsRemaining;
   const resourceEstimatedProgressPerTurn = baseTargetsMet
     ? estimatedProgressPerTurn
-    : estimateWeightedProgressPerTurn(baseCompNeedShare, basePerfNeedShare, ctx);
+    : estimateWeightedProgressPerTurn(
+        baseCompNeedShare,
+        basePerfNeedShare,
+        ctx,
+      );
   const survivabilityTargetMagnitude = baseTargetsMet
     ? totalTargetMagnitude
     : baseTargetMagnitude;
@@ -2030,8 +2066,14 @@ function scoreFinishedOutcome(
     effectivePerfGoal,
     targetPerfection,
   );
-  const remainingCompletion = Math.max(0, effectiveCompGoal - effectiveCompProgress);
-  const remainingPerfection = Math.max(0, effectivePerfGoal - effectivePerfProgress);
+  const remainingCompletion = Math.max(
+    0,
+    effectiveCompGoal - effectiveCompProgress,
+  );
+  const remainingPerfection = Math.max(
+    0,
+    effectivePerfGoal - effectivePerfProgress,
+  );
   const totalRemaining = remainingCompletion + remainingPerfection;
   const compNeedShare =
     totalRemaining > 0 ? remainingCompletion / totalRemaining : 0.5;
@@ -2673,14 +2715,14 @@ export function greedySearch(
 
     const displayState = isFinishAction(recommendation.skill)
       ? state
-      : applySkill(
+      : (applySkill(
           state,
           recommendation.skill,
           config,
           conditionEffects,
           targetCompletion,
           normalizedCurrentCondition,
-        ) ?? state;
+        ) ?? state);
     const metrics: CandidateTieBreakMetrics = {
       immediateProgress: calculateImmediateProgressTowardGoals(
         state,
@@ -2916,7 +2958,7 @@ export function lookaheadSearch(
   );
 
   // Search metrics for performance monitoring
-  const metrics = {
+  const metrics: NonNullable<SearchResult['searchMetrics']> = {
     nodesExplored: 0,
     cacheHits: 0,
     timeTakenMs: 0,
@@ -2953,6 +2995,67 @@ export function lookaheadSearch(
   const scoreTieWindow = computeScoreTieWindow(
     Math.max(1, effectiveCompGoal + effectivePerfGoal),
   );
+  const shouldUseNativeMctsPolicy =
+    cfg.useMonteCarloTreeSearch !== false &&
+    depth > 1 &&
+    config.skills.length > 0 &&
+    (isSublime || depth >= 16 || config.skills.length >= 8);
+  const nativeMctsPolicy: NativeMctsPolicy | null = shouldUseNativeMctsPolicy
+    ? getNativeMctsPolicy({
+        state,
+        config,
+        targetCompletion,
+        targetPerfection,
+        currentConditionType: normalizedCurrentCondition,
+        forecastedConditionTypes,
+        goalPriorityBias: cfg.goalPriorityBias,
+        search: {
+          iterations: cfg.mctsIterations,
+          rolloutDepth: Math.min(depth, cfg.mctsRolloutDepth ?? depth),
+          exploration: cfg.mctsExploration,
+          maxNodes: cfg.mctsMaxNodes,
+          timeBudgetMs: cfg.timeBudgetMs,
+        },
+      })
+    : null;
+  if (nativeMctsPolicy) {
+    metrics.mcts = {
+      backend: nativeMctsPolicy.backend,
+      iterations: nativeMctsPolicy.iterations,
+      nodes: nativeMctsPolicy.nodes,
+      rolloutDepth: nativeMctsPolicy.rolloutDepth,
+      bestSkillKey: nativeMctsPolicy.bestSkillKey,
+      policyCount: nativeMctsPolicy.orderedPolicies.length,
+    };
+  }
+  const rootMctsPolicyBySkillKey =
+    nativeMctsPolicy?.policyBySkillKey ?? new Map<string, never>();
+  const sameConditionQueue = (
+    left: CraftingConditionType[],
+    right: CraftingConditionType[],
+  ): boolean =>
+    left.length === right.length &&
+    left.every((condition, index) => condition === right[index]);
+  const isRootMctsPolicyContext = (
+    candidateState: CraftingState,
+    conditionAtDepth: CraftingConditionType,
+    conditionQueueAtDepth: CraftingConditionType[],
+  ): boolean =>
+    rootMctsPolicyBySkillKey.size > 0 &&
+    candidateState === state &&
+    normalizeConditionType(conditionAtDepth) === normalizedCurrentCondition &&
+    sameConditionQueue(conditionQueueAtDepth, initialConditionQueue);
+  const compareRootMctsPolicyTie = (
+    aSkillKey: string,
+    bSkillKey: string,
+  ): number => {
+    const aPolicy = rootMctsPolicyBySkillKey.get(aSkillKey)?.policy ?? 0;
+    const bPolicy = rootMctsPolicyBySkillKey.get(bSkillKey)?.policy ?? 0;
+    const policyDiff = aPolicy - bPolicy;
+    // Ignore single-rollout noise; only use MCTS when it has a visible root
+    // preference and the authoritative score already considers the moves tied.
+    return Math.abs(policyDiff) >= 0.02 ? policyDiff : 0;
+  };
   const targetsMetForCurrentMode = (candidate: CraftingState): boolean =>
     goalsMet(candidate, modeCompGoal, modePerfGoal);
   const compareMoveCandidatesForTie = (
@@ -3364,6 +3467,21 @@ export function lookaheadSearch(
       const scoreDiff = b.orderingScore - a.orderingScore;
       if (Math.abs(scoreDiff) > scoreTieWindow) {
         return scoreDiff;
+      }
+      if (
+        isRootMctsPolicyContext(
+          currentState,
+          currentConditionAtDepth,
+          nextConditionQueueAtDepth,
+        )
+      ) {
+        const mctsPolicyTie = compareRootMctsPolicyTie(
+          a.skill.key,
+          b.skill.key,
+        );
+        if (mctsPolicyTie !== 0) {
+          return mctsPolicyTie > 0 ? -1 : 1;
+        }
       }
       return compareMoveCandidatesForTie(b, a, currentState);
     });
@@ -3904,14 +4022,14 @@ export function lookaheadSearch(
 
     const displayState = isFinishAction(recommendation.skill)
       ? state
-      : applySkill(
+      : (applySkill(
           state,
           recommendation.skill,
           config,
           rootConditionEffects,
           targetCompletion,
           normalizedCurrentCondition,
-        ) ?? state;
+        ) ?? state);
     const metrics: CandidateTieBreakMetrics = {
       immediateProgress: calculateImmediateProgressTowardGoals(
         state,
@@ -3952,6 +4070,11 @@ export function lookaheadSearch(
     const scoreDiff = b.score - a.score;
     if (Math.abs(scoreDiff) > scoreTieWindow) {
       return scoreDiff;
+    }
+
+    const mctsPolicyTie = compareRootMctsPolicyTie(a.skill.key, b.skill.key);
+    if (mctsPolicyTie !== 0) {
+      return mctsPolicyTie > 0 ? -1 : 1;
     }
 
     const tieDiff = compareTieBreakMetrics(
@@ -4510,11 +4633,16 @@ export function lookaheadSearch(
     scoredSkills,
     scoreTieWindow,
     unsafeRootRecommendationKeys,
-    (a, b) =>
-      compareTieBreakMetrics(
+    (a, b) => {
+      const mctsPolicyTie = compareRootMctsPolicyTie(a.skill.key, b.skill.key);
+      if (mctsPolicyTie !== 0) {
+        return mctsPolicyTie;
+      }
+      return compareTieBreakMetrics(
         getRecommendationTieMetrics(a),
         getRecommendationTieMetrics(b),
-      ),
+      );
+    },
   );
   populateFollowUpSkills(rankedSkills, usedDepth);
 

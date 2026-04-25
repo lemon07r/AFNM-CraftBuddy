@@ -3,8 +3,8 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-19
-source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/settings/index.ts
+last_verified: 2026-04-25
+source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*, src/settings/index.ts
 review_cycle_days: 30
 related_files:
   - AGENTS.md
@@ -39,6 +39,7 @@ related_files:
 - node/time budget constraints
 - node budget counts cache-miss frontier expansions rather than cache probes
 - terminal-state shortcuts
+- optional Experimental Rust/WASM Monte Carlo Tree Search root policy prior for large/harmony searches. This is not a replacement scorer: the native engine produces root action visit policies from compact rollouts, and TypeScript lookahead still owns legality, post-action scoring, transposition cache entries, terminal handling, and returned recommendations. The persisted Legacy engine setting disables this path and remains the default.
 
 ## Probability handling
 
@@ -69,6 +70,8 @@ related_files:
 ### Move ordering
 
 `buildOrderedMoveCandidates()` is the live beam-ordering path. It evaluates every currently legal move with `applySkill(...)`, scores the resulting state through `estimatePostMoveStateScore(...)`, and then uses `compareMoveCandidatesForTie(...)` plus immediate progress as tie-breakers. It also consults the guaranteed survivability floor so a move that only survives if a probabilistic stability proc lands does not outrank a guaranteed-safe alternative while goals are still unmet. Sublime continuation lines are still allowed to stay probabilistic after base success when their guaranteed floor remains non-terminal, but immediate hard-stop floor-death branches are collapsed before ranking. When iterative deepening has already solved a shallower version of the same normalized subproblem, the cached `bestMove` is promoted before beam truncation so deeper passes continue from the previously validated principal variation instead of re-guessing move order from scratch.
+
+When the Experimental engine is selected and the bundled inline Rust/WASM engine is available, large or sublime searches also request a root MCTS policy from `src/optimizer/nativeMcts.ts`. That policy may only break root ordering ties inside the same score window used for resource tiebreakers; it cannot hard-filter skills and cannot override a clear TypeScript score difference. This keeps the parity-heavy TypeScript scorer authoritative while giving late-game/harmony crafts a faster way to choose which near-equal root branches deserve the first deep budget.
 
 No skills are hard-filtered out of the search tree before evaluation. If a move class is being mis-ordered, fix the post-move state evaluation or the underlying transition/scoring model instead of introducing a second heuristic ordering lane.
 
@@ -107,6 +110,8 @@ Identical state + config inputs should produce stable recommendations within the
 - condition branching beyond forecast: enabled
 - branch limit: `2`
 - branch min probability: `0.15`
+- engine mode: `legacy` by default; `experimental` enables the native MCTS root policy when bundled inline WASM is available and the search is large or sublime
+- MCTS defaults: `12,000` iterations, rollout depth `32`, exploration `1.15`, node cap `50,000`
 
 ### Cost/quality tuning order
 
@@ -124,4 +129,5 @@ Identical state + config inputs should produce stable recommendations within the
 ## Key design decisions
 
 - **Pure optimizer core** — simulation and search in `src/optimizer/*` remain pure/testable with no game runtime dependencies.
-- **Expected-value modeling with guaranteed-survival guardrails** — EV for success/crit and future-condition branching provides stable quality with bounded runtime cost (no stochastic rollouts), but immediate survivability is guarded by a deterministic floor so the optimizer does not spend a craft on a recovery proc when a guaranteed stabilize exists.
+- **Expected-value modeling with guaranteed-survival guardrails** — EV for success/crit and future-condition branching provides stable quality with bounded runtime cost in the authoritative TypeScript search, while immediate survivability is guarded by a deterministic floor so the optimizer does not spend a craft on a recovery proc when a guaranteed stabilize exists.
+- **Native MCTS as a policy prior, not a mechanics source of truth** — the Rust engine intentionally uses a compact scalar model for fast rollouts. Its output improves root branch ordering under tight budgets, but TypeScript mechanics remain responsible for exact gains, buff effects, native availability prechecks, and final recommendation scores.

@@ -3,8 +3,8 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-11
-source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/search.ts
+last_verified: 2026-04-25
+source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*
 review_cycle_days: 14
 related_files:
   - docs/project/ROADMAP.md
@@ -45,6 +45,7 @@ related_files:
 - flat Qi-cost surcharge modeling via runtime `poolCostFlat`, carried through state/cache/replay/effective-cost evaluation
 - internal effective action-cost modeling (buff/harmony/condition aware) used by recommendation and follow-up previews
 - voluntary `Finish Craft` modeling as a search-local action, using the runtime `getBonusAndChance(...)` ladder for both completion and perfection craft-end rolls; finished scoring now evaluates fail/basic/perfect/sublime EV from that exact distribution, and the persisted completion/perfection goal-priority bias slider (`-100` perfection to `100` completion, `0` balanced default) feeds the same underlying scorer
+- optional Experimental Rust/WASM MCTS root policy for large/sublime searches. The native engine mirrors scalar costs/gains, condition generation, finish EV, and harmony sub-state rollouts for policy guidance only; TypeScript remains the parity source of truth for exact transition/scoring behavior. The Legacy engine remains the default.
 - optimizer replay snapshots now include serialized `harmonyData` plus a `harmonyDataSource` tag, and exported snapshot bundles retain the newest bounded turn history plus auto-mode state so bug reports can distinguish authoritative parity data from fallback/debug context
 - installed runtime extraction from the current game bundle is the tiebreaker when UI/help text or older notes drift from executable behavior; forge low-control penalties are verified against the live bundle at heat `2-3`, not `1-3`
 - installed runtime `0.6.50` exposes recipe `basicBestCompletion` / `perfectBestCompletion` / `sublimeBestCompletion`; this affects craft-result/material-return parity, not turn-to-turn optimizer choice, so it is currently tracked in docs/oracle rather than search scoring
@@ -74,10 +75,11 @@ See `docs/dev-requests/STATUS.md` for full status and open questions on pending 
 - condition fallback table in `gameTypes.ts` (used when real condition data is unavailable)
 - local expression compilation path (internal evaluator for optimizer simulation)
 - native scaling is intentionally disabled in optimizer simulation because the live provider can diverge from hypothetical future-state variables
+- native MCTS uses a compact scalar model and deliberately excludes item actions from rollouts because inventory consumption is still owned by TypeScript search
 
 ## Verification test suites
 
-`gameAccuracy.test.ts`, `harmony.test.ts`, `skills.test.ts`, `search.test.ts`, `state.test.ts`, `gameTypes.test.ts`, `largeNumbers.test.ts`, `modContentHarmonyState.test.ts`
+`gameAccuracy.test.ts`, `harmony.test.ts`, `skills.test.ts`, `search.test.ts`, `nativeMcts.test.ts`, `state.test.ts`, `gameTypes.test.ts`, `largeNumbers.test.ts`, `modContentHarmonyState.test.ts`, `crates/craftbuddy-engine` Rust unit tests
 
 ## Non-goals
 

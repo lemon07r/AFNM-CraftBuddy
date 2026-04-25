@@ -2,7 +2,16 @@
 
 ## Code Search
 
-This project is indexed with Vera. Use `vera search "query"` for semantic code search and `vera grep "pattern"` for regex search. Run `vera update .` after code changes. For query tips and output format details, see the Vera skill in your skills directory.
+Use Vera before opening many files or running broad text search when you need to find where logic lives or how a feature works.
+
+- `vera search "query"` for semantic code search. Describe behavior: "JWT validation", not "auth". If one phrasing misses, try 2-3 varied queries or add `--intent "goal"`.
+- `vera grep "pattern"` for exact text or regex in indexed files
+- `vera references <symbol>` for callers and callees
+- `vera overview` for a project summary (languages, entry points, hotspots)
+- `vera search --deep "query"` for RAG-fusion query expansion + merged ranking
+- Narrow `vera search` or `vera grep` with `--lang`, `--path`, `--type`, or `--scope docs`
+- `vera watch .` to auto-update the index, or `vera update .` after edits (`vera index .` if `.vera/` is missing)
+- For detailed usage, query patterns, and troubleshooting, read the Vera skill file installed by `vera agent install`
 
 ## Project Structure & Module Organization
 
@@ -21,7 +30,9 @@ This project is indexed with Vera. Use `vera search "query"` for semantic code s
 
 - `bun install`: install dependencies.
 - `bun run build`: run webpack production build and package the mod zip to `builds/`.
-- `bun run workshop:upload -- --change-note "..."`: build CraftBuddy and upload `builds/afnm-craftbuddy.zip` to the configured Steam Workshop item via the sibling `../ModUploader-AFNM` repo. Requires Steam running locally.
+- `bun run wasm:build`: compile the Rust engine and generate the inline WASM module used by the Experimental optimizer engine.
+- `bun run wasm:test`: run Rust unit tests for the native MCTS engine.
+- `bun run workshop:upload -- --change-note "..."`: build CraftBuddy and upload `builds/afnm-craftbuddy.zip` to the configured Steam Workshop item via the sibling `../ModUploader-AFNM` repo. Add `--description-file docs/project/WORKSHOP_DESCRIPTION.md` when the public Workshop description changes. Requires Steam running locally.
 - `bun run test`: run all Jest tests once.
 - `bun run test:watch`: run tests in watch mode while iterating.
 - `bun run test:coverage`: generate coverage reports in `coverage/` (text, lcov, html).

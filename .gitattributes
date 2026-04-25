@@ -1,2 +1,9 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Normalize line endings
+* text=auto eol=lf
+
+# Binary assets
+*.wasm binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.zip binary

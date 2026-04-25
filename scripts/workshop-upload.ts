@@ -3,6 +3,8 @@ import * as path from 'path';
 
 type CliArgs = {
   changeNote?: string;
+  description?: string;
+  descriptionFile?: string;
   workshopId: string;
   zipPath: string;
   skipBuild: boolean;
@@ -22,6 +24,8 @@ Usage:
 
 Options:
   --change-note <text>        Change notes for the workshop update
+  --description <text>        Optional workshop description override
+  --description-file <path>   Optional file containing the workshop description
   --workshop-id <id>          Override the default CraftBuddy workshop item ID
   --zip <path>                Override the default build zip path
   --skip-build                Skip rebuilding CraftBuddy before upload
@@ -75,6 +79,14 @@ function parseArgs(argv: string[]): CliArgs {
         parsed.changeNote = consumeValue(argv, index, arg);
         index += 1;
         break;
+      case '--description':
+        parsed.description = consumeValue(argv, index, arg);
+        index += 1;
+        break;
+      case '--description-file':
+        parsed.descriptionFile = path.resolve(consumeValue(argv, index, arg));
+        index += 1;
+        break;
       case '--workshop-id':
         parsed.workshopId = consumeValue(argv, index, arg);
         index += 1;
@@ -120,6 +132,20 @@ function runCommand(
   };
 }
 
+function readDescriptionFile(filePath: string): string {
+  const text = fs.readFileSync(filePath, 'utf8').trim();
+  if (!text.startsWith('---')) {
+    return text;
+  }
+
+  const endIndex = text.indexOf('\n---', 3);
+  if (endIndex < 0) {
+    return text;
+  }
+
+  return text.slice(endIndex + 4).trim();
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -131,15 +157,26 @@ async function main(): Promise<void> {
     throw new Error('Missing required --change-note argument');
   }
 
+  if (args.description && args.descriptionFile) {
+    throw new Error('Use only one of --description or --description-file');
+  }
+
   const repoRoot = path.resolve(import.meta.dir, '..');
   const uploaderRoot = path.resolve(repoRoot, '..', 'ModUploader-AFNM');
+  const description = args.descriptionFile
+    ? readDescriptionFile(args.descriptionFile)
+    : args.description;
 
   if (!fs.existsSync(uploaderRoot)) {
     throw new Error(`ModUploader-AFNM not found at ${uploaderRoot}`);
   }
 
   if (!args.skipBuild) {
-    runCommand('Build CraftBuddy', [process.execPath, 'run', 'build'], repoRoot);
+    runCommand(
+      'Build CraftBuddy',
+      [process.execPath, 'run', 'build'],
+      repoRoot,
+    );
   }
 
   if (!fs.existsSync(args.zipPath)) {
@@ -169,6 +206,10 @@ async function main(): Promise<void> {
 
   if (args.openWorkshopPage) {
     uploadArgs.push('--open-workshop-page');
+  }
+
+  if (description) {
+    uploadArgs.push('--description', description);
   }
 
   if (args.json) {

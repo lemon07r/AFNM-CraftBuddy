@@ -3,13 +3,14 @@ title: Release Process
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-06
+last_verified: 2026-04-25
 source_of_truth: package.json, scripts/workshop-upload.ts, scripts/installed-game-runtime.js, .github/workflows/release.yml, ../ModUploader-AFNM/package.json, ../ModUploader-AFNM/electron/main/cli.ts
 review_cycle_days: 30
 related_files:
   - AGENTS.md
   - docs/project/TESTING.md
   - scripts/workshop-upload.ts
+  - docs/project/WORKSHOP_DESCRIPTION.md
   - .github/workflows/release.yml
 ---
 
@@ -74,8 +75,13 @@ Preferred wrapper from this repo:
 bun run workshop:upload -- --change-note "vX.Y.Z - What changed"
 ```
 
-Include the pushed release tag in the Workshop change note itself. Example:
-`v3.5.22 - Fix CraftBuddy not appearing after the loading-screen timing update.`
+Include the pushed release tag in the Workshop change note itself. Example: `v3.5.22 - Fix CraftBuddy not appearing after the loading-screen timing update.`
+
+When the public Workshop description needs to change, update [`WORKSHOP_DESCRIPTION.md`](./WORKSHOP_DESCRIPTION.md) and pass it through the wrapper:
+
+```bash
+bun run workshop:upload -- --change-note "vX.Y.Z - What changed" --description-file docs/project/WORKSHOP_DESCRIPTION.md
+```
 
 What that wrapper does:
 

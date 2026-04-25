@@ -3,7 +3,7 @@ title: Documentation Inventory
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-20
+last_verified: 2026-04-25
 source_of_truth: repository markdown file inventory
 review_cycle_days: 30
 related_files:
@@ -12,19 +12,19 @@ related_files:
 
 # Documentation Inventory
 
-Generated on: 2026-04-20
+Generated on: 2026-04-25
 
 ## Summary
 
 | Category | Count |
 |---|---|
-| project | 9 |
+| project | 10 |
 | dev-request | 2 |
 | project-meta | 1 |
 | history | 6 |
 | reference | 20 |
-| root-or-other | 2 |
-| total | 40 |
+| root-or-other | 14 |
+| total | 53 |
 
 ## Authoritative Docs
 
@@ -42,6 +42,7 @@ Generated on: 2026-04-20
 | `docs/project/ROADMAP.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/START_HERE_FOR_AGENTS.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/TESTING.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
+| `docs/project/WORKSHOP_DESCRIPTION.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 
 ## Historical Docs
 
@@ -58,7 +59,19 @@ Generated on: 2026-04-20
 
 | Path | Status | Authoritative | Owner | Decision |
 |---|---|---|---|---|
+| `.github/copilot-instructions.md` | - | - | - | review |
 | `AGENTS.md` | - | - | - | keep-authoritative-root |
+| `CLAUDE.md` | - | - | - | review |
+| `docs/plans/mcts-wasm/00-PLAN.md` | - | - | - | review |
+| `docs/plans/mcts-wasm/01-WASM-FEASIBILITY.md` | - | - | - | review |
+| `docs/plans/mcts-wasm/02-RUST-STATE-MODEL.md` | - | - | - | review |
+| `docs/plans/mcts-wasm/03-MCTS-ENGINE.md` | - | - | - | review |
+| `docs/plans/mcts-wasm/04-JS-WASM-BRIDGE.md` | - | - | - | review |
+| `docs/plans/mcts-wasm/05-INTEGRATION.md` | - | - | - | review |
+| `docs/plans/mcts-wasm/06-TESTING.md` | - | - | - | review |
+| `docs/plans/mcts-wasm/07-PROJECT-SETUP.md` | - | - | - | review |
+| `docs/plans/mcts-wasm/08-AGENT-WORKFLOW.md` | - | - | - | review |
+| `GEMINI.md` | - | - | - | review |
 | `README.md` | - | - | - | keep-authoritative-root |
 
 ## Reference Corpus Summary

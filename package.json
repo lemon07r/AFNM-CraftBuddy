@@ -1,16 +1,21 @@
 {
   "name": "afnm-craftbuddy",
-  "version": "4.2.1",
+  "version": "5.0.0",
   "description": "Automatically calculates and displays the optimal next skill to use during crafting in Ascend From Nine Mountains",
   "author": {
     "name": "lemon07r"
   },
   "main": "dist/mod.js",
   "scripts": {
-    "prebuild": "rm -rf dist/afnm-craftbuddy",
+    "prebuild": "bun run wasm:build && rm -rf dist/afnm-craftbuddy",
     "build": "bun run webpack --mode production",
     "postbuild": "bun scripts/zip-dist.js",
     "workshop:upload": "bun run scripts/workshop-upload.ts",
+    "wasm:build:core": "wasm-pack build crates/craftbuddy-engine --target web --out-dir ../../src/optimizer/wasm/generated --release",
+    "wasm:inline": "node scripts/wasm/inline-wasm.js",
+    "wasm:build": "bun run wasm:build:core && bun run wasm:inline",
+    "wasm:test": "cargo test --manifest-path crates/craftbuddy-engine/Cargo.toml",
+    "typecheck": "tsc --noEmit",
     "test": "bun run jest",
     "test:watch": "bun run jest --watch",
     "test:coverage": "bun run jest --coverage",
@@ -23,7 +28,8 @@
     "docs:check-freshness": "bun run scripts/docs/check-freshness.js",
     "docs:check-authority": "bun run scripts/docs/check-authority.js",
     "docs:check": "bun run docs:check-links && bun run docs:check-freshness && bun run docs:check-authority",
-    "docs:inventory": "bun run scripts/docs/generate-inventory.js"
+    "docs:inventory": "bun run scripts/docs/generate-inventory.js",
+    "release:validate": "bun run typecheck && bun run test && bun run build && bun run docs:check"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

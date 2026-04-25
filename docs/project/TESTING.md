@@ -3,8 +3,8 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-19
-source_of_truth: src/__tests__/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
+last_verified: 2026-04-25
+source_of_truth: src/__tests__/*, crates/craftbuddy-engine/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
 review_cycle_days: 30
 related_files:
   - AGENTS.md
@@ -18,6 +18,8 @@ related_files:
 See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. Key commands:
 
 - `bun run test` — full suite
+- `bun run wasm:test` — Rust unit tests for the native MCTS engine
+- `bun run wasm:build` — compile the Rust engine to `src/optimizer/wasm/generated/` and generate the inline WASM module for webpack
 - `bun run test:watch` — watch mode
 - `bun run jest src/__tests__/<file>.test.ts` — focused file
 - `bun run ui:harness:build` — build the committed browser harness into `tmp/ui-harness/`
@@ -32,6 +34,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 | --- | --- |
 | `craftSimulation.test.ts` | End-to-end multi-turn craft simulations |
 | `search.test.ts` | Recommendation/search behavior, scoring, move ordering |
+| `nativeMcts.test.ts` | TypeScript-to-Rust MCTS input serialization and bridge shaping |
 | `skills.test.ts` | Transition logic, buffs, masteries, effects |
 | `gameAccuracy.test.ts` | Formula/mechanics parity |
 | `harmony.test.ts` | Harmony subsystem |
@@ -44,6 +47,7 @@ See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. K
 | `techniqueResolution.test.ts` | Canonical live-technique name matching and `craftingTechniqueFromKnown` fallback behavior |
 | `autoCraftController.test.ts` | Auto-mode controller policy gating, auto-finish completion latch, stop/reset behavior, and state-advance waits |
 | `modContentHarmonyState.test.ts` | Harmony hydration, replay snapshot parity, integration regressions |
+| `crates/craftbuddy-engine/src/lib.rs` Rust tests | Native MCTS rollout policy, harmony subset simulation, craft-end bonus helpers |
 
 ## Simulation tests (`craftSimulation.test.ts`)
 
@@ -79,6 +83,8 @@ Exported optimizer snapshots are only useful for bug reproduction if they preser
 Because search is wall-clock-budgeted, CI/browser/live runs can reach different frontiers before cutoff. Real-user regressions should use exported snapshot fixtures or explicit constrained budgets instead of assuming one machine's timing behavior generalizes.
 
 For search-budget regressions, prefer deterministic node-budget cutoffs over wall-clock-only assertions when the behavior under test is iterative-deepening stability rather than raw responsiveness. Assert against the last fully completed depth/frontier, not mixed partial-pass results.
+
+Native MCTS is disabled under Jest unless `CRAFTBUDDY_ENABLE_WASM_MCTS_TESTS=1` is set, and the persisted Legacy engine setting keeps the path off by default in-game. Use `bun run wasm:test` for Rust behavior and `bun run build` to verify the inline generated WASM package is bundled for the Experimental engine.
 
 For chance-based survivability bugs, cover both layers:
 

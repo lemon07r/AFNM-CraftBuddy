@@ -46,9 +46,39 @@ export interface CraftBuddySettings {
    * -100 = perfection priority, 0 = balanced, 100 = completion priority.
    */
   searchGoalPriorityBias: number;
+  /** Optimizer engine mode. Legacy is the default; experimental enables native MCTS policy guidance. */
+  optimizerEngine: OptimizerEngine;
   /** Preferred policy for per-craft automatic execution mode. */
   preferredAutoModePolicy: AutoCraftPolicy;
 }
+
+export type OptimizerEngine = 'legacy' | 'experimental';
+
+export interface OptimizerEngineOption {
+  id: OptimizerEngine;
+  label: string;
+  description: string;
+  note: string;
+}
+
+export const DEFAULT_OPTIMIZER_ENGINE: OptimizerEngine = 'legacy';
+
+export const OPTIMIZER_ENGINE_OPTIONS: OptimizerEngineOption[] = [
+  {
+    id: 'legacy',
+    label: 'Legacy',
+    description:
+      'Uses the established TypeScript lookahead engine with deterministic EV scoring, beam ordering, and condition branching.',
+    note: 'Default for v5. Stable and fully parity-tested.',
+  },
+  {
+    id: 'experimental',
+    label: 'Experimental',
+    description:
+      'Adds the Rust/WASM Monte Carlo Tree Search root policy prior for difficult late-game, sublime, and harmony-heavy crafts.',
+    note: 'TypeScript remains authoritative; MCTS only breaks near-ties in root ordering.',
+  },
+];
 
 const STORAGE_KEY = 'craftbuddy_settings';
 const SEARCH_DEFAULTS_RESET_VERSION_KEY =
@@ -65,6 +95,7 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   | 'searchMaxNodes'
   | 'searchBeamWidth'
   | 'searchGoalPriorityBias'
+  | 'optimizerEngine'
 > = {
   lookaheadDepth: 64,
   searchTimeBudgetMs: 4500,
@@ -73,6 +104,7 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   // shallow partial frontier; beam 5 reaches a deeper, safer frontier.
   searchBeamWidth: 5,
   searchGoalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
+  optimizerEngine: DEFAULT_OPTIMIZER_ENGINE,
 };
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
@@ -161,6 +193,10 @@ function normalizeSettings(
       DEFAULT_SETTINGS.searchBeamWidth,
     ),
     searchGoalPriorityBias,
+    optimizerEngine:
+      settings.optimizerEngine === 'experimental'
+        ? 'experimental'
+        : DEFAULT_SETTINGS.optimizerEngine,
     preferredAutoModePolicy: normalizeAutoCraftPolicy(
       settings.preferredAutoModePolicy,
       DEFAULT_SETTINGS.preferredAutoModePolicy,
@@ -347,12 +383,14 @@ export function getSearchConfig(): {
   maxNodes: number;
   beamWidth: number;
   goalPriorityBias: number;
+  useMonteCarloTreeSearch: boolean;
 } {
   return {
     timeBudgetMs: currentSettings.searchTimeBudgetMs,
     maxNodes: currentSettings.searchMaxNodes,
     beamWidth: currentSettings.searchBeamWidth,
     goalPriorityBias: currentSettings.searchGoalPriorityBias,
+    useMonteCarloTreeSearch: currentSettings.optimizerEngine === 'experimental',
   };
 }
 

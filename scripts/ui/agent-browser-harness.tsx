@@ -96,9 +96,10 @@ const harnessState = harnessParams.get('state') || 'default';
 const harnessCompactMode = harnessParams.get('compact');
 const harnessScene = harnessParams.get('scene') || 'default';
 
-function parseHarnessViewport(
-  value: string | null,
-): { width: number; height: number } {
+function parseHarnessViewport(value: string | null): {
+  width: number;
+  height: number;
+} {
   const match = value?.match(/^(\d{3,4})x(\d{3,4})$/i);
   if (!match) {
     return { width: 975, height: 768 };
@@ -112,10 +113,7 @@ function parseHarnessViewport(
 
 const harnessViewport = parseHarnessViewport(harnessParams.get('viewport'));
 
-function buildGameHudRects(viewport: {
-  width: number;
-  height: number;
-}): {
+function buildGameHudRects(viewport: { width: number; height: number }): {
   progressRects: OverlayRectLike[];
   supplementalRects: OverlayRectLike[];
 } {
@@ -339,14 +337,13 @@ function Harness() {
       onAutoModeArm={() => {}}
       onAutoModeStop={() => {}}
       onAutoModePolicyChange={() => {}}
-      version="4.2.1"
+      version="5.0.0"
     />
   );
 
   if (harnessScene === 'gamehud') {
-    const { progressRects, supplementalRects } = buildGameHudRects(
-      harnessViewport,
-    );
+    const { progressRects, supplementalRects } =
+      buildGameHudRects(harnessViewport);
     const progressRect = unionOverlayRects(progressRects);
     const occupiedRect = unionOverlayRects([
       ...progressRects,

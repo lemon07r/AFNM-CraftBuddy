@@ -41,6 +41,7 @@ import {
   setNativeCraftingUtils,
   setNativeCanUseActionProvider,
 } from '../optimizer';
+import { preloadNativeMctsPolicyEngine } from '../optimizer/nativeMcts';
 import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 import { CraftBuddyThemeProvider } from '../ui/ThemeProvider';
@@ -251,6 +252,14 @@ let sublimeTargetMultiplier = 2.0;
 
 // Settings
 let currentSettings: CraftBuddySettings = loadSettings();
+function preloadExperimentalEngineIfEnabled(
+  settings: CraftBuddySettings = currentSettings,
+): void {
+  if (settings.optimizerEngine === 'experimental') {
+    preloadNativeMctsPolicyEngine();
+  }
+}
+preloadExperimentalEngineIfEnabled();
 let autoCraftUiState: AutoCraftUiState = createDefaultAutoCraftUiState(
   currentSettings.preferredAutoModePolicy,
 );
@@ -266,6 +275,7 @@ interface LastSearchSettings {
   searchMaxNodes: number;
   searchBeamWidth: number;
   searchGoalPriorityBias: number;
+  optimizerEngine: CraftBuddySettings['optimizerEngine'];
 }
 let lastSearchSettings: LastSearchSettings | null = null;
 
@@ -299,7 +309,8 @@ function areSearchSettingsStale(): boolean {
     currentSettings.searchMaxNodes !== lastSearchSettings.searchMaxNodes ||
     currentSettings.searchBeamWidth !== lastSearchSettings.searchBeamWidth ||
     currentSettings.searchGoalPriorityBias !==
-      lastSearchSettings.searchGoalPriorityBias
+      lastSearchSettings.searchGoalPriorityBias ||
+    currentSettings.optimizerEngine !== lastSearchSettings.optimizerEngine
   );
 }
 
@@ -313,6 +324,7 @@ function snapshotSearchSettings(): void {
     searchMaxNodes: currentSettings.searchMaxNodes,
     searchBeamWidth: currentSettings.searchBeamWidth,
     searchGoalPriorityBias: currentSettings.searchGoalPriorityBias,
+    optimizerEngine: currentSettings.optimizerEngine,
   };
 }
 
@@ -344,8 +356,7 @@ function checkIntegrationHealth(): void {
     }
   }
   if (d.nativeGetActionCostCalls > 10 && d.nativeGetActionCostErrors > 0) {
-    const errorRate =
-      d.nativeGetActionCostErrors / d.nativeGetActionCostCalls;
+    const errorRate = d.nativeGetActionCostErrors / d.nativeGetActionCostCalls;
     if (errorRate > 0.1) {
       console.warn(
         `[CraftBuddy] High native getActionCost error rate: ${(errorRate * 100).toFixed(1)}% (${d.nativeGetActionCostErrors}/${d.nativeGetActionCostCalls})`,
@@ -854,6 +865,7 @@ function buildOptimizerReplayInputSnapshot(params: {
       maxNodes: params.searchConfig.maxNodes,
       beamWidth: params.searchConfig.beamWidth,
       goalPriorityBias: params.searchConfig.goalPriorityBias,
+      useMonteCarloTreeSearch: params.searchConfig.useMonteCarloTreeSearch,
     },
     settings: {
       lookaheadDepth: currentSettings.lookaheadDepth,
@@ -861,6 +873,7 @@ function buildOptimizerReplayInputSnapshot(params: {
       searchMaxNodes: currentSettings.searchMaxNodes,
       searchBeamWidth: currentSettings.searchBeamWidth,
       searchGoalPriorityBias: currentSettings.searchGoalPriorityBias,
+      optimizerEngine: currentSettings.optimizerEngine,
       compactMode: currentSettings.compactMode,
       panelVisible: currentSettings.panelVisible,
     },
@@ -1687,7 +1700,10 @@ function resolveDomProgressTarget(params: {
   if (domTarget === undefined || domTarget <= 0) {
     return undefined;
   }
-  if (cap !== undefined && shouldUseCapAsTargetFallback({ recipe, recipeStats })) {
+  if (
+    cap !== undefined &&
+    shouldUseCapAsTargetFallback({ recipe, recipeStats })
+  ) {
     return cap;
   }
   return domTarget;
@@ -1752,7 +1768,8 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
   if (d.usingModApiEvaluateCraftingCondition)
     nativeActive.push('conditionEvaluation');
   else fallbackActive.push('conditionEvaluation');
-  if (d.usingModApiGetActualCraftingStat) nativeActive.push('actualCraftingStat');
+  if (d.usingModApiGetActualCraftingStat)
+    nativeActive.push('actualCraftingStat');
   else fallbackActive.push('actualCraftingStat');
 
   const canUseActionErrorRate =
@@ -2235,7 +2252,7 @@ function convertGameTechniques(
       }
     }
 
-    const qiCost = sourceTech.noQiCost ? 0 : (sourceTech.poolCost || 0);
+    const qiCost = sourceTech.noQiCost ? 0 : sourceTech.poolCost || 0;
     const stabilityCost = sourceTech.stabilityCost || 0;
     const toxicityCost = sourceTech.toxicityCost || 0;
     const techType = sourceTech.type || 'support';
@@ -3084,6 +3101,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
 
   const handleSettingsChange = (newSettings: CraftBuddySettings) => {
     currentSettings = newSettings;
+    preloadExperimentalEngineIfEnabled(newSettings);
     autoCraftController.setPolicy(newSettings.preferredAutoModePolicy);
     if (!newSettings.panelVisible && autoCraftUiState.armed) {
       stopAutoCraft('Auto mode stopped because the panel was hidden.');
@@ -3095,6 +3113,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
   const handleSearchSettingsChange = (newSettings: CraftBuddySettings) => {
     // Update settings and re-render to reflect stale state
     currentSettings = newSettings;
+    preloadExperimentalEngineIfEnabled(newSettings);
     applyOverlayContainerLayout();
     renderOverlay();
   };

@@ -9,7 +9,11 @@ import type { HarmonyDataSource } from './harmonyState';
 
 export interface OptimizerReplaySearchConfigSnapshot extends Pick<
   SearchConfig,
-  'timeBudgetMs' | 'maxNodes' | 'beamWidth' | 'goalPriorityBias'
+  | 'timeBudgetMs'
+  | 'maxNodes'
+  | 'beamWidth'
+  | 'goalPriorityBias'
+  | 'useMonteCarloTreeSearch'
 > {}
 
 export interface OptimizerReplayInputSnapshot {
@@ -37,6 +41,7 @@ export interface OptimizerReplayInputSnapshot {
     searchMaxNodes: number;
     searchBeamWidth: number;
     searchGoalPriorityBias: number;
+    optimizerEngine?: string;
     compactMode: boolean;
     panelVisible: boolean;
   };
