@@ -70,9 +70,9 @@ crates/craftbuddy-engine/target/
 .output.txt
 
 # Local AI/agent tooling workspaces
+# Project .agents/skills are tracked for AI-agent workflows
 .adal/
 .agent/
-.agents/
 .augment/
 .claude/
 .codebuddy/
@@ -101,8 +101,8 @@ crates/craftbuddy-engine/target/
 .zencoder/
 .vera/
 .firecrawl/
-skills/
-skills-lock.json
+/skills/
+/skills-lock.json
 
 old-nonMinifiedCode/
 CraftingCode/
