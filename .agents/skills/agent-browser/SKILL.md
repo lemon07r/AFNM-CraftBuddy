@@ -5,7 +5,7 @@ description: Browser automation CLI for agents. Use for opening pages, clicking,
 
 # Agent Browser
 
-Use `agent-browser` when browser or Electron UI evidence is needed. Prefer project-specific UI skills first (`craftbuddy-ui-validation` or `spirit-ring-ui`) so you know which harness or DevTools target to use.
+Use `agent-browser` when browser or Electron UI evidence is needed. In this repo, load `craftbuddy-ui-validation` first so you use the committed CraftBuddy harness and avoid disruptive live-game launches by default.
 
 ## Activate When
 

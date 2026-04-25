@@ -40,22 +40,14 @@ Use this as the entry skill for CraftBuddy work. It routes to narrower skills an
 | Workshop/GitHub release | `craftbuddy-release` |
 | General TS work | `typescript-afnm`, then `typescript-best-practices` |
 
-## Default Commands
+## Validation Routing
 
-```bash
-bun run typecheck
-bun run test
-bun run build
-bun run docs:check
-bun run runtime:oracle
-```
-
-Only run the commands relevant to the change. For docs/skills-only changes, prefer `bun run docs:inventory` and `bun run docs:check`.
+Use `pre-commit-validation` to choose checks by touched area. For docs/skills-only changes, the default path is `bun run docs:inventory` followed by `bun run docs:check`.
 
 ## Project Rules
 
 1. Keep optimizer logic pure in `src/optimizer/*`; game access belongs in `src/modContent/*`.
-2. Prefer official root-state APIs before store/fiber/DOM fallbacks: snapshot -> subscribe -> injected UI/options -> verified raw store -> DOM.
+2. Use the direct Redux store only where synchronous dispatch notifications are required; otherwise prefer `modAPI.subscribe()` / `getGameStateSnapshot()`, hook payloads, controlled DOM fallback, then local cache fallback.
 3. Treat installed runtime output as authoritative when docs, types, and behavior disagree.
 4. Use `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` before opening broader reference docs.
 5. Do not launch the installed game UI by default. Use runtime oracle first; live UI is opt-in.

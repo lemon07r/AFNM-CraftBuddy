@@ -1,56 +1,59 @@
 ---
 name: systematic-debugging
-description: Four-phase debugging methodology for AFNM mods that prevents thrashing. Activate when build errors, typecheck failures, runtime errors occur, or when mod behavior does not match expectations after repeated fix attempts.
+description: CraftBuddy debugging methodology. Activate when typecheck/build/runtime/test failures occur, optimizer behavior regresses, auto-craft stalls, or repeated fix attempts start to thrash.
 ---
 
-# Skill: Systematic Debugging
+# Systematic Debugging
 
-Four-phase debugging methodology that prevents thrashing. No fixes without root cause understanding.
+Use this to prove the root cause before changing code.
 
-## When to activate
+## Activate When
 
-- When a build, typecheck, or runtime error occurs
-- When mod behavior doesn't match expectations
-- When a fix attempt fails and you're about to try another
-- When the same bug keeps reappearing
+- TypeScript, Jest, build, docs, runtime, or harness checks fail
+- Optimizer recommendations differ from expected replay/simulation behavior
+- `src/modContent/*` extraction, replay snapshots, or auto-craft state advance is suspect
+- A fix attempt fails and you are about to try another
 
-## Phases
+## Phase 1: Capture Evidence
 
-### Phase 1: Root Cause Investigation
+1. Copy the exact error, stack trace, failing test, or replay snapshot symptom.
+2. Identify the smallest owning surface: optimizer, runtime adapter, auto-craft, UI, docs, or release tooling.
+3. For runtime/API questions, run `bun run runtime:oracle` and targeted `bun run runtime:grep -- "<symbol>"` before trusting old notes.
+4. For optimizer questions, reproduce with a focused Jest file or exported replay fixture before tuning constants.
+5. Form one concrete hypothesis that names the broken assumption.
 
-Before writing any fix:
+## Phase 2: Check CraftBuddy Patterns
 
-1. Read the exact error message and stack trace
-2. Identify the failing file and line number
-3. Use `bun run runtime:grep -- "<symbol>"` to check if the issue is a runtime mismatch
-4. Check if the ModAPI method exists: `bun run runtime:grep -- "<method-name>"`
-5. Form a specific hypothesis about why it's failing
+- Runtime boundary drift? Load `craftbuddy-runtime-integration` and inspect `src/modContent/*` plus `docs/project/INTEGRATION_MODAPI.md`.
+- Search/scoring drift? Load `craftbuddy-optimizer`, then check `docs/project/OPTIMIZER_DESIGN.md`, `search.test.ts`, and `craftSimulation.test.ts`.
+- UI/layout drift? Load `craftbuddy-ui-validation` and use the browser harness.
+- Auto-craft stalled? Verify the one-action bridge, synthesized `Finish Craft` -> native `Wait`, and the observed state-advance latch.
+- Debug state needed? Use or extend `window.craftBuddyDebug`; keep exported replay snapshots parity-grade.
 
-### Phase 2: Pattern Analysis
+## Phase 3: Test One Hypothesis
 
-- Is this a known AFNM gotcha? Check `SUPPLEMENTARY_GUIDE.md` section 3 (Runtime Truths) and section 7 (Anti-Patterns)
-- Is the hook timing wrong? (`onGenerateExploreEvents` fires before weight expansion)
-- Is `onReduxAction` causing side effects? (It runs inside the reducer)
-- Are you missing optional chaining on `window.modAPI?.hooks?.*`?
-- Is the mod being double-initialized? (Check for installation guard)
+- Change one cause at a time.
+- Prefer focused validators during iteration: targeted Jest file, `bun run typecheck`, `bun run runtime:grep`, or harness build.
+- Keep wall-clock search behavior deterministic in tests by asserting completed depth/frontier or node-budget behavior instead of one machine's partial frontier.
+- Preserve a failing fixture/test before fixing user-visible recommendation changes.
 
-### Phase 3: Hypothesis Testing
+## Phase 4: Fix and Backfill Evidence
 
-- Test ONE change at a time
-- Run `bun run typecheck` after each change
-- Run `bun run build` to confirm it compiles
-- Use the debug API (`window.__afnmModDebug['<mod-name>']`) to inspect runtime state
-
-### Phase 4: Implementation
-
-- Fix the root cause, not the symptom
-- Add the installation guard if missing
-- Add optional chaining if missing
-- Update the debug API to expose the state that would have helped diagnose this
+- Fix the root cause, not the symptom.
+- Add or update the regression test, replay fixture, oracle note, docs, or skill that would have prevented the miss.
+- Run the relevant final validators through `pre-commit-validation` before claiming completion.
 
 ## Rules
 
-- **Stop after 3 failed fix attempts.** Re-examine your assumptions. Use the runtime oracle to verify the API surface.
-- **Never fix without understanding.** If you can't explain why the fix works, it's a band-aid.
-- **Prefer the oracle over guessing.** `bun run runtime:grep -- "<pattern>"` answers most "does this exist?" questions instantly.
-- **Check SUPPLEMENTARY_GUIDE.md first.** Many debugging questions are already answered there.
+- Stop after three failed attempts and re-check the runtime/code/test evidence.
+- Do not patch optimizer constants without a named scenario and regression proof.
+- Do not add runtime assumptions outside `src/modContent/*`.
+- Do not launch the installed game UI unless the user explicitly requests live validation or a non-disruptive automated path exists.
+
+## References
+
+- `docs/project/TESTING.md`
+- `docs/project/OPTIMIZER_DESIGN.md`
+- `docs/project/INTEGRATION_MODAPI.md`
+- `.agents/skills/craftbuddy-optimizer/SKILL.md`
+- `.agents/skills/craftbuddy-runtime-integration/SKILL.md`

@@ -19,10 +19,8 @@ Update both version strings together:
 1. Finish code/docs and do a lean docs pass.
 2. Run validation:
    ```bash
-   bun run test
-   bun run build
-   bun run docs:inventory   # if docs changed
-   bun run docs:check       # if docs changed
+   bun run docs:inventory   # first, if docs changed
+   bun run release:validate
    ```
 3. Commit the release changes, then push `main`.
 4. Upload to Workshop item `3661729323`:

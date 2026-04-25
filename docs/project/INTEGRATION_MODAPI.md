@@ -3,7 +3,7 @@ title: Mod API Integration
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-19
+last_verified: 2026-04-25
 source_of_truth: src/modContent/index.ts, src/modContent/craftingStoreState.ts
 review_cycle_days: 21
 related_files:
@@ -21,7 +21,7 @@ All fallback extraction and game-object adaptation logic is centralized here —
 ## Responsibilities
 
 - read live crafting state and recipe data
-- use direct Redux store (via exposed globals or fiber probing) for subscription-based state change notifications; fall back to `window.modAPI.subscribe(...)` / `window.modAPI.getGameStateSnapshot()` when no direct store is reachable
+- use direct Redux store access only where synchronous dispatch notifications are required, and otherwise prefer `window.modAPI.subscribe(...)` / `window.modAPI.getGameStateSnapshot()` for store-like reads
 - resolve crafting type/sublime context from live recipe fields plus `modAPI.gameData.itemTypeToHarmonyType` when explicit harmony fields are missing
 - normalize techniques/masteries/buffs into optimizer action definitions
 - collect condition effects and forecasted conditions
@@ -35,11 +35,11 @@ All fallback extraction and game-object adaptation logic is centralized here —
 
 ## Data source priority
 
-1. direct game/Redux store when present (globals or fiber probing — synchronous dispatch notifications are critical for auto-craft state-advance detection)
-2. ModAPI root-state adapter (`subscribe`, `getGameStateSnapshot`) as store fallback when no direct Redux store is reachable
-3. hook-provided payloads (for recipe/condition context)
-4. controlled DOM-derived fallback
-5. local cache fallback (for resilience on mid-craft restoration)
+1. direct game/Redux store only when synchronous dispatch notifications are required, such as auto-craft state-advance detection
+2. ModAPI root-state adapter (`subscribe`, `getGameStateSnapshot`) for normal store-like reads and state-backed craft-session detection
+3. hook-provided payloads for recipe/condition context
+4. controlled DOM-derived fallback for visible `X/Y` values and UI-only recovery
+5. local cache fallback for resilience during mid-craft restoration
 
 ## Known fallback paths
 
@@ -70,7 +70,7 @@ When the runtime UI/help text, older reference notes, and executable behavior di
 
 Adopted in current code:
 
-- `window.modAPI.subscribe(...)` / `window.modAPI.getGameStateSnapshot()` are available as a store-like fallback when no direct Redux store is reachable; state-backed craft-session detection (`hasStateBackedCraftingUi`) removes locale-sensitive dependency on English DOM text
+- `window.modAPI.subscribe(...)` / `window.modAPI.getGameStateSnapshot()` are available for normal store-like reads; state-backed craft-session detection (`hasStateBackedCraftingUi`) removes locale-sensitive dependency on English DOM text
 - runtime `poolCostFlat` now flows through optimizer state, cache keys, replay snapshots, and effective-action-cost evaluation
 
 Good next migration candidates:

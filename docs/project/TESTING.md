@@ -15,7 +15,7 @@ related_files:
 
 ## Commands
 
-See `AGENTS.md` → "Build, Test, and Development Commands" for the full list. Key commands:
+See `AGENTS.md` for the compact command list and `.agents/skills/pre-commit-validation/SKILL.md` for the validator matrix. Key commands:
 
 - `bun run test` — full suite
 - `bun run wasm:test` — Rust unit tests for the native MCTS engine
@@ -181,7 +181,7 @@ bun run runtime:grep -- "getGameStateSnapshot|injectUI|basicBestCompletion|perfe
 
 ## Validation requirements
 
-For any mechanics change: see `AGENTS.md` → "How to safely change the optimizer" for the full workflow. Summary:
+For optimizer or mechanics changes, load `.agents/skills/craftbuddy-optimizer/SKILL.md` for the full workflow. Summary:
 
 1. Add/update relevant tests
 2. Run `bun run test` — all must pass

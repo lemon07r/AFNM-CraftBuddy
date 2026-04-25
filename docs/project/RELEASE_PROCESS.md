@@ -29,18 +29,17 @@ Use the same semantic version in both places, for example `3.5.22`.
 
 ## 2. Run validation
 
-Minimum release checks:
+Minimum release gate:
 
 ```bash
-bun run test
-bun run build
+bun run release:validate
 ```
 
-If docs changed, also run:
+If docs changed, regenerate inventory before the release gate:
 
 ```bash
 bun run docs:inventory
-bun run docs:check
+bun run release:validate
 ```
 
 If the task changed behavior or workflow but the docs did not need edits after review, explicitly confirm that no authoritative docs became stale before continuing.
