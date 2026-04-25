@@ -208,10 +208,10 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   conditionBranchLimit: 2,
   conditionBranchMinProbability: 0.15,
   useMonteCarloTreeSearch: false,
-  mctsIterations: 12000,
-  mctsRolloutDepth: 32,
+  mctsIterations: 250,
+  mctsRolloutDepth: 16,
   mctsExploration: 1.15,
-  mctsMaxNodes: 50000,
+  mctsMaxNodes: 5000,
 };
 
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;

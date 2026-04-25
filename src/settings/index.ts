@@ -17,7 +17,7 @@ import {
 } from './autoCraft';
 
 export interface CraftBuddySettings {
-  /** Lookahead search depth (1-96, default: 64) */
+  /** Lookahead search depth (1-96, default: 48) */
   lookaheadDepth: number;
   /** Whether to show the panel in compact mode */
   compactMode: boolean;
@@ -35,11 +35,11 @@ export interface CraftBuddySettings {
   showOptimalRotation: boolean;
 
   // Performance settings for late-game optimization
-  /** Maximum time budget for search in milliseconds (100-10000, default: 4500) */
+  /** Maximum time budget for search in milliseconds (100-10000, default: 2000) */
   searchTimeBudgetMs: number;
-  /** Maximum nodes to explore before stopping (1000-5000000, default: 2000000) */
+  /** Maximum nodes to explore before stopping (1000-5000000, default: 1000000) */
   searchMaxNodes: number;
-  /** Beam width - max branches to explore at each level (3-20, default: 8) */
+  /** Beam width - max branches to explore at each level (3-20, default: 5) */
   searchBeamWidth: number;
   /**
    * Completion/perfection search bias.
@@ -53,6 +53,21 @@ export interface CraftBuddySettings {
 }
 
 export type OptimizerEngine = 'legacy' | 'experimental';
+
+export type SearchPresetId =
+  | 'instant'
+  | 'fast'
+  | 'balanced'
+  | 'high_accuracy'
+  | 'max';
+
+export type SearchPresetBudget = Pick<
+  CraftBuddySettings,
+  | 'lookaheadDepth'
+  | 'searchTimeBudgetMs'
+  | 'searchMaxNodes'
+  | 'searchBeamWidth'
+>;
 
 export interface OptimizerEngineOption {
   id: OptimizerEngine;
@@ -83,10 +98,87 @@ export const OPTIMIZER_ENGINE_OPTIONS: OptimizerEngineOption[] = [
 const STORAGE_KEY = 'craftbuddy_settings';
 const SEARCH_DEFAULTS_RESET_VERSION_KEY =
   'craftbuddy_search_defaults_reset_version';
-const SEARCH_DEFAULTS_RESET_VERSION = '2';
+const SEARCH_DEFAULTS_RESET_VERSION = '3';
 const DISPLAY_DEFAULTS_RESET_VERSION_KEY =
   'craftbuddy_display_defaults_reset_version';
 const DISPLAY_DEFAULTS_RESET_VERSION = '1';
+
+export const LEGACY_SEARCH_PRESET_BUDGETS: Record<
+  SearchPresetId,
+  SearchPresetBudget
+> = {
+  instant: {
+    lookaheadDepth: 32,
+    searchTimeBudgetMs: 1000,
+    searchMaxNodes: 400000,
+    searchBeamWidth: 5,
+  },
+  fast: {
+    lookaheadDepth: 48,
+    searchTimeBudgetMs: 2000,
+    searchMaxNodes: 1000000,
+    searchBeamWidth: 5,
+  },
+  balanced: {
+    lookaheadDepth: 64,
+    searchTimeBudgetMs: 4500,
+    searchMaxNodes: 2000000,
+    searchBeamWidth: 5,
+  },
+  high_accuracy: {
+    lookaheadDepth: 80,
+    searchTimeBudgetMs: 8000,
+    searchMaxNodes: 3500000,
+    searchBeamWidth: 9,
+  },
+  max: {
+    lookaheadDepth: 96,
+    searchTimeBudgetMs: 10000,
+    searchMaxNodes: 5000000,
+    searchBeamWidth: 12,
+  },
+};
+
+export const EXPERIMENTAL_SEARCH_PRESET_BUDGETS: Record<
+  SearchPresetId,
+  SearchPresetBudget
+> = {
+  instant: {
+    lookaheadDepth: 32,
+    searchTimeBudgetMs: 1250,
+    searchMaxNodes: 400000,
+    searchBeamWidth: 5,
+  },
+  fast: {
+    lookaheadDepth: 32,
+    searchTimeBudgetMs: 1500,
+    searchMaxNodes: 500000,
+    searchBeamWidth: 5,
+  },
+  balanced: {
+    lookaheadDepth: 48,
+    searchTimeBudgetMs: 2250,
+    searchMaxNodes: 800000,
+    searchBeamWidth: 5,
+  },
+  high_accuracy: {
+    lookaheadDepth: 64,
+    searchTimeBudgetMs: 3250,
+    searchMaxNodes: 1300000,
+    searchBeamWidth: 5,
+  },
+  max: {
+    lookaheadDepth: 80,
+    searchTimeBudgetMs: 4000,
+    searchMaxNodes: 2000000,
+    searchBeamWidth: 5,
+  },
+};
+
+const EXPERIMENTAL_MCTS_ITERATIONS = 250;
+const EXPERIMENTAL_MCTS_MAX_NODES = 5000;
+const EXPERIMENTAL_MCTS_MIN_ROLLOUT_DEPTH = 8;
+const EXPERIMENTAL_MCTS_MAX_ROLLOUT_DEPTH = 16;
 
 export const DEFAULT_SEARCH_SETTINGS: Pick<
   CraftBuddySettings,
@@ -97,19 +189,12 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   | 'searchGoalPriorityBias'
   | 'optimizerEngine'
 > = {
-  lookaheadDepth: 64,
-  searchTimeBudgetMs: 4500,
-  searchMaxNodes: 2000000,
-  // Replay regression showed beam 8 can strand long forge turns on a
-  // shallow partial frontier; beam 5 reaches a deeper, safer frontier.
-  searchBeamWidth: 5,
+  ...LEGACY_SEARCH_PRESET_BUDGETS.fast,
   searchGoalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   optimizerEngine: DEFAULT_OPTIMIZER_ENGINE,
 };
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
-  // Balanced default profile tuned from replay benchmarks.
-  // Keep beam conservative until the budget can support wider search.
   ...DEFAULT_SEARCH_SETTINGS,
   compactMode: false,
   panelVisible: true,
@@ -384,13 +469,33 @@ export function getSearchConfig(): {
   beamWidth: number;
   goalPriorityBias: number;
   useMonteCarloTreeSearch: boolean;
+  mctsIterations?: number;
+  mctsRolloutDepth?: number;
+  mctsMaxNodes?: number;
 } {
+  const useMonteCarloTreeSearch =
+    currentSettings.optimizerEngine === 'experimental';
+  const mctsConfig = useMonteCarloTreeSearch
+    ? {
+        mctsIterations: EXPERIMENTAL_MCTS_ITERATIONS,
+        mctsRolloutDepth: Math.max(
+          EXPERIMENTAL_MCTS_MIN_ROLLOUT_DEPTH,
+          Math.min(
+            EXPERIMENTAL_MCTS_MAX_ROLLOUT_DEPTH,
+            Math.round(currentSettings.lookaheadDepth / 4),
+          ),
+        ),
+        mctsMaxNodes: EXPERIMENTAL_MCTS_MAX_NODES,
+      }
+    : {};
+
   return {
     timeBudgetMs: currentSettings.searchTimeBudgetMs,
     maxNodes: currentSettings.searchMaxNodes,
     beamWidth: currentSettings.searchBeamWidth,
     goalPriorityBias: currentSettings.searchGoalPriorityBias,
-    useMonteCarloTreeSearch: currentSettings.optimizerEngine === 'experimental',
+    useMonteCarloTreeSearch,
+    ...mctsConfig,
   };
 }
 

@@ -2,7 +2,9 @@ import {
   DEFAULT_AUTO_CRAFT_POLICY,
   DEFAULT_OPTIMIZER_ENGINE,
   DEFAULT_SETTINGS,
+  EXPERIMENTAL_SEARCH_PRESET_BUDGETS,
   getSearchConfig,
+  LEGACY_SEARCH_PRESET_BUDGETS,
   loadSettings,
   resetSettings,
   saveSettings,
@@ -17,6 +19,7 @@ import {
 describe('settings search budget', () => {
   const SEARCH_DEFAULTS_RESET_VERSION_KEY =
     'craftbuddy_search_defaults_reset_version';
+  const SEARCH_DEFAULTS_RESET_VERSION = '3';
   const DISPLAY_DEFAULTS_RESET_VERSION_KEY =
     'craftbuddy_display_defaults_reset_version';
   const DISPLAY_DEFAULTS_RESET_VERSION = '1';
@@ -62,25 +65,49 @@ describe('settings search budget', () => {
     logSpy.mockRestore();
   });
 
-  it('keeps balanced defaults for search budgets', () => {
-    expect(DEFAULT_SETTINGS.lookaheadDepth).toBe(64);
-    expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(4500);
-    expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(2000000);
-    expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(5);
+  it('keeps the legacy fast preset as the default search budget', () => {
+    expect(DEFAULT_SETTINGS.lookaheadDepth).toBe(
+      LEGACY_SEARCH_PRESET_BUDGETS.fast.lookaheadDepth,
+    );
+    expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(
+      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchTimeBudgetMs,
+    );
+    expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(
+      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchMaxNodes,
+    );
+    expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(
+      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchBeamWidth,
+    );
     expect(DEFAULT_SETTINGS.searchGoalPriorityBias).toBe(0);
     expect(DEFAULT_SETTINGS.optimizerEngine).toBe(DEFAULT_OPTIMIZER_ENGINE);
     expect(DEFAULT_SETTINGS.maxAlternatives).toBe(1);
     expect(DEFAULT_SETTINGS.preferredAutoModePolicy).toBe(
       DEFAULT_AUTO_CRAFT_POLICY,
     );
-    expect(getSearchConfig().timeBudgetMs).toBe(4500);
-    expect(getSearchConfig().maxNodes).toBe(2000000);
-    expect(getSearchConfig().beamWidth).toBe(5);
+    expect(getSearchConfig().timeBudgetMs).toBe(
+      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchTimeBudgetMs,
+    );
+    expect(getSearchConfig().maxNodes).toBe(
+      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchMaxNodes,
+    );
+    expect(getSearchConfig().beamWidth).toBe(
+      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchBeamWidth,
+    );
     expect(getSearchConfig().goalPriorityBias).toBe(0);
     expect(getSearchConfig().useMonteCarloTreeSearch).toBe(false);
+    expect(getSearchConfig().mctsIterations).toBeUndefined();
   });
 
-  it('defaults to legacy engine and enables native MCTS only for experimental engine', () => {
+  it('keeps every experimental preset within the 4.5 second cap', () => {
+    for (const preset of Object.values(EXPERIMENTAL_SEARCH_PRESET_BUDGETS)) {
+      expect(preset.searchTimeBudgetMs).toBeLessThanOrEqual(4500);
+    }
+    expect(EXPERIMENTAL_SEARCH_PRESET_BUDGETS.max.searchTimeBudgetMs).toBe(
+      4000,
+    );
+  });
+
+  it('defaults to legacy engine and enables bounded native MCTS only for experimental engine', () => {
     expect(loadSettings().optimizerEngine).toBe('legacy');
     expect(getSearchConfig().useMonteCarloTreeSearch).toBe(false);
 
@@ -88,13 +115,22 @@ describe('settings search budget', () => {
 
     expect(experimental.optimizerEngine).toBe('experimental');
     expect(getSearchConfig().useMonteCarloTreeSearch).toBe(true);
+    expect(getSearchConfig().mctsIterations).toBe(250);
+    expect(getSearchConfig().mctsRolloutDepth).toBe(12);
+    expect(getSearchConfig().mctsMaxNodes).toBe(5000);
+
+    saveSettings(EXPERIMENTAL_SEARCH_PRESET_BUDGETS.max);
+
+    expect(getSearchConfig().timeBudgetMs).toBe(4000);
+    expect(getSearchConfig().mctsRolloutDepth).toBe(16);
   });
 
   it('normalizes unknown optimizer engine values back to legacy', () => {
     storageData['craftbuddy_settings'] = JSON.stringify({
       optimizerEngine: 'fast-native',
     });
-    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] = '2';
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
     storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
       DISPLAY_DEFAULTS_RESET_VERSION;
 
@@ -135,7 +171,7 @@ describe('settings search budget', () => {
     expect(rounded.searchGoalPriorityBias).toBe(75);
   });
 
-  it('resets stored search budgets to the balanced preset once while preserving display prefs', () => {
+  it('resets stored search budgets to the legacy fast preset once while preserving display prefs', () => {
     saveSettings({
       compactMode: true,
       maxAlternatives: 1,
@@ -186,7 +222,8 @@ describe('settings search budget', () => {
     storageData['craftbuddy_settings'] = JSON.stringify({
       prioritizeGuaranteedCompletion: true,
     });
-    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] = '2';
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
     storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
       DISPLAY_DEFAULTS_RESET_VERSION;
 
@@ -199,7 +236,8 @@ describe('settings search budget', () => {
     storageData['craftbuddy_settings'] = JSON.stringify({
       maxAlternatives: 4,
     });
-    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] = '2';
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
 
     const migrated = loadSettings();
 
@@ -216,7 +254,8 @@ describe('settings search budget', () => {
     storageData['craftbuddy_settings'] = JSON.stringify({
       maxAlternatives: 4,
     });
-    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] = '2';
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
 
     expect(loadSettings().maxAlternatives).toBe(1);
 
@@ -242,7 +281,8 @@ describe('settings search budget', () => {
     storageData['craftbuddy_settings'] = JSON.stringify({
       preferredAutoModePolicy: 'everything_everywhere',
     });
-    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] = '2';
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
     storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
       DISPLAY_DEFAULTS_RESET_VERSION;
 

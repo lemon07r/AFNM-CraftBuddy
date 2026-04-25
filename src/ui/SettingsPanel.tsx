@@ -30,11 +30,14 @@ import CheckIcon from '@mui/icons-material/Check';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import {
   CraftBuddySettings,
+  EXPERIMENTAL_SEARCH_PRESET_BUDGETS,
   getSettings,
+  LEGACY_SEARCH_PRESET_BUDGETS,
   saveSettings,
-  DEFAULT_SEARCH_SETTINGS,
   OPTIMIZER_ENGINE_OPTIONS,
   type OptimizerEngine,
+  type SearchPresetBudget,
+  type SearchPresetId,
 } from '../settings';
 import {
   formatSearchGoalPriorityBias,
@@ -65,16 +68,9 @@ interface SettingsPanelProps {
 }
 
 interface SearchPreset {
-  id: string;
+  id: SearchPresetId;
   label: string;
   description: string;
-  values: Pick<
-    CraftBuddySettings,
-    | 'lookaheadDepth'
-    | 'searchTimeBudgetMs'
-    | 'searchMaxNodes'
-    | 'searchBeamWidth'
-  >;
 }
 
 interface SettingHelpContent {
@@ -88,58 +84,49 @@ const SEARCH_PRESETS: SearchPreset[] = [
     id: 'instant',
     label: 'Instant',
     description: 'Fastest preset that still keeps a meaningful lookahead',
-    values: {
-      lookaheadDepth: 32,
-      searchTimeBudgetMs: 1000,
-      searchMaxNodes: 400000,
-      searchBeamWidth: 5,
-    },
   },
   {
     id: 'fast',
     label: 'Fast',
     description: 'Midpoint preset with lower wait than Balanced',
-    values: {
-      lookaheadDepth: 48,
-      searchTimeBudgetMs: 2000,
-      searchMaxNodes: 1000000,
-      searchBeamWidth: 5,
-    },
   },
   {
     id: 'balanced',
     label: 'Balanced',
-    description: 'Recommended default for most real crafts',
-    values: {
-      lookaheadDepth: DEFAULT_SEARCH_SETTINGS.lookaheadDepth,
-      searchTimeBudgetMs: DEFAULT_SEARCH_SETTINGS.searchTimeBudgetMs,
-      searchMaxNodes: DEFAULT_SEARCH_SETTINGS.searchMaxNodes,
-      searchBeamWidth: DEFAULT_SEARCH_SETTINGS.searchBeamWidth,
-    },
+    description: 'Moderate budget for harder real crafts',
   },
   {
     id: 'high_accuracy',
     label: 'High Accuracy',
     description: 'Deep search for difficult late-game turns',
-    values: {
-      lookaheadDepth: 80,
-      searchTimeBudgetMs: 8000,
-      searchMaxNodes: 3500000,
-      searchBeamWidth: 9,
-    },
   },
   {
     id: 'max',
     label: 'Max',
     description: 'Largest budget; best for the hardest turns and long crafts',
-    values: {
-      lookaheadDepth: 96,
-      searchTimeBudgetMs: 10000,
-      searchMaxNodes: 5000000,
-      searchBeamWidth: 12,
-    },
   },
 ];
+
+function getSearchPresetBudget(
+  presetId: SearchPresetId,
+  engine: OptimizerEngine,
+): SearchPresetBudget {
+  return engine === 'experimental'
+    ? EXPERIMENTAL_SEARCH_PRESET_BUDGETS[presetId]
+    : LEGACY_SEARCH_PRESET_BUDGETS[presetId];
+}
+
+function matchesSearchPresetBudget(
+  settings: CraftBuddySettings,
+  values: SearchPresetBudget,
+): boolean {
+  return (
+    settings.lookaheadDepth === values.lookaheadDepth &&
+    settings.searchTimeBudgetMs === values.searchTimeBudgetMs &&
+    settings.searchMaxNodes === values.searchMaxNodes &&
+    settings.searchBeamWidth === values.searchBeamWidth
+  );
+}
 
 const SEARCH_BUDGET_HELP: SettingHelpContent = {
   title: 'Search budget coupling',
@@ -564,18 +551,23 @@ export const SettingsPanel = memo(function SettingsPanel({
     | 'searchGoalPriorityBias'
     | 'optimizerEngine';
 
-  const handleSettingChange = useCallback(
-    <K extends keyof CraftBuddySettings>(
-      key: K,
-      value: CraftBuddySettings[K],
-    ): CraftBuddySettings => {
-      const newSettings = saveSettings({ [key]: value });
+  const applySettingsPatch = useCallback(
+    (patch: Partial<CraftBuddySettings>): CraftBuddySettings => {
+      const newSettings = saveSettings(patch);
       setSettings(newSettings);
       setDraftSettings(newSettings);
       onSettingsChange?.(newSettings);
       return newSettings;
     },
     [onSettingsChange],
+  );
+
+  const handleSettingChange = useCallback(
+    <K extends keyof CraftBuddySettings>(
+      key: K,
+      value: CraftBuddySettings[K],
+    ): CraftBuddySettings => applySettingsPatch({ [key]: value }),
+    [applySettingsPatch],
   );
 
   const handleSliderDraftChange = useCallback(
@@ -616,29 +608,39 @@ export const SettingsPanel = memo(function SettingsPanel({
   const handleEngineChange = useCallback(
     (engine: OptimizerEngine) => {
       if (settings.optimizerEngine === engine) return;
-      const newSettings = handleSettingChange('optimizerEngine', engine);
+      const activePreset = SEARCH_PRESETS.find((preset) =>
+        matchesSearchPresetBudget(
+          settings,
+          getSearchPresetBudget(preset.id, settings.optimizerEngine),
+        ),
+      );
+      const newSettings = applySettingsPatch({
+        optimizerEngine: engine,
+        ...(activePreset
+          ? getSearchPresetBudget(activePreset.id, engine)
+          : {}),
+      });
       onSearchSettingsChange?.(newSettings);
     },
-    [settings.optimizerEngine, handleSettingChange, onSearchSettingsChange],
+    [settings, applySettingsPatch, onSearchSettingsChange],
   );
 
   const handleApplyPreset = useCallback(
     (preset: SearchPreset) => {
-      const newSettings = saveSettings(preset.values);
-      setSettings(newSettings);
-      setDraftSettings(newSettings);
-      onSettingsChange?.(newSettings);
+      const newSettings = applySettingsPatch(
+        getSearchPresetBudget(preset.id, settings.optimizerEngine),
+      );
       onSearchSettingsChange?.(newSettings);
     },
-    [onSettingsChange, onSearchSettingsChange],
+    [settings.optimizerEngine, applySettingsPatch, onSearchSettingsChange],
   );
 
   const isPresetActive = useCallback(
     (preset: SearchPreset): boolean =>
-      settings.lookaheadDepth === preset.values.lookaheadDepth &&
-      settings.searchTimeBudgetMs === preset.values.searchTimeBudgetMs &&
-      settings.searchMaxNodes === preset.values.searchMaxNodes &&
-      settings.searchBeamWidth === preset.values.searchBeamWidth,
+      matchesSearchPresetBudget(
+        settings,
+        getSearchPresetBudget(preset.id, settings.optimizerEngine),
+      ),
     [settings],
   );
 
@@ -1069,17 +1071,21 @@ export const SettingsPanel = memo(function SettingsPanel({
                   <FlexRow gap={0.65} sx={{ flexWrap: 'wrap' }}>
                     {SEARCH_PRESETS.map((preset) => {
                       const active = isPresetActive(preset);
+                      const values = getSearchPresetBudget(
+                        preset.id,
+                        settings.optimizerEngine,
+                      );
                       return (
                         <Tooltip
                           key={preset.id}
                           title={renderHelpContent({
                             title: preset.label,
                             description: preset.description,
-                            note: `Depth ${preset.values.lookaheadDepth} | Time ${formatSeconds(
-                              preset.values.searchTimeBudgetMs,
+                            note: `Depth ${values.lookaheadDepth} | Time ${formatSeconds(
+                              values.searchTimeBudgetMs,
                             )} | Nodes ${formatNodesThousands(
-                              preset.values.searchMaxNodes,
-                            )} | Beam ${preset.values.searchBeamWidth}`,
+                              values.searchMaxNodes,
+                            )} | Beam ${values.searchBeamWidth}`,
                           })}
                           enterDelay={250}
                           placement="top"
