@@ -3,7 +3,7 @@ title: API Exposure Requests
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-11
+last_verified: 2026-04-26
 source_of_truth: src/modContent/index.ts, src/optimizer/*
 review_cycle_days: 30
 related_files:

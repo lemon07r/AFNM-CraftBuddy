@@ -3,7 +3,7 @@ title: API Request Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-11
+last_verified: 2026-04-26
 source_of_truth: docs/dev-requests/API_EXPOSURE_REQUESTS.md
 review_cycle_days: 14
 related_files:
@@ -23,10 +23,14 @@ related_files:
 | Completion/perfection cap getters | Available (`afnm-types@0.6.50`) | ModAPI cap getters wired in integration with heuristic fallback |
 | Root-state subscribe/snapshot APIs | Available (`afnm-types@0.6.50`) | `window.modAPI.subscribe(...)` / `getGameStateSnapshot()` are now the primary crafting-session/store path |
 | UI injection host | Available (`afnm-types@0.6.50`) | Not adopted yet; candidate replacement for the manual overlay container |
-| Redux action hook | Available (`afnm-types@0.6.50`) | Not adopted yet; candidate replacement for some polling/manual transition observation |
+| Redux action hook (`onReduxAction`) | Available (`afnm-types@0.6.50`; signature changed in `0.6.52` to include `payload` param) | Not adopted; `subscribe()` + snapshots remain the recommended state-observation path |
+| Redux payload interceptor (`onReduxActionPayload`) | Available (`afnm-types@0.6.52`) | New in 0.6.52; intercept/modify action payloads before reducer. Not adopted; not needed for CraftBuddy's read-only observation pattern |
 | Native action cost preview (`getActionCost`) | Available (`afnm-types@0.6.50`) | New in 0.6.50; native post-modifier action cost preview |
 | Native condition evaluator (`evaluateCraftingCondition`) | Available (`afnm-types@0.6.50`) | New in 0.6.50; native crafting condition evaluation |
 | Native stat resolver (`getActualCraftingStat`) | Available (`afnm-types@0.6.50`) | New in 0.6.50; native crafting stat resolution |
+| Translation utils (`t`/`tPlural`/`tr`) | Available (`afnm-types@0.6.52`) | New in 0.6.52; runtime i18n helpers. Not adopted; CraftBuddy UI is English-only |
+| Save/load APIs (`makeSave`/`loadSave`/`listSaves`) | Available (`afnm-types@0.6.52`) | New in 0.6.52; character-scoped backup saves. Not relevant for crafting optimizer |
+| GameIconButton `tooltip` prop | Available (`afnm-types@0.6.52`) | New in 0.6.52; native tooltip on game icon buttons. CraftBuddy uses MUI Tooltip directly instead |
 | Finalized post-modifier cost preview helpers | **Pending** | Internal runtime cost modeling + cost-order/parity checks active |
 | Harmony state/config data | Available | Integrated into optimizer simulation |
 | Buff definitions/effects payloads | Available | Integrated into buff simulation |
