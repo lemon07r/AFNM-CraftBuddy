@@ -17,6 +17,7 @@ import {
 import { CraftingState } from '../optimizer/state';
 import {
   applySkill,
+  calculateActionSurvivabilityFloor,
   calculateSkillGains,
   OptimizerConfig,
   SkillDefinition,
@@ -409,6 +410,31 @@ describe('Harmony integration with applySkill', () => {
     expect(newState!.harmonyData?.forgeWorks?.heat).toBe(2);
     // Heat 2 is suboptimal zone → -10 harmony
     expect(newState!.harmony).toBe(-10);
+  });
+
+  it('should include resonance-triggered stability loss in survivability floors', () => {
+    const config: OptimizerConfig = {
+      ...sublimeConfig,
+      craftingType: 'resonance',
+    };
+    const state = new CraftingState({
+      qi: 100,
+      stability: 4,
+      initialMaxStability: 60,
+      harmonyData: {
+        resonance: { resonance: 'fusion', strength: 3, pendingCount: 0 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+    });
+    const refine = makeSkill('refine', 'Soulflame Refine');
+
+    const nextState = applySkill(state, refine, config);
+    const floor = calculateActionSurvivabilityFloor(state, refine, config);
+
+    expect(nextState?.stability).toBe(0);
+    expect(floor).not.toBeNull();
+    expect(floor!.stability).toBe(0);
+    expect(floor!.survivalProbability).toBe(0);
   });
 
   it('should not update harmony for non-sublime crafts', () => {

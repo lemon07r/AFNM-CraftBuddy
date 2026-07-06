@@ -353,6 +353,10 @@ const SCORING = {
   // forge heat 4-6) vs a terrible one (heat 0 or 10).  0.15× means at
   // full remaining work, optimal heat adds ~15% of totalTargetMagnitude.
   HARMONY_SUBSYSTEM_QUALITY_WEIGHT: 0.15,
+  // Finished sublime crafts should still distinguish higher resolved bonus
+  // bands after the multiplied raw target is already satisfied. This keeps
+  // late Tier IV/V outcomes from collapsing to the same score.
+  SUBLIME_FINISH_TIER_BONUS_FRACTION: 0.75,
 } as const;
 
 // ── Scoring context ─────────────────────────────────────────────────────────
@@ -2207,6 +2211,30 @@ function scoreFinishedOutcome(
 
       if (outcomeModeTargetsMet) {
         outcomeScore += targetMetBonus * (SCORING.SUBLIME_MET_EXTRA - 1);
+      }
+
+      if (
+        isSublimeCraft &&
+        targetCompletion > 0 &&
+        targetPerfection > 0 &&
+        targetMultiplier > 1
+      ) {
+        const desiredResolvedTier = Math.max(2, Math.floor(targetMultiplier));
+        const resolvedTier = Math.min(
+          desiredResolvedTier,
+          completionOutcome.guaranteed,
+          perfectionOutcome.guaranteed,
+        );
+        if (resolvedTier > 1) {
+          const baseFinishMagnitude = Math.max(
+            1,
+            Math.max(0, targetCompletion) + Math.max(0, targetPerfection),
+          );
+          outcomeScore +=
+            (resolvedTier - 1) *
+            baseFinishMagnitude *
+            SCORING.SUBLIME_FINISH_TIER_BONUS_FRACTION;
+        }
       }
 
       expectedScore += probability * outcomeScore;

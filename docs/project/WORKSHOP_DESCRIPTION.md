@@ -15,6 +15,9 @@ related_files:
 [h1]CraftBuddy[/h1]
 Crafting optimizer for Ascend From Nine Mountains. CraftBuddy watches your live craft state, calculates the best next action, and shows you why — so you can craft with confidence instead of guesswork.
 
+[h1]Latest update[/h1]
+v5.2.0 improves sublime finish scoring, False Fusion-style setup recommendations, Soulflame/resonance stability accounting, and compact rotation visibility.
+
 [h1]Features[/h1]
 [list]
 [*] Real-time recommendation for the next crafting action

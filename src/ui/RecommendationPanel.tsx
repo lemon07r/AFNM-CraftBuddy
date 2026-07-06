@@ -1548,14 +1548,16 @@ const AutoBuddyLoadingCard = memo(function AutoBuddyLoadingCard({
 const RotationSection = memo(function RotationSection({
   rotation,
   maxDisplay,
+  compact = false,
 }: {
   rotation: string[];
   maxDisplay: number;
+  compact?: boolean;
 }) {
   if (rotation.length <= 1) return null;
 
   return (
-    <Box sx={{ mb: 1.5 }}>
+    <Box sx={{ mb: compact ? 1 : 1.5 }}>
       <SubSectionHeader>Suggested rotation:</SubSectionHeader>
       <FlexRow gap={0.5} wrap align="center">
         {rotation.slice(0, maxDisplay).map((skillName, idx) => (
@@ -1565,14 +1567,21 @@ const RotationSection = memo(function RotationSection({
               size="small"
               sx={{
                 backgroundColor:
-                  idx === 0 ? 'rgba(74, 222, 128, 0.12)' : 'rgba(60, 65, 80, 0.6)',
+                  idx === 0
+                    ? 'rgba(74, 222, 128, 0.12)'
+                    : 'rgba(60, 65, 80, 0.6)',
                 color: idx === 0 ? colors.completion : colors.textSecondary,
-                fontSize: '0.7rem',
-                height: 22,
+                fontSize: compact ? '0.64rem' : '0.7rem',
+                height: compact ? 20 : 22,
+                maxWidth: compact ? 138 : 220,
                 border:
                   idx === 0
                     ? `1px solid ${colors.completion}40`
                     : '1px solid rgba(100, 100, 100, 0.35)',
+                '& .MuiChip-label': {
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                },
               }}
             />
             {idx < Math.min(rotation.length - 1, maxDisplay - 1) && (
@@ -1600,6 +1609,7 @@ const FinalStateSection = memo(function FinalStateSection({
   targetCompletion,
   targetPerfection,
   turnsCount,
+  compact = false,
 }: {
   state: {
     completion: number;
@@ -1612,6 +1622,7 @@ const FinalStateSection = memo(function FinalStateSection({
   targetCompletion: number;
   targetPerfection: number;
   turnsCount: number;
+  compact?: boolean;
 }) {
   const targetsMet =
     state.completion >= targetCompletion &&
@@ -1620,8 +1631,8 @@ const FinalStateSection = memo(function FinalStateSection({
   return (
     <Box
       sx={{
-        mb: 1.5,
-        p: 1,
+        mb: compact ? 1 : 1.5,
+        p: compact ? 0.75 : 1,
         background: 'rgba(0, 40, 80, 0.25)',
         borderRadius: 1.5,
         border: '1px solid rgba(100, 180, 255, 0.2)',
@@ -1633,20 +1644,43 @@ const FinalStateSection = memo(function FinalStateSection({
         />
         <Typography
           variant="body2"
-          sx={{ color: colors.perfection, fontWeight: 500, opacity: 0.9 }}
+          sx={{
+            color: colors.perfection,
+            fontWeight: 500,
+            opacity: 0.9,
+            fontSize: compact ? '0.76rem' : undefined,
+          }}
         >
           After {turnsCount} turns:
         </Typography>
       </FlexRow>
 
-      <FlexRow gap={2} wrap>
-        <Typography variant="body2" sx={{ color: colors.completionLight }}>
+      <FlexRow gap={compact ? 0.75 : 2} wrap>
+        <Typography
+          variant="body2"
+          sx={{
+            color: colors.completionLight,
+            fontSize: compact ? '0.74rem' : undefined,
+          }}
+        >
           Comp: {formatProgress(state.completion, targetCompletion)}
         </Typography>
-        <Typography variant="body2" sx={{ color: colors.perfection }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: colors.perfection,
+            fontSize: compact ? '0.74rem' : undefined,
+          }}
+        >
           Perf: {formatProgress(state.perfection, targetPerfection)}
         </Typography>
-        <Typography variant="body2" sx={{ color: colors.stability }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: colors.stability,
+            fontSize: compact ? '0.74rem' : undefined,
+          }}
+        >
           Stab:{' '}
           {state.maxStability != null && state.maxStability > 0
             ? formatProgress(state.stability, state.maxStability)
@@ -1659,7 +1693,11 @@ const FinalStateSection = memo(function FinalStateSection({
           <CheckCircleIcon sx={{ color: colors.completion, fontSize: 14 }} />
           <Typography
             variant="body2"
-            sx={{ color: colors.completion, fontStyle: 'italic' }}
+            sx={{
+              color: colors.completion,
+              fontStyle: 'italic',
+              fontSize: compact ? '0.74rem' : undefined,
+            }}
           >
             Targets will be met!
           </Typography>
@@ -1667,13 +1705,27 @@ const FinalStateSection = memo(function FinalStateSection({
       )}
 
       {state.projectedSuccessChance != null && (
-        <Typography variant="body2" sx={{ color: colors.gold, mt: 0.5 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: colors.gold,
+            mt: 0.5,
+            fontSize: compact ? '0.74rem' : undefined,
+          }}
+        >
           Finish chance: {formatSuccessChance(state.projectedSuccessChance)}
         </Typography>
       )}
 
       {state.turnsRemaining > 0 && (
-        <Typography variant="body2" sx={{ color: colors.textMuted, mt: 0.5 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: colors.textMuted,
+            mt: 0.5,
+            fontSize: compact ? '0.72rem' : undefined,
+          }}
+        >
           ~{state.turnsRemaining} more turns needed after
         </Typography>
       )}
@@ -2361,24 +2413,28 @@ export function RecommendationPanel({
           />
 
           {/* Optimal rotation preview */}
-          {showOptimalRotation && result.optimalRotation && !compactMode && (
+          {showOptimalRotation && result.optimalRotation && (
             <RotationSection
               rotation={result.optimalRotation}
-              maxDisplay={maxRotationDisplay}
+              maxDisplay={
+                compactMode
+                  ? Math.min(maxRotationDisplay, 4)
+                  : maxRotationDisplay
+              }
+              compact={compactMode}
             />
           )}
 
           {/* Expected final state */}
-          {showExpectedFinalState &&
-            result.expectedFinalState &&
-            !compactMode && (
-              <FinalStateSection
-                state={result.expectedFinalState}
-                targetCompletion={targetCompletion}
-                targetPerfection={targetPerfection}
-                turnsCount={result.optimalRotation?.length || 1}
-              />
-            )}
+          {showExpectedFinalState && result.expectedFinalState && (
+            <FinalStateSection
+              state={result.expectedFinalState}
+              targetCompletion={targetCompletion}
+              targetPerfection={targetPerfection}
+              turnsCount={result.optimalRotation?.length || 1}
+              compact={compactMode}
+            />
+          )}
 
           {/* Alternative skills */}
           {maxAlternatives > 0 &&

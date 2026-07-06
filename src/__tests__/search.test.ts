@@ -1459,6 +1459,117 @@ describe('finish craft policy', () => {
     expect(finishCraft!.projectedSuccessChance).toBe(1);
   });
 
+  it('scores fifth-tier sublime finish quality above a weaker early finish', () => {
+    const fifthTierThreshold = getThresholdForGuaranteedBonusCount(100, 5);
+    const fourthTierThreshold = getThresholdForGuaranteedBonusCount(100, 4);
+    const fifthTierState = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: fifthTierThreshold,
+      perfection: fifthTierThreshold,
+    });
+    const fourthTierState = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: fourthTierThreshold,
+      perfection: fourthTierThreshold,
+    });
+
+    const fifthTierOutcome = evaluateCraftEndOutcomeDistribution({
+      state: fifthTierState,
+      targetCompletion: 100,
+      targetPerfection: 100,
+      hasDistinctSublimeOutcome: true,
+    });
+    const fifthTierScore = scoreFinishedOutcome(
+      fifthTierState,
+      100,
+      100,
+      true,
+      5,
+    );
+    const fourthTierScore = scoreFinishedOutcome(
+      fourthTierState,
+      100,
+      100,
+      true,
+      5,
+    );
+
+    expect(fifthTierThreshold).toBeGreaterThan(fourthTierThreshold);
+    expect(fifthTierOutcome.successChance).toBe(1);
+    expect(fifthTierOutcome.sublimeChance).toBe(1);
+    expect(fifthTierScore).toBeGreaterThan(fourthTierScore + 100);
+  });
+
+  it('sets up False Fusion-style intensity before spending a completion push', () => {
+    const falseFusionSetup = createCustomSkill({
+      name: 'False Fusion',
+      key: 'false_fusion_setup',
+      type: 'support',
+      qiCost: 0,
+      stabilityCost: 1,
+      effects: [
+        {
+          kind: 'createBuff' as const,
+          stacks: { value: 1 },
+          buff: {
+            name: 'False Fusion',
+            canStack: true,
+            maxStacks: 1,
+            stats: { intensity: { value: 100 } },
+            effects: [],
+            onFusion: [{ kind: 'negate' as const }],
+          },
+        },
+      ],
+    });
+    const completionPush = createCustomSkill({
+      name: 'Completion Push',
+      key: 'completion_push',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 1,
+      baseCompletionGain: 1,
+      scalesWithIntensity: true,
+    });
+    const quickPush = createCustomSkill({
+      name: 'Quick Push',
+      key: 'quick_push',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 1,
+      baseCompletionGain: 2,
+      scalesWithIntensity: true,
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 20,
+      baseControl: 20,
+      skills: [falseFusionSetup, completionPush, quickPush],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 100,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 3);
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('false_fusion_setup');
+    expect(result.recommendation!.followUpSkill?.name).toBe('Completion Push');
+    expect(result.optimalRotation?.slice(0, 2)).toEqual([
+      'False Fusion',
+      'Completion Push',
+    ]);
+    expect(result.expectedFinalState?.completion).toBeGreaterThanOrEqual(100);
+  });
+
   it('stabilizes before chasing sublime progress when base success is already secured but runway is gone', () => {
     const stabilize = createCustomSkill({
       name: 'Forceful Stabilize',
