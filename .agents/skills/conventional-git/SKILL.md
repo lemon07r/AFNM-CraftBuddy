@@ -37,7 +37,7 @@ Standardized commit messages and branch naming for AFNM mods.
 ```
 feat: add crafting difficulty modifier via onDeriveRecipeDifficulty hook
 fix: guard against double mod installation on hot reload
-docs: update ModAPI quick reference for 0.6.50 hooks
+docs: update ModAPI quick reference for 0.7 hooks
 perf: throttle subscribe callback to 4 Hz
 chore(release): v1.2.0
 ```

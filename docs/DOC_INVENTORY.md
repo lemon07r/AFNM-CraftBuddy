@@ -3,7 +3,7 @@ title: Documentation Inventory
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-25
+last_verified: 2026-07-06
 source_of_truth: repository markdown file inventory
 review_cycle_days: 30
 related_files:
@@ -12,7 +12,7 @@ related_files:
 
 # Documentation Inventory
 
-Generated on: 2026-04-25
+Generated on: 2026-07-06
 
 ## Summary
 
@@ -21,10 +21,10 @@ Generated on: 2026-04-25
 | project | 12 |
 | dev-request | 2 |
 | project-meta | 1 |
-| history | 6 |
+| history | 0 |
 | reference | 20 |
 | root-or-other | 14 |
-| total | 55 |
+| total | 49 |
 
 ## Authoritative Docs
 
@@ -50,12 +50,6 @@ Generated on: 2026-04-25
 
 | Path | Status | Authoritative | Owner | Decision |
 |---|---|---|---|---|
-| `docs/history/AFNM_Mod_Guide.md` | historical | false | craftbuddy-maintainers | keep-historical |
-| `docs/history/AFNM_V2_BRANCH_PROMPTS.md` | historical | false | craftbuddy-maintainers | keep-historical |
-| `docs/history/CHANGELOG_v2.0.md` | historical | false | craftbuddy-maintainers | keep-historical |
-| `docs/history/GAME_MECHANICS_ANALYSIS.md` | historical | false | craftbuddy-maintainers | keep-historical |
-| `docs/history/MOD_ANALYSIS.md` | historical | false | craftbuddy-maintainers | keep-historical |
-| `docs/history/README.md` | historical | false | craftbuddy-maintainers | keep-historical |
 
 ## Root/Other Markdown
 

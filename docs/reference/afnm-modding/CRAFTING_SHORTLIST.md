@@ -14,7 +14,7 @@ related_files:
 
 # Crafting Reference Shortlist
 
-Use this shortlist before opening the archived full imported corpus (`archive/reference/afnm-modding-full/`).
+Use this shortlist before opening broader reference docs.
 
 Reference docs are non-authoritative. Confirm any mechanic or optimizer claim against `docs/project/MECHANICS_PARITY.md`, code, and tests before implementing changes.
 

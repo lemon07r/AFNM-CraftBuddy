@@ -9,7 +9,6 @@ review_cycle_days: 180
 related_files:
   - docs/reference/afnm-modding/README.md
   - docs/reference/afnm-crafting-guide/index.md
-  - archive/reference/afnm-modding-full
 ---
 
 # Reference Docs Index
@@ -17,4 +16,3 @@ related_files:
 - `docs/reference/afnm-modding/` - curated AFNM modding reference subset
 - `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` - curated CraftBuddy-relevant shortlist
 - `docs/reference/afnm-crafting-guide/` - distilled community crafting-guide notes for hypotheses and regression seeding only; verify against `docs/project/*`
-- `archive/reference/afnm-modding-full/` - archived full imported snapshot (use only if needed)

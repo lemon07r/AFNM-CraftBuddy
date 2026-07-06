@@ -3,7 +3,7 @@ title: Docs Governance
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-04
+last_verified: 2026-07-06
 source_of_truth: package.json, scripts/docs/*
 review_cycle_days: 30
 related_files:
@@ -15,7 +15,7 @@ related_files:
 
 ## Documentation model
 
-For implementation decisions, always prefer: code/tests → `AGENTS.md` → `docs/project/*` → `docs/dev-requests/*`. Use `docs/history/*` and `docs/reference/*` only as supporting context. Use `archive/*` only when curated docs are insufficient.
+For implementation decisions, always prefer: code/tests → `AGENTS.md` → `docs/project/*` → `docs/dev-requests/*`. Use `docs/reference/*` only as supporting context.
 
 ### Documentation classes
 
@@ -23,13 +23,11 @@ For implementation decisions, always prefer: code/tests → `AGENTS.md` → `doc
 | --- | --- | --- |
 | `docs/project/*` | authoritative | Implementation docs |
 | `docs/dev-requests/*` | authoritative | External dependency tracking |
-| `docs/history/*` | non-authoritative | Historical snapshots |
 | `docs/reference/*` | non-authoritative | Curated AFNM reference subset |
-| `archive/*` | non-authoritative | Archival snapshots (excluded from docs checks) |
 
 ## Mandatory metadata fields
 
-For `docs/project/*`, `docs/dev-requests/*`, and `docs/history/*`:
+For `docs/project/*` and `docs/dev-requests/*`:
 
 `title`, `status`, `authoritative`, `owner`, `last_verified`, `source_of_truth`, `review_cycle_days`, `related_files`
 
@@ -41,9 +39,7 @@ For `docs/project/*`, `docs/dev-requests/*`, and `docs/history/*`:
 ## Context hygiene
 
 - Do not bulk-load `docs/reference/*` unless blocked.
-- Do not use `archive/*` by default.
 - Do not leave generated scrape/output markdown (for example `.firecrawl/*`) in the worktree when running docs checks; docs validation is for repository docs, not transient research artifacts.
-- Never cite historical docs as current truth without re-verification.
 
 ## Update policy
 

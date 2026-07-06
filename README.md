@@ -153,9 +153,7 @@ CraftBuddy prefers direct game data when available and uses documented fallback 
 
 - Authoritative project docs: `docs/project/`
 - Dev API request tracking: `docs/dev-requests/`
-- Historical snapshots: `docs/history/`
 - Curated AFNM reference subset: `docs/reference/`
-- Archived full reference/deprecated snapshots: `archive/` (traceability only)
 - Agent entrypoint: `docs/project/START_HERE_FOR_AGENTS.md`
 
 ## My Other Mods

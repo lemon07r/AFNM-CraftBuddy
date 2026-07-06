@@ -3,7 +3,7 @@ title: Mod API Integration
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-25
+last_verified: 2026-07-06
 source_of_truth: src/modContent/index.ts, src/modContent/craftingStoreState.ts
 review_cycle_days: 21
 related_files:
@@ -34,7 +34,7 @@ Craft-session visibility treats root-state `screen.screen === 'recipe'` plus a l
 
 `modAPI.utils.evaluateScaling` is intentionally not used by optimizer simulation because the live provider can drift from hypothetical future-state variables.
 
-## Runtime 0.6.50 additions
+## Current Runtime Surfaces
 
 - Root ModAPI state APIs: `subscribe`, `getGameStateSnapshot`, `injectUI`
 - `hooks.onReduxAction`

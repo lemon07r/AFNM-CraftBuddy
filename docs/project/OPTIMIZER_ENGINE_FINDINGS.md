@@ -3,7 +3,7 @@ title: Optimizer Engine Findings and Improvement Brief
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-25
+last_verified: 2026-07-06
 source_of_truth: src/settings/index.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/src/lib.rs, src/__tests__/__fixtures__/replay-snapshots/*
 review_cycle_days: 30
 related_files:

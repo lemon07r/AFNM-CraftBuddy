@@ -3,7 +3,7 @@ title: API Exposure Requests
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-26
+last_verified: 2026-07-06
 source_of_truth: src/modContent/index.ts, src/optimizer/*
 review_cycle_days: 30
 related_files:
@@ -21,28 +21,28 @@ This list contains the smallest set of exposures that materially improve optimiz
 - Data/function: `evaluateScaling(scaling, variables, defaultValue)`
 - Why: central formula for technique/buff amounts
 - Mod usage: only usable if the API is guaranteed pure for hypothetical future-state variables; current optimizer keeps local evaluation authoritative for all scaling in search/simulation
-- Status: available via `modAPI.utils.evaluateScaling` (`afnm-types@0.6.50`), but the current runtime provider is not trusted in search because it can diverge from hypothetical-state simulation
+- Status: available via `modAPI.utils.evaluateScaling`, but the current runtime provider is not trusted in search because it can diverge from hypothetical-state simulation
 
 ### P0-2: Expose game-native overcrit helper
 
 - Data/function: `calculateCraftingOvercrit(...)` (or equivalent effective multiplier)
 - Why: high-realm crit handling must match game exactly
 - Mod usage: replace overcrit EV helper in `src/optimizer/gameTypes.ts`
-- Status: available via `modAPI.utils.calculateCraftingOvercrit` (`afnm-types@0.6.50`)
+- Status: available via `modAPI.utils.calculateCraftingOvercrit`
 
 ### P0-3: Expose canonical action availability precheck
 
 - Data/function: `canUseAction(technique, state)`
 - Why: avoids edge-case drift in internal availability checks
 - Mod usage: authoritative gating before search expansion in `src/optimizer/skills.ts` / `src/optimizer/search.ts`
-- Status: available via `modAPI.utils.canUseAction` (`afnm-types@0.6.50`)
+- Status: available via `modAPI.utils.canUseAction`
 
 ### P1-1: Expose completion/perfection caps
 
 - Data/function: cap getters used by runtime craft logic
 - Why: avoid recommending gains that will be fully capped away
 - Mod usage: cap-aware clamping and scoring
-- Status: available via `modAPI.utils.getMaxCompletion/getMaxPerfection` (`afnm-types@0.6.50`)
+- Status: available via `modAPI.utils.getMaxCompletion/getMaxPerfection`
 
 ### P1-2: Expose finalized post-modifier costs
 
@@ -55,7 +55,7 @@ This list contains the smallest set of exposures that materially improve optimiz
 - Data/function: stable key/id for completion bonus stacks
 - Why: avoid name-based brittleness
 - Mod usage: reliable completion bonus extraction in integration layer
-- Status: available via `modAPI.utils.completionBonusBuffName` (`afnm-types@0.6.50`)
+- Status: available via `modAPI.utils.completionBonusBuffName`
 
 ### P2-1: Item effect preview helpers for crafting context
 
@@ -76,9 +76,9 @@ CraftBuddy now uses native provider-backed paths for exposed APIs with guarded f
 - native known-technique resolution via `modAPI.utils.craftingTechniqueFromKnown`, keyed by the live `CraftingTechnique.name` contract and preserving live cooldown state
 - native completion-bonus identifier via `modAPI.utils.completionBonusBuffName`, with heuristic fallback
 - native alchemy max-toxicity fallback via `getMaxToxicity`
-- native action cost preview via `modAPI.utils.getActionCost` (new in `0.6.50`)
-- native crafting condition evaluator via `modAPI.utils.evaluateCraftingCondition` (new in `0.6.50`)
-- native crafting stat resolver via `modAPI.utils.getActualCraftingStat` (new in `0.6.50`)
+- native action cost preview via `modAPI.utils.getActionCost`
+- native crafting condition evaluator via `modAPI.utils.evaluateCraftingCondition`
+- native crafting stat resolver via `modAPI.utils.getActualCraftingStat`
 - `noQiCost` technique field detection — techniques with zero Qi cost now skip cost evaluation
 - `craftingTeamUpOverride` companion buff integration — companion crafting buffs flow into optimizer state
 

@@ -16,5 +16,3 @@ For AFNM-CraftBuddy implementation decisions, use:
 2. `docs/project/*`
 
 Use this subtree only when you need additional upstream context.
-
-The full imported snapshot is archived at `archive/reference/afnm-modding-full/`.

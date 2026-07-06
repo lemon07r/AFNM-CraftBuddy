@@ -3,7 +3,7 @@ title: Roadmap
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-06
+last_verified: 2026-07-06
 source_of_truth: src/optimizer/*, src/modContent/index.ts, docs/dev-requests/STATUS.md
 review_cycle_days: 30
 related_files:

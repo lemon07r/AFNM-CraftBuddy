@@ -204,4 +204,4 @@ const myTreasure: TreasureItem = {
 window.modAPI.actions.addItem(myTreasure);
 ```
 
-For broader non-crafting ModAPI examples, consult the archived full snapshot at `archive/reference/afnm-modding-full/advanced-mods/`.
+For broader non-crafting ModAPI examples, prefer the official docs at <https://lyeeedar.github.io/AfnmExampleMod/>.

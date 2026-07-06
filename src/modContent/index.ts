@@ -40,6 +40,7 @@ import {
   VISIBLE_CONDITION_QUEUE_LENGTH,
   setNativeCraftingUtils,
   setNativeCanUseActionProvider,
+  type HarmonyData,
 } from '../optimizer';
 import { preloadNativeMctsPolicyEngine } from '../optimizer/nativeMcts';
 import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
@@ -2821,7 +2822,9 @@ function updateRecommendation(
 
   // Extract harmony data from game's progressState for sublime crafts
   // @ts-ignore - harmonyTypeData exists on game's ProgressState
-  const gameHarmonyData = progressState?.harmonyTypeData;
+  const gameHarmonyData = progressState?.harmonyTypeData as
+    | HarmonyData
+    | undefined;
   // @ts-ignore - harmony exists on game's ProgressState
   const gameHarmony = progressState?.harmony ?? 0;
   const rawNativeVariables = resolveNativeCraftingVariables(

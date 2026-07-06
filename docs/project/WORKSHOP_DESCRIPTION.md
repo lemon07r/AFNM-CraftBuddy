@@ -3,7 +3,7 @@ title: Workshop Description
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-26
+last_verified: 2026-07-06
 source_of_truth: Steam Workshop item 3661729323, package.json, src/settings/index.ts, src/optimizer/search.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:

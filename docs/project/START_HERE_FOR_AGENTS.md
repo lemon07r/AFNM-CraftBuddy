@@ -3,7 +3,7 @@ title: Start Here For Agents
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-04-25
+last_verified: 2026-07-06
 source_of_truth: src/modContent/index.ts, src/optimizer/*, src/__tests__/*
 review_cycle_days: 14
 related_files:
@@ -44,8 +44,8 @@ related_files:
 
 ## Context rules
 
-- `docs/project/*` is authoritative; `docs/history/*` and `docs/reference/*` are non-authoritative context only.
-- Do not bulk-load `archive/` or the full reference corpus. Start with `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` only when modding reference docs are needed.
+- `docs/project/*` is authoritative; `docs/reference/*` is non-authoritative context only.
+- Start with `docs/reference/afnm-modding/CRAFTING_SHORTLIST.md` only when modding reference docs are needed.
 - Community guide (`docs/reference/afnm-crafting-guide/`) is a hypothesis source only. Confirm claims in `docs/project/MECHANICS_PARITY.md` and tests before acting.
 - If any doc or skill is wrong, stale, duplicated, or misleading, correct it in the same change.
 - See `docs/project/DOCS_GOVERNANCE.md` for metadata and update policy.
