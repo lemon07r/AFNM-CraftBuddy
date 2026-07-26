@@ -507,3 +507,38 @@ fn matches_the_typescript_simulator() {
         );
     }
 }
+
+/// The search must return the same ranking for the same input, every time.
+///
+/// This is not a theoretical property: `normalize_distribution` used to merge
+/// the generated condition distribution through a `HashMap`, so the probability
+/// total was summed in hash order and exact ties (`positive` vs `negative` at
+/// harmony 0) were broken by hash order too. One in roughly four runs of the
+/// same craft produced a different forecast and therefore a different policy.
+/// A non-deterministic recommender cannot be regression-tested at all, so this
+/// guards the property directly.
+#[test]
+fn mcts_search_is_deterministic() {
+    let corpus = parse_corpus();
+    let mut checked = 0usize;
+    for scenario in corpus.scenarios.iter() {
+        let mut input = scenario.input.clone();
+        // Small but rollout-exercising budget: the property under test is
+        // reproducibility, not search quality.
+        input.search.iterations = 12;
+        input.search.rollout_depth = 6;
+        input.search.max_nodes = 96;
+
+        let first = Engine::new(input.clone()).run();
+        let second = Engine::new(input.clone()).run();
+        assert_eq!(
+            serde_json::to_string(&first).expect("result serializes"),
+            serde_json::to_string(&second).expect("result serializes"),
+            "scenario {} produced two different policies for one input",
+            scenario.name
+        );
+        checked += 1;
+    }
+    assert!(checked > 100, "checked only {checked} scenarios");
+    println!("determinism: {checked} scenarios re-ran identically");
+}

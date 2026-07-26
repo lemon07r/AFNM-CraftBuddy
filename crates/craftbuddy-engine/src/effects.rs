@@ -155,7 +155,7 @@ pub struct BuffDefinition {
     pub max_stacks: Option<f64>,
     #[serde(default)]
     pub stats: Option<BTreeMap<String, Scaling>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::null_default")]
     pub effects: Vec<Effect>,
     #[serde(default)]
     pub on_fusion: Option<Vec<Effect>>,

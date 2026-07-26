@@ -255,11 +255,11 @@ struct EngineSkill {
     condition_requirement: Option<String>,
     /// Authoritative game effect tree. When present it supersedes the scalar
     /// summary above, exactly as `calculateSkillGains` prefers it.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     effects: Vec<Effect>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     mastery_entries: Vec<MasteryEntry>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     mastery: MasteryBonuses,
     #[serde(default)]
     granted_buff: Option<BuffDefinition>,
@@ -2188,15 +2188,31 @@ fn generated_condition_distribution(
     ])
 }
 
+/// Mirrors `normalizeConditionDistribution` in `src/optimizer/search.ts`.
+///
+/// The merge keeps *insertion* order, exactly like the TypeScript `Map` it
+/// mirrors, and the sort is stable. Both matter: a `HashMap` here made the
+/// engine non-deterministic in two ways at once - the probability total was
+/// summed in hash order, so it drifted by an ULP between runs, and equal
+/// probabilities (harmony 0 puts `positive` and `negative` at exactly 0.5)
+/// were tie-broken by hash order, so `most_likely_condition` could return a
+/// different forecast for the same input.
 fn normalize_distribution(entries: Vec<(String, f64)>) -> Vec<(String, f64)> {
-    let mut merged = HashMap::<String, f64>::new();
+    let mut merged: Vec<(String, f64)> = Vec::with_capacity(entries.len());
     for (condition, probability) in entries {
         let probability = clamp(probability, 0.0, 1.0);
-        if probability > 0.0 {
-            *merged.entry(condition).or_insert(0.0) += probability;
+        if probability <= 0.0 {
+            continue;
+        }
+        match merged.iter_mut().find(|(key, _)| *key == condition) {
+            Some(entry) => entry.1 += probability,
+            None => merged.push((condition, probability)),
         }
     }
-    let total = merged.values().sum::<f64>();
+    let total = merged
+        .iter()
+        .map(|(_, probability)| probability)
+        .sum::<f64>();
     if total <= 0.0 {
         return vec![("neutral".to_string(), 1.0)];
     }
@@ -2438,6 +2454,22 @@ fn default_focused_bar() -> String {
 
 fn default_condition() -> String {
     "neutral".to_string()
+}
+
+/// Accepts an explicit `null` where `#[serde(default)]` is wanted.
+///
+/// Game objects use `null` for "no value", but serde treats `null` as a
+/// *present* value and fails a non-optional field, which rejects the whole
+/// payload. `src/optimizer/nativeMcts.ts` already strips nullish game data at
+/// the bridge; this is the second line of defence for the fields most likely to
+/// carry one, so a stray `null` degrades to the default instead of costing the
+/// search its native prior.
+pub(crate) fn null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 fn default_initial_max_stability() -> f64 {

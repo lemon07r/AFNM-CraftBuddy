@@ -270,6 +270,49 @@ describe('native MCTS bridge', () => {
     expect(native?.is_disciplined_touch).toBe(false);
   });
 
+  it('never sends an explicit null into the Rust payload', () => {
+    // Real 0.7.5 technique data spells "no value" as an explicit `null`, and 188
+    // of the game's 226 crafting skills carry `mastery: null`. serde treats a
+    // present `null` as a value rather than a missing field, so a single one of
+    // these rejected the entire MctsInput and silently cost the search its
+    // native prior. The invariant is therefore "no null survives the bridge".
+    const gameShaped = createSkill({
+      ...({
+        effects: [
+          {
+            kind: 'completion',
+            magnitude: 12,
+            // Nested nulls are just as fatal as top-level ones.
+            equation: null,
+            child: { kind: 'perfection', magnitude: null },
+          },
+        ],
+        masteryEntries: null,
+        mastery: null,
+        grantedBuff: null,
+        itemName: null,
+      } as unknown as Partial<SkillDefinition>),
+    });
+
+    const input = nativeMctsTesting.buildNativeMctsInput({
+      state: new CraftingState({ qi: 100, stability: 60 }),
+      config: createConfig({ skills: [gameShaped] }),
+      targetCompletion: 100,
+      targetPerfection: 80,
+    });
+
+    const native = input.skills[0];
+    expect(native?.mastery).toBeUndefined();
+    expect(native?.mastery_entries).toBeUndefined();
+    expect(native?.granted_buff).toBeUndefined();
+    expect(native?.item_name).toBeUndefined();
+    // Surviving keys keep their values; only the nullish ones are dropped.
+    expect(native?.effects).toEqual([
+      { kind: 'completion', magnitude: 12, child: { kind: 'perfection' } },
+    ]);
+    expect(JSON.stringify(input)).not.toContain('null');
+  });
+
   it('honors low explicit MCTS budgets for short searches', () => {
     const input = nativeMctsTesting.buildNativeMctsInput({
       state: new CraftingState({ qi: 100, stability: 60 }),

@@ -313,6 +313,40 @@ function optionalFiniteNumber(value: unknown): number | undefined {
   return Number.isFinite(numeric) ? numeric : undefined;
 }
 
+/**
+ * Deep-copies verbatim game data, dropping every `null` and `undefined`.
+ *
+ * `serde` treats an explicit `null` as a *present* value, so a `null` on a
+ * non-optional engine field - `mastery`, `effects`, `masteryEntries` - fails
+ * the whole `MctsInput` deserialization and silently costs the search its
+ * native prior, while an *absent* key falls back to `#[serde(default)]`. Game
+ * objects and replay snapshots both use `null` for "no value", so the
+ * difference is normalized here, at the one boundary that crosses into Rust.
+ */
+function stripNullish<T>(value: T): T | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((entry: unknown) => stripNullish(entry))
+      .filter((entry: unknown) => entry !== undefined) as T;
+  }
+  if (typeof value === 'object') {
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      const cleanedEntry = stripNullish(entry);
+      if (cleanedEntry !== undefined) {
+        cleaned[key] = cleanedEntry;
+      }
+    }
+    return cleaned as T;
+  }
+  return value;
+}
+
 function actionConsumesTurn(skill: SkillDefinition): boolean {
   return skill.consumesTurn !== undefined
     ? skill.consumesTurn
@@ -532,12 +566,12 @@ function buildNativeSkill(skill: SkillDefinition): NativeMctsSkill {
     condition_requirement: skill.conditionRequirement
       ? normalizeConditionForMcts(String(skill.conditionRequirement))
       : undefined,
-    effects: skill.effects,
-    mastery_entries: skill.masteryEntries as
+    effects: stripNullish(skill.effects),
+    mastery_entries: stripNullish(skill.masteryEntries) as
       | Array<Record<string, unknown>>
       | undefined,
-    mastery: skill.mastery,
-    granted_buff: skill.grantedBuff,
+    mastery: stripNullish(skill.mastery),
+    granted_buff: stripNullish(skill.grantedBuff),
     is_disciplined_touch: skill.isDisciplinedTouch === true,
     buff_requirement: skill.buffRequirement
       ? {
@@ -552,7 +586,7 @@ function buildNativeSkill(skill: SkillDefinition): NativeMctsSkill {
           consume_all: skill.buffCost.consumeAll === true,
         }
       : undefined,
-    item_name: skill.itemName,
+    item_name: skill.itemName ?? undefined,
     reagent_only_at_step_zero: skill.reagentOnlyAtStepZero === true,
   };
 }
