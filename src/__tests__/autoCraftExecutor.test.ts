@@ -1,4 +1,44 @@
 import { createDomAutoCraftExecutor } from '../modContent/autoCraftExecutor';
+import {
+  NativeAutoUseConflictError,
+  NativeAutoUseUnreachableError,
+  StaleCraftStateError,
+  UnverifiableCraftStateError,
+} from '../modContent/autoCraftErrors';
+import type { AutoCraftRuntimeSnapshot } from '../modContent/autoCraftController';
+import {
+  INACTIVE_NATIVE_AUTO_USE,
+  type NativeAutoUseStatus,
+} from '../modContent/nativeAutoUse';
+
+function activeNativeAutoUse(
+  coveredItemNames: string[] = ['qi_pill'],
+): NativeAutoUseStatus {
+  return {
+    active: true,
+    slotCount: coveredItemNames.length,
+    coveredItemNames: new Set(coveredItemNames),
+    pillsPerRound: 1,
+    availableToxicity: 50,
+    trainingMode: false,
+  };
+}
+
+function buildExecutorSnapshot(
+  overrides: Partial<AutoCraftRuntimeSnapshot> = {},
+): AutoCraftRuntimeSnapshot {
+  return {
+    craftSessionActive: true,
+    craftActive: true,
+    isCalculating: false,
+    result: null,
+    stateFingerprint: 'fp-1',
+    craftStateRevision: 1,
+    nativeAutoUse: INACTIVE_NATIVE_AUTO_USE,
+    verifyRevision: () => ({ kind: 'match' }),
+    ...overrides,
+  };
+}
 
 class HTMLElementMock {
   textContent: string;
@@ -155,7 +195,7 @@ describe('autoCraftExecutor', () => {
         } as any,
         reason: 'Best completion move.',
       },
-      {} as any,
+      buildExecutorSnapshot(),
     );
 
     expect(dispatch).toHaveBeenCalledWith({
@@ -184,7 +224,7 @@ describe('autoCraftExecutor', () => {
         actionName: 'Finish Craft',
         reason: 'Guaranteed craft success available now.',
       },
-      {} as any,
+      buildExecutorSnapshot(),
     );
 
     expect(dispatch).toHaveBeenCalledWith({
@@ -215,9 +255,233 @@ describe('autoCraftExecutor', () => {
         actionName: 'Finish Craft',
         reason: 'Guaranteed craft success available now.',
       },
-      {} as any,
+      buildExecutorSnapshot(),
     );
 
     expect(waitButton.click).toHaveBeenCalledTimes(1);
+  });
+
+  describe('dispatch-time state verification', () => {
+    function createStoreExecutor(dispatch: jest.Mock) {
+      const rootElement = createRoot();
+      return {
+        rootElement,
+        executor: createDomAutoCraftExecutor({
+          getRootElement: () => rootElement as any,
+          getStore: () => ({
+            dispatch,
+            getState: () => ({
+              crafting: { player: { techniques: [{ name: 'Simple Fusion' }] } },
+            }),
+          }),
+          isElementVisible: () => true,
+          isIgnoredElement: () => false,
+        }),
+      };
+    }
+
+    const request = {
+      kind: 'skill' as const,
+      actionName: 'Simple Fusion',
+      skill: { name: 'Simple Fusion' } as any,
+      reason: 'Best completion move.',
+    };
+
+    it('throws StaleCraftStateError and dispatches nothing when the craft moved', () => {
+      const dispatch = jest.fn();
+      const { executor } = createStoreExecutor(dispatch);
+
+      expect(() =>
+        executor.execute(
+          request,
+          buildExecutorSnapshot({
+            verifyRevision: () => ({
+              kind: 'stale',
+              changed: ['comp', 'tox'],
+            }),
+          }),
+        ),
+      ).toThrow(StaleCraftStateError);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('reports which fields changed on the stale error', () => {
+      const dispatch = jest.fn();
+      const { executor } = createStoreExecutor(dispatch);
+
+      try {
+        executor.execute(
+          request,
+          buildExecutorSnapshot({
+            verifyRevision: () => ({ kind: 'stale', changed: ['harmonyData'] }),
+          }),
+        );
+        throw new Error('expected a stale error');
+      } catch (error) {
+        expect(error).toBeInstanceOf(StaleCraftStateError);
+        expect((error as StaleCraftStateError).changed).toEqual([
+          'harmonyData',
+        ]);
+      }
+    });
+
+    it('throws UnverifiableCraftStateError and dispatches nothing when state cannot be read', () => {
+      const dispatch = jest.fn();
+      const { executor } = createStoreExecutor(dispatch);
+
+      expect(() =>
+        executor.execute(
+          request,
+          buildExecutorSnapshot({
+            verifyRevision: () => ({
+              kind: 'unverifiable',
+              reason: 'Live crafting player state is missing.',
+            }),
+          }),
+        ),
+      ).toThrow(UnverifiableCraftStateError);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('executes when the snapshot verifies as a match', () => {
+      const dispatch = jest.fn();
+      const { executor } = createStoreExecutor(dispatch);
+
+      executor.execute(request, buildExecutorSnapshot());
+
+      expect(dispatch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('native auto-use execution path', () => {
+    const request = {
+      kind: 'skill' as const,
+      actionName: 'Simple Fusion',
+      skill: { name: 'Simple Fusion' } as any,
+      reason: 'Best completion move.',
+    };
+
+    it('clicks the in-game control instead of dispatching so the pre-technique hook runs', () => {
+      const techniqueButton = new HTMLElementMock('Simple Fusion');
+      const rootElement = createRoot([techniqueButton]);
+      const dispatch = jest.fn();
+
+      const executor = createDomAutoCraftExecutor({
+        getRootElement: () => rootElement as any,
+        getStore: () => ({
+          dispatch,
+          getState: () => ({
+            crafting: { player: { techniques: [{ name: 'Simple Fusion' }] } },
+          }),
+        }),
+        isElementVisible: () => true,
+        isIgnoredElement: () => false,
+      });
+
+      executor.execute(
+        request,
+        buildExecutorSnapshot({ nativeAutoUse: activeNativeAutoUse() }),
+      );
+
+      expect(techniqueButton.click).toHaveBeenCalledTimes(1);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('routes the synthesized finish through the control too', () => {
+      const waitButton = new HTMLElementMock('Wait');
+      const rootElement = createRoot([waitButton]);
+      const dispatch = jest.fn();
+
+      const executor = createDomAutoCraftExecutor({
+        getRootElement: () => rootElement as any,
+        getStore: () => ({ dispatch }),
+        isElementVisible: () => true,
+        isIgnoredElement: () => false,
+      });
+
+      executor.execute(
+        {
+          kind: 'finish',
+          actionName: 'Finish Craft',
+          reason: 'Advance the craft to resolution.',
+        },
+        buildExecutorSnapshot({ nativeAutoUse: activeNativeAutoUse() }),
+      );
+
+      expect(waitButton.click).toHaveBeenCalledTimes(1);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('refuses to bypass the loadout when no control can be found', () => {
+      const rootElement = createRoot();
+      const dispatch = jest.fn();
+
+      const executor = createDomAutoCraftExecutor({
+        getRootElement: () => rootElement as any,
+        getStore: () => ({
+          dispatch,
+          getState: () => ({
+            crafting: { player: { techniques: [{ name: 'Simple Fusion' }] } },
+          }),
+        }),
+        isElementVisible: () => true,
+        isIgnoredElement: () => false,
+      });
+
+      expect(() =>
+        executor.execute(
+          request,
+          buildExecutorSnapshot({ nativeAutoUse: activeNativeAutoUse() }),
+        ),
+      ).toThrow(NativeAutoUseUnreachableError);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('refuses an item action the loadout already covers', () => {
+      const itemButton = new HTMLElementMock('Use Qi Pill');
+      const rootElement = createRoot([itemButton]);
+
+      const executor = createDomAutoCraftExecutor({
+        getRootElement: () => rootElement as any,
+        isElementVisible: () => true,
+        isIgnoredElement: () => false,
+      });
+
+      expect(() =>
+        executor.execute(
+          {
+            kind: 'item',
+            actionName: 'Use Qi Pill',
+            skill: { name: 'Use Qi Pill', itemName: 'qi_pill' } as any,
+            reason: 'Recover qi.',
+          },
+          buildExecutorSnapshot({ nativeAutoUse: activeNativeAutoUse() }),
+        ),
+      ).toThrow(NativeAutoUseConflictError);
+      expect(itemButton.click).not.toHaveBeenCalled();
+    });
+
+    it('still allows an item the loadout does not cover', () => {
+      const itemButton = new HTMLElementMock('Use Focus Pill');
+      const rootElement = createRoot([itemButton]);
+
+      const executor = createDomAutoCraftExecutor({
+        getRootElement: () => rootElement as any,
+        isElementVisible: () => true,
+        isIgnoredElement: () => false,
+      });
+
+      executor.execute(
+        {
+          kind: 'item',
+          actionName: 'Use Focus Pill',
+          skill: { name: 'Use Focus Pill', itemName: 'focus_pill' } as any,
+          reason: 'Buff control.',
+        },
+        buildExecutorSnapshot({ nativeAutoUse: activeNativeAutoUse() }),
+      );
+
+      expect(itemButton.click).toHaveBeenCalledTimes(1);
+    });
   });
 });

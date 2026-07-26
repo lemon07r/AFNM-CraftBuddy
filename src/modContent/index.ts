@@ -61,8 +61,20 @@ import { resolveBaseCraftingStats } from './configStats';
 import {
   createAutoCraftController,
   type AutoCraftExecutionRequest,
+  type AutoCraftRuntimeSnapshot,
+  type AutoCraftStateVerification,
 } from './autoCraftController';
 import { createDomAutoCraftExecutor } from './autoCraftExecutor';
+import {
+  diffCraftStateSignatures,
+  readLiveCraftStateSignature,
+  serializeHarmonyData,
+  serializeTechniqueRoster,
+} from './craftStateSignature';
+import {
+  readNativeAutoUseStatus,
+  type NativeAutoUseStatus,
+} from './nativeAutoUse';
 import {
   resolveCraftingType,
   resolveSublimeCraftState,
@@ -610,10 +622,70 @@ function buildAutoCraftStateFingerprint(): string {
     `cooldowns:${buildAutoCraftCooldownSignature()}`,
     `buffs:${buildAutoCraftBuffSignature()}`,
     `items:${buildAutoCraftInventorySignature()}`,
+    // Harmony drives several 0.7.5 outcomes and the harmony mini-game state is
+    // not derivable from the bars, so both belong in the advance signal.
+    `harmony:${parseGameNumber((lastProgressState as any)?.harmony, 0)}`,
+    `harmonyData:${serializeHarmonyData(
+      (lastProgressState as any)?.harmonyTypeData,
+    )}`,
+    // The available-technique set changes the legal action space independently of
+    // cooldowns, for example when a gated technique unlocks.
+    `techniques:${serializeTechniqueRoster(lastEntity?.techniques)}`,
   ].join(';');
 }
 
-function buildAutoCraftSnapshot() {
+/**
+ * Monotonic revision of the craft state CraftBuddy has processed.
+ *
+ * Bumped whenever the fingerprint changes so a recommendation can be tied to the
+ * exact revision it was produced from.
+ */
+let craftStateRevision = 0;
+let lastCraftStateFingerprint: string | null = null;
+
+function nextCraftStateRevision(fingerprint: string): number {
+  if (fingerprint !== lastCraftStateFingerprint) {
+    lastCraftStateFingerprint = fingerprint;
+    craftStateRevision++;
+  }
+  return craftStateRevision;
+}
+
+function readCurrentNativeAutoUseStatus(): NativeAutoUseStatus {
+  return readNativeAutoUseStatus(cachedStore);
+}
+
+/**
+ * Build the dispatch-time verification callback for a snapshot.
+ *
+ * The signature is read straight from the store rather than from CraftBuddy's
+ * cached state, because a re-derived cached fingerprint cannot see a change
+ * CraftBuddy has not processed yet - which is precisely the case the guard
+ * exists for.
+ */
+function buildCraftStateVerifier(): () => AutoCraftStateVerification {
+  const captured = readLiveCraftStateSignature(cachedStore);
+
+  return () => {
+    if (!captured.ok) {
+      return { kind: 'unverifiable', reason: captured.reason };
+    }
+
+    const current = readLiveCraftStateSignature(cachedStore);
+    if (!current.ok) {
+      return { kind: 'unverifiable', reason: current.reason };
+    }
+    if (current.signature === captured.signature) {
+      return { kind: 'match' };
+    }
+    return {
+      kind: 'stale',
+      changed: diffCraftStateSignatures(captured.signature, current.signature),
+    };
+  };
+}
+
+function buildAutoCraftSnapshot(): AutoCraftRuntimeSnapshot {
   const hasVisibleCraftingUi = detectActiveCraftingUi();
   const craftActive =
     hasConfirmedCraftSession &&
@@ -622,12 +694,18 @@ function buildAutoCraftSnapshot() {
     wasCraftingActive &&
     hasVisibleCraftingUi;
 
+  const stateFingerprint = buildAutoCraftStateFingerprint();
+
   return {
     craftSessionActive: craftActive || isCraftStartPendingActive(),
     craftActive,
     isCalculating,
     result: currentRecommendation,
-    stateFingerprint: buildAutoCraftStateFingerprint(),
+    stateFingerprint,
+    craftStep: parseGameNumber((lastProgressState as any)?.step, 0),
+    craftStateRevision: nextCraftStateRevision(stateFingerprint),
+    nativeAutoUse: readCurrentNativeAutoUseStatus(),
+    verifyRevision: buildCraftStateVerifier(),
   };
 }
 
@@ -2494,6 +2572,13 @@ interface InventoryItemLike {
 function convertGameItemsToActions(
   entity: CraftingEntity,
   inventoryItems: InventoryItemLike[] | undefined,
+  /**
+   * Items the native auto-use loadout will apply itself.
+   *
+   * Excluding them keeps the optimizer from planning a consumption the game is
+   * already going to perform, which would double-spend the player's pills.
+   */
+  excludedItemNames: ReadonlySet<string> = new Set<string>(),
 ): { itemActions: SkillDefinition[]; itemCounts: Map<string, number> } {
   const itemActions: SkillDefinition[] = [];
   const itemCounts = new Map<string, number>();
@@ -2516,6 +2601,7 @@ function convertGameItemsToActions(
       .replace(/\s+/g, '_');
     if (!normalizedName || seen.has(normalizedName)) continue;
     seen.add(normalizedName);
+    if (excludedItemNames.has(normalizedName)) continue;
 
     const inventoryEntry = inventoryItems?.find(
       (entry) => entry?.name === name,
@@ -2814,6 +2900,7 @@ function updateRecommendation(
   const { itemActions, itemCounts } = convertGameItemsToActions(
     entity,
     inventoryItems,
+    readCurrentNativeAutoUseStatus().coveredItemNames,
   );
   currentConfig = buildConfigFromEntity(
     entity,
