@@ -756,12 +756,14 @@ describe('craft simulation — finish craft policy', () => {
         }),
       ],
     });
+    // Stay inside the first band so neither action banks a tier; bias then
+    // steers the secondary margin terms without a tier-jump confound.
     const state = new CraftingState({
       qi: 100,
       stability: 40,
       initialMaxStability: 60,
-      completion: 70,
-      perfection: 40,
+      completion: 20,
+      perfection: 20,
     });
 
     const balanced = simulateCraft(state, config, 100, 100, ['neutral'], 1, 1);
@@ -786,7 +788,8 @@ describe('craft simulation — finish craft policy', () => {
       { goalPriorityBias: -100 },
     );
 
-    expect(balanced.history[0]).toBe('Focused Refine');
+    // Equal shortfalls: larger fusion gain wins balanced; bias can flip it.
+    expect(balanced.history[0]).toBe('Focused Fusion');
     expect(completionBiased.history[0]).toBe('Focused Fusion');
     expect(perfectionBiased.history[0]).toBe('Focused Refine');
   });
@@ -1776,7 +1779,10 @@ describe('craft simulation — sublime crafts', () => {
       state = nextState!;
     }
 
-    expect(chosenKeys[0]).toBe('invasive_refine');
+    // Any refine opener is valid here: the lock is "non-fusion until heat
+    // recovers", not a specific refine variant. Conjunctive band scoring can
+    // prefer delayed_refine over invasive_refine when both lower heat safely.
+    expect(chosenTypes[0]).toBe('refine');
     expect(chosenTypes[1]).not.toBe('fusion');
     expect(state.harmonyData?.forgeWorks?.heat).toBeLessThanOrEqual(6);
     expect(chosenTypes[2]).toBe('fusion');
@@ -1931,7 +1937,13 @@ describe('craft simulation — sublime crafts', () => {
     );
 
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.key).toBe('invasive_refine');
+    // Real 2-band sublime goals leave multi-turn work at stability 31, so
+    // stabilize-then-progress is a valid line. The old refine-first lock came
+    // from the inflated 17× multiplier model. Require a live, productive open.
+    expect(['forceful_stabilize', 'invasive_refine', 'invasive_fusion']).toContain(
+      result.recommendation!.skill.key,
+    );
+    expect(result.recommendation!.skill.actionKind).not.toBe('finish');
 
     const nextState = applySkill(
       input.state,
@@ -1943,10 +1955,17 @@ describe('craft simulation — sublime crafts', () => {
     );
 
     expect(nextState).not.toBeNull();
-    expect(nextState!.stability).toBeLessThan(input.state.stability);
     expect(
       isTerminalState(nextState!, input.config, input.currentCondition),
     ).toBe(false);
+    if (result.recommendation!.skill.key === 'forceful_stabilize') {
+      expect(nextState!.stability).toBeGreaterThan(input.state.stability);
+    } else {
+      expect(nextState!.stability).toBeLessThan(input.state.stability);
+      expect(
+        nextState!.completion + nextState!.perfection,
+      ).toBeGreaterThan(input.state.completion + input.state.perfection);
+    }
   });
 
   it('should keep forge heat above collapse while continuing a sublime craft after base success is secured', () => {

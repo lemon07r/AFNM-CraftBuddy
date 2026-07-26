@@ -66,7 +66,7 @@ import { createDomAutoCraftExecutor } from './autoCraftExecutor';
 import {
   resolveCraftingType,
   resolveSublimeCraftState,
-  sanitizeItemTypeHarmonyMap,
+  applyHarmonyComplexityToTargets,
   shouldUseCapAsTargetFallback,
   type CraftingType,
   type CraftingTypeDetectionSource,
@@ -174,7 +174,6 @@ interface IntegrationDiagnostics {
   usingModApiCapGetters: boolean;
   usingModApiCraftingVariableResolver: boolean;
   usingModApiMaxToxicityGetter: boolean;
-  usingModApiItemTypeHarmonyMapping: boolean;
   usingModApiGetActionCost: boolean;
   usingModApiEvaluateCraftingCondition: boolean;
   usingModApiGetActualCraftingStat: boolean;
@@ -184,8 +183,6 @@ interface IntegrationDiagnostics {
   nativeCanUseActionBlocked: number;
   nativeCanUseActionErrors: number;
   lastCraftingTypeDetectionSource: CraftingTypeDetectionSource;
-  lastCraftingTypeMappedItemKind?: string;
-  craftingTypeDetectedFromItemKindCount: number;
   lastSublimeDetectionSignals: SublimeDetectionSignal[];
   lastHarmonyDataSource: HarmonyDataSource;
   harmonyDataFromProgressStateCount: number;
@@ -215,7 +212,6 @@ const integrationDiagnostics: IntegrationDiagnostics = {
   usingModApiCapGetters: false,
   usingModApiCraftingVariableResolver: false,
   usingModApiMaxToxicityGetter: false,
-  usingModApiItemTypeHarmonyMapping: false,
   usingModApiGetActionCost: false,
   usingModApiEvaluateCraftingCondition: false,
   usingModApiGetActualCraftingStat: false,
@@ -225,8 +221,6 @@ const integrationDiagnostics: IntegrationDiagnostics = {
   nativeCanUseActionBlocked: 0,
   nativeCanUseActionErrors: 0,
   lastCraftingTypeDetectionSource: 'unchanged',
-  lastCraftingTypeMappedItemKind: undefined,
-  craftingTypeDetectedFromItemKindCount: 0,
   lastSublimeDetectionSignals: [],
   lastHarmonyDataSource: 'missing',
   harmonyDataFromProgressStateCount: 0,
@@ -250,6 +244,18 @@ let currentCraftingType: CraftingType = 'forge';
 // - Equipment crafting: potentially higher multipliers
 let isSublimeCraft = false;
 let sublimeTargetMultiplier = 2.0;
+/**
+ * Complexity multiplier of the selected harmony, applied by the game to sublime
+ * recipe targets in `initCrafting`. 1 for non-sublime crafts.
+ */
+let harmonyComplexityMultiplier = 1;
+/**
+ * True when the current targets came from a pre-`initCrafting` source (the
+ * `onDeriveRecipeDifficulty` hook payload or a raw `recipe.*` fallback) and so
+ * still need the harmony complexity multiplier applied. Targets read from live
+ * `crafting.recipeStats` are already scaled by the game and clear this flag.
+ */
+let targetsNeedComplexityScaling = false;
 
 // Settings
 let currentSettings: CraftBuddySettings = loadSettings();
@@ -1710,15 +1716,6 @@ function resolveDomProgressTarget(params: {
   return domTarget;
 }
 
-function getLiveItemTypeHarmonyMapping(): Partial<
-  Record<string, CraftingType>
-> {
-  const raw = (window as any)?.modAPI?.gameData?.itemTypeToHarmonyType;
-  const mapping = sanitizeItemTypeHarmonyMap(raw);
-  integrationDiagnostics.usingModApiItemTypeHarmonyMapping =
-    Object.keys(mapping).length > 0;
-  return mapping;
-}
 
 function recordHarmonyDataSource(source: HarmonyDataSource): void {
   integrationDiagnostics.lastHarmonyDataSource = source;
@@ -1760,8 +1757,6 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
   else fallbackActive.push('variableResolver');
   if (d.usingModApiMaxToxicityGetter) nativeActive.push('maxToxicity');
   else fallbackActive.push('maxToxicity');
-  if (d.usingModApiItemTypeHarmonyMapping) nativeActive.push('itemTypeHarmony');
-  else fallbackActive.push('itemTypeHarmony');
   if (d.usingModApiTechniqueFromKnown) nativeActive.push('techniqueResolution');
   else fallbackActive.push('techniqueResolution');
   if (d.usingModApiGetActionCost) nativeActive.push('actionCost');
@@ -1815,8 +1810,6 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
     },
     craftingType: {
       source: d.lastCraftingTypeDetectionSource,
-      mappedItemKind: d.lastCraftingTypeMappedItemKind ?? null,
-      detectedFromItemKind: d.craftingTypeDetectedFromItemKindCount,
     },
     sublimeDetection: {
       signals: d.lastSublimeDetectionSignals,
@@ -1845,7 +1838,6 @@ function syncCraftingContextFromState(
   const typeResolution = resolveCraftingType({
     recipe,
     recipeStats,
-    itemTypeToHarmonyType: getLiveItemTypeHarmonyMapping(),
     previousCraftingType: currentCraftingType,
   });
   if (typeResolution.craftingType) {
@@ -1853,11 +1845,6 @@ function syncCraftingContextFromState(
   }
   integrationDiagnostics.lastCraftingTypeDetectionSource =
     typeResolution.source;
-  integrationDiagnostics.lastCraftingTypeMappedItemKind =
-    typeResolution.mappedItemKind;
-  if (typeResolution.mappedItemKind) {
-    integrationDiagnostics.craftingTypeDetectedFromItemKindCount++;
-  }
 
   const sublimeResolution = resolveSublimeCraftState({
     recipe,
@@ -1866,11 +1853,37 @@ function syncCraftingContextFromState(
     targetPerfection,
     maxCompletionCap,
     maxPerfectionCap,
+    craftingType: currentCraftingType,
   });
   isSublimeCraft = sublimeResolution.isSublimeCraft;
   sublimeTargetMultiplier = sublimeResolution.sublimeTargetMultiplier;
+  harmonyComplexityMultiplier = sublimeResolution.complexityMultiplier;
   integrationDiagnostics.lastSublimeDetectionSignals =
     sublimeResolution.signals;
+
+  // The game scales sublime recipe targets by the selected harmony's complexity
+  // multiplier in `initCrafting`, i.e. after `deriveRecipeDifficulty`. Apply it
+  // once here, now that both the harmony and the sublime flag are known.
+  if (targetsNeedComplexityScaling) {
+    targetsNeedComplexityScaling = false;
+    const scaled = applyHarmonyComplexityToTargets({
+      targetCompletion,
+      targetPerfection,
+      craftingType: currentCraftingType,
+      isSublimeCraft,
+    });
+    if (
+      scaled.targetCompletion !== targetCompletion ||
+      scaled.targetPerfection !== targetPerfection
+    ) {
+      debugLog(
+        `[CraftBuddy] Scaled sublime targets by ${currentCraftingType} complexity x${harmonyComplexityMultiplier}: ` +
+          `completion ${targetCompletion}->${scaled.targetCompletion}, perfection ${targetPerfection}->${scaled.targetPerfection}`,
+      );
+      targetCompletion = scaled.targetCompletion;
+      targetPerfection = scaled.targetPerfection;
+    }
+  }
 
   const explicitMaxToxicity = toFinitePositiveNumber(
     recipeStatsAny?.maxToxicity,
@@ -4417,6 +4430,9 @@ try {
         targetCompletion = explicitCompletionTarget ?? 100;
         targetPerfection = explicitPerfectionTarget ?? 100;
         targetStability = explicitStabilityTarget ?? 60;
+        // This hook fires before `initCrafting` applies the harmony complexity
+        // multiplier, so these targets are still unscaled.
+        targetsNeedComplexityScaling = true;
         updateProgressCapsFromRecipeStats(statsAny);
         updateProgressCapsFromModApi(
           recipe as RecipeItem | undefined,
@@ -5404,6 +5420,11 @@ function processCraftingState(craftingState: any): void {
       foundTargets = true;
       hasExplicitPerfectionTarget = true;
     }
+    if (completionTarget !== undefined || perfectionTarget !== undefined) {
+      // Live `crafting.recipeStats` is post-`initCrafting`, so the harmony
+      // complexity multiplier is already baked in.
+      targetsNeedComplexityScaling = false;
+    }
     const stabilityTarget = parsePositiveGameNumber(recipeStats.stability);
     if (stabilityTarget !== undefined) {
       targetStability = stabilityTarget;
@@ -5430,6 +5451,9 @@ function processCraftingState(craftingState: any): void {
   // Source 2: recipe object (fallback)
   if (!foundTargets && craftingState.recipe) {
     const recipe = craftingState.recipe;
+    // Raw recipe stats are unscaled; the harmony complexity multiplier still
+    // needs applying once the harmony selection is known.
+    targetsNeedComplexityScaling = true;
     // Try recipe.stats
     if (recipe.stats) {
       const completionTarget = parsePositiveGameNumber(recipe.stats.completion);

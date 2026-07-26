@@ -1,17 +1,21 @@
 /**
  * Harmony System Tests
  *
- * Validates all 4 harmony types against game code behavior:
+ * Validates all 7 harmony types against installed runtime 0.7.5 behaviour:
  * - Forge Works (heat gauge)
  * - Alchemical Arts (combo system)
  * - Inscribed Patterns (block patterns)
  * - Spiritual Resonance (resonance building)
+ * - Formless Way (harmony pinned at its peak)
+ * - Enhancing Echo (paired actions, cost scaling)
+ * - Eccentric Decree (focused bar, flips on band clear)
  */
 
 import {
   processHarmonyEffect,
   initHarmonyData,
   getHarmonyStatModifiers,
+  getHarmonyCostMultipliers,
   INSCRIBED_PATTERN_BLOCK,
 } from '../optimizer/harmony';
 import { CraftingState } from '../optimizer/state';
@@ -70,6 +74,20 @@ describe('Forge Works', () => {
     expect(result2.harmonyData.forgeWorks?.heat).toBe(4);
   });
 
+  it('should carry the low-heat penalty into heat 1, which skips its buff update', () => {
+    const hd: HarmonyData = {
+      forgeWorks: { heat: 2, lastBuffedHeat: 2 },
+      recommendedTechniqueTypes: [],
+    };
+    const result = processHarmonyEffect(hd, 'forge', 'refine');
+    expect(result.harmonyData.forgeWorks?.heat).toBe(1);
+    // No band at heat 1, so no harmony swing...
+    expect(result.harmonyDelta).toBe(0);
+    // ...but the heat 2-3 control penalty is still applied.
+    expect(result.harmonyData.forgeWorks?.lastBuffedHeat).toBe(2);
+    expect(result.statModifiers.controlMultiplier).toBe(0.5);
+  });
+
   it('should clamp heat to [0, 10]', () => {
     const hdLow: HarmonyData = { forgeWorks: { heat: 0 }, recommendedTechniqueTypes: [] };
     const result = processHarmonyEffect(hdLow, 'forge', 'refine');
@@ -114,12 +132,24 @@ describe('Forge Works', () => {
     expect(sweet.controlMultiplier).toBe(1.5);
     expect(sweet.intensityMultiplier).toBe(1.5);
 
-    // Heat 1 is neutral in the installed runtime.
-    const neutral = getHarmonyStatModifiers(
+    // Heat 1 sits in no band: the runtime skips its buff update entirely, so
+    // whatever band was last applied stays active.
+    const heat1FromLow = getHarmonyStatModifiers(
+      {
+        forgeWorks: { heat: 1, lastBuffedHeat: 2 },
+        recommendedTechniqueTypes: [],
+      },
+      'forge',
+    );
+    expect(heat1FromLow.controlMultiplier).toBe(0.5);
+    expect(heat1FromLow.intensityMultiplier).toBe(1);
+
+    // With no recorded prior buff there is nothing to carry over.
+    const heat1Unknown = getHarmonyStatModifiers(
       { forgeWorks: { heat: 1 }, recommendedTechniqueTypes: [] }, 'forge'
     );
-    expect(neutral.controlMultiplier).toBe(1);
-    expect(neutral.intensityMultiplier).toBe(1);
+    expect(heat1Unknown.controlMultiplier).toBe(1);
+    expect(heat1Unknown.intensityMultiplier).toBe(1);
 
     // Low zone (2-3): -50% control
     const low = getHarmonyStatModifiers(
@@ -378,6 +408,218 @@ describe('Spiritual Resonance', () => {
     let hd = initHarmonyData('resonance');
     const result = processHarmonyEffect(hd, 'resonance', 'refine');
     expect(result.harmonyData.recommendedTechniqueTypes).toEqual(['refine']);
+  });
+});
+
+// ============================================================
+// Formless Way (0.7.5)
+// ============================================================
+
+describe('Formless Way', () => {
+  it('should have no sub-system state', () => {
+    const hd = initHarmonyData('formless');
+    expect(hd.forgeWorks).toBeUndefined();
+    expect(hd.enhancingEcho).toBeUndefined();
+    expect(hd.eccentricDecree).toBeUndefined();
+    expect(hd.recommendedTechniqueTypes).toEqual([]);
+  });
+
+  it('should pin harmony at 33 regardless of the action or prior harmony', () => {
+    const hd = initHarmonyData('formless');
+    for (const type of ['fusion', 'refine', 'stabilize', 'support'] as const) {
+      const result = processHarmonyEffect(hd, 'formless', type);
+      expect(result.harmonyOverride).toBe(33);
+      expect(result.harmonyDelta).toBe(0);
+    }
+  });
+
+  it('should grant no stat modifiers', () => {
+    const mods = getHarmonyStatModifiers(
+      initHarmonyData('formless'),
+      'formless',
+    );
+    expect(mods.controlMultiplier).toBe(1);
+    expect(mods.intensityMultiplier).toBe(1);
+    expect(mods.poolCostPercentage).toBe(100);
+  });
+});
+
+// ============================================================
+// Enhancing Echo (0.7.5)
+// ============================================================
+
+describe('Enhancing Echo', () => {
+  it('should attune to the first action of a pair without a harmony swing', () => {
+    const hd = initHarmonyData('enhancingEcho');
+    const result = processHarmonyEffect(hd, 'enhancingEcho', 'fusion');
+    expect(result.harmonyData.enhancingEcho?.attunedType).toBe('fusion');
+    expect(result.harmonyData.enhancingEcho?.lastOutcome).toBe('attune');
+    expect(result.harmonyDelta).toBe(0);
+    expect(result.harmonyData.recommendedTechniqueTypes).toEqual(['fusion']);
+  });
+
+  it('should grant +10 harmony when the attuned type is echoed', () => {
+    const attuned: HarmonyData = {
+      enhancingEcho: { attunedType: 'fusion' },
+      recommendedTechniqueTypes: ['fusion'],
+    };
+    const result = processHarmonyEffect(attuned, 'enhancingEcho', 'fusion');
+    expect(result.harmonyDelta).toBe(10);
+    expect(result.harmonyData.enhancingEcho?.attunedType).toBeUndefined();
+    expect(result.harmonyData.enhancingEcho?.lastOutcome).toBe('echo');
+    expect(result.harmonyData.recommendedTechniqueTypes).toEqual([]);
+  });
+
+  it('should lose 10 harmony and drop the attunement on a discord', () => {
+    const attuned: HarmonyData = {
+      enhancingEcho: { attunedType: 'fusion' },
+      recommendedTechniqueTypes: ['fusion'],
+    };
+    const result = processHarmonyEffect(attuned, 'enhancingEcho', 'refine');
+    expect(result.harmonyDelta).toBe(-10);
+    expect(result.harmonyData.enhancingEcho?.attunedType).toBeUndefined();
+    expect(result.harmonyData.enhancingEcho?.lastOutcome).toBe('discord');
+  });
+
+  it('should halve costs on an echo and double them on a discord', () => {
+    const unattuned: HarmonyData = {
+      enhancingEcho: { attunedType: undefined },
+      recommendedTechniqueTypes: [],
+    };
+    expect(
+      getHarmonyCostMultipliers(unattuned, 'enhancingEcho', 'fusion'),
+    ).toEqual({ poolCostPercentage: 100, stabilityCostPercentage: 100 });
+
+    const attuned: HarmonyData = {
+      enhancingEcho: { attunedType: 'fusion' },
+      recommendedTechniqueTypes: ['fusion'],
+    };
+    expect(
+      getHarmonyCostMultipliers(attuned, 'enhancingEcho', 'fusion'),
+    ).toEqual({ poolCostPercentage: 50, stabilityCostPercentage: 50 });
+    expect(
+      getHarmonyCostMultipliers(attuned, 'enhancingEcho', 'refine'),
+    ).toEqual({ poolCostPercentage: 200, stabilityCostPercentage: 200 });
+  });
+
+  it('should not scale costs for other harmonies', () => {
+    expect(getHarmonyCostMultipliers(undefined, 'forge', 'fusion')).toEqual({
+      poolCostPercentage: 100,
+      stabilityCostPercentage: 100,
+    });
+  });
+});
+
+// ============================================================
+// Eccentric Decree (0.7.5)
+// ============================================================
+
+describe('Eccentric Decree', () => {
+  const context = (completion: number, perfection: number) => ({
+    completion,
+    perfection,
+    maxCompletion: 1000,
+    maxPerfection: 1000,
+    targetCompletion: 100,
+    targetPerfection: 100,
+  });
+
+  it('should start focused on completion and recommend fusion', () => {
+    const hd = initHarmonyData('eccentricDecree');
+    expect(hd.eccentricDecree).toEqual({
+      focusedBar: 'completion',
+      lastCompletion: 0,
+      lastPerfection: 0,
+    });
+    expect(hd.recommendedTechniqueTypes).toEqual(['fusion']);
+  });
+
+  it('should grant +5 harmony when the focused bar advances', () => {
+    const hd = initHarmonyData('eccentricDecree');
+    const result = processHarmonyEffect(
+      hd,
+      'eccentricDecree',
+      'fusion',
+      context(40, 0),
+    );
+    expect(result.harmonyDelta).toBe(5);
+    expect(result.poolDelta).toBe(0);
+    expect(result.harmonyData.eccentricDecree?.lastCompletion).toBe(40);
+  });
+
+  it('should lose 5 harmony and 5 qi when the unfocused bar advances', () => {
+    const hd = initHarmonyData('eccentricDecree');
+    const result = processHarmonyEffect(
+      hd,
+      'eccentricDecree',
+      'refine',
+      context(0, 30),
+    );
+    expect(result.harmonyDelta).toBe(-5);
+    expect(result.poolDelta).toBe(-5);
+  });
+
+  it('should net to zero harmony but still cost qi when both bars advance', () => {
+    const hd = initHarmonyData('eccentricDecree');
+    const result = processHarmonyEffect(
+      hd,
+      'eccentricDecree',
+      'fusion',
+      context(40, 30),
+    );
+    expect(result.harmonyDelta).toBe(0);
+    expect(result.poolDelta).toBe(-5);
+  });
+
+  it('should flip focus once the focused bar clears a band', () => {
+    const hd = initHarmonyData('eccentricDecree');
+    const result = processHarmonyEffect(
+      hd,
+      'eccentricDecree',
+      'fusion',
+      context(100, 0),
+    );
+    expect(result.harmonyData.eccentricDecree?.focusedBar).toBe('perfection');
+    expect(result.harmonyData.recommendedTechniqueTypes).toEqual(['refine']);
+  });
+
+  it('should boost intensity while focused on completion and control otherwise', () => {
+    expect(
+      getHarmonyStatModifiers(
+        {
+          eccentricDecree: {
+            focusedBar: 'completion',
+            lastCompletion: 0,
+            lastPerfection: 0,
+          },
+          recommendedTechniqueTypes: [],
+        },
+        'eccentricDecree',
+      ).intensityMultiplier,
+    ).toBe(1.5);
+
+    expect(
+      getHarmonyStatModifiers(
+        {
+          eccentricDecree: {
+            focusedBar: 'perfection',
+            lastCompletion: 0,
+            lastPerfection: 0,
+          },
+          recommendedTechniqueTypes: [],
+        },
+        'eccentricDecree',
+      ).controlMultiplier,
+    ).toBe(1.5);
+  });
+
+  it('should clamp progress to the overcraft caps before comparing deltas', () => {
+    const hd = initHarmonyData('eccentricDecree');
+    const result = processHarmonyEffect(hd, 'eccentricDecree', 'fusion', {
+      ...context(500, 0),
+      maxCompletion: 120,
+    });
+    expect(result.harmonyData.eccentricDecree?.lastCompletion).toBe(120);
   });
 });
 

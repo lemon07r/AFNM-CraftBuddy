@@ -115,7 +115,16 @@ export interface CraftingStateData {
   poolCostPercentage: number;
   /** Stability cost percentage modifier (100 = normal). */
   stabilityCostPercentage: number;
+  /**
+   * Legacy scoring/sim fast path for simple turn-based control buffs.
+   * Arbitrary buffs (False Fusion, Soulflame, etc.) already flow through
+   * `buffs` with full definitions — do not use these fields for new effects.
+   */
   controlBuffTurns: number;
+  /**
+   * Legacy scoring/sim fast path for simple turn-based intensity buffs.
+   * Prefer `buffs` + BuffDefinition.stats for gated/expression-driven buffs.
+   */
   intensityBuffTurns: number;
   /** Multiplier for control buff (e.g., 1.4 for 40% boost) - read from game */
   controlBuffMultiplier: number;
@@ -174,7 +183,9 @@ export class CraftingState implements CraftingStateData {
   readonly poolCostFlat: number;
   readonly poolCostPercentage: number;
   readonly stabilityCostPercentage: number;
+  /** @see CraftingStateData.controlBuffTurns legacy fast path note */
   readonly controlBuffTurns: number;
+  /** @see CraftingStateData.intensityBuffTurns legacy fast path note */
   readonly intensityBuffTurns: number;
   readonly controlBuffMultiplier: number;
   readonly intensityBuffMultiplier: number;

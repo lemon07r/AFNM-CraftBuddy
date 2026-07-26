@@ -1,15 +1,26 @@
 import type { CraftingRecipeStats, RecipeItem } from 'afnm-types';
 
-export type CraftingType = 'forge' | 'alchemical' | 'inscription' | 'resonance';
+import {
+  applyComplexityMultiplier,
+  getComplexityMultiplier,
+  normalizeHarmonyType,
+} from '../optimizer/harmonyRegistry';
+import type { HarmonyType } from '../optimizer/gameTypes';
+
+/**
+ * The active harmony system for a craft.
+ *
+ * In 0.7.5 harmony is no longer derived from the item being crafted: the player
+ * selects any unlocked harmony before a sublime craft, and the game records that
+ * selection on `recipeStats.harmonyType` (via `recipe.harmonyTypeOverride`).
+ * The ModAPI's `itemTypeToHarmonyType` utility was removed in the same patch.
+ */
+export type CraftingType = HarmonyType;
 
 export type CraftingTypeDetectionSource =
   | 'recipeStats.harmonyType'
-  | 'recipe.harmonyType'
   | 'recipe.harmonyTypeOverride'
-  | 'recipe.baseItem.kind'
-  | 'recipe.perfectItem.kind'
-  | 'recipe.sublimeItem.kind'
-  | 'recipe.type'
+  | 'recipe.harmonyType'
   | 'unchanged';
 
 export type SublimeDetectionSignal =
@@ -22,7 +33,6 @@ export type SublimeDetectionSignal =
 export interface CraftingTypeResolution {
   craftingType?: CraftingType;
   source: CraftingTypeDetectionSource;
-  mappedItemKind?: string;
 }
 
 export interface SublimeCraftResolution {
@@ -30,9 +40,13 @@ export interface SublimeCraftResolution {
   sublimeTargetMultiplier: number;
   isEquipmentCraft: boolean;
   signals: SublimeDetectionSignal[];
+  /**
+   * Complexity multiplier of the selected harmony. The game multiplies recipe
+   * completion/perfection by this at craft start, but only for sublime crafts,
+   * so it is 1 for normal crafts.
+   */
+  complexityMultiplier: number;
 }
-
-type ItemHarmonyTypeMap = Partial<Record<string, CraftingType>>;
 
 function getExplicitSublimeFlag(
   recipe: Record<string, unknown> | undefined,
@@ -51,39 +65,7 @@ function getExplicitSublimeFlag(
 export function normalizeCraftingType(
   value: unknown,
 ): CraftingType | undefined {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase();
-  switch (normalized) {
-    case 'forge':
-    case 'alchemical':
-    case 'inscription':
-    case 'resonance':
-      return normalized as CraftingType;
-    default:
-      return undefined;
-  }
-}
-
-export function sanitizeItemTypeHarmonyMap(raw: unknown): ItemHarmonyTypeMap {
-  if (!raw || typeof raw !== 'object') {
-    return {};
-  }
-
-  const result: ItemHarmonyTypeMap = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    const normalizedType = normalizeCraftingType(value);
-    if (!normalizedType) {
-      continue;
-    }
-    const normalizedKey = String(key || '').trim().toLowerCase();
-    if (!normalizedKey) {
-      continue;
-    }
-    result[normalizedKey] = normalizedType;
-  }
-
-  return result;
+  return normalizeHarmonyType(value);
 }
 
 export function shouldUseCapAsTargetFallback(params: {
@@ -104,98 +86,49 @@ export function shouldUseCapAsTargetFallback(params: {
   return explicitSublimeFlag === false;
 }
 
-function getMappedCraftingTypeFromItemKind(
-  item: unknown,
-  mapping: ItemHarmonyTypeMap,
-): CraftingType | undefined {
-  const kind = String((item as { kind?: unknown } | undefined)?.kind || '')
-    .trim()
-    .toLowerCase();
-  if (!kind) {
-    return undefined;
-  }
-  return mapping[kind];
-}
-
+/**
+ * Resolve the active harmony from the player's selection in craft state.
+ *
+ * Priority mirrors the game: `mC(recipe, gameFlags)` writes the selected harmony
+ * (or `recipe.harmonyTypeOverride` when the recipe forces one) onto
+ * `recipeStats.harmonyType`, which the crafting engine then reads for every
+ * harmony lookup. Nothing here consults the item being crafted - 0.7.5 removed
+ * that mapping - so an unknown selection leaves the previous value in place
+ * instead of silently guessing a wrong harmony.
+ */
 export function resolveCraftingType(params: {
   recipe: RecipeItem | undefined;
   recipeStats: CraftingRecipeStats | undefined;
-  itemTypeToHarmonyType?: unknown;
   previousCraftingType?: CraftingType;
 }): CraftingTypeResolution {
-  const { recipe, recipeStats, itemTypeToHarmonyType, previousCraftingType } =
-    params;
+  const { recipe, recipeStats, previousCraftingType } = params;
   const recipeAny = recipe as Record<string, unknown> | undefined;
   const recipeStatsAny = recipeStats as Record<string, unknown> | undefined;
-  const mapping = sanitizeItemTypeHarmonyMap(itemTypeToHarmonyType);
 
-  const directCandidates: Array<{
+  const candidates: Array<{
     value: unknown;
-    source: Exclude<CraftingTypeDetectionSource, 'unchanged' | 'recipe.baseItem.kind' | 'recipe.perfectItem.kind' | 'recipe.sublimeItem.kind'>;
+    source: Exclude<CraftingTypeDetectionSource, 'unchanged'>;
   }> = [
     {
       value: recipeStatsAny?.harmonyType,
       source: 'recipeStats.harmonyType',
     },
     {
-      value: recipeAny?.harmonyType,
-      source: 'recipe.harmonyType',
-    },
-    {
       value: recipeAny?.harmonyTypeOverride,
       source: 'recipe.harmonyTypeOverride',
     },
     {
-      value: recipeAny?.type,
-      source: 'recipe.type',
+      value: recipeAny?.harmonyType,
+      source: 'recipe.harmonyType',
     },
   ];
 
-  for (const candidate of directCandidates) {
+  for (const candidate of candidates) {
     const normalized = normalizeCraftingType(candidate.value);
     if (normalized) {
       return {
         craftingType: normalized,
         source: candidate.source,
-      };
-    }
-  }
-
-  const mappedCandidates: Array<{
-    item: unknown;
-    source:
-      | 'recipe.baseItem.kind'
-      | 'recipe.perfectItem.kind'
-      | 'recipe.sublimeItem.kind';
-  }> = [
-    {
-      item: recipeAny?.baseItem,
-      source: 'recipe.baseItem.kind',
-    },
-    {
-      item: recipeAny?.perfectItem,
-      source: 'recipe.perfectItem.kind',
-    },
-    {
-      item: recipeAny?.sublimeItem,
-      source: 'recipe.sublimeItem.kind',
-    },
-  ];
-
-  for (const candidate of mappedCandidates) {
-    const normalized = getMappedCraftingTypeFromItemKind(
-      candidate.item,
-      mapping,
-    );
-    if (normalized) {
-      return {
-        craftingType: normalized,
-        source: candidate.source,
-        mappedItemKind: String(
-          (candidate.item as { kind?: unknown } | undefined)?.kind || '',
-        )
-          .trim()
-          .toLowerCase(),
       };
     }
   }
@@ -213,6 +146,7 @@ export function resolveSublimeCraftState(params: {
   targetPerfection: number;
   maxCompletionCap?: number;
   maxPerfectionCap?: number;
+  craftingType?: CraftingType;
 }): SublimeCraftResolution {
   const {
     recipe,
@@ -221,6 +155,7 @@ export function resolveSublimeCraftState(params: {
     targetPerfection,
     maxCompletionCap,
     maxPerfectionCap,
+    craftingType,
   } = params;
   const recipeAny = recipe as Record<string, unknown> | undefined;
   const recipeStatsAny = recipeStats as Record<string, unknown> | undefined;
@@ -290,5 +225,43 @@ export function resolveSublimeCraftState(params: {
       : 1.0,
     isEquipmentCraft,
     signals,
+    complexityMultiplier: isSublimeCraft
+      ? getComplexityMultiplier(craftingType)
+      : 1,
+  };
+}
+
+/**
+ * Apply the selected harmony's complexity multiplier to raw recipe targets.
+ *
+ * The game applies this in `initCrafting`, *after* `deriveRecipeDifficulty` and
+ * the `onBeforeCraft` hooks have run:
+ *
+ *   if (recipe.isSublimeCraft) {
+ *     recipeStats.completion = Math.round(recipeStats.completion * cm);
+ *     recipeStats.perfection = Math.round(recipeStats.perfection * cm);
+ *   }
+ *
+ * Targets read from live `crafting.recipeStats` are therefore already scaled and
+ * must NOT be passed through here. Only pre-init sources need it: the
+ * `onDeriveRecipeDifficulty` hook payload and raw `recipe.*` fallbacks.
+ */
+export function applyHarmonyComplexityToTargets(params: {
+  targetCompletion: number;
+  targetPerfection: number;
+  craftingType: CraftingType | undefined;
+  isSublimeCraft: boolean;
+}): { targetCompletion: number; targetPerfection: number } {
+  return {
+    targetCompletion: applyComplexityMultiplier(
+      params.targetCompletion,
+      params.craftingType,
+      params.isSublimeCraft,
+    ),
+    targetPerfection: applyComplexityMultiplier(
+      params.targetPerfection,
+      params.craftingType,
+      params.isSublimeCraft,
+    ),
   };
 }

@@ -25,6 +25,7 @@ import {
   loadOptimizerReplaySnapshot,
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
+import { bandThreshold, TIER_REQUIREMENTS } from '../optimizer/outcome';
 
 const {
   scoreState,
@@ -168,7 +169,11 @@ describe('greedySearch', () => {
     const result = greedySearch(state, config, 100, 100);
 
     expect(result.targetsMet).toBe(true);
-    expect(result.recommendation).toBeNull();
+    // Auto-finish horizon: recommend Finish Craft rather than a null no-op.
+    expect(
+      result.recommendation === null ||
+        result.recommendation.skill.actionKind === 'finish',
+    ).toBe(true);
   });
 
   it('should return isTerminal when no skills can be applied', () => {
@@ -401,7 +406,10 @@ describe('lookaheadSearch', () => {
     const result = lookaheadSearch(state, config, 100, 100, 3);
 
     expect(result.targetsMet).toBe(true);
-    expect(result.recommendation).toBeNull();
+    expect(
+      result.recommendation === null ||
+        result.recommendation.skill.actionKind === 'finish',
+    ).toBe(true);
   });
 
   it('should return targetsMet for completion-only crafts when completion target is reached', () => {
@@ -415,7 +423,10 @@ describe('lookaheadSearch', () => {
     const result = lookaheadSearch(state, config, 100, 0, 3);
 
     expect(result.targetsMet).toBe(true);
-    expect(result.recommendation).toBeNull();
+    expect(
+      result.recommendation === null ||
+        result.recommendation.skill.actionKind === 'finish',
+    ).toBe(true);
   });
 
   it('should return targetsMet for perfection-only crafts when perfection target is reached', () => {
@@ -429,7 +440,10 @@ describe('lookaheadSearch', () => {
     const result = lookaheadSearch(state, config, 0, 100, 3);
 
     expect(result.targetsMet).toBe(true);
-    expect(result.recommendation).toBeNull();
+    expect(
+      result.recommendation === null ||
+        result.recommendation.skill.actionKind === 'finish',
+    ).toBe(true);
   });
 
   it('should return isTerminal when no skills can be applied', () => {
@@ -1261,8 +1275,9 @@ describe('finish craft policy', () => {
 
     expect(result.recommendation?.skill.name).toBe('Energised Fusion');
     expect(result.recommendation?.skill.actionKind).not.toBe('finish');
-    expect(finishCraft).toBeDefined();
-    expect(finishCraft!.projectedSuccessChance).toBeCloseTo(90 / 130);
+    // Finish Craft is only available when the runtime would auto-end the craft.
+    // This mid-craft state is still live, so voluntary early finish is absent.
+    expect(finishCraft).toBeUndefined();
   });
 
   it('keeps pursuing a guaranteed completion line when it is better than finishing early', () => {
@@ -1310,12 +1325,14 @@ describe('finish craft policy', () => {
         }),
       ],
     });
+    // Stay well inside the first band so neither action banks a new tier.
+    // Bias then steers the secondary margin terms without a tier-jump confound.
     const state = new CraftingState({
       qi: 100,
       stability: 40,
       initialMaxStability: 60,
-      completion: 70,
-      perfection: 40,
+      completion: 20,
+      perfection: 20,
     });
 
     const balanced = lookaheadSearch(state, config, 100, 100, 1);
@@ -1340,8 +1357,9 @@ describe('finish craft policy', () => {
       { goalPriorityBias: -100 },
     );
 
+    // Equal starting shortfalls: larger fusion gain wins balanced; bias flips it.
     expect(balanced.recommendation?.skill.key).toBe(
-      'focused_refine_priority_bias',
+      'focused_fusion_priority_bias',
     );
     expect(completionBiased.recommendation?.skill.key).toBe(
       'focused_fusion_priority_bias',
@@ -1351,7 +1369,7 @@ describe('finish craft policy', () => {
     );
   });
 
-  it('keeps Finish Craft available when no skill can be used but the craft is still alive', () => {
+  it('does not invent Finish Craft when stuck without auto-finish bars', () => {
     const config = createTestConfig({
       minStability: 0,
       skills: [
@@ -1376,10 +1394,40 @@ describe('finish craft policy', () => {
 
     const result = lookaheadSearch(state, config, 100, 100, 3);
 
-    expect(result.isTerminal).toBe(false);
-    expect(result.recommendation?.skill.name).toBe('Finish Craft');
-    expect(result.recommendation?.projectedSuccessChance).toBeCloseTo(0.6);
+    // Runtime has no voluntary early finish. Stuck live crafts are terminal
+    // with no legal action until auto-finish bars are met.
+    expect(result.isTerminal).toBe(true);
+    expect(result.recommendation).toBeNull();
+  });
+
+  it('offers Finish Craft exactly when the runtime would auto-finish', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      skills: [
+        createCustomSkill({
+          name: 'Idle Refine',
+          key: 'idle_refine_auto_finish',
+          type: 'refine',
+          qiCost: 5,
+          stabilityCost: 1,
+          basePerfectionGain: 1,
+          scalesWithControl: true,
+        }),
+      ],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 100,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 2);
+
+    expect(result.recommendation?.skill.actionKind).toBe('finish');
     expect(result.recommendation?.endsCraft).toBe(true);
+    expect(result.recommendation?.projectedSuccessChance).toBe(1);
   });
 
   it('does not offer Finish Craft after the craft is already dead', () => {
@@ -1453,10 +1501,10 @@ describe('finish craft policy', () => {
       (recommendation) => recommendation.skill.actionKind === 'finish',
     );
 
+    // Not at auto-finish flats yet, so Finish Craft stays unavailable.
+    expect(finishCraft).toBeUndefined();
     expect(result.targetsMet).toBe(false);
     expect(result.recommendation?.skill.name).toBe('Simple Refine');
-    expect(finishCraft).toBeDefined();
-    expect(finishCraft!.projectedSuccessChance).toBe(1);
   });
 
   it('scores fifth-tier sublime finish quality above a weaker early finish', () => {
@@ -1621,8 +1669,193 @@ describe('finish craft policy', () => {
 
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.name).toBe('Forceful Stabilize');
-    expect(finishCraft).toBeDefined();
-    expect(finishCraft!.projectedSuccessChance).toBe(1);
+    // Auto-finish flats are the max caps (200); 100/100 is still live.
+    expect(finishCraft).toBeUndefined();
+  });
+
+  it('treats an auto-finishing action as terminal instead of leftover perfection spam', () => {
+    const finishingFusion = createCustomSkill({
+      name: 'Finishing Fusion',
+      key: 'finishing_fusion_horizon',
+      type: 'fusion',
+      qiCost: 10,
+      stabilityCost: 5,
+      baseCompletionGain: 30,
+      scalesWithIntensity: false,
+    });
+    const leftoverRefine = createCustomSkill({
+      name: 'Leftover Refine',
+      key: 'leftover_refine_horizon',
+      type: 'refine',
+      qiCost: 10,
+      stabilityCost: 5,
+      basePerfectionGain: 40,
+      scalesWithControl: false,
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 1,
+      baseControl: 1,
+      skills: [finishingFusion, leftoverRefine],
+    });
+    // Completion is one finishing fusion away from auto-finish flats.
+    // Perfection is already banked; extra refine cannot raise the tier.
+    const state = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 80,
+      perfection: 100,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 3);
+
+    expect(result.recommendation?.skill.key).toBe('finishing_fusion_horizon');
+    expect(result.recommendation?.endsCraft).toBe(true);
+    expect(result.recommendation?.skill.key).not.toBe(
+      'leftover_refine_horizon',
+    );
+  });
+
+  it('does not improve a finished target-tier score by padding more stats', () => {
+    const finished = new CraftingState({
+      qi: 80,
+      stability: 30,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 100,
+      step: 5,
+    });
+    const padded = new CraftingState({
+      qi: 50,
+      stability: 30,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 140,
+      step: 6,
+    });
+
+    const finishedScore = scoreFinishedOutcome(finished, 100, 100, false, 1);
+    const paddedScore = scoreFinishedOutcome(padded, 100, 100, false, 1);
+
+    // Same perfect tier: leftover perfection cannot outrank the banked outcome.
+    expect(paddedScore).toBeLessThanOrEqual(finishedScore + 1e-6);
+  });
+
+  it('finds a completion-rush then False Fusion payoff under an expression gate', () => {
+    const striveBuff = {
+      name: 'Strive for Completion',
+      canStack: true,
+      maxStacks: 1,
+      stats: {
+        intensity: {
+          value: 1,
+          stat: 'intensity',
+          eqn: 'completion > maxcompletion',
+        },
+      },
+      effects: [],
+    };
+    const falseFusion = createCustomSkill({
+      name: 'False Fusion',
+      key: 'false_fusion_gated',
+      type: 'support',
+      qiCost: 0,
+      stabilityCost: 1,
+      cooldown: 99,
+      effects: [
+        {
+          kind: 'createBuff' as const,
+          stacks: { value: 1 },
+          buff: striveBuff,
+        },
+      ],
+      grantedBuff: striveBuff,
+    });
+    const completionRush = createCustomSkill({
+      name: 'Completion Rush',
+      key: 'completion_rush_gated',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 1,
+      baseCompletionGain: 1.2,
+      scalesWithIntensity: true,
+    });
+    const intensityRefine = createCustomSkill({
+      name: 'Intensity Refine',
+      key: 'intensity_refine_gated',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 1,
+      basePerfectionGain: 0,
+      scalesWithIntensity: true,
+      effects: [
+        {
+          kind: 'perfection' as const,
+          amount: { value: 1, stat: 'intensity' },
+        },
+      ],
+    });
+    const weakRefine = createCustomSkill({
+      name: 'Weak Refine',
+      key: 'weak_refine_gated',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 1,
+      basePerfectionGain: 0,
+      scalesWithControl: true,
+      effects: [
+        {
+          kind: 'perfection' as const,
+          amount: { value: 0.35, stat: 'control' },
+        },
+      ],
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 50,
+      baseControl: 10,
+      targetCompletion: 100,
+      targetPerfection: 100,
+      isSublimeCraft: true,
+      targetMultiplier: 2,
+      // Finish flats stay above the 100% completion gate so overcap is usable.
+      maxCompletion: 399,
+      maxPerfection: 399,
+      skills: [falseFusion, completionRush, intensityRefine, weakRefine],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 30,
+      initialMaxStability: 60,
+      // Need one completion rush to clear maxcompletion (100), then False Fusion
+      // doubles intensity for the perfection push toward sublime flats.
+      completion: 70,
+      perfection: 120,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 5, 'neutral', [], {
+      beamWidth: 8,
+      timeBudgetMs: 4000,
+      maxNodes: 200000,
+    });
+
+    const rotation = result.optimalRotation ?? [];
+    const hasCompletionRush = rotation.includes('Completion Rush');
+    const hasFalseFusion = rotation.includes('False Fusion');
+    const hasIntensityRefine = rotation.includes('Intensity Refine');
+
+    expect(result.recommendation).not.toBeNull();
+    expect(hasCompletionRush).toBe(true);
+    expect(hasFalseFusion).toBe(true);
+    expect(hasIntensityRefine).toBe(true);
+    // Rush must come before the gated payoff is spent on perfection.
+    expect(rotation.indexOf('Completion Rush')).toBeLessThan(
+      rotation.lastIndexOf('Intensity Refine'),
+    );
+    expect(rotation.indexOf('False Fusion')).toBeLessThan(
+      rotation.lastIndexOf('Intensity Refine'),
+    );
   });
 });
 
@@ -1744,12 +1977,22 @@ describe('craft-end ladder modeling', () => {
       completion: 90,
       perfection: 40,
     });
+    const worse = new CraftingState({
+      qi: 100,
+      stability: 20,
+      initialMaxStability: 60,
+      completion: 10,
+      perfection: 10,
+    });
 
     const finishChance = calculateFinishSuccessChance(state, 130);
     const finishedScore = scoreFinishedOutcome(state, 130, 130);
+    const worseScore = scoreFinishedOutcome(worse, 130, 130);
 
     expect(finishChance).toBeCloseTo(90 / 130, 5);
-    expect(finishedScore).toBeGreaterThan(0);
+    // Guaranteed-tier finished scoring: more progress must outrank less,
+    // even when both are still below the first completion band.
+    expect(finishedScore).toBeGreaterThan(worseScore);
   });
 
   it('keeps a healthy live resonance frontier above a shallow partial finish', () => {
@@ -2371,20 +2614,33 @@ describe('tutorial regression scenarios', () => {
     const forcefulStabilize = allRecommendations.find(
       (recommendation) => recommendation.skill.key === 'forceful_stabilize',
     );
+    const invasiveRefine = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === 'invasive_refine',
+    );
 
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.key).toBe('invasive_refine');
+    // With real 2-band sublime goals the remaining work still needs several
+    // turns while stability sits at 31. Stabilize-first then progress is a
+    // valid multi-turn line; the old refine-first expectation came from the
+    // inflated 17× multiplier goal model. Lock the meaningful behaviour:
+    // stay alive, keep refine in the plan, and do not collapse to finish.
+    expect(['forceful_stabilize', 'invasive_refine', 'invasive_fusion']).toContain(
+      result.recommendation!.skill.key,
+    );
+    expect(result.recommendation!.skill.actionKind).not.toBe('finish');
     expect(forcefulStabilize).toBeDefined();
     expect(forcefulStabilize!.immediateGains.stability).toBe(24);
-    expect(
-      allRecommendations.findIndex(
-        (recommendation) => recommendation.skill.key === 'invasive_refine',
-      ),
-    ).toBeLessThan(
-      allRecommendations.findIndex(
-        (recommendation) => recommendation.skill.key === 'forceful_stabilize',
-      ),
+    expect(invasiveRefine).toBeDefined();
+    expect(result.expectedFinalState).toBeDefined();
+    expect(result.expectedFinalState!.stability).toBeGreaterThan(0);
+    expect(result.expectedFinalState!.perfection).toBeGreaterThan(
+      input.state.perfection,
     );
+    // Progress toward the binding bar must appear early in the rotation.
+    const rotation = result.optimalRotation ?? [];
+    expect(
+      rotation.some((name) => /refine|fusion/i.test(name)),
+    ).toBe(true);
   });
 });
 
@@ -3642,11 +3898,10 @@ describe('scoreState (isolated)', () => {
       perfection: 100,
     });
     const diff = scoreState(met, 100, 100) - scoreState(unmet, 100, 100);
-    // Target-met bonus = totalTargetMagnitude × SCORING.TARGET_MET_MULTIPLIER
-    // = 200 × 2 = 400.  Diff is ~400 minus the small progress-score delta
-    // from the 1-point completion gap, so conservatively > 75% of 400.
-    const expectedBonus = 200 * SCORING.TARGET_MET_MULTIPLIER;
-    expect(diff).toBeGreaterThan(expectedBonus * 0.75);
+    // Banking perfect tier (rank 2) must dominate the near-miss failed/basic
+    // state. Tier jump = totalTargetMagnitude × TIER_VALUE_SCALE × ≥1 rank.
+    const expectedTierJump = 200 * SCORING.TIER_VALUE_SCALE;
+    expect(diff).toBeGreaterThan(expectedTierJump * 0.75);
   });
 
   it('should not apply stability penalty when targets are met', () => {
@@ -4141,8 +4396,9 @@ describe('scoreState (isolated)', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 1000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 400000),
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      useMonteCarloTreeSearch: false,
     };
 
     const result = lookaheadSearch(
@@ -4156,14 +4412,37 @@ describe('scoreState (isolated)', () => {
       stableSearchConfig,
     );
 
+    const allRecommendations = [
+      result.recommendation,
+      ...result.alternativeSkills,
+    ].filter(
+      (
+        recommendation,
+      ): recommendation is NonNullable<typeof result.recommendation> =>
+        Boolean(recommendation),
+    );
+    const bestRefine = allRecommendations.find(
+      (recommendation) => recommendation.skill.type === 'refine',
+    );
+    const bestFusion = allRecommendations.find(
+      (recommendation) => recommendation.skill.type === 'fusion',
+    );
+
     expect(snapshot.output?.recommendation?.skill?.key).toBe('invasive_fusion');
     expect(input.state.harmonyData?.recommendedTechniqueTypes).toEqual([
       'refine',
     ]);
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.type).toBe('refine');
+    // Harmony is refine-only here: never open with fusion/stabilize. A support
+    // setup can outrank under tight budgets, but refine must remain the best
+    // progress class and beat fusion.
     expect(result.recommendation!.skill.type).not.toBe('fusion');
     expect(result.recommendation!.skill.type).not.toBe('stabilize');
+    expect(bestRefine).toBeDefined();
+    if (bestFusion) {
+      expect(bestRefine!.score).toBeGreaterThan(bestFusion.score);
+    }
+    expect(['refine', 'support']).toContain(result.recommendation!.skill.type);
   });
 
   it('replays the premature-finish proc-floor snapshot and keeps proc-dependent refine behind safe stabilization', () => {
@@ -4257,12 +4536,9 @@ describe('scoreState (isolated)', () => {
     );
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.actionKind).not.toBe('finish');
-    expect(finishCraft).toBeDefined();
-    expect(
-      allRecommendations.findIndex(
-        (recommendation) => recommendation.skill.key === '__finish_craft__',
-      ),
-    ).toBeGreaterThan(0);
+    // Finish Craft is only offered at the runtime auto-finish horizon.
+    // This snapshot is still mid-runway, so voluntary finish is absent.
+    expect(finishCraft).toBeUndefined();
   });
 
   it('replays the user fairy recovery snapshot and ranks live continuation above Finish Craft', () => {
@@ -4313,17 +4589,9 @@ describe('scoreState (isolated)', () => {
       "fairy's_blessing",
       'overbearing_stabilization',
     ]).toContain(result.recommendation!.skill.key);
-    expect(finishCraft).toBeDefined();
+    // Mid-craft recovery: no auto-finish yet, so Finish Craft stays off the list.
+    expect(finishCraft).toBeUndefined();
     expect(fairyRecovery).toBeDefined();
-    expect(
-      allRecommendations.findIndex(
-        (recommendation) => recommendation.skill.key === "fairy's_blessing",
-      ),
-    ).toBeLessThan(
-      allRecommendations.findIndex(
-        (recommendation) => recommendation.skill.key === '__finish_craft__',
-      ),
-    );
   });
 
   it('replays the forge heat runway snapshot at heat two and prioritizes heat recovery over support setup', () => {
@@ -4406,6 +4674,367 @@ describe('scoreState (isolated)', () => {
     expect(unstableReEnergisation).toBeDefined();
     expect(result.recommendation!.score).toBeGreaterThan(
       unstableReEnergisation!.score,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Survivability regression lock (captured BEFORE conjunctive scoring change)
+// ---------------------------------------------------------------------------
+// These tests pin the praised "keep the craft alive" behaviour so the
+// goal-score rewrite cannot silently trade runway management for raw progress.
+
+// ---------------------------------------------------------------------------
+// Conjunctive outcome scoring
+// ---------------------------------------------------------------------------
+
+describe('conjunctive outcome scoring', () => {
+  const healthy = (completion: number, perfection: number) =>
+    new CraftingState({
+      qi: 120,
+      stability: 50,
+      initialMaxStability: 60,
+      completion,
+      perfection,
+    });
+
+  it('uses the true sublime band threshold (230 for a 100-target bar), not 2.0×', () => {
+    const sublimeGoal = bandThreshold(
+      100,
+      TIER_REQUIREMENTS.sublime.completion,
+    );
+    expect(sublimeGoal).toBe(230);
+    expect(sublimeGoal).not.toBe(200);
+
+    // A state at the old 2.0× guess must still score below the real 2-band gate.
+    const atOldGuess = healthy(200, 200);
+    const atRealGate = healthy(230, 230);
+    expect(
+      scoreState(atRealGate, 100, 100, true, 2.0, false, 460, 460),
+    ).toBeGreaterThan(
+      scoreState(atOldGuess, 100, 100, true, 2.0, false, 460, 460),
+    );
+  });
+
+  it('scores a balanced sublime-ready state above a completion-overshoot that is still short on perfection', () => {
+    // Completion far past 2 bands, perfection only 1 band → stuck at perfect.
+    const overCompletion = healthy(400, 100);
+    // Balanced at the real 2-band sublime gate.
+    const balancedSublime = healthy(230, 230);
+
+    const overScore = scoreState(
+      overCompletion,
+      100,
+      100,
+      true,
+      2.0,
+      false,
+      460,
+      460,
+    );
+    const balancedScore = scoreState(
+      balancedSublime,
+      100,
+      100,
+      true,
+      2.0,
+      false,
+      460,
+      460,
+    );
+
+    expect(balancedScore).toBeGreaterThan(overScore);
+  });
+
+  it('does not reward further investment in an already-satisfied bar (conjunctive gate)', () => {
+    // Completion already at 2 bands (230); perfection one band short (100).
+    const baseline = healthy(230, 100);
+    const moreCompletion = healthy(300, 100); // pad the satisfied bar
+    const morePerfection = healthy(230, 150); // push the binding bar
+
+    const baselineScore = scoreState(
+      baseline,
+      100,
+      100,
+      true,
+      2.0,
+      false,
+      460,
+      460,
+    );
+    const paddedScore = scoreState(
+      moreCompletion,
+      100,
+      100,
+      true,
+      2.0,
+      false,
+      460,
+      460,
+    );
+    const bindingScore = scoreState(
+      morePerfection,
+      100,
+      100,
+      true,
+      2.0,
+      false,
+      460,
+      460,
+    );
+
+    // Marginal completion on the already-satisfied bar must not beat baseline
+    // by a meaningful amount (overshoot may even lower it). Binding-bar gain
+    // must score strictly better than the padded alternative.
+    expect(paddedScore).toBeLessThanOrEqual(baselineScore + 1e-6);
+    expect(bindingScore).toBeGreaterThan(baselineScore);
+    expect(bindingScore).toBeGreaterThan(paddedScore);
+  });
+
+  it('recommends perfection when completion already holds two sublime bands', () => {
+    const refine = createCustomSkill({
+      name: 'Push Perfection',
+      key: 'conj_push_perf',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 2,
+      basePerfectionGain: 30,
+    });
+    const fusion = createCustomSkill({
+      name: 'Push Completion',
+      key: 'conj_push_comp',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 2,
+      baseCompletionGain: 30,
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 1,
+      baseControl: 1,
+      skills: [refine, fusion],
+      isSublimeCraft: true,
+      targetMultiplier: 2,
+      maxCompletion: 460,
+      maxPerfection: 460,
+    });
+    const state = healthy(230, 100);
+
+    const result = lookaheadSearch(state, config, 100, 100, 3);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('conj_push_perf');
+  });
+
+  it('recommends completion when perfection already holds two sublime bands', () => {
+    const refine = createCustomSkill({
+      name: 'Push Perfection',
+      key: 'conj_push_perf_mirror',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 2,
+      basePerfectionGain: 30,
+    });
+    const fusion = createCustomSkill({
+      name: 'Push Completion',
+      key: 'conj_push_comp_mirror',
+      type: 'fusion',
+      qiCost: 0,
+      stabilityCost: 2,
+      baseCompletionGain: 30,
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 1,
+      baseControl: 1,
+      skills: [refine, fusion],
+      isSublimeCraft: true,
+      targetMultiplier: 2,
+      maxCompletion: 460,
+      maxPerfection: 460,
+    });
+    const state = healthy(100, 230);
+
+    const result = lookaheadSearch(state, config, 100, 100, 3);
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('conj_push_comp_mirror');
+  });
+
+  it('has a strictly monotonic early gradient as completion rises from 0/0', () => {
+    let previous = Number.NEGATIVE_INFINITY;
+    for (const completion of [0, 10, 25, 50, 75, 100]) {
+      const score = scoreState(healthy(completion, 0), 100, 100);
+      expect(score).toBeGreaterThan(previous);
+      previous = score;
+    }
+  });
+
+  it('orders finished states strictly by banked tier regardless of raw overshoot', () => {
+    const failed = healthy(50, 200); // no completion band
+    const basic = healthy(100, 0); // completion only
+    const perfect = healthy(100, 100); // one band each
+    const sublime = healthy(230, 230); // two bands each
+    // Perfect with huge overshoot on completion must not beat real sublime.
+    const perfectOvershoot = healthy(500, 100);
+
+    const failedScore = scoreFinishedOutcome(failed, 100, 100, true, 2);
+    const basicScore = scoreFinishedOutcome(basic, 100, 100, true, 2);
+    const perfectScore = scoreFinishedOutcome(perfect, 100, 100, true, 2);
+    const sublimeScore = scoreFinishedOutcome(sublime, 100, 100, true, 2);
+    const overshootScore = scoreFinishedOutcome(
+      perfectOvershoot,
+      100,
+      100,
+      true,
+      2,
+    );
+
+    expect(sublimeScore).toBeGreaterThan(perfectScore);
+    expect(perfectScore).toBeGreaterThan(basicScore);
+    expect(basicScore).toBeGreaterThan(failedScore);
+    expect(sublimeScore).toBeGreaterThan(overshootScore);
+  });
+});
+
+describe('survivability regression lock', () => {
+  const stabilize = createCustomSkill({
+    name: 'Forceful Stabilize',
+    key: 'surv_reg_stabilize',
+    type: 'stabilize',
+    qiCost: 0,
+    stabilityCost: 0,
+    stabilityGain: 25,
+    preventsMaxStabilityDecay: true,
+  });
+  const deadlyFusion = createCustomSkill({
+    name: 'Deadly Fusion',
+    key: 'surv_reg_deadly_fusion',
+    type: 'fusion',
+    qiCost: 0,
+    stabilityCost: 12,
+    baseCompletionGain: 40,
+  });
+  const deadlyRefine = createCustomSkill({
+    name: 'Deadly Refine',
+    key: 'surv_reg_deadly_refine',
+    type: 'refine',
+    qiCost: 0,
+    stabilityCost: 12,
+    basePerfectionGain: 40,
+  });
+  const safeFusion = createCustomSkill({
+    name: 'Safe Fusion',
+    key: 'surv_reg_safe_fusion',
+    type: 'fusion',
+    qiCost: 0,
+    stabilityCost: 4,
+    baseCompletionGain: 8,
+  });
+
+  it('prefers stabilize over lethal progress when stability is near death', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 1,
+      baseControl: 1,
+      skills: [stabilize, deadlyFusion, deadlyRefine],
+    });
+    const state = new CraftingState({
+      qi: 120,
+      stability: 6,
+      initialMaxStability: 50,
+      completion: 40,
+      perfection: 40,
+    });
+
+    const lookahead = lookaheadSearch(state, config, 100, 100, 4);
+    const greedy = greedySearch(state, config, 100, 100);
+
+    expect(lookahead.recommendation).not.toBeNull();
+    expect(lookahead.recommendation!.skill.key).toBe('surv_reg_stabilize');
+    expect(greedy.recommendation).not.toBeNull();
+    expect(greedy.recommendation!.skill.key).toBe('surv_reg_stabilize');
+  });
+
+  it('finds a multi-turn escape line instead of dying for immediate progress', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 1,
+      baseControl: 1,
+      skills: [stabilize, deadlyFusion, safeFusion],
+    });
+    const state = new CraftingState({
+      qi: 120,
+      stability: 8,
+      initialMaxStability: 50,
+      completion: 20,
+      perfection: 20,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 5);
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('surv_reg_stabilize');
+    // After stabilizing, the projected line should still be alive and advancing.
+    expect(result.expectedFinalState).toBeDefined();
+    expect(result.expectedFinalState!.stability).toBeGreaterThan(0);
+    expect(result.optimalRotation?.[0]).toBe('Forceful Stabilize');
+  });
+
+  it('still stabilizes on sublime crafts when base success is banked but runway is gone', () => {
+    const config = createTestConfig({
+      minStability: 0,
+      baseIntensity: 1,
+      baseControl: 1,
+      skills: [stabilize, deadlyFusion, deadlyRefine],
+      isSublimeCraft: true,
+      targetMultiplier: 2,
+      maxCompletion: 460,
+      maxPerfection: 460,
+    });
+    const state = new CraftingState({
+      qi: 120,
+      stability: 5,
+      initialMaxStability: 40,
+      completion: 100,
+      perfection: 100,
+    });
+
+    const result = lookaheadSearch(state, config, 100, 100, 4);
+
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('surv_reg_stabilize');
+  });
+
+  it('scores near-death unmet states far below healthy unmet states', () => {
+    const healthy = new CraftingState({
+      qi: 100,
+      stability: 45,
+      initialMaxStability: 60,
+      completion: 40,
+      perfection: 40,
+    });
+    const nearDeath = new CraftingState({
+      qi: 100,
+      stability: 4,
+      initialMaxStability: 60,
+      completion: 40,
+      perfection: 40,
+    });
+    const dead = new CraftingState({
+      qi: 100,
+      stability: 0,
+      initialMaxStability: 60,
+      completion: 40,
+      perfection: 40,
+    });
+
+    const healthyScore = scoreState(healthy, 100, 100);
+    const nearDeathScore = scoreState(nearDeath, 100, 100);
+    const deadScore = scoreState(dead, 100, 100);
+
+    expect(healthyScore - nearDeathScore).toBeGreaterThan(100);
+    expect(nearDeathScore).toBeGreaterThan(deadScore);
+    expect(healthyScore - deadScore).toBeGreaterThan(
+      100 * SCORING.DEATH_PENALTY_MULTIPLIER,
     );
   });
 });

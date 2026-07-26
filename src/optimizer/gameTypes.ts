@@ -34,7 +34,14 @@ export type RecipeConditionEffectType =
 /**
  * Harmony types for sublime crafts.
  */
-export type HarmonyType = 'forge' | 'alchemical' | 'inscription' | 'resonance';
+export type HarmonyType =
+  | 'forge'
+  | 'alchemical'
+  | 'inscription'
+  | 'resonance'
+  | 'formless'
+  | 'enhancingEcho'
+  | 'eccentricDecree';
 
 /**
  * Scaling definition matching game's Scaling type.
@@ -259,6 +266,14 @@ export interface RecipeConditionEffects {
  */
 export interface ForgeWorksData {
   heat: number;
+  /**
+   * Heat value whose buff is currently applied.
+   *
+   * The runtime only refreshes the Heat buff for heat 0, 2-3, 4-6, 7-9 and 10;
+   * at heat 1 it skips the update entirely, so the previous band's buff stays
+   * active. Tracking the last buffed heat reproduces that hole exactly.
+   */
+  lastBuffedHeat?: number;
 }
 
 /**
@@ -289,14 +304,48 @@ export interface ResonanceData {
 }
 
 /**
+ * Enhancing Echo sub-system data.
+ *
+ * Actions are worked in pairs: the first action of a pair attunes to its type,
+ * and repeating that type echoes it (+10 harmony, half costs). Any other type
+ * is a discord (-10 harmony, doubled costs) and the pair fails.
+ */
+export interface EnhancingEchoData {
+  /** The type of the first action of the current pair, awaiting its echo. */
+  attunedType: TechniqueType | undefined;
+  /** Outcome of the most recent action, for display and diagnostics. */
+  lastOutcome?: 'attune' | 'echo' | 'discord';
+}
+
+/**
+ * Eccentric Decree sub-system data.
+ *
+ * The decree demands progress on one bar at a time. Raising the focused bar
+ * grants harmony; raising the other bar costs harmony and qi. The focus flips
+ * whenever the focused bar clears a band.
+ */
+export interface EccentricDecreeData {
+  /** The bar the decree currently demands progress on. */
+  focusedBar: 'completion' | 'perfection';
+  /** Clamped completion at the end of the previous action, for delta detection. */
+  lastCompletion: number;
+  /** Clamped perfection at the end of the previous action, for delta detection. */
+  lastPerfection: number;
+}
+
+/**
  * Harmony type data for sublime crafts.
  * Matches game's HarmonyData structure with sub-system specific data.
+ *
+ * Formless Way has no sub-system state: it simply pins harmony at 33.
  */
 export interface HarmonyData {
   forgeWorks?: ForgeWorksData;
   alchemicalArts?: AlchemicalArtsData;
   inscribedPatterns?: InscribedPatternsData;
   resonance?: ResonanceData;
+  enhancingEcho?: EnhancingEchoData;
+  eccentricDecree?: EccentricDecreeData;
   recommendedTechniqueTypes: TechniqueType[];
   /**
    * Optional extensible payload used by some harmony systems.
@@ -411,8 +460,11 @@ export function calculateExpectedCritMultiplier(
       const nativeCritMultiplier = Number(nativeResult?.multiplier);
       if (Number.isFinite(nativeCritMultiplier) && nativeCritMultiplier > 0) {
         const actualCritChance = Math.min(Math.max(critChance, 0), 100) / 100;
-        const critMultiplierAsRatio = nativeCritMultiplier / 100;
-        return 1 - actualCritChance + actualCritChance * critMultiplierAsRatio;
+        // The runtime already divides by 100 inside calculateCraftingOvercrit
+        // (`(critMultiplier + Math.max(0, critChance - 100) * 3) / 100`), so the
+        // returned multiplier is a ratio (1.5 for a 150% crit). Dividing again
+        // here collapsed every crit to ~1.005x.
+        return 1 - actualCritChance + actualCritChance * nativeCritMultiplier;
       }
     } catch (error) {
       if (!warnedNativeOvercritFailure) {
@@ -586,7 +638,7 @@ function compileExpression(
       `with (scope) { return (${normalized}); }`,
     ) as (
       scope: Record<string, number | ((...args: number[]) => number)>,
-    ) => number;
+    ) => unknown;
 
     const wrapped = (
       scope: Record<string, number | ((...args: number[]) => number)>,
@@ -608,6 +660,12 @@ function compileExpression(
         },
       });
       const result = fn(proxy);
+      // Game-authored condition expressions such as `stacks >= 9` evaluate to a
+      // boolean. The runtime tests them with `evaluateExpression(cond, vars) > 0`,
+      // where JS coerces `true` to 1, so booleans must survive as 1/0 here.
+      if (typeof result === 'boolean') {
+        return result ? 1 : 0;
+      }
       return typeof result === 'number' && Number.isFinite(result) ? result : 0;
     };
     cacheCompiledExpression(eqn, wrapped);

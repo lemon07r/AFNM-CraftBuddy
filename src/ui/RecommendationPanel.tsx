@@ -29,6 +29,7 @@ import {
   SearchResult,
   SkillRecommendation,
   CraftingConditionType,
+  HarmonyType,
 } from '../optimizer';
 import {
   AUTO_CRAFT_POLICY_OPTIONS,
@@ -184,7 +185,7 @@ interface RecommendationPanelProps {
   nextConditions?: CraftingConditionType[];
   currentToxicity?: number;
   maxToxicity?: number;
-  craftingType?: 'forge' | 'alchemical' | 'inscription' | 'resonance';
+  craftingType?: HarmonyType;
   settings?: CraftBuddySettings;
   onSettingsChange?: (settings: CraftBuddySettings) => void;
   /** Called when a search-affecting setting changes */

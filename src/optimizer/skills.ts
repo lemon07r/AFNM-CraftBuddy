@@ -25,7 +25,12 @@ import {
   getBonusAndChance,
   evaluateScaling,
 } from './gameTypes';
-import { processHarmonyEffect, getHarmonyStatModifiers } from './harmony';
+import {
+  processHarmonyEffect,
+  getHarmonyStatModifiers,
+  getHarmonyCostMultipliers,
+  HarmonyStatModifiers,
+} from './harmony';
 import {
   collectDerivedNativeVariableAliases,
   applyDerivedNativeVariableAliases,
@@ -181,6 +186,14 @@ interface MasteryUpgradeRule {
 
 type MasteryUpgradeMap = Record<string, MasteryUpgradeRule>;
 
+/**
+ * Field names the runtime's crafting upgrade-mastery applier is allowed to
+ * rewrite. `applyUpgradeMasteries` walks the action tree and only touches
+ * `amount`, `value` and `cooldown` on the object carrying the matching
+ * `upgradeKey`; every other numeric field is left alone.
+ */
+const UPGRADEABLE_NUMERIC_FIELDS = ['amount', 'value', 'cooldown'] as const;
+
 interface ResolvedMasteryBonuses {
   bonuses: SkillMastery;
   upgrades: MasteryUpgradeMap;
@@ -241,7 +254,8 @@ function applyMasteryUpgradesToScaling(
     const upgradeKey = String(source.upgradeKey || '').trim();
     const rule = upgradeKey ? upgrades[upgradeKey] : undefined;
     if (rule) {
-      for (const [key, child] of Object.entries(clone)) {
+      for (const key of UPGRADEABLE_NUMERIC_FIELDS) {
+        const child = clone[key];
         if (typeof child !== 'number' || !Number.isFinite(child)) {
           continue;
         }
@@ -588,6 +602,46 @@ type ActiveBuffMap = Map<
   { name: string; stacks: number; definition?: BuffDefinition }
 >;
 
+/**
+ * The crafting reducer stacks "Turbid Qi" on long crafts. After the step
+ * counter is bumped it runs
+ * `t.step++, t.step >= Tms && t.step % Ems === 0 && K8(Cms, 1, ...)`
+ * with `Tms = 100` and `Ems = 3`, granting one stack of
+ * `{ name: 'Turbid Qi', canStack: true, stats: { poolCostFlat: { value: 1, scaling: 'stacks' } } }`.
+ */
+const TURBID_QI_FIRST_STEP = 100;
+const TURBID_QI_STEP_INTERVAL = 3;
+const TURBID_QI_BUFF_KEY = 'turbid_qi';
+
+function grantsTurbidQiStack(nextStep: number): boolean {
+  return (
+    Number.isFinite(nextStep) &&
+    nextStep >= TURBID_QI_FIRST_STEP &&
+    nextStep % TURBID_QI_STEP_INTERVAL === 0
+  );
+}
+
+/**
+ * Locate the tracked Turbid Qi buff. The reducer creates it directly instead of
+ * through an action's `createBuff`, so the optimizer can only project it
+ * forward when the live craft state already carries it with a definition.
+ * Identify it by its runtime shape (`stats.poolCostFlat` scaling on `stacks`)
+ * and fall back to the normalized buff name.
+ */
+function findTurbidQiBuffKey(buffs: ActiveBuffMap): string | undefined {
+  let fallback: string | undefined;
+  for (const [buffKey, tracked] of Array.from(buffs.entries())) {
+    if (!tracked.definition) continue;
+    if (tracked.definition.stats?.poolCostFlat?.scaling === 'stacks') {
+      return buffKey;
+    }
+    if (normalizeBuffName(tracked.name || buffKey) === TURBID_QI_BUFF_KEY) {
+      fallback = buffKey;
+    }
+  }
+  return fallback;
+}
+
 const buffDefinitionLookupCache = new WeakMap<
   OptimizerConfig,
   Map<string, BuffDefinition>
@@ -663,6 +717,43 @@ function getResolvedActiveBuffs(
   return stripDerivedForgeHeatBuff(state, config, resolved ?? state.buffs);
 }
 
+interface ProgressBonusInfo {
+  guaranteed: number;
+  bonusChance: number;
+}
+
+/**
+ * Build the runtime's progress-percentage scaling variables.
+ *
+ * The runtime writes them in camelCase only:
+ *   vars.completionPercentage = Math.floor((c.guaranteed + c.bonusChance) * 100)
+ *   vars.perfectionPercentage = Math.floor((l.guaranteed + l.bonusChance) * 100)
+ * where `c`/`l` come from getBonusAndChance. CraftBuddy used to emit only the
+ * lowercase spellings, so game-authored expressions referencing the camelCase
+ * names resolved to 0. The lowercase spellings are kept as aliases so existing
+ * CraftBuddy-side consumers keep working.
+ */
+function buildProgressPercentageVariables(
+  completionInfo: ProgressBonusInfo,
+  perfectionInfo: ProgressBonusInfo,
+): Record<string, number> {
+  const completionPercentage = Math.max(
+    0,
+    Math.floor((completionInfo.guaranteed + completionInfo.bonusChance) * 100),
+  );
+  const perfectionPercentage = Math.max(
+    0,
+    Math.floor((perfectionInfo.guaranteed + perfectionInfo.bonusChance) * 100),
+  );
+
+  return {
+    completionPercentage,
+    perfectionPercentage,
+    completionpercentage: completionPercentage,
+    perfectionpercentage: perfectionPercentage,
+  };
+}
+
 function buildNativeAvailabilityVariables(
   state: CraftingState,
   maxToxicity: number,
@@ -711,18 +802,7 @@ function buildNativeAvailabilityVariables(
     maxpool: maxPool,
     completion: state.completion,
     perfection: state.perfection,
-    completionpercentage: Math.max(
-      0,
-      Math.floor(
-        (completionInfo.guaranteed + completionInfo.bonusChance) * 100,
-      ),
-    ),
-    perfectionpercentage: Math.max(
-      0,
-      Math.floor(
-        (perfectionInfo.guaranteed + perfectionInfo.bonusChance) * 100,
-      ),
-    ),
+    ...buildProgressPercentageVariables(completionInfo, perfectionInfo),
     stability: state.stability,
     maxstability: state.maxStability,
     stabilitypenalty: state.stabilityPenalty,
@@ -837,17 +917,9 @@ function propagateNativeVariablesAfterAction(
     nextPerfectionTarget > 0
       ? getBonusAndChance(nextState.perfection, nextPerfectionTarget)
       : { guaranteed: 0, bonusChance: 0 };
-  variables.completionpercentage = Math.max(
-    0,
-    Math.floor(
-      (nextCompletionInfo.guaranteed + nextCompletionInfo.bonusChance) * 100,
-    ),
-  );
-  variables.perfectionpercentage = Math.max(
-    0,
-    Math.floor(
-      (nextPerfectionInfo.guaranteed + nextPerfectionInfo.bonusChance) * 100,
-    ),
+  Object.assign(
+    variables,
+    buildProgressPercentageVariables(nextCompletionInfo, nextPerfectionInfo),
   );
 
   const keysToRefresh = new Set<string>();
@@ -923,18 +995,7 @@ function buildTechniqueScalingVariables(
     stacks: 0,
     completion: state.completion,
     perfection: state.perfection,
-    completionpercentage: Math.max(
-      0,
-      Math.floor(
-        (completionInfo.guaranteed + completionInfo.bonusChance) * 100,
-      ),
-    ),
-    perfectionpercentage: Math.max(
-      0,
-      Math.floor(
-        (perfectionInfo.guaranteed + perfectionInfo.bonusChance) * 100,
-      ),
-    ),
+    ...buildProgressPercentageVariables(completionInfo, perfectionInfo),
     stability: state.stability,
     maxcompletion: completionTarget,
     maxperfection: perfectionTarget,
@@ -973,8 +1034,9 @@ function applyBuffStatContributions(
     (definition) => definition.stats?.intensity !== undefined,
   );
 
-  // Backward-compatible fallback for legacy turn-based control/intensity buffs.
-  // Do not apply these when explicit buff stat definitions are present.
+  // Legacy scoring/sim fast path only. Expression-gated and definition-driven
+  // buffs (False Fusion / Strive for Completion, Soulflame, etc.) contribute
+  // through `activeBuffs` below — these turn counters must not double-apply.
   let control = vars.control;
   let intensity = vars.intensity;
   if (state.controlBuffTurns > 0 && !hasExplicitControlBuff) {
@@ -1237,16 +1299,20 @@ function resolveMasteryBonuses(
     const factor = conditionResult.probability;
 
     switch (mastery.kind) {
+      // Runtime: `a.control *= 1 + c.percentage / 100`, so the stored bonus is a
+      // ratio while `percentage` is a whole-number percentage.
       case 'control':
         bonuses.controlBonus =
           (bonuses.controlBonus || 0) +
-          Number(mastery.percentage || 0) * factor;
+          (Number(mastery.percentage || 0) / 100) * factor;
         break;
       case 'intensity':
         bonuses.intensityBonus =
           (bonuses.intensityBonus || 0) +
-          Number(mastery.percentage || 0) * factor;
+          (Number(mastery.percentage || 0) / 100) * factor;
         break;
+      // Runtime: `a.critchance += c.percentage` / `a.critmultiplier +=
+      // c.percentage` - these stay raw percentage points, no division.
       case 'critchance':
         bonuses.critChanceBonus =
           (bonuses.critChanceBonus || 0) +
@@ -1266,7 +1332,9 @@ function resolveMasteryBonuses(
 
         const existing = upgrades[upgradeKey] || { additive: 0, multiplier: 1 };
         if (mastery.shouldMultiply) {
-          const multiplier = rawChange;
+          // Runtime: `e[i] = a + a * r.change`, i.e. a relative increase of
+          // `change` (0.15 -> 1.15x), not an absolute `a * change`.
+          const multiplier = 1 + rawChange;
           if (Number.isFinite(multiplier) && multiplier !== 0) {
             existing.multiplier *= multiplier;
           }
@@ -1347,9 +1415,19 @@ interface PostCostStabilityFrame {
 }
 
 /**
- * Calculate actual action costs after all modifiers using game order/rounding:
- * - Pool: condition pool multiplier -> poolCostPercentage
- * - Stability: percentage on negative delta with ceil -> condition multiplier with floor
+ * Calculate actual action costs after all modifiers using game order/rounding.
+ *
+ * Runtime order (getPoolCost / getStabilityCost):
+ * - Condition `pool`/`stability` multipliers scale poolCostPercentage /
+ *   stabilityCostPercentage, unrounded.
+ * - Pool: add poolCostFlat (clamped at 0), then a single
+ *   `Math.floor(cost * poolCostPercentage / 100)`.
+ * - Stability: a single `Math.ceil(negativeDelta * stabilityCostPercentage / 100)`.
+ * - The harmony cost multiplier is then applied as a *separate outer* floor,
+ *   not folded into the percentage:
+ *     pool      = Math.floor(getPoolCost(...) * harmonyPoolMultiplier)
+ *     stability = Math.floor(getStabilityCost(...) * harmonyStabilityMultiplier)
+ *   Folding it into the percentage instead would drift by 1 on fractional cases.
  */
 export function calculateEffectiveActionCosts(
   state: CraftingState,
@@ -1366,8 +1444,10 @@ export function calculateEffectiveActionCosts(
   let stabilityCostPercentage = normalizeRuntimeCostPercentage(
     state.stabilityCostPercentage,
   );
+  let harmonyPoolMultiplier = 1;
+  let harmonyStabilityMultiplier = 1;
 
-  // Only run the heavier runtime-derivation path when active buffs/harmony
+  // Only run the heavier runtime-derivation path when active buffs
   // can actually modify costs. This avoids unnecessary overhead in search.
   if (config) {
     const hasCostAffectingBuff = Array.from(activeBuffs.values()).some(
@@ -1378,21 +1458,32 @@ export function calculateEffectiveActionCosts(
           tracked.definition?.stats?.stabilityCostPercentage,
         ),
     );
-    const harmonyMods = getHarmonyStatModifiers(
+    const baseHarmonyMods = getHarmonyStatModifiers(
       state.harmonyData,
       config.craftingType,
     );
-    const harmonyAffectsCosts =
-      harmonyMods.poolCostPercentage !== 100 ||
-      harmonyMods.stabilityCostPercentage !== 100;
+    // Enhancing Echo scales this action's costs from the pre-action attunement:
+    // echoing the attuned type halves them, breaking the echo doubles them.
+    const harmonyCostMultipliers = getHarmonyCostMultipliers(
+      state.harmonyData,
+      config.craftingType,
+      skill.type,
+    );
+    harmonyPoolMultiplier =
+      (baseHarmonyMods.poolCostPercentage / 100) *
+      (harmonyCostMultipliers.poolCostPercentage / 100);
+    harmonyStabilityMultiplier =
+      (baseHarmonyMods.stabilityCostPercentage / 100) *
+      (harmonyCostMultipliers.stabilityCostPercentage / 100);
 
-    if (hasCostAffectingBuff || harmonyAffectsCosts) {
-      const runtimeVars = buildPreMasteryActionVariables(
-        state,
-        config,
-        [],
-        harmonyMods,
-      );
+    if (hasCostAffectingBuff) {
+      // The harmony multiplier is applied separately below, so the variable
+      // build must see neutral harmony cost percentages.
+      const runtimeVars = buildPreMasteryActionVariables(state, config, [], {
+        ...baseHarmonyMods,
+        poolCostPercentage: 100,
+        stabilityCostPercentage: 100,
+      });
       poolCostFlat = Math.max(0, Math.floor(runtimeVars.poolCostFlat ?? 0));
       poolCostPercentage = normalizeRuntimeCostPercentage(
         runtimeVars.poolCostPercentage,
@@ -1402,30 +1493,44 @@ export function calculateEffectiveActionCosts(
       );
     }
   }
+  // Condition effects multiply the cost *percentages* rather than the raw
+  // costs, and are folded in before any rounding:
+  //   e === 'poolCostPercentage' && effects.forEach(e => e.kind === 'pool' && (o *= e.multiplier))
+  for (const effect of conditionEffects) {
+    if (effect.multiplier === undefined) continue;
+    if (effect.kind === 'pool') {
+      poolCostPercentage *= effect.multiplier;
+    } else if (effect.kind === 'stability') {
+      stabilityCostPercentage *= effect.multiplier;
+    }
+  }
+
   let qiCost = getEffectiveQiCost(skill);
   let stabilityDelta = -getEffectiveStabilityCost(skill);
 
-  for (const effect of conditionEffects) {
-    if (effect.kind === 'pool' && effect.multiplier !== undefined) {
-      qiCost = Math.floor(qiCost * effect.multiplier);
-    }
+  // getPoolCost: `r = e; if (flat) r = max(0, r + flat); if (pct) r = floor(r * pct / 100)`
+  // The flat surcharge is added *before* the percentage, and only one floor runs.
+  if (poolCostFlat > 0) {
+    qiCost = Math.max(0, qiCost + poolCostFlat);
   }
   if (poolCostPercentage !== 100) {
     qiCost = Math.floor((qiCost * poolCostPercentage) / 100);
   }
-  if (poolCostFlat > 0) {
-    qiCost += poolCostFlat;
+
+  if (harmonyPoolMultiplier !== 1) {
+    qiCost = Math.floor(Math.max(0, qiCost) * harmonyPoolMultiplier);
   }
 
+  // getStabilityCost: `n = -e; if (pct) n = ceil(n * pct / 100); return -n`
+  // i.e. a single ceil applied to the negative stability delta.
   if (stabilityDelta < 0 && stabilityCostPercentage !== 100) {
     stabilityDelta = Math.ceil(
       (stabilityDelta * stabilityCostPercentage) / 100,
     );
   }
-  for (const effect of conditionEffects) {
-    if (effect.kind === 'stability' && effect.multiplier !== undefined) {
-      stabilityDelta = Math.floor(stabilityDelta * effect.multiplier);
-    }
+
+  if (stabilityDelta < 0 && harmonyStabilityMultiplier !== 1) {
+    stabilityDelta = Math.floor(stabilityDelta * harmonyStabilityMultiplier);
   }
 
   return {
@@ -1505,9 +1610,12 @@ function clampDisplayedStabilityGain(
  * Calculate gains for Disciplined Touch skill.
  * Converts existing buffs into completion and perfection gains.
  *
- * The skill uses the current buff states to calculate gains:
- * - Completion gain scales with intensity (boosted by intensity buff if active)
- * - Perfection gain scales with control (boosted by control buff if active)
+ * Runtime 0.7.5 defines both halves against Qi Intensity:
+ *   effects: [
+ *     { kind: 'perfection', amount: { value: 0.5, stat: 'intensity', upgradeKey: 'perfection' } },
+ *     { kind: 'completion',  amount: { value: 0.5, stat: 'intensity', upgradeKey: 'perfection' } },
+ *   ]
+ * so perfection scales with intensity too, not control.
  *
  * @param state - Current crafting state with buff information
  * @param skill - The Disciplined Touch skill definition with multipliers
@@ -1559,7 +1667,7 @@ export function calculateDisciplinedTouchGains(
     safeMultiply(skill.baseCompletionGain, effectiveVars.intensity),
   );
   const perfectionGain = safeFloor(
-    safeMultiply(skill.basePerfectionGain, effectiveVars.control),
+    safeMultiply(skill.basePerfectionGain, effectiveVars.intensity),
   );
 
   // Apply crit (only to positive gains)
@@ -2494,7 +2602,9 @@ export function calculateActionSurvivabilityFloor(
           scalingVars,
           0,
         );
-        buffToxicityDelta += resolveGuaranteedContribution(
+        // Runtime `changeToxicity` does `stats.toxicity -= amount`: a positive
+        // amount cleanses toxicity, a negative amount inflicts it.
+        buffToxicityDelta -= resolveGuaranteedContribution(
           amount,
           conditionResult.probability,
         );
@@ -2579,6 +2689,15 @@ export function calculateActionSurvivabilityFloor(
         for (const effect of actionEffects) {
           applyGuaranteedBuffEffect(effect, buffKey, buff, scalingVars);
         }
+      }
+    }
+
+    // Mirror the reducer's post-turn Turbid Qi grant so the projected buff map
+    // stays in parity with `applySkill`.
+    if (grantsTurbidQiStack(state.step + 1)) {
+      const turbidQiKey = findTurbidQiBuffKey(newBuffs);
+      if (turbidQiKey) {
+        adjustExistingBuffStacks(turbidQiKey, 1);
       }
     }
   }
@@ -3275,7 +3394,9 @@ export function applySkill(
         buffMaxStabilityDelta += amount;
         break;
       case 'changeToxicity':
-        buffToxicityDelta += amount;
+        // Runtime `changeToxicity` does `stats.toxicity -= amount`: a positive
+        // amount cleanses toxicity, a negative amount inflicts it.
+        buffToxicityDelta -= amount;
         break;
       case 'negate':
         newBuffs.delete(ownerBuffKey);
@@ -3342,6 +3463,16 @@ export function applySkill(
         for (const effect of actionEffects) {
           executeBuffEffect(effect, buffKey, buff, scalingVars);
         }
+      }
+    }
+
+    // Runtime reducer bumps the step counter after every buff has executed and
+    // only then grants the Turbid Qi stack, so the fresh stack surcharges the
+    // *next* actions rather than this one.
+    if (grantsTurbidQiStack(nextStep)) {
+      const turbidQiKey = findTurbidQiBuffKey(newBuffs);
+      if (turbidQiKey) {
+        adjustExistingBuffStacks(turbidQiKey, 1);
       }
     }
   }
@@ -3418,11 +3549,23 @@ export function applySkill(
       state.harmonyData,
       config.craftingType,
       skill.type,
+      {
+        completion: newCompletion,
+        perfection: newPerfection,
+        maxCompletion: config.maxCompletion ?? newCompletion,
+        maxPerfection: config.maxPerfection ?? newPerfection,
+        targetCompletion: config.targetCompletion ?? 0,
+        targetPerfection: config.targetPerfection ?? 0,
+      },
     );
     newHarmonyData = harmonyResult.harmonyData;
     newHarmony = Math.max(
       -100,
-      Math.min(100, state.harmony + harmonyResult.harmonyDelta),
+      Math.min(
+        100,
+        harmonyResult.harmonyOverride ??
+          state.harmony + harmonyResult.harmonyDelta,
+      ),
     );
 
     // Apply direct state changes from harmony (e.g., Inscription penalty, Resonance stability loss)

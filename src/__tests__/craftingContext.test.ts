@@ -1,35 +1,24 @@
 import type { CraftingRecipeStats, RecipeItem } from 'afnm-types';
 import {
+  applyHarmonyComplexityToTargets,
   normalizeCraftingType,
   resolveCraftingType,
   resolveSublimeCraftState,
-  sanitizeItemTypeHarmonyMap,
   shouldUseCapAsTargetFallback,
 } from '../modContent/craftingContext';
 
 describe('crafting context resolution', () => {
-  it('normalizes only supported crafting types', () => {
+  it('normalizes all seven 0.7.5 harmony types', () => {
     expect(normalizeCraftingType(' Forge ')).toBe('forge');
     expect(normalizeCraftingType('ALCHEMICAL')).toBe('alchemical');
+    expect(normalizeCraftingType('formless')).toBe('formless');
+    expect(normalizeCraftingType('enhancingecho')).toBe('enhancingEcho');
+    expect(normalizeCraftingType('eccentricDecree')).toBe('eccentricDecree');
     expect(normalizeCraftingType('equipment')).toBeUndefined();
     expect(normalizeCraftingType(undefined)).toBeUndefined();
   });
 
-  it('sanitizes runtime item-to-harmony mappings', () => {
-    expect(
-      sanitizeItemTypeHarmonyMap({
-        pill: 'alchemical',
-        artefact: 'forge',
-        invalid: 'equipment',
-        empty: '',
-      }),
-    ).toEqual({
-      pill: 'alchemical',
-      artefact: 'forge',
-    });
-  });
-
-  it('prefers explicit harmony type fields over item-kind mapping', () => {
+  it('reads the player-selected harmony from recipeStats over the recipe override', () => {
     const recipe = {
       baseItem: { kind: 'pill' },
       harmonyTypeOverride: 'resonance',
@@ -42,9 +31,6 @@ describe('crafting context resolution', () => {
       resolveCraftingType({
         recipe,
         recipeStats,
-        itemTypeToHarmonyType: {
-          pill: 'alchemical',
-        },
       }),
     ).toEqual({
       craftingType: 'inscription',
@@ -52,23 +38,38 @@ describe('crafting context resolution', () => {
     });
   });
 
-  it('falls back to runtime item-kind harmony mapping when explicit fields are missing', () => {
+  it('uses recipe.harmonyTypeOverride as the forced case', () => {
     const recipe = {
       baseItem: { kind: 'pill' },
+      harmonyTypeOverride: 'eccentricDecree',
     } as unknown as RecipeItem;
 
     expect(
       resolveCraftingType({
         recipe,
         recipeStats: undefined,
-        itemTypeToHarmonyType: {
-          pill: 'alchemical',
-        },
       }),
     ).toEqual({
-      craftingType: 'alchemical',
-      source: 'recipe.baseItem.kind',
-      mappedItemKind: 'pill',
+      craftingType: 'eccentricDecree',
+      source: 'recipe.harmonyTypeOverride',
+    });
+  });
+
+  it('never infers harmony from the item kind (0.7.5 removed that mapping)', () => {
+    const recipe = {
+      baseItem: { kind: 'pill' },
+      perfectItem: { kind: 'pill' },
+      sublimeItem: { kind: 'pill' },
+    } as unknown as RecipeItem;
+
+    expect(
+      resolveCraftingType({
+        recipe,
+        recipeStats: undefined,
+      }),
+    ).toEqual({
+      craftingType: undefined,
+      source: 'unchanged',
     });
   });
 
@@ -77,7 +78,6 @@ describe('crafting context resolution', () => {
       resolveCraftingType({
         recipe: undefined,
         recipeStats: undefined,
-        itemTypeToHarmonyType: undefined,
         previousCraftingType: 'forge',
       }),
     ).toEqual({
@@ -106,7 +106,34 @@ describe('crafting context resolution', () => {
       sublimeTargetMultiplier: 2,
       isEquipmentCraft: false,
       signals: ['sublimeOutput', 'capMultiplier'],
+      complexityMultiplier: 1,
     });
+  });
+
+  it('reports the selected harmony complexity multiplier for sublime crafts', () => {
+    const recipe = {
+      isSublimeCraft: true,
+    } as unknown as RecipeItem;
+
+    expect(
+      resolveSublimeCraftState({
+        recipe,
+        recipeStats: undefined,
+        targetCompletion: 100,
+        targetPerfection: 100,
+        craftingType: 'formless',
+      }).complexityMultiplier,
+    ).toBe(1.5);
+
+    expect(
+      resolveSublimeCraftState({
+        recipe,
+        recipeStats: undefined,
+        targetCompletion: 100,
+        targetPerfection: 100,
+        craftingType: 'inscription',
+      }).complexityMultiplier,
+    ).toBe(0.9);
   });
 
   it('respects explicit false sublime flags over weaker inferred signals', () => {
@@ -130,6 +157,49 @@ describe('crafting context resolution', () => {
       sublimeTargetMultiplier: 1,
       isEquipmentCraft: false,
       signals: ['sublimeOutput'],
+      complexityMultiplier: 1,
+    });
+  });
+
+  it('scales unscaled sublime targets by the harmony complexity multiplier', () => {
+    expect(
+      applyHarmonyComplexityToTargets({
+        targetCompletion: 175,
+        targetPerfection: 121,
+        craftingType: 'formless',
+        isSublimeCraft: true,
+      }),
+    ).toEqual({
+      targetCompletion: 263,
+      targetPerfection: 182,
+    });
+  });
+
+  it('leaves non-sublime targets untouched', () => {
+    expect(
+      applyHarmonyComplexityToTargets({
+        targetCompletion: 175,
+        targetPerfection: 121,
+        craftingType: 'formless',
+        isSublimeCraft: false,
+      }),
+    ).toEqual({
+      targetCompletion: 175,
+      targetPerfection: 121,
+    });
+  });
+
+  it('degrades unknown harmonies to a neutral multiplier', () => {
+    expect(
+      applyHarmonyComplexityToTargets({
+        targetCompletion: 175,
+        targetPerfection: 121,
+        craftingType: undefined,
+        isSublimeCraft: true,
+      }),
+    ).toEqual({
+      targetCompletion: 175,
+      targetPerfection: 121,
     });
   });
 

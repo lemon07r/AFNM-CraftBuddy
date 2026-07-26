@@ -55,8 +55,31 @@ export {
   processHarmonyEffect,
   initHarmonyData,
   getHarmonyStatModifiers,
+  getHarmonyCostMultipliers,
   INSCRIBED_PATTERN_BLOCK,
 } from './harmony';
+export type {
+  HarmonyEffectResult,
+  HarmonyStatModifiers,
+  HarmonyProcessContext,
+  HarmonyCostMultipliers,
+} from './harmony';
+
+// Harmony registry (0.7.5): static per-harmony data
+export {
+  HARMONY_TYPES,
+  FORMLESS_HARMONY,
+  DEFAULT_STARTING_HARMONY,
+  BODY_FORGING_STARTING_HARMONY,
+  isHarmonyType,
+  normalizeHarmonyType,
+  getHarmonyDefinition,
+  getComplexityMultiplier,
+  applyComplexityMultiplier,
+  removeComplexityMultiplier,
+  resolveStartingHarmony,
+} from './harmonyRegistry';
+export type { HarmonyDefinition } from './harmonyRegistry';
 
 // Game-accurate type exports
 export {
@@ -78,6 +101,8 @@ export type {
   AlchemicalArtsData,
   InscribedPatternsData,
   ResonanceData,
+  EnhancingEchoData,
+  EccentricDecreeData,
   Scaling,
   ScalingVariables,
   ConditionEffect,

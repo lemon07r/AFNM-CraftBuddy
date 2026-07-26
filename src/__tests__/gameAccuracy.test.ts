@@ -76,6 +76,44 @@ describe('Game-Accurate Mechanics', () => {
       const result = calculateExpectedCritMultiplier(100, 200);
       expect(result).toBeCloseTo(2.0, 2);
     });
+
+    it('should treat the native overcrit multiplier as a ratio, not a percentage', () => {
+      // Runtime calculateCraftingOvercrit already divides by 100:
+      // `let i = (critMultiplier + Math.max(0, critChance - 100) * 3) / 100`
+      // so a 150% crit is returned as 1.5.
+      const localFallback = calculateExpectedCritMultiplier(50, 150);
+
+      setNativeCraftingUtils({
+        calculateCraftingOvercrit: () => ({
+          multiplier: 1.5,
+          critCount: 1,
+          didCrit: true,
+        }),
+      });
+
+      const nativeResult = calculateExpectedCritMultiplier(50, 150);
+      expect(nativeResult).toBeCloseTo(1.25, 5);
+      expect(nativeResult).toBeCloseTo(localFallback, 5);
+    });
+
+    it('should agree with the local fallback for overcrit inputs', () => {
+      // 150% crit chance, 150% base multiplier -> runtime ratio
+      // (150 + 50 * 3) / 100 = 3.
+      const localFallback = calculateExpectedCritMultiplier(150, 150);
+
+      setNativeCraftingUtils({
+        calculateCraftingOvercrit: () => ({
+          multiplier: 3,
+          critCount: 1,
+          didCrit: true,
+        }),
+      });
+
+      expect(calculateExpectedCritMultiplier(150, 150)).toBeCloseTo(
+        localFallback,
+        5,
+      );
+    });
   });
 
   describe('Completion Bonus System', () => {
@@ -715,8 +753,11 @@ describe('Safe Expression Parser', () => {
 });
 
 describe('Stability Cost Calculation Order', () => {
-  it('should apply stabilityCostPercentage before condition effects (matching game)', () => {
-    // Game order: percentage first (ceil), then condition (floor)
+  it('should fold condition effects into stabilityCostPercentage before rounding', () => {
+    // Runtime getActionCost folds the condition multiplier into the cost
+    // percentage (`e === 'stabilityCostPercentage' ? effects.forEach(e =>
+    // e.kind === 'stability' && (o *= e.multiplier))`) and getStabilityCost
+    // then applies a single ceil.
     const state = new CraftingState({
       qi: 200,
       stability: 50,
@@ -750,10 +791,10 @@ describe('Stability Cost Calculation Order', () => {
     const newState = applySkill(state, skill, config, conditionEffects);
 
     expect(newState).not.toBeNull();
-    // Game path uses negative deltas:
-    // amount=-10; ceil(-10 * 80/100)=ceil(-8)=-8; floor(-8 * 0.7)=floor(-5.6)=-6
-    // So stability should be 50 - 6 = 44
-    expect(newState!.stability).toBe(44);
+    // Game path uses negative deltas with one rounding step:
+    // pct = 80 * 0.7 = 56; -ceil(-10 * 56/100) = -ceil(-5.6) = 5
+    // So stability should be 50 - 5 = 45
+    expect(newState!.stability).toBe(45);
   });
 });
 

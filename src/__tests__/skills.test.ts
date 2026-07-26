@@ -20,6 +20,7 @@ import {
   calculateEffectiveActionCosts,
   setNativeCanUseActionProvider,
 } from '../optimizer/skills';
+import { evaluateScaling, type ScalingVariables } from '../optimizer/gameTypes';
 
 // Helper to create a basic test config
 function createTestConfig(
@@ -391,13 +392,16 @@ describe('calculateEffectiveActionCosts', () => {
     const skill = createTestSkill({ qiCost: 0, stabilityCost: 1 });
     const conditionEffects = [{ kind: 'stability' as const, multiplier: 1.6 }];
 
+    // Runtime getStabilityCost: `n = -e; if (pct) n = ceil(n * pct / 100); return -n`,
+    // and condition multipliers scale the percentage before that single ceil:
+    // pct = 120 * 1.6 = 192 -> -ceil(-1 * 1.92) = 1.
     const costs = calculateEffectiveActionCosts(
       state,
       skill,
       0,
       conditionEffects,
     );
-    expect(costs.stabilityCost).toBe(2);
+    expect(costs.stabilityCost).toBe(1);
   });
 
   it('should apply pool cost modifiers in game order', () => {
@@ -409,7 +413,8 @@ describe('calculateEffectiveActionCosts', () => {
     const skill = createTestSkill({ qiCost: 17, stabilityCost: 0 });
     const conditionEffects = [{ kind: 'pool' as const, multiplier: 1.3 }];
 
-    // floor(floor(17 * 1.3) * 0.8) = floor(22 * 0.8) = 17
+    // Runtime getPoolCost applies a single floor over the combined percentage:
+    // floor(17 * (80 * 1.3) / 100) = floor(17 * 1.04) = 17
     const costs = calculateEffectiveActionCosts(
       state,
       skill,
@@ -433,7 +438,7 @@ describe('calculateEffectiveActionCosts', () => {
     expect(costs.stabilityCost).toBe(9);
   });
 
-  it('should add poolCostFlat after percentage modifiers', () => {
+  it('should add poolCostFlat before percentage modifiers', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -449,7 +454,23 @@ describe('calculateEffectiveActionCosts', () => {
       0,
       conditionEffects,
     );
-    expect(costs.qiCost).toBe(20); // floor(floor(17 * 1.3) * 0.8) + 3
+    // floor((17 + 3) * (80 * 1.3) / 100) = floor(20 * 1.04) = 20
+    expect(costs.qiCost).toBe(20);
+  });
+
+  it('should apply poolCostFlat before the percentage, not after', () => {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      poolCostFlat: 3,
+      poolCostPercentage: 50,
+    });
+    const skill = createTestSkill({ qiCost: 10, stabilityCost: 0 });
+
+    const costs = calculateEffectiveActionCosts(state, skill, 0, []);
+    // Runtime getPoolCost: `r = max(0, 10 + 3); r = floor(13 * 50 / 100) = 6`.
+    // Applying the flat afterwards would give floor(10 * 0.5) + 3 = 8.
+    expect(costs.qiCost).toBe(6);
   });
 
   it('should include buff-derived pool cost modifiers when config is provided', () => {
@@ -927,8 +948,9 @@ describe('calculateSkillGains', () => {
     });
 
     const gains = calculateSkillGains(state, skill, config);
-    // Absolute multiplier semantics: 1 * 0.5 * 12 = 6
-    expect(gains.completion).toBe(6);
+    // Runtime applyUpgradeMasteries: `r.shouldMultiply ? e[i] = a + a * r.change : ...`,
+    // i.e. a relative increase, so 1 * (1 + 0.5) * 12 intensity = 18.
+    expect(gains.completion).toBe(18);
   });
 
   it('should respect mastery upgrade conditions', () => {
@@ -1013,7 +1035,7 @@ describe('calculateSkillGains', () => {
     expect(gains.completion).toBe(24);
   });
 
-  it('should recurse to nested objects and upgrade their direct numeric fields when keys match', () => {
+  it('should leave nested fields outside the runtime whitelist untouched', () => {
     const state = new CraftingState({
       completion: 2,
     });
@@ -1040,8 +1062,35 @@ describe('calculateSkillGains', () => {
     });
 
     const gains = calculateSkillGains(state, skill, config);
-    // customScaling.multiplier upgraded from 0.5 to 1.0:
-    // 1 * 12 * (1 + 1.0 * 2) = 36
+    // Runtime applyUpgradeMasteries only rewrites fields named `amount`,
+    // `value` or `cooldown`, so `customScaling.multiplier` is never touched:
+    // 1 * 12 * (1 + 0.5 * 2) = 24.
+    expect(gains.completion).toBe(24);
+  });
+
+  it('should recurse to nested objects and upgrade their whitelisted numeric fields', () => {
+    const state = new CraftingState();
+    const skill = createTestSkill({
+      baseCompletionGain: 0,
+      scalesWithIntensity: false,
+      effects: [
+        {
+          kind: 'completion',
+          amount: {
+            value: 5,
+            stat: 'intensity',
+            max: { value: 2, stat: 'intensity', upgradeKey: 'nested_cap' },
+          },
+        },
+      ] as any,
+      masteryEntries: [
+        { kind: 'upgrade', upgradeKey: 'nested_cap', change: 1 },
+      ] as any,
+    });
+
+    const gains = calculateSkillGains(state, skill, config);
+    // Nested `value` is whitelisted: cap becomes (2 + 1) * 12 = 36,
+    // which caps the raw 5 * 12 = 60.
     expect(gains.completion).toBe(36);
   });
 
@@ -1585,8 +1634,10 @@ describe('applySkill', () => {
     const detoxBuff = {
       name: 'Detoxifying',
       canStack: true,
+      // Runtime changeToxicity: `t.stats.toxicity -= amount`, so a positive
+      // amount cleanses (the tooltip reads "cleanse toxicity by X").
       effects: [
-        { kind: 'changeToxicity' as const, amount: { value: -5 } },
+        { kind: 'changeToxicity' as const, amount: { value: 5 } },
         { kind: 'addStack' as const, stacks: { value: -1 } },
       ],
     };
@@ -1780,6 +1831,12 @@ describe('isTerminalState', () => {
   });
 });
 
+// Runtime 0.7.5 'Disciplined Touch':
+//   effects: [
+//     { kind: 'perfection', amount: { value: .5, stat: 'intensity', upgradeKey: 'perfection' } },
+//     { kind: 'completion',  amount: { value: .5, stat: 'intensity', upgradeKey: 'perfection' } },
+//   ]
+// Both halves scale off intensity, so control never feeds the perfection half.
 describe('Disciplined Touch accuracy', () => {
   const config = createTestConfig();
 
@@ -1802,9 +1859,9 @@ describe('Disciplined Touch accuracy', () => {
     const gains = calculateSkillGains(state, skill, config);
 
     // Completion: 0.5 * 12 (base intensity) = 6
-    // Perfection: 0.5 * 16 (base control) = 8
+    // Perfection: 0.5 * 12 (base intensity too) = 6
     expect(gains.completion).toBe(6);
-    expect(gains.perfection).toBe(8);
+    expect(gains.perfection).toBe(6);
   });
 
   it('should apply intensity buff to completion gains', () => {
@@ -1828,12 +1885,12 @@ describe('Disciplined Touch accuracy', () => {
 
     // Intensity with buff: 12 * 1.4 = 16.8 -> 16 (floored)
     // Completion: 0.5 * 16 = 8
-    // Perfection: 0.5 * 16 (base control, no buff) = 8
+    // Perfection: 0.5 * 16 (same buffed intensity) = 8
     expect(gains.completion).toBe(8);
     expect(gains.perfection).toBe(8);
   });
 
-  it('should apply control buff to perfection gains', () => {
+  it('should not apply control buff to perfection gains', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -1853,10 +1910,10 @@ describe('Disciplined Touch accuracy', () => {
     const gains = calculateSkillGains(state, skill, config);
 
     // Completion: 0.5 * 12 (base intensity, no buff) = 6
-    // Control with buff: 16 * 1.4 = 22.4 -> 22 (floored)
-    // Perfection: 0.5 * 22 = 11
+    // The control buff is irrelevant here: perfection also reads intensity,
+    // so 0.5 * 12 = 6.
     expect(gains.completion).toBe(6);
-    expect(gains.perfection).toBe(11);
+    expect(gains.perfection).toBe(6);
   });
 
   it('should apply both buffs when active', () => {
@@ -1881,10 +1938,9 @@ describe('Disciplined Touch accuracy', () => {
 
     // Intensity with buff: 12 * 1.4 = 16.8 -> 16 (floored)
     // Completion: 0.5 * 16 = 8
-    // Control with buff: 16 * 1.4 = 22.4 -> 22 (floored)
-    // Perfection: 0.5 * 22 = 11
+    // Perfection: 0.5 * 16 = 8 (the control buff does not contribute)
     expect(gains.completion).toBe(8);
-    expect(gains.perfection).toBe(11);
+    expect(gains.perfection).toBe(8);
   });
 
   it('should consume all buffs when applied', () => {
@@ -1912,7 +1968,7 @@ describe('Disciplined Touch accuracy', () => {
     expect(newState!.intensityBuffTurns).toBe(0);
   });
 
-  it('should apply condition multiplier to control for perfection', () => {
+  it('should ignore control condition multipliers for perfection', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -1933,11 +1989,10 @@ describe('Disciplined Touch accuracy', () => {
       { kind: 'control', multiplier: 0.5 },
     ]);
 
-    // Completion: 0.5 * 12 = 6 (intensity not affected by condition)
-    // Control with condition: 16 * 1.5 = 24
-    // Perfection: 0.5 * 24 = 12
+    // Completion: 0.5 * 12 = 6 (intensity not affected by a control condition)
+    // Perfection: 0.5 * 12 = 6 for the same reason
     expect(gains.completion).toBe(6);
-    expect(gains.perfection).toBe(12);
+    expect(gains.perfection).toBe(6);
   });
 
   it('should apply harmony modifiers to gains', () => {
@@ -1965,12 +2020,12 @@ describe('Disciplined Touch accuracy', () => {
 
     // Forge heat 5 gives 1.5x control and 1.5x intensity
     // Completion: 0.5 * floor(12 * 1.5) = 0.5 * 18 = 9
-    // Perfection: 0.5 * floor(16 * 1.5) = 0.5 * 24 = 12
+    // Perfection: 0.5 * floor(12 * 1.5) = 0.5 * 18 = 9
     expect(gains.completion).toBe(9);
-    expect(gains.perfection).toBe(12);
+    expect(gains.perfection).toBe(9);
   });
 
-  it('should apply mastery control bonus to perfection gains', () => {
+  it('should not apply mastery control bonus to perfection gains', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -1989,11 +2044,38 @@ describe('Disciplined Touch accuracy', () => {
 
     const gains = calculateSkillGains(state, skill, config);
 
-    // Control with mastery: 16 * 1.25 = 20
-    // Completion: 0.5 * 12 = 6 (intensity unaffected by controlBonus)
-    // Perfection: 0.5 * 20 = 10
+    // Control with mastery: 16 * 1.25 = 20, but neither half reads control.
+    // Completion: 0.5 * 12 = 6, Perfection: 0.5 * 12 = 6
     expect(gains.completion).toBe(6);
-    expect(gains.perfection).toBe(10);
+    expect(gains.perfection).toBe(6);
+  });
+
+  it('should scale perfection off intensity when control and intensity differ', () => {
+    const lopsidedConfig = createTestConfig({
+      baseControl: 40,
+      baseIntensity: 12,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      intensityBuffTurns: 0,
+      controlBuffTurns: 0,
+    });
+    const skill = createTestSkill({
+      name: 'Disciplined Touch',
+      key: 'disciplined_touch',
+      baseCompletionGain: 0.5,
+      basePerfectionGain: 0.5,
+      isDisciplinedTouch: true,
+      scalesWithIntensity: true,
+    });
+
+    const gains = calculateSkillGains(state, skill, lopsidedConfig);
+
+    // Both effects use `stat: 'intensity'`, so control 40 is ignored.
+    expect(gains.completion).toBe(6);
+    expect(gains.perfection).toBe(6);
+    expect(gains.perfection).toBe(gains.completion);
   });
 });
 
@@ -2270,8 +2352,8 @@ describe('buff per-turn effects', () => {
 
     const result = applySkill(state, skill, config);
     expect(result).not.toBeNull();
-    // upgraded value = 1 * 2 = 2; stacks = 2 => +4 completion
-    expect(result!.completion).toBe(4);
+    // Relative multiply: upgraded value = 1 + 1 * 2 = 3; stacks = 2 => +6
+    expect(result!.completion).toBe(6);
   });
 });
 
@@ -2419,5 +2501,145 @@ describe('Restoring Brilliance stability gain bug', () => {
       maxStability: 59,
       survivalProbability: 0.75,
     });
+  });
+});
+
+describe('expression-gated buff intensity (False Fusion / Strive for Completion)', () => {
+  it('contributes 0 intensity while completion <= maxcompletion and full value once over cap', () => {
+    const scaling = {
+      value: 1,
+      stat: 'intensity',
+      eqn: 'completion > maxcompletion',
+    };
+
+    const baseVars: ScalingVariables = {
+      control: 10,
+      intensity: 40,
+      critchance: 0,
+      critmultiplier: 150,
+      pool: 100,
+      maxpool: 100,
+      toxicity: 0,
+      maxtoxicity: 100,
+      resistance: 0,
+      itemEffectiveness: 100,
+      pillsPerRound: 1,
+      poolCostFlat: 0,
+      poolCostPercentage: 100,
+      stabilityCostPercentage: 100,
+      successChanceBonus: 0,
+      stacks: 0,
+      maxcompletion: 100,
+      maxperfection: 100,
+      completion: 100,
+      perfection: 50,
+    };
+
+    const atCap = evaluateScaling(scaling, baseVars, 0);
+    const overCap = evaluateScaling(
+      scaling,
+      { ...baseVars, completion: 101 },
+      0,
+    );
+    const underCap = evaluateScaling(
+      scaling,
+      { ...baseVars, completion: 99 },
+      0,
+    );
+
+    expect(underCap).toBe(0);
+    expect(atCap).toBe(0);
+    expect(overCap).toBe(40);
+  });
+
+  it('binds maxcompletion in technique scaling variables used by buff stats', () => {
+    const striveBuff = {
+      name: 'Strive for Completion',
+      canStack: true,
+      maxStacks: 1,
+      stats: {
+        intensity: {
+          value: 1,
+          stat: 'intensity',
+          eqn: 'completion > maxcompletion',
+        },
+      },
+      effects: [],
+    };
+    const intensityRefine = createTestSkill({
+      name: 'Intensity Refine',
+      key: 'intensity_refine_gate',
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 0,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      scalesWithIntensity: true,
+      scalesWithControl: false,
+      effects: [
+        {
+          kind: 'perfection',
+          amount: { value: 1, stat: 'intensity' },
+        },
+      ],
+    });
+
+    const underCapState = new CraftingState({
+      qi: 100,
+      stability: 40,
+      completion: 100,
+      perfection: 0,
+      buffs: new Map([
+        [
+          'strive_for_completion',
+          {
+            name: 'Strive for Completion',
+            stacks: 1,
+            definition: striveBuff,
+          },
+        ],
+      ]),
+    });
+    const overCapState = new CraftingState({
+      qi: 100,
+      stability: 40,
+      completion: 101,
+      perfection: 0,
+      buffs: new Map([
+        [
+          'strive_for_completion',
+          {
+            name: 'Strive for Completion',
+            stacks: 1,
+            definition: striveBuff,
+          },
+        ],
+      ]),
+    });
+    const config = createTestConfig({
+      baseIntensity: 40,
+      baseControl: 10,
+      targetCompletion: 100,
+      targetPerfection: 100,
+      skills: [intensityRefine],
+    });
+
+    const underGains = calculateSkillGains(
+      underCapState,
+      intensityRefine,
+      config,
+      [],
+    );
+    const overGains = calculateSkillGains(
+      overCapState,
+      intensityRefine,
+      config,
+      [],
+    );
+
+    // Without the gate, intensity is 40 → perfection 40.
+    // With the gate open, intensity doubles to 80 → perfection 80.
+    expect(underGains.perfection).toBeCloseTo(40, 5);
+    expect(overGains.perfection).toBeCloseTo(80, 5);
   });
 });

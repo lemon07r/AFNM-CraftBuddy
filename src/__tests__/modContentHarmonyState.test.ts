@@ -1703,7 +1703,11 @@ describe('user report replay regressions', () => {
 
     expect(input.state.stability).toBe(36);
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.type).toBe('refine');
+    // Regression lock: after the valid alchemical combo, do not collapse to
+    // overcap stabilize. Conjunctive scoring may rank a light support/completion
+    // setup (e.g. Corrupted Blessing) or fusion within noise of refine; the
+    // forbidden outcome is stabilize-first.
     expect(result.recommendation!.skill.type).not.toBe('stabilize');
+    expect(result.recommendation!.skill.actionKind).not.toBe('finish');
   });
 });

@@ -34,7 +34,25 @@ import {
   DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   SEARCH_GOAL_PRIORITY_BIAS_MAX,
 } from '../utils/searchGoalPriority';
-import { getBonusAndChance, TechniqueType } from './gameTypes';
+import {
+  evaluateScaling,
+  getBonusAndChance,
+  TechniqueType,
+  type BuffDefinition,
+  type Scaling,
+  type ScalingVariables,
+} from './gameTypes';
+import {
+  bandThreshold,
+  buildOutcomeBands,
+  classifyOutcome,
+  tierRank,
+  TIER_REQUIREMENTS,
+  willAutoFinish,
+  type OutcomeBands,
+  type OutcomeClassification,
+  type OutcomeTier,
+} from './outcome';
 import { getNativeMctsPolicy, type NativeMctsPolicy } from './nativeMcts';
 
 interface GainPreview {
@@ -258,13 +276,32 @@ const FINISH_CRAFT_SKILL: SkillDefinition = Object.freeze({
 // Each constant documents its magnitude relative to other scoring layers.
 // All penalties/bonuses that depend on craft size use totalTargetMagnitude
 // as the base, so they scale proportionally to any craft.
+//
+// Commensurability of the conjunctive goal stack (Change 1):
+//   tier jump = TIER_VALUE_SCALE × magnitude (= 2×) is strictly greater than
+//   the maximum within-tier stack (gate + balance + bonus + in-tier ≤ ~1.6×),
+//   so banking a tier always beats pure margin progress. Death stays at
+//   DEATH_PENALTY_MULTIPLIER × magnitude (= 3×), so dying never beats a tier.
 const SCORING = {
-  // Target-met bonus = totalTargetMagnitude × this.  2× is large enough
-  // to clearly separate "met" from "almost met" without dwarfing progress.
-  TARGET_MET_MULTIPLIER: 2,
-  // Sublime targets-met gets an extra 1.5× on top of the base bonus,
-  // rewarding the harder achievement of exceeding doubled targets.
-  SUBLIME_MET_EXTRA: 1.5,
+  // Discrete tier value inside the conjunctive goal score.
+  // 2× magnitude per tier rank — dominates the entire within-tier stack.
+  TIER_VALUE_SCALE: 2,
+  // Binding-bar gate: Math.min(completionMargin, perfectionMargin).
+  // Once a bar is met (margin === 1), more of it cannot raise the min.
+  GATE_WEIGHT: 1,
+  // Weighted average of both margins — secondary pressure to keep bars even.
+  // 0.35× so gate + balance ≤ 1.35× even at full margins.
+  BALANCE_WEIGHT: 0.35,
+  // Credit for a bonus-roll that could upgrade the tier when one band short.
+  // 0.2× keeps near-miss EV below a guaranteed band step.
+  BONUS_ROLL_WEIGHT: 0.2,
+  // Fine-grained residual shortfall fill (0–1). Supplies early gradient while
+  // tierRank is flat at `failed` before the first completion band.
+  IN_TIER_PROGRESS_WEIGHT: 0.05,
+  // Extra guaranteed bands past the target tier, counted conjunctively
+  // (min of the two bars' extras). 0.75× base magnitude per extra band pair
+  // distinguishes Tier IV/V finishes without rivaling a full tier jump.
+  EXTRA_BAND_WEIGHT: 0.75,
   // Intentionally tiny: tiebreaker only — never large enough to justify
   // spending an extra turn to preserve qi/stability.
   RESOURCE_TIEBREAKER: 0.001,
@@ -276,10 +313,6 @@ const SCORING = {
   // step penalty well below full-turn value so it remains a tiebreaker and
   // does not bulldoze harmony/setup lines that the tree search prefers.
   STEP_PENALTY_PROGRESS_FRACTION: 0.25,
-  // Beyond-base bonus weight in sublime mode.  0.5× progress value
-  // so the optimizer pursues sublime targets but doesn't overvalue them
-  // relative to reaching base targets first.
-  SUBLIME_BEYOND_BASE_WEIGHT: 0.5,
   // Buff valuation: converts (multiplier − 1) into a score contribution
   // per remaining buff turn.  At default 1.4× buff, this yields
   // 0.4 × 25 = 10 points per turn, comparable to one turn of progress.
@@ -332,9 +365,9 @@ const SCORING = {
   NEAR_DEATH_STABILITY: 10,
   // Death penalty multiplier: when stability=0, the craft is dead.
   // Penalty = totalTargetMagnitude × this.  Must be larger than
-  // TARGET_MET_MULTIPLIER so that dying is never worth the progress gained
-  // on the way to death.  3× means: negate the target-met bonus (2×) plus
-  // erase the progress score itself.
+  // TIER_VALUE_SCALE so that dying is never worth the progress gained
+  // on the way to death.  3× means: negate a full tier jump (2×) plus
+  // erase residual progress score.
   DEATH_PENALTY_MULTIPLIER: 3,
   // Runway penalty: per-turn-gap fraction of totalTargetMagnitude.
   // Penalizes states where estimated turns to finish exceeds stability
@@ -345,18 +378,20 @@ const SCORING = {
   // Toxicity penalty as a fraction of totalTargetMagnitude.
   // Proportional so it scales correctly for small and large crafts.
   TOXICITY_PENALTY_FRACTION: 0.025,
-  // Harmony bonus weight in sublime mode.  Small incentive to maintain
-  // positive harmony for the harmony sub-system benefits.
-  HARMONY_BONUS_WEIGHT: 0.15,
+  // Harmony bonus weight in sublime mode. Real 0.7.5 value is driving the
+  // condition timeline (more positive/veryPositive ⇒ Harmonious/Brilliant
+  // techniques), so this is worth a lot early and almost nothing once the
+  // target tier is banked. Scaled by remaining work on the binding bar.
+  HARMONY_BONUS_WEIGHT: 0.4,
   // Harmony sub-system quality weight.  Scales with remaining work so
   // the tree search values being in a productive harmony state (e.g.,
   // forge heat 4-6) vs a terrible one (heat 0 or 10).  0.15× means at
   // full remaining work, optimal heat adds ~15% of totalTargetMagnitude.
   HARMONY_SUBSYSTEM_QUALITY_WEIGHT: 0.15,
-  // Finished sublime crafts should still distinguish higher resolved bonus
-  // bands after the multiplied raw target is already satisfied. This keeps
-  // late Tier IV/V outcomes from collapsing to the same score.
-  SUBLIME_FINISH_TIER_BONUS_FRACTION: 0.75,
+  // Ordering-only bonus (never added to scored values) for moves that open
+  // a currently-false expression gate or unlock a buffRequirement. Sized
+  // in magnitude units so delayed-payoff lines survive beam pruning.
+  GOAL_UNLOCK_ORDERING_WEIGHT: 0.5,
 } as const;
 
 // ── Scoring context ─────────────────────────────────────────────────────────
@@ -1647,26 +1682,260 @@ function getGoalPriorityWeights(
 }
 
 /**
- * Score a state based on progress toward targets.
+ * Band-threshold goals for scoring and search termination.
+ *
+ * `targetMultiplier` is retained on scorer signatures for compatibility and
+ * diagnostics only — it no longer drives goal derivation. Goals come from the
+ * runtime band ladder (`bandThreshold` / `TIER_REQUIREMENTS`).
+ */
+interface BandGoals {
+  baseCompGoal: number;
+  basePerfGoal: number;
+  effectiveCompGoal: number;
+  effectivePerfGoal: number;
+  bands: OutcomeBands;
+  targetTier: OutcomeTier;
+}
+
+function clampGoalByCap(goal: number, cap: number | undefined): number {
+  if (cap !== undefined && Number.isFinite(cap) && cap > 0) {
+    return Math.min(goal, cap);
+  }
+  return goal;
+}
+
+function deriveBandGoals(
+  targetCompletion: number,
+  targetPerfection: number,
+  isSublimeCraft: boolean = false,
+  maxCompletionCap?: number,
+  maxPerfectionCap?: number,
+): BandGoals {
+  const bands = buildOutcomeBands({
+    targetCompletion,
+    targetPerfection,
+    isSublimeCraft,
+    maxCompletionCap,
+    maxPerfectionCap,
+  });
+  const targetTier = bands.targetTier;
+  const perfectReq = TIER_REQUIREMENTS.perfect;
+  const targetReq = TIER_REQUIREMENTS[targetTier];
+
+  // Perfect-tier (1-band) goals — the base success floor.
+  const baseCompGoal = clampGoalByCap(
+    targetCompletion > 0
+      ? bandThreshold(targetCompletion, perfectReq.completion)
+      : 0,
+    maxCompletionCap,
+  );
+  const basePerfGoal = clampGoalByCap(
+    targetPerfection > 0
+      ? bandThreshold(targetPerfection, perfectReq.perfection)
+      : 0,
+    maxPerfectionCap,
+  );
+
+  // Target-tier goals (perfect or sublime). A cap below the band threshold
+  // genuinely blocks that tier — keep the clamp.
+  const effectiveCompGoal = clampGoalByCap(
+    targetCompletion > 0
+      ? bandThreshold(targetCompletion, targetReq.completion)
+      : 0,
+    maxCompletionCap,
+  );
+  const effectivePerfGoal = clampGoalByCap(
+    targetPerfection > 0
+      ? bandThreshold(targetPerfection, targetReq.perfection)
+      : 0,
+    maxPerfectionCap,
+  );
+
+  return {
+    baseCompGoal,
+    basePerfGoal,
+    effectiveCompGoal,
+    effectivePerfGoal,
+    bands,
+    targetTier,
+  };
+}
+
+/** Joint bonus-roll credit when rolls could still raise the banked tier. */
+function bonusChanceCreditWhenOneBandShort(
+  outcome: OutcomeClassification,
+): number {
+  if (tierRank(outcome.optimisticTier) <= tierRank(outcome.tier)) {
+    return 0;
+  }
+  // Bars that already meet their requirement contribute certainty (1).
+  const completionFactor =
+    outcome.completionMargin >= 1
+      ? 1
+      : Math.max(0, Math.min(1, outcome.completionBonusChance));
+  const perfectionFactor =
+    outcome.perfectionMargin >= 1
+      ? 1
+      : Math.max(0, Math.min(1, outcome.perfectionBonusChance));
+  return Math.max(0, Math.min(1, completionFactor * perfectionFactor));
+}
+
+/**
+ * Point-level fill of the target-tier thresholds (0–1). Supplies a smooth
+ * early gradient while `tierRank` is flat at `failed`.
+ */
+function residualShortfallProgress(
+  outcome: OutcomeClassification,
+  bands: OutcomeBands,
+): number {
+  const req = TIER_REQUIREMENTS[bands.targetTier];
+  const compNeed =
+    bands.completionTarget > 0
+      ? bandThreshold(bands.completionTarget, req.completion)
+      : 0;
+  const perfNeed =
+    bands.perfectionTarget > 0
+      ? bandThreshold(bands.perfectionTarget, req.perfection)
+      : 0;
+  const totalNeed = compNeed + perfNeed;
+  if (totalNeed <= 0) {
+    return 1;
+  }
+  const filled =
+    Math.max(0, compNeed - outcome.completionShortfall) +
+    Math.max(0, perfNeed - outcome.perfectionShortfall);
+  return Math.max(0, Math.min(1, filled / totalNeed));
+}
+
+function weightedMarginAverage(
+  completionMargin: number,
+  perfectionMargin: number,
+  completionWeight: number,
+  perfectionWeight: number,
+): number {
+  const total = completionWeight + perfectionWeight;
+  if (!(total > 0)) {
+    return (completionMargin + perfectionMargin) / 2;
+  }
+  return (
+    (completionMargin * completionWeight +
+      perfectionMargin * perfectionWeight) /
+    total
+  );
+}
+
+function extraResolvedBands(
+  outcome: OutcomeClassification,
+  bands: OutcomeBands,
+): number {
+  const req = TIER_REQUIREMENTS[bands.targetTier];
+  const completionRequired = bands.completionTarget > 0 ? req.completion : 0;
+  const perfectionRequired = bands.perfectionTarget > 0 ? req.perfection : 0;
+  const extraCompletion = Math.max(
+    0,
+    outcome.completionBands - completionRequired,
+  );
+  const extraPerfection = Math.max(
+    0,
+    outcome.perfectionBands - perfectionRequired,
+  );
+  // Conjunctive extras: only bands cleared on BOTH bars count.
+  if (completionRequired > 0 && perfectionRequired > 0) {
+    return Math.min(extraCompletion, extraPerfection);
+  }
+  if (completionRequired > 0) {
+    return extraCompletion;
+  }
+  if (perfectionRequired > 0) {
+    return extraPerfection;
+  }
+  return 0;
+}
+
+/**
+ * Discrete tier rank inside the conjunctive goal score.
+ *
+ * Finished crafts use the raw runtime tier (basic is a real item floor).
+ * Live search toward perfect/sublime suppresses the completion-only `basic`
+ * checkpoint: banking completion alone must not outrank binding-bar perfection
+ * progress. Gate/balance/residual already price completion; perfect and sublime
+ * remain full discrete checkpoints because both bars are required.
+ */
+function goalScoreTierRank(
+  outcome: OutcomeClassification,
+  targetTier: OutcomeTier,
+  options: { readonly countBasicCheckpoint: boolean },
+): number {
+  if (
+    !options.countBasicCheckpoint &&
+    outcome.tier === 'basic' &&
+    tierRank(targetTier) >= tierRank('perfect')
+  ) {
+    return tierRank('failed');
+  }
+  return tierRank(outcome.tier);
+}
+
+/**
+ * Conjunctive goal score. Math.min on margins is the whole point: once a bar's
+ * requirement is met, more of it cannot raise the gate, so search is forced
+ * onto the blocking bar.
+ */
+function computeConjunctiveGoalScore(
+  outcome: OutcomeClassification,
+  bands: OutcomeBands,
+  baseCompGoal: number,
+  basePerfGoal: number,
+  effectiveCompGoal: number,
+  effectivePerfGoal: number,
+  completionWeight: number,
+  perfectionWeight: number,
+  options: { readonly countBasicCheckpoint: boolean } = {
+    countBasicCheckpoint: false,
+  },
+): number {
+  const totalTargetMagnitude = Math.max(
+    1,
+    Math.max(0, effectiveCompGoal) + Math.max(0, effectivePerfGoal),
+  );
+  const baseTargetMagnitude = Math.max(
+    1,
+    Math.max(0, baseCompGoal) + Math.max(0, basePerfGoal),
+  );
+  const gate = Math.min(outcome.completionMargin, outcome.perfectionMargin);
+  const balance = weightedMarginAverage(
+    outcome.completionMargin,
+    outcome.perfectionMargin,
+    completionWeight,
+    perfectionWeight,
+  );
+  const bonusCredit = bonusChanceCreditWhenOneBandShort(outcome);
+  const residual = residualShortfallProgress(outcome, bands);
+  const extras = extraResolvedBands(outcome, bands);
+  const scoredTierRank = goalScoreTierRank(outcome, bands.targetTier, options);
+
+  return (
+    totalTargetMagnitude *
+      (SCORING.TIER_VALUE_SCALE * scoredTierRank +
+        SCORING.GATE_WEIGHT * gate +
+        SCORING.BALANCE_WEIGHT * balance +
+        SCORING.BONUS_ROLL_WEIGHT * bonusCredit +
+        SCORING.IN_TIER_PROGRESS_WEIGHT * residual) +
+    SCORING.EXTRA_BAND_WEIGHT * extras * baseTargetMagnitude
+  );
+}
+
+/**
+ * Score a live craft state.
  *
  * Architecture:
- * 1. Compute a normalized progress score (0–1 per dimension, weighted by need).
- * 2. Add a discrete bonus when targets are met (sized relative to total target
- *    magnitude so it never dominates small-target crafts or gets dwarfed by
- *    large-target ones).
- * 3. Value buffs by their expected future return (buff turns × bonus × stat).
- * 4. Score resources (qi, stability) as "future turns of progress they enable",
- *    so a stabilize that wastes resources competes fairly with a progress skill.
- * 5. Apply survivability as a separate layer: only penalise when stability is
- *    actually threatening craft death, using the real cost of the cheapest
- *    available progress skill rather than hardcoded thresholds.
+ * 1. Conjunctive band-threshold goal score (tier + binding gate + balance).
+ * 2. Value buffs by expected future return while the target tier is unmet.
+ * 3. Score resources as future turns of progress they enable.
+ * 4. Survivability layer — only while the active mode goal is unmet.
  *
- * @param state - Current crafting state
- * @param targetCompletion - Base target completion value
- * @param targetPerfection - Base target perfection value
- * @param isSublimeCraft - Whether this is sublime/harmony crafting (allows exceeding targets)
- * @param targetMultiplier - Multiplier for sublime targets (default 2.0 for sublime, higher for equipment)
- * @param trainingMode - Whether this is a training craft (more aggressive risk tolerance)
+ * @param targetMultiplier - retained for compatibility/diagnostics; goals are
+ *   derived from band thresholds, not from this multiplier.
  */
 function scoreState(
   state: CraftingState,
@@ -1684,62 +1953,34 @@ function scoreState(
     return Math.min(state.completion, state.perfection);
   }
 
-  // ── effective goals ──────────────────────────────────────────────────
-  const effectiveCompTarget = isSublimeCraft
-    ? targetCompletion * targetMultiplier
-    : targetCompletion;
-  const effectivePerfTarget = isSublimeCraft
-    ? targetPerfection * targetMultiplier
-    : targetPerfection;
-  const effectiveCompGoal =
-    maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-      ? Math.min(effectiveCompTarget, maxCompletionCap)
-      : effectiveCompTarget;
-  const effectivePerfGoal =
-    maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-      ? Math.min(effectivePerfTarget, maxPerfectionCap)
-      : effectivePerfTarget;
-  const baseCompGoal =
-    maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-      ? Math.min(targetCompletion, maxCompletionCap)
-      : targetCompletion;
-  const basePerfGoal =
-    maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-      ? Math.min(targetPerfection, maxPerfectionCap)
-      : targetPerfection;
-  const effectiveCompProgress = getProgressTowardRawGoal(
-    state.completion,
-    effectiveCompGoal,
-    targetCompletion,
-  );
-  const effectivePerfProgress = getProgressTowardRawGoal(
-    state.perfection,
-    effectivePerfGoal,
-    targetPerfection,
-  );
-  const baseCompProgress = getProgressTowardRawGoal(
-    state.completion,
+  // Kept for signature compatibility and call-site diagnostics only.
+  void targetMultiplier;
+
+  const {
     baseCompGoal,
-    targetCompletion,
-  );
-  const basePerfProgress = getProgressTowardRawGoal(
-    state.perfection,
     basePerfGoal,
+    effectiveCompGoal,
+    effectivePerfGoal,
+    bands,
+  } = deriveBandGoals(
+    targetCompletion,
     targetPerfection,
+    isSublimeCraft,
+    maxCompletionCap,
+    maxPerfectionCap,
   );
+
+  const outcome = classifyOutcome(state, bands);
   const baseTargetsMet =
-    (targetCompletion <= 0 || state.completion >= targetCompletion) &&
-    (targetPerfection <= 0 || state.perfection >= targetPerfection);
+    (baseCompGoal <= 0 || state.completion >= baseCompGoal) &&
+    (basePerfGoal <= 0 || state.perfection >= basePerfGoal);
+  const modeTargetsMet =
+    (effectiveCompGoal <= 0 || state.completion >= effectiveCompGoal) &&
+    (effectivePerfGoal <= 0 || state.perfection >= effectivePerfGoal);
 
   // ── remaining work metrics ───────────────────────────────────────────
-  const compRemaining =
-    effectiveCompGoal > 0
-      ? Math.max(0, effectiveCompGoal - effectiveCompProgress)
-      : 0;
-  const perfRemaining =
-    effectivePerfGoal > 0
-      ? Math.max(0, effectivePerfGoal - effectivePerfProgress)
-      : 0;
+  const compRemaining = Math.max(0, outcome.completionShortfall);
+  const perfRemaining = Math.max(0, outcome.perfectionShortfall);
   const totalRemaining = compRemaining + perfRemaining;
   const compNeedShare =
     totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
@@ -1758,6 +1999,11 @@ function scoreState(
     perfNeedPct,
     (compNeedPct + perfNeedPct) / 2,
   );
+  // Binding-bar remaining work: 1 once the target tier is banked on both bars.
+  const bindingRemainingWork = Math.max(
+    0,
+    1 - Math.min(outcome.completionMargin, outcome.perfectionMargin),
+  );
   const estimatedProgressPerTurn = estimateWeightedProgressPerTurn(
     compNeedShare,
     perfNeedShare,
@@ -1770,10 +2016,15 @@ function scoreState(
     perfNeedShare,
     ctx,
   );
+
   const baseCompRemaining =
-    baseCompGoal > 0 ? Math.max(0, baseCompGoal - baseCompProgress) : 0;
+    baseCompGoal > 0
+      ? Math.max(0, baseCompGoal - Math.min(state.completion, baseCompGoal))
+      : 0;
   const basePerfRemaining =
-    basePerfGoal > 0 ? Math.max(0, basePerfGoal - basePerfProgress) : 0;
+    basePerfGoal > 0
+      ? Math.max(0, basePerfGoal - Math.min(state.perfection, basePerfGoal))
+      : 0;
   const baseTotalRemaining = baseCompRemaining + basePerfRemaining;
   const baseCompNeedShare =
     baseTotalRemaining > 0 ? baseCompRemaining / baseTotalRemaining : 0.5;
@@ -1804,7 +2055,6 @@ function scoreState(
     estimatedProgressPerTurn * SCORING.STEP_PENALTY_PROGRESS_FRACTION,
   );
 
-  // ── 1. progress score (primary) ──────────────────────────────────────
   const { completionWeight, perfectionWeight } = getGoalPriorityWeights(
     compNeedShare,
     perfNeedShare,
@@ -1817,26 +2067,31 @@ function scoreState(
     totalPriorityWeight > 0 ? completionWeight / totalPriorityWeight : 0.5;
   const perfectionPriorityShare =
     totalPriorityWeight > 0 ? perfectionWeight / totalPriorityWeight : 0.5;
-  let score =
-    effectiveCompProgress * completionWeight +
-    effectivePerfProgress * perfectionWeight;
 
-  // ── 2. target-met bonus (scaled to target magnitude) ─────────────────
+  // ── 1. conjunctive goal score (primary) ──────────────────────────────
+  // Live search does not count the completion-only basic checkpoint toward
+  // perfect/sublime targets (gate/balance already price completion).
+  let score = computeConjunctiveGoalScore(
+    outcome,
+    bands,
+    baseCompGoal,
+    basePerfGoal,
+    effectiveCompGoal,
+    effectivePerfGoal,
+    completionWeight,
+    perfectionWeight,
+    { countBasicCheckpoint: false },
+  );
+
   const totalTargetMagnitude = Math.max(
     1,
-    effectiveCompGoal + effectivePerfGoal,
+    Math.max(0, effectiveCompGoal) + Math.max(0, effectivePerfGoal),
   );
   const baseTargetMagnitude = Math.max(
     1,
     Math.max(0, baseCompGoal) + Math.max(0, basePerfGoal),
   );
-  const targetMetBonus = totalTargetMagnitude * SCORING.TARGET_MET_MULTIPLIER;
 
-  const sublimeTargetsMet =
-    isSublimeCraft &&
-    (effectiveCompGoal <= 0 || state.completion >= effectiveCompGoal) &&
-    (effectivePerfGoal <= 0 || state.perfection >= effectivePerfGoal);
-  const modeTargetsMet = isSublimeCraft ? sublimeTargetsMet : baseTargetsMet;
   const resourceRemainingWorkPct = baseTargetsMet
     ? remainingWorkPct
     : baseRemainingWorkPct;
@@ -1854,22 +2109,10 @@ function scoreState(
     ? totalTargetMagnitude
     : baseTargetMagnitude;
 
-  if (sublimeTargetsMet) {
-    score += targetMetBonus * SCORING.SUBLIME_MET_EXTRA;
+  if (modeTargetsMet) {
     score += state.qi * SCORING.RESOURCE_TIEBREAKER;
     score += state.stability * SCORING.RESOURCE_TIEBREAKER;
     score -= state.step * stepPenaltyWeight;
-  } else if (baseTargetsMet) {
-    score += targetMetBonus;
-    score += state.qi * SCORING.RESOURCE_TIEBREAKER;
-    score += state.stability * SCORING.RESOURCE_TIEBREAKER;
-    score -= state.step * stepPenaltyWeight;
-    if (isSublimeCraft) {
-      const compBeyondBase = Math.max(0, effectiveCompProgress - baseCompGoal);
-      const perfBeyondBase = Math.max(0, effectivePerfProgress - basePerfGoal);
-      score +=
-        (compBeyondBase + perfBeyondBase) * SCORING.SUBLIME_BEYOND_BASE_WEIGHT;
-    }
   }
 
   if (!modeTargetsMet) {
@@ -1896,9 +2139,6 @@ function scoreState(
     }
 
     // ── 4. resource value (qi & stability as future-progress enablers) ─
-    // Qi is only valuable when it is a bottleneck for progress turns.
-    // This prevents overvaluing turn-consuming qi restores when progress
-    // skills are already qi-free.
     if (ctx.avgQiCostPerTurn > 0 && estimatedTurnsRemaining > 0) {
       const estimatedQiNeeded =
         resourceEstimatedTurnsRemaining * ctx.avgQiCostPerTurn;
@@ -1914,50 +2154,18 @@ function scoreState(
       (SCORING.STABILITY_BASE_WEIGHT +
         resourceRemainingWorkPct * SCORING.STABILITY_WORK_WEIGHT);
 
-    // Step efficiency: prefer shorter paths to target completion.
-    // Without this, the tree search sees no cost to "stabilize now,
-    // progress later" vs "progress now", which can cause stabilize
-    // spirals where the optimizer delays progress indefinitely.
-  }
-
-  if (!modeTargetsMet) {
     score -= state.step * stepPenaltyWeight;
   }
 
   // ── 5. overshoot penalty ─────────────────────────────────────────────
-  if (!isSublimeCraft) {
-    const normalCompLimit =
-      maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-        ? Math.min(targetCompletion, maxCompletionCap)
-        : targetCompletion;
-    const normalPerfLimit =
-      maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-        ? Math.min(targetPerfection, maxPerfectionCap)
-        : targetPerfection;
-    const compOver =
-      normalCompLimit > 0 ? Math.max(0, state.completion - normalCompLimit) : 0;
-    const perfOver =
-      normalPerfLimit > 0 ? Math.max(0, state.perfection - normalPerfLimit) : 0;
-    score -= (compOver + perfOver) * SCORING.OVERSHOOT_PENALTY_WEIGHT;
-  } else {
-    const sublimeCompLimit =
-      maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-        ? Math.min(effectiveCompTarget, maxCompletionCap)
-        : effectiveCompTarget;
-    const sublimePerfLimit =
-      maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-        ? Math.min(effectivePerfTarget, maxPerfectionCap)
-        : effectivePerfTarget;
-    const compOver =
-      sublimeCompLimit > 0
-        ? Math.max(0, state.completion - sublimeCompLimit)
-        : 0;
-    const perfOver =
-      sublimePerfLimit > 0
-        ? Math.max(0, state.perfection - sublimePerfLimit)
-        : 0;
-    score -= (compOver + perfOver) * SCORING.OVERSHOOT_PENALTY_WEIGHT;
-  }
+  // Soft overshoot past the active mode goal (band threshold, cap-clamped).
+  const modeCompLimit = effectiveCompGoal;
+  const modePerfLimit = effectivePerfGoal;
+  const compOver =
+    modeCompLimit > 0 ? Math.max(0, state.completion - modeCompLimit) : 0;
+  const perfOver =
+    modePerfLimit > 0 ? Math.max(0, state.perfection - modePerfLimit) : 0;
+  score -= (compOver + perfOver) * SCORING.OVERSHOOT_PENALTY_WEIGHT;
 
   // Hard-cap violation penalty
   if (maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)) {
@@ -1972,12 +2180,11 @@ function scoreState(
   }
 
   // ── 6. survivability ────────────────────────────────────────────────
-  // Once the active mode goals are met, the craft is done. Until then, low
-  // runway still matters, including sublime continuation after base success.
+  // Once the active mode goals are met, the craft's tier is banked. Until
+  // then, low runway still matters, including sublime continuation after
+  // base success. Structure matches the pre-existing survivability lock
+  // (quadratic risk + death cliff + runway) — do not retune constants.
   if (!modeTargetsMet) {
-    // Stability threshold derived from actual avg stability cost per turn.
-    // At full remaining work: threshold ≈ (base + scale) × avgCost turns of runway.
-    // At zero remaining work: threshold ≈ base × avgCost.
     const thresholdBase = trainingMode
       ? SCORING.STABILITY_THRESHOLD_TURNS_BASE_TRAINING
       : SCORING.STABILITY_THRESHOLD_TURNS_BASE;
@@ -2015,8 +2222,7 @@ function scoreState(
     }
 
     // Runway penalty: penalize states where estimated turns to finish
-    // exceeds stability runway.  Proportional and uncapped — the penalty
-    // scales with the severity of the shortfall.
+    // exceeds stability runway. Proportional and uncapped.
     const estimatedRunwayTurns =
       ctx.avgStabilityCostPerTurn > 0
         ? Math.floor(Math.max(0, state.stability) / ctx.avgStabilityCostPerTurn)
@@ -2039,17 +2245,11 @@ function scoreState(
       const normalizedHarmony = Math.max(-1, Math.min(1, state.harmony / 100));
       score +=
         normalizedHarmony *
-        remainingWorkPct *
+        bindingRemainingWork *
         totalTargetMagnitude *
         SCORING.HARMONY_BONUS_WEIGHT;
     }
 
-    // Harmony sub-system quality: value being in a productive harmony
-    // state (e.g., forge heat 4-6 where both stats get 1.5×) vs a
-    // terrible one (heat 0 where control is -9×, or heat 10 where
-    // intensity is -9×).  This lets the tree search see that fusion
-    // now (raising heat from 0→2) enables future refine, even though
-    // fusion itself doesn't advance perfection.
     if (!modeTargetsMet && state.harmonyData) {
       const quality = evaluateHarmonySubsystemQuality(
         state.harmonyData,
@@ -2067,6 +2267,16 @@ function scoreState(
   return score;
 }
 
+/**
+ * Score a finished/terminal craft outcome.
+ *
+ * Uses `classifyOutcome` on guaranteed bands only (no bonus-roll EV). Full EV
+ * was found to make finishing beat live lines that could still secure the
+ * missing bar. Order is strictly by banked tier first, then permanent
+ * shortfall penalties so a live state with runway outranks a shallow finish.
+ *
+ * @param targetMultiplier - retained for compatibility/diagnostics only.
+ */
 function scoreFinishedOutcome(
   state: CraftingState,
   targetCompletion: number,
@@ -2082,55 +2292,30 @@ function scoreFinishedOutcome(
     return Math.min(state.completion, state.perfection);
   }
 
-  const effectiveCompTarget = isSublimeCraft
-    ? targetCompletion * targetMultiplier
-    : targetCompletion;
-  const effectivePerfTarget = isSublimeCraft
-    ? targetPerfection * targetMultiplier
-    : targetPerfection;
-  const effectiveCompGoal =
-    maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-      ? Math.min(effectiveCompTarget, maxCompletionCap)
-      : effectiveCompTarget;
-  const effectivePerfGoal =
-    maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-      ? Math.min(effectivePerfTarget, maxPerfectionCap)
-      : effectivePerfTarget;
-  const baseCompGoal =
-    maxCompletionCap !== undefined && Number.isFinite(maxCompletionCap)
-      ? Math.min(targetCompletion, maxCompletionCap)
-      : targetCompletion;
-  const basePerfGoal =
-    maxPerfectionCap !== undefined && Number.isFinite(maxPerfectionCap)
-      ? Math.min(targetPerfection, maxPerfectionCap)
-      : targetPerfection;
-  const totalTargetMagnitude = Math.max(
-    1,
-    effectiveCompGoal + effectivePerfGoal,
-  );
-  const effectiveCompProgress = getProgressTowardRawGoal(
-    state.completion,
+  void targetMultiplier;
+
+  const {
+    baseCompGoal,
+    basePerfGoal,
     effectiveCompGoal,
-    targetCompletion,
-  );
-  const effectivePerfProgress = getProgressTowardRawGoal(
-    state.perfection,
     effectivePerfGoal,
+    bands,
+  } = deriveBandGoals(
+    targetCompletion,
     targetPerfection,
+    isSublimeCraft,
+    maxCompletionCap,
+    maxPerfectionCap,
   );
-  const remainingCompletion = Math.max(
-    0,
-    effectiveCompGoal - effectiveCompProgress,
-  );
-  const remainingPerfection = Math.max(
-    0,
-    effectivePerfGoal - effectivePerfProgress,
-  );
-  const totalRemaining = remainingCompletion + remainingPerfection;
+
+  const outcome = classifyOutcome(state, bands);
+  const compRemaining = Math.max(0, outcome.completionShortfall);
+  const perfRemaining = Math.max(0, outcome.perfectionShortfall);
+  const totalRemaining = compRemaining + perfRemaining;
   const compNeedShare =
-    totalRemaining > 0 ? remainingCompletion / totalRemaining : 0.5;
+    totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
   const perfNeedShare =
-    totalRemaining > 0 ? remainingPerfection / totalRemaining : 0.5;
+    totalRemaining > 0 ? perfRemaining / totalRemaining : 0.5;
   const { completionWeight, perfectionWeight } = getGoalPriorityWeights(
     compNeedShare,
     perfNeedShare,
@@ -2138,124 +2323,45 @@ function scoreFinishedOutcome(
     effectivePerfGoal,
     goalPriorityBias,
   );
+
+  // Finished crafts count the real runtime tier, including basic as a floor.
+  let score = computeConjunctiveGoalScore(
+    outcome,
+    bands,
+    baseCompGoal,
+    basePerfGoal,
+    effectiveCompGoal,
+    effectivePerfGoal,
+    completionWeight,
+    perfectionWeight,
+    { countBasicCheckpoint: true },
+  );
+
+  const totalTargetMagnitude = Math.max(
+    1,
+    Math.max(0, effectiveCompGoal) + Math.max(0, effectivePerfGoal),
+  );
+
+  // Stability hit 0 ends the craft. If the target-tier goals are already
+  // banked this is a successful resolution (last-hit finish), not a wipe.
+  // Only unmet finishes pay the death cliff, matching live scoreState's
+  // "dying never beats progress" lock for failed lines.
+  const targetGoalsMet =
+    outcome.completionMargin >= 1 && outcome.perfectionMargin >= 1;
+  if (state.stability <= 0 && !targetGoalsMet) {
+    score -= totalTargetMagnitude * SCORING.DEATH_PENALTY_MULTIPLIER;
+  }
+
+  // Permanent shortfall once the craft has ended.
+  score -=
+    (outcome.completionShortfall + outcome.perfectionShortfall) *
+    SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
+
   const stepPenaltyWeight = Math.max(
     SCORING.STEP_PENALTY,
     ctx.avgGainPerTurn * SCORING.STEP_PENALTY_PROGRESS_FRACTION,
   );
-  const targetMetBonus = totalTargetMagnitude * SCORING.TARGET_MET_MULTIPLIER;
-  const completionOutcomes = buildBonusTierOutcomeDistribution(
-    state.completion,
-    targetCompletion,
-  );
-  const perfectionOutcomes = buildBonusTierOutcomeDistribution(
-    state.perfection,
-    targetPerfection,
-  );
-
-  let expectedScore = 0;
-  for (const completionOutcome of completionOutcomes) {
-    for (const perfectionOutcome of perfectionOutcomes) {
-      const probability =
-        completionOutcome.probability * perfectionOutcome.probability;
-      if (probability <= 0) {
-        continue;
-      }
-
-      const craftSucceeded =
-        targetCompletion <= 0 || completionOutcome.guaranteed > 0;
-      if (!craftSucceeded) {
-        expectedScore += probability * -totalTargetMagnitude;
-        continue;
-      }
-
-      const resolvedCompProgress = craftSucceeded
-        ? getProgressTowardRawGoal(
-            completionOutcome.threshold,
-            effectiveCompGoal,
-            targetCompletion,
-          )
-        : 0;
-      const resolvedPerfProgress = getProgressTowardRawGoal(
-        perfectionOutcome.threshold,
-        effectivePerfGoal,
-        targetPerfection,
-      );
-
-      let outcomeScore =
-        resolvedCompProgress * completionWeight +
-        resolvedPerfProgress * perfectionWeight;
-      const finishedCompShortfall = Math.max(
-        0,
-        effectiveCompGoal - resolvedCompProgress,
-      );
-      const finishedPerfShortfall = Math.max(
-        0,
-        effectivePerfGoal - resolvedPerfProgress,
-      );
-      outcomeScore -=
-        (finishedCompShortfall + finishedPerfShortfall) *
-        SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
-
-      const outcomeModeTargetsMet =
-        isSublimeCraft &&
-        isRawGoalSecuredByOutcome(
-          completionOutcome.guaranteed,
-          effectiveCompGoal,
-          targetCompletion,
-        ) &&
-        isRawGoalSecuredByOutcome(
-          perfectionOutcome.guaranteed,
-          effectivePerfGoal,
-          targetPerfection,
-        );
-
-      if (outcomeModeTargetsMet) {
-        outcomeScore += targetMetBonus * (SCORING.SUBLIME_MET_EXTRA - 1);
-      }
-
-      if (
-        isSublimeCraft &&
-        targetCompletion > 0 &&
-        targetPerfection > 0 &&
-        targetMultiplier > 1
-      ) {
-        const desiredResolvedTier = Math.max(2, Math.floor(targetMultiplier));
-        const resolvedTier = Math.min(
-          desiredResolvedTier,
-          completionOutcome.guaranteed,
-          perfectionOutcome.guaranteed,
-        );
-        if (resolvedTier > 1) {
-          const baseFinishMagnitude = Math.max(
-            1,
-            Math.max(0, targetCompletion) + Math.max(0, targetPerfection),
-          );
-          outcomeScore +=
-            (resolvedTier - 1) *
-            baseFinishMagnitude *
-            SCORING.SUBLIME_FINISH_TIER_BONUS_FRACTION;
-        }
-      }
-
-      expectedScore += probability * outcomeScore;
-    }
-  }
-
-  const currentBaseTargetsMet =
-    (baseCompGoal <= 0 || state.completion >= baseCompGoal) &&
-    (basePerfGoal <= 0 || state.perfection >= basePerfGoal);
-
-  if (currentBaseTargetsMet) {
-    expectedScore += targetMetBonus;
-    if (isSublimeCraft) {
-      const compBeyondBase = Math.max(0, effectiveCompProgress - baseCompGoal);
-      const perfBeyondBase = Math.max(0, effectivePerfProgress - basePerfGoal);
-      expectedScore +=
-        (compBeyondBase + perfBeyondBase) * SCORING.SUBLIME_BEYOND_BASE_WEIGHT;
-    }
-  }
-
-  return expectedScore - state.step * stepPenaltyWeight;
+  return score - state.step * stepPenaltyWeight;
 }
 
 function calculateFinishSuccessChance(
@@ -2670,6 +2776,139 @@ function generateFinishReasoning(successChance: number): string {
 }
 
 /**
+ * Minimal scaling variables for expression-gate probes used by move ordering.
+ * Only the craft-progress fields need to be accurate; combat stats are zeroed.
+ */
+function buildGoalUnlockScalingVariables(
+  state: CraftingState,
+  config: OptimizerConfig,
+): ScalingVariables {
+  const maxcompletion = Math.max(0, config.targetCompletion ?? 0);
+  const maxperfection = Math.max(0, config.targetPerfection ?? 0);
+  return {
+    control: 0,
+    intensity: 0,
+    critchance: 0,
+    critmultiplier: 0,
+    pool: state.qi,
+    maxpool: config.maxQi,
+    toxicity: state.toxicity,
+    maxtoxicity: state.maxToxicity,
+    resistance: 0,
+    itemEffectiveness: 100,
+    pillsPerRound: config.pillsPerRound || 1,
+    poolCostFlat: 0,
+    poolCostPercentage: 0,
+    stabilityCostPercentage: 0,
+    successChanceBonus: 0,
+    stacks: 0,
+    completion: state.completion,
+    perfection: state.perfection,
+    maxcompletion,
+    maxperfection,
+    stability: state.stability,
+    maxstability: state.initialMaxStability,
+  };
+}
+
+/** Evaluate only the boolean/expression gate of a scaling node. */
+function evaluateExpressionGate(
+  eqn: string | undefined,
+  vars: ScalingVariables,
+): number {
+  if (!eqn) {
+    return 1;
+  }
+  const gate: Scaling = { value: 1, eqn };
+  const value = evaluateScaling(gate, vars, 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function collectBuffDefinitionsFromSkill(
+  skill: SkillDefinition,
+): BuffDefinition[] {
+  const buffs: BuffDefinition[] = [];
+  if (skill.grantedBuff) {
+    buffs.push(skill.grantedBuff);
+  }
+  for (const effect of skill.effects ?? []) {
+    if (effect.kind === 'createBuff' && effect.buff) {
+      buffs.push(effect.buff);
+    }
+  }
+  return buffs;
+}
+
+function collectExpressionGatesFromBuff(buff: BuffDefinition): string[] {
+  const eqns: string[] = [];
+  for (const scaling of Object.values(buff.stats ?? {})) {
+    if (scaling?.eqn) {
+      eqns.push(scaling.eqn);
+    }
+  }
+  return eqns;
+}
+
+/**
+ * Ordering-only bonus for actions that open a currently-false expression gate
+ * or satisfy an unmet buffRequirement of another technique. Must never be mixed
+ * into scored values — beam/depth pruning is the only consumer.
+ *
+ * Detected generically from skill data (no hardcoded technique names).
+ */
+function estimateGoalUnlockOrderingBonus(
+  before: CraftingState,
+  after: CraftingState,
+  config: OptimizerConfig,
+  skills: readonly SkillDefinition[],
+  totalTargetMagnitude: number,
+): number {
+  if (before === after) {
+    return 0;
+  }
+
+  const beforeVars = buildGoalUnlockScalingVariables(before, config);
+  const afterVars = buildGoalUnlockScalingVariables(after, config);
+  let unlockCount = 0;
+
+  for (const skill of skills) {
+    // Expression gates on buffs this roster can grant.
+    for (const buff of collectBuffDefinitionsFromSkill(skill)) {
+      for (const eqn of collectExpressionGatesFromBuff(buff)) {
+        const beforeGate = evaluateExpressionGate(eqn, beforeVars);
+        const afterGate = evaluateExpressionGate(eqn, afterVars);
+        if (beforeGate === 0 && afterGate !== 0) {
+          unlockCount += 1;
+        }
+      }
+    }
+
+    // buffRequirement preconditions of high-value techniques.
+    const requirement = skill.buffRequirement;
+    if (requirement) {
+      const beforeStacks = before.getBuffStacks(requirement.buffName);
+      const afterStacks = after.getBuffStacks(requirement.buffName);
+      if (
+        beforeStacks < requirement.amount &&
+        afterStacks >= requirement.amount
+      ) {
+        unlockCount += 1;
+      }
+    }
+  }
+
+  if (unlockCount <= 0) {
+    return 0;
+  }
+
+  return (
+    unlockCount *
+    Math.max(1, totalTargetMagnitude) *
+    SCORING.GOAL_UNLOCK_ORDERING_WEIGHT
+  );
+}
+
+/**
  * Greedy search - evaluates each skill's immediate impact.
  * Fast but may not find optimal solution.
  *
@@ -2686,6 +2925,7 @@ export function greedySearch(
   const cfg: SearchConfig = { ...DEFAULT_SEARCH_CONFIG, ...searchConfig };
   // Extract settings from config
   const isSublime = config.isSublimeCraft || false;
+  // targetMultiplier retained for diagnostics/compat; goals use band thresholds.
   const targetMult = config.targetMultiplier || 2.0;
   const isTraining = config.trainingMode || false;
   const scoringCtx = buildScoringContext(
@@ -2693,34 +2933,36 @@ export function greedySearch(
     state,
     normalizeConditionType(currentConditionType),
   );
-  const effectiveCompTarget = isSublime
-    ? targetCompletion * targetMult
-    : targetCompletion;
-  const effectivePerfTarget = isSublime
-    ? targetPerfection * targetMult
-    : targetPerfection;
-  const effectiveCompGoal =
-    config.maxCompletion !== undefined && Number.isFinite(config.maxCompletion)
-      ? Math.min(effectiveCompTarget, config.maxCompletion)
-      : effectiveCompTarget;
-  const effectivePerfGoal =
-    config.maxPerfection !== undefined && Number.isFinite(config.maxPerfection)
-      ? Math.min(effectivePerfTarget, config.maxPerfection)
-      : effectivePerfTarget;
-  const modeCompGoal = isSublime ? effectiveCompGoal : targetCompletion;
-  const modePerfGoal = isSublime ? effectivePerfGoal : targetPerfection;
+  const bandGoals = deriveBandGoals(
+    targetCompletion,
+    targetPerfection,
+    isSublime,
+    config.maxCompletion,
+    config.maxPerfection,
+  );
+  const {
+    baseCompGoal,
+    basePerfGoal,
+    effectiveCompGoal,
+    effectivePerfGoal,
+    bands: outcomeBands,
+  } = bandGoals;
+  const modeCompGoal = effectiveCompGoal;
+  const modePerfGoal = effectivePerfGoal;
   const scoreTieWindow = computeScoreTieWindow(
     Math.max(1, effectiveCompGoal + effectivePerfGoal),
   );
   const normalizedCurrentCondition =
     normalizeConditionType(currentConditionType);
+  const stateWillAutoFinish = (candidate: CraftingState): boolean =>
+    willAutoFinish(candidate, outcomeBands);
   const getFinishAction = (
     candidate: CraftingState,
   ): (SkillRecommendation & UnsafeCandidateClassification) | null => {
-    if (
-      candidate.stability <= 0 ||
-      goalsMet(candidate, modeCompGoal, modePerfGoal)
-    ) {
+    // Runtime has no voluntary early finish. Only offer Finish Craft when the
+    // auto-finish predicate already holds. Dead crafts (stability <= 0) are
+    // terminal without a finish action.
+    if (candidate.stability <= 0 || !stateWillAutoFinish(candidate)) {
       return null;
     }
     const projectedSuccessChance = calculateFinishSuccessChance(
@@ -2756,17 +2998,20 @@ export function greedySearch(
     };
   };
 
-  // Check if active goals are already met.
-  if (goalsMet(state, modeCompGoal, modePerfGoal)) {
+  const finishAction = getFinishAction(state);
+
+  // Auto-finish horizon: craft is about to end — recommend Finish Craft.
+  if (finishAction) {
     return {
-      recommendation: null,
+      recommendation: finishAction,
       alternativeSkills: [],
       isTerminal: false,
-      targetsMet: true,
+      targetsMet: goalsMet(state, modeCompGoal, modePerfGoal),
     };
   }
 
-  const finishAction = getFinishAction(state);
+  // Goals banked but craft still live (e.g. overcraft caps above tier flats):
+  // keep searching. Only report targetsMet with no move when nothing remains.
 
   // Check if terminal state
   if (
@@ -2925,30 +3170,35 @@ export function greedySearch(
       modeCompGoal,
       modePerfGoal,
     );
-    const score = terminalState.isTerminal
-      ? scoreFinishedOutcome(
-          newState,
-          targetCompletion,
-          targetPerfection,
-          isSublime,
-          targetMult,
-          config.maxCompletion,
-          config.maxPerfection,
-          scoringCtx,
-          cfg.goalPriorityBias,
-        )
-      : scoreState(
-          newState,
-          targetCompletion,
-          targetPerfection,
-          isSublime,
-          targetMult,
-          isTraining,
-          config.maxCompletion,
-          config.maxPerfection,
-          scoringCtx,
-          cfg.goalPriorityBias,
-        );
+    const endsByAutoFinish = stateWillAutoFinish(newState);
+    // Auto-finish horizon: score via finished outcome and stop the craft.
+    // Goal-met-but-not-auto-finishing stays on the live scorer (no finish
+    // penalties) so resonance/overcraft snapshots do not regress.
+    const score =
+      terminalState.isTerminal || endsByAutoFinish
+        ? scoreFinishedOutcome(
+            newState,
+            targetCompletion,
+            targetPerfection,
+            isSublime,
+            targetMult,
+            config.maxCompletion,
+            config.maxPerfection,
+            scoringCtx,
+            cfg.goalPriorityBias,
+          )
+        : scoreState(
+            newState,
+            targetCompletion,
+            targetPerfection,
+            isSublime,
+            targetMult,
+            isTraining,
+            config.maxCompletion,
+            config.maxPerfection,
+            scoringCtx,
+            cfg.goalPriorityBias,
+          );
     const reasoning = generateReasoning(
       skill,
       state,
@@ -2964,7 +3214,7 @@ export function greedySearch(
       effectiveCosts,
       score,
       reasoning,
-      endsCraft: terminalState.isTerminal,
+      endsCraft: terminalState.isTerminal || endsByAutoFinish,
       requiresProbabilisticSurvival,
       ...terminalState,
     });
@@ -3060,6 +3310,7 @@ export function lookaheadSearch(
 
   // Extract settings from config
   const isSublime = config.isSublimeCraft || false;
+  // targetMultiplier retained for diagnostics/compat; goals use band thresholds.
   const targetMult = config.targetMultiplier || 2.0;
   const isTraining = config.trainingMode || false;
   const scoringCtx = buildScoringContext(
@@ -3067,25 +3318,29 @@ export function lookaheadSearch(
     state,
     normalizedCurrentCondition,
   );
-  const effectiveCompTarget = isSublime
-    ? targetCompletion * targetMult
-    : targetCompletion;
-  const effectivePerfTarget = isSublime
-    ? targetPerfection * targetMult
-    : targetPerfection;
-  const effectiveCompGoal =
-    config.maxCompletion !== undefined && Number.isFinite(config.maxCompletion)
-      ? Math.min(effectiveCompTarget, config.maxCompletion)
-      : effectiveCompTarget;
-  const effectivePerfGoal =
-    config.maxPerfection !== undefined && Number.isFinite(config.maxPerfection)
-      ? Math.min(effectivePerfTarget, config.maxPerfection)
-      : effectivePerfTarget;
-  const modeCompGoal = isSublime ? effectiveCompGoal : targetCompletion;
-  const modePerfGoal = isSublime ? effectivePerfGoal : targetPerfection;
-  const scoreTieWindow = computeScoreTieWindow(
-    Math.max(1, effectiveCompGoal + effectivePerfGoal),
+  const bandGoals = deriveBandGoals(
+    targetCompletion,
+    targetPerfection,
+    isSublime,
+    config.maxCompletion,
+    config.maxPerfection,
   );
+  const {
+    baseCompGoal,
+    basePerfGoal,
+    effectiveCompGoal,
+    effectivePerfGoal,
+    bands: outcomeBands,
+  } = bandGoals;
+  const modeCompGoal = effectiveCompGoal;
+  const modePerfGoal = effectivePerfGoal;
+  const totalTargetMagnitudeForOrdering = Math.max(
+    1,
+    effectiveCompGoal + effectivePerfGoal,
+  );
+  const scoreTieWindow = computeScoreTieWindow(totalTargetMagnitudeForOrdering);
+  const stateWillAutoFinish = (candidate: CraftingState): boolean =>
+    willAutoFinish(candidate, outcomeBands);
   const shouldConsiderNativeMctsPolicy =
     cfg.useMonteCarloTreeSearch !== false &&
     depth > 1 &&
@@ -3226,7 +3481,13 @@ export function lookaheadSearch(
     candidate: CraftingState,
     conditionAtDepth: CraftingConditionType,
   ): number => {
-    if (isTerminalState(candidate, config, conditionAtDepth)) {
+    // Finished-path scorer only when the craft is actually ending. A goal-met
+    // node that will NOT auto-finish must keep the live scoreState so
+    // resonance/overcraft continuation is not hit with finish penalties.
+    if (
+      isTerminalState(candidate, config, conditionAtDepth) ||
+      stateWillAutoFinish(candidate)
+    ) {
       return scoreFinishedOutcome(
         candidate,
         targetCompletion,
@@ -3405,10 +3666,10 @@ export function lookaheadSearch(
   const getFinishAction = (
     candidate: CraftingState,
   ): SearchMoveCandidate | null => {
-    if (
-      candidate.stability <= 0 ||
-      goalsMet(candidate, modeCompGoal, modePerfGoal)
-    ) {
+    // Previously offered when goals were unmet and projectedSuccessChance > 0
+    // (voluntary early finish). Runtime 0.7.5 has no manual finish — gate on
+    // willAutoFinish instead. Dead crafts stay terminal without this action.
+    if (candidate.stability <= 0 || !stateWillAutoFinish(candidate)) {
       return null;
     }
 
@@ -3619,17 +3880,26 @@ export function lookaheadSearch(
         targetPerfection,
       );
 
+      const postMoveScore = estimatePostMoveStateScore(
+        searchState,
+        skill,
+        currentConditionAtDepth,
+        nextConditionQueueAtDepth,
+      );
+      // Ordering-only unlock bonus — must not flow into scored values.
+      const unlockOrderingBonus = estimateGoalUnlockOrderingBonus(
+        currentState,
+        nextState,
+        config,
+        config.skills,
+        totalTargetMagnitudeForOrdering,
+      );
       candidates.push({
         skill,
         nextState,
         searchState,
         survivabilityFloor,
-        orderingScore: estimatePostMoveStateScore(
-          searchState,
-          skill,
-          currentConditionAtDepth,
-          nextConditionQueueAtDepth,
-        ),
+        orderingScore: postMoveScore + unlockOrderingBonus,
         immediateProgress,
         requiresProbabilisticSurvival,
         unsafeWithGuaranteedSafeAlternative,
@@ -3695,18 +3965,29 @@ export function lookaheadSearch(
     return filteredCandidates;
   }
 
-  // Check if targets already met
-  if (targetsMetForCurrentMode(state)) {
+  const rootFinishAction = getFinishAction(state);
+
+  // Auto-finish horizon at the root: craft ends now — recommend Finish Craft.
+  if (rootFinishAction) {
     return {
-      recommendation: null,
+      recommendation: {
+        skill: rootFinishAction.skill,
+        expectedGains: { ...ZERO_GAINS },
+        immediateGains: { ...ZERO_GAINS },
+        effectiveCosts: { ...ZERO_COSTS },
+        score: rootFinishAction.orderingScore,
+        reasoning: generateFinishReasoning(
+          rootFinishAction.projectedSuccessChance ?? 0,
+        ),
+        projectedSuccessChance: rootFinishAction.projectedSuccessChance,
+        endsCraft: true,
+      },
       alternativeSkills: [],
       isTerminal: false,
-      targetsMet: true,
+      targetsMet: targetsMetForCurrentMode(state),
       searchMetrics: metrics,
     };
   }
-
-  const rootFinishAction = getFinishAction(state);
 
   // Check if terminal state (use current condition type for filtering)
   if (
@@ -3801,21 +4082,24 @@ export function lookaheadSearch(
       return scoreStateConsideringFinish(currentState, currentConditionAtDepth);
     }
 
-    // Check if active goals are met - early termination with score.
-    if (targetsMetForCurrentMode(currentState)) {
-      return scoreState(
+    // Auto-finish horizon: craft ends here — finished scorer, no further search.
+    if (stateWillAutoFinish(currentState)) {
+      return scoreFinishedOutcome(
         currentState,
         targetCompletion,
         targetPerfection,
         isSublime,
         targetMult,
-        isTraining,
         config.maxCompletion,
         config.maxPerfection,
         scoringCtx,
         cfg.goalPriorityBias,
       );
     }
+
+    // Goal-met but not auto-finishing: keep the live score as a leaf when we
+    // choose not to expand, but do NOT force early exit — overcraft/extra-band
+    // lines still need to expand. Fall through to normal search.
 
     // Check cache with normalized key (buckets large progress values)
     const cacheKey = getNormalizedCacheKey(
@@ -3874,6 +4158,19 @@ export function lookaheadSearch(
       let score = 0;
       if (isFinishAction(skill)) {
         score = candidate.orderingScore;
+      } else if (stateWillAutoFinish(newState)) {
+        // Action ends the craft via auto-finish — finished scorer, no recurse.
+        score = scoreFinishedOutcome(
+          newState,
+          targetCompletion,
+          targetPerfection,
+          isSublime,
+          targetMult,
+          config.maxCompletion,
+          config.maxPerfection,
+          scoringCtx,
+          cfg.goalPriorityBias,
+        );
       } else if (!actionConsumesTurn(skill)) {
         score = search(
           newState,
@@ -3951,6 +4248,20 @@ export function lookaheadSearch(
       return (
         getFinishAction(newState)?.orderingScore ??
         scoreStateConsideringFinish(newState, conditionAtDepth)
+      );
+    }
+
+    if (stateWillAutoFinish(newState)) {
+      return scoreFinishedOutcome(
+        newState,
+        targetCompletion,
+        targetPerfection,
+        isSublime,
+        targetMult,
+        config.maxCompletion,
+        config.maxPerfection,
+        scoringCtx,
+        cfg.goalPriorityBias,
       );
     }
 
@@ -4052,7 +4363,7 @@ export function lookaheadSearch(
         !getFinishAction(currentState)
       )
     ) {
-      if (targetsMetForCurrentMode(currentState)) {
+      if (stateWillAutoFinish(currentState)) {
         break;
       }
 
@@ -4180,7 +4491,11 @@ export function lookaheadSearch(
       }
 
       path.push(chosenSkill.name);
-      if (isFinishAction(chosenSkill)) {
+      // Always land on the chosen successor before deciding whether the craft
+      // ends here. Skipping this assignment on auto-finish left finalState one
+      // action behind the rotation (e.g. False Fusion setup without the push).
+      currentState = chosenNextState;
+      if (isFinishAction(chosenSkill) || stateWillAutoFinish(chosenNextState)) {
         finishedByChoice = true;
         break;
       }
@@ -4192,7 +4507,6 @@ export function lookaheadSearch(
         chosenSkill,
       );
 
-      currentState = chosenNextState;
       conditionAtDepth = nextConditionState.nextCondition;
       conditionQueueAtDepth = nextConditionState.nextQueue;
       currentDepth++;
@@ -4599,7 +4913,10 @@ export function lookaheadSearch(
         consumesBuff: skill.isDisciplinedTouch === true,
         followUpSkill: undefined,
         projectedSuccessChance: candidate.projectedSuccessChance,
-        endsCraft: isFinishAction(skill) || terminalState.isTerminal,
+        endsCraft:
+          isFinishAction(skill) ||
+          terminalState.isTerminal ||
+          stateWillAutoFinish(newState),
         requiresProbabilisticSurvival: candidate.requiresProbabilisticSurvival,
         ...terminalState,
       });
