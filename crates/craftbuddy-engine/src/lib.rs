@@ -4,19 +4,38 @@ use wasm_bindgen::prelude::*;
 
 #[cfg(test)]
 mod differential_tests;
+mod outcome;
+
+use outcome::{
+    band_threshold, build_outcome_bands, classify_outcome, tier_requirement, OutcomeBands,
+    OutcomeClassification, OutcomeTier,
+};
 
 const FINISH_CRAFT_KEY: &str = "__finish_craft__";
 const FINISH_CRAFT_NAME: &str = "Finish Craft";
 const EXPONENTIAL_SCALING_FACTOR: f64 = 1.3;
-const TARGET_MET_MULTIPLIER: f64 = 2.0;
-const SUBLIME_MET_EXTRA: f64 = 1.5;
-const SUBLIME_BEYOND_BASE_WEIGHT: f64 = 0.5;
 const RESOURCE_TIEBREAKER: f64 = 0.001;
+
+// Conjunctive goal-score weights. Mirrors `SCORING` in
+// `src/optimizer/search.ts`; a tier jump (2x magnitude) must stay strictly
+// greater than the maximum within-tier stack (<= ~1.6x) so banking a tier
+// always beats pure margin progress, and death (3x) must beat both.
+const TIER_VALUE_SCALE: f64 = 2.0;
+const GATE_WEIGHT: f64 = 1.0;
+const BALANCE_WEIGHT: f64 = 0.35;
+const BONUS_ROLL_WEIGHT: f64 = 0.2;
+const IN_TIER_PROGRESS_WEIGHT: f64 = 0.05;
+const EXTRA_BAND_WEIGHT: f64 = 0.75;
+const FINISHED_UNMET_PENALTY_WEIGHT: f64 = 1.0;
 const STEP_PENALTY: f64 = 0.5;
 const DEATH_PENALTY_MULTIPLIER: f64 = 3.0;
 const RUNWAY_GAP_FRACTION: f64 = 0.1;
 const TOXICITY_PENALTY_FRACTION: f64 = 0.025;
-const HARMONY_BONUS_WEIGHT: f64 = 0.15;
+/// Harmony's real value is steering the condition timeline toward Harmonious /
+/// Brilliant windows, so it is worth a lot early and almost nothing once the
+/// target tier is banked. Scaled by remaining work on the binding bar.
+const HARMONY_BONUS_WEIGHT: f64 = 0.4;
+const HARMONY_SUBSYSTEM_QUALITY_WEIGHT: f64 = 0.15;
 
 /// Harmony value Formless Way holds for the whole craft (runtime `dRa`).
 const FORMLESS_HARMONY: f64 = 33.0;
@@ -142,7 +161,10 @@ struct EngineConfig {
     crafting_type: Option<String>,
     #[serde(default)]
     is_sublime_craft: bool,
+    /// Legacy cap-derived sublime multiplier. Superseded by the real band
+    /// thresholds in `outcome.rs`; kept so older bridge payloads still parse.
     #[serde(default = "default_target_multiplier")]
+    #[allow(dead_code)]
     target_multiplier: f64,
     #[serde(default)]
     #[allow(dead_code)]
@@ -959,6 +981,23 @@ impl Engine {
             (condition, queue.to_vec())
         };
 
+        // The game ends the craft itself the moment its auto-finish predicate
+        // holds - there is no manual finish technique in 0.7.5. Modelling that
+        // here is what stops the search from planning actions past the point
+        // where the craft is already over, which is the reported "leftover qi
+        // spent on perfection it never banks" behaviour.
+        if !next.finished
+            && outcome::will_auto_finish(
+                next.completion,
+                next.perfection,
+                next.stability,
+                &self.outcome_bands(),
+                None,
+            )
+        {
+            next.finished = true;
+        }
+
         Some((next, next_condition, next_queue))
     }
 
@@ -1109,31 +1148,23 @@ impl Engine {
             goals.mode_perfection,
         );
 
-        let mut score = state.completion.min(goals.mode_completion) * completion_weight
-            + state.perfection.min(goals.mode_perfection) * perfection_weight;
+        let outcome = classify_outcome(
+            state.completion,
+            state.perfection,
+            state.stability,
+            &goals.bands,
+        );
+        let mut score = self.conjunctive_goal_score(
+            &outcome,
+            &goals,
+            completion_weight,
+            perfection_weight,
+            false,
+        );
 
-        let base_targets_met = (goals.base_completion <= 0.0
-            || state.completion >= goals.base_completion)
-            && (goals.base_perfection <= 0.0 || state.perfection >= goals.base_perfection);
         let mode_targets_met = (goals.mode_completion <= 0.0
             || state.completion >= goals.mode_completion)
             && (goals.mode_perfection <= 0.0 || state.perfection >= goals.mode_perfection);
-        let target_met_bonus = total_target_magnitude * TARGET_MET_MULTIPLIER;
-
-        if mode_targets_met {
-            score += if self.input.config.is_sublime_craft {
-                target_met_bonus * SUBLIME_MET_EXTRA
-            } else {
-                target_met_bonus
-            };
-        } else if base_targets_met {
-            score += target_met_bonus;
-            if self.input.config.is_sublime_craft {
-                let beyond_base = (state.completion - goals.base_completion).max(0.0)
-                    + (state.perfection - goals.base_perfection).max(0.0);
-                score += beyond_base * SUBLIME_BEYOND_BASE_WEIGHT;
-            }
-        }
 
         if !mode_targets_met {
             score += state.qi * 0.05;
@@ -1162,17 +1193,73 @@ impl Engine {
         }
 
         if self.input.config.is_sublime_craft {
-            score += (state.harmony / 100.0) * total_target_magnitude * HARMONY_BONUS_WEIGHT;
+            // Harmony is worth most while the binding bar still has work left:
+            // its real value is steering the condition timeline toward
+            // Harmonious/Brilliant windows, which is worthless once banked.
+            let binding_remaining = 1.0 - outcome.completion_margin.min(outcome.perfection_margin);
+            score += (state.harmony / 100.0)
+                * total_target_magnitude
+                * HARMONY_BONUS_WEIGHT
+                * binding_remaining;
             score += harmony_quality(
                 &state.harmony_data,
                 self.input.config.crafting_type.as_deref(),
             ) * total_target_magnitude
-                * 0.08;
+                * HARMONY_SUBSYSTEM_QUALITY_WEIGHT
+                * binding_remaining;
         }
 
         score - state.step as f64 * STEP_PENALTY
     }
 
+    /// Conjunctive goal score. Mirrors `computeConjunctiveGoalScore` in
+    /// `src/optimizer/search.ts`.
+    ///
+    /// The `min` on the two margins is the whole point: once a bar's band
+    /// requirement is met, more of it cannot raise the gate, so search is
+    /// forced onto whichever bar is actually blocking the next tier.
+    fn conjunctive_goal_score(
+        &self,
+        outcome: &OutcomeClassification,
+        goals: &Goals,
+        completion_weight: f64,
+        perfection_weight: f64,
+        count_basic_checkpoint: bool,
+    ) -> f64 {
+        let total_target_magnitude =
+            (goals.mode_completion.max(0.0) + goals.mode_perfection.max(0.0)).max(1.0);
+        let base_target_magnitude =
+            (goals.base_completion.max(0.0) + goals.base_perfection.max(0.0)).max(1.0);
+
+        let gate = outcome.completion_margin.min(outcome.perfection_margin);
+        let balance = weighted_margin_average(
+            outcome.completion_margin,
+            outcome.perfection_margin,
+            completion_weight,
+            perfection_weight,
+        );
+        let bonus_credit = bonus_chance_credit_when_one_band_short(outcome);
+        let residual = residual_shortfall_progress(outcome, &goals.bands);
+        let extras = extra_resolved_bands(outcome, &goals.bands);
+        let scored_tier_rank =
+            goal_score_tier_rank(outcome, goals.bands.target_tier, count_basic_checkpoint) as f64;
+
+        total_target_magnitude
+            * (TIER_VALUE_SCALE * scored_tier_rank
+                + GATE_WEIGHT * gate
+                + BALANCE_WEIGHT * balance
+                + BONUS_ROLL_WEIGHT * bonus_credit
+                + IN_TIER_PROGRESS_WEIGHT * residual)
+            + EXTRA_BAND_WEIGHT * extras as f64 * base_target_magnitude
+    }
+
+    /// Expected value of a finished craft.
+    ///
+    /// The bonus roll on each bar is resolved at craft end, so this averages
+    /// the conjunctive goal score over the joint outcome distribution rather
+    /// than scoring the guaranteed bands alone. `basic` counts as a real
+    /// checkpoint here: unlike a live state, a finished basic craft is an
+    /// actual item rather than a completion-only detour.
     fn score_finished_outcome(&self, state: &EngineState) -> f64 {
         let goals = self.goals();
         let total_target_magnitude = (goals.mode_completion + goals.mode_perfection).max(1.0);
@@ -1192,45 +1279,35 @@ impl Engine {
                 if probability <= 0.0 {
                     continue;
                 }
+                // A finished craft with zero completion bands is a total loss;
+                // no amount of perfection redeems it.
                 if self.input.target_completion > 0.0 && comp.guaranteed <= 0 {
                     expected_score -= probability * total_target_magnitude;
                     continue;
                 }
-                let resolved_comp = progress_toward_raw_goal(
+                // `threshold` is the resolved bar value for this branch, so the
+                // rolls are already baked in.
+                let resolved = classify_outcome(
                     comp.threshold,
-                    goals.mode_completion,
-                    self.input.target_completion,
-                );
-                let resolved_perf = progress_toward_raw_goal(
                     perf.threshold,
-                    goals.mode_perfection,
-                    self.input.target_perfection,
+                    state.stability,
+                    &goals.bands,
                 );
-                let shortfall = (goals.mode_completion - resolved_comp).max(0.0)
-                    + (goals.mode_perfection - resolved_perf).max(0.0);
-                expected_score += probability
-                    * (resolved_comp * completion_weight + resolved_perf * perfection_weight
-                        - shortfall);
+                let branch_score = self.conjunctive_goal_score(
+                    &resolved,
+                    &goals,
+                    completion_weight,
+                    perfection_weight,
+                    true,
+                );
+                // Unmet work is permanent once the craft has ended, so price it
+                // at full weight rather than as remaining potential.
+                let shortfall = resolved.completion_shortfall + resolved.perfection_shortfall;
+                expected_score +=
+                    probability * (branch_score - shortfall * FINISHED_UNMET_PENALTY_WEIGHT);
             }
         }
 
-        let base_targets_met = (goals.base_completion <= 0.0
-            || state.completion >= goals.base_completion)
-            && (goals.base_perfection <= 0.0 || state.perfection >= goals.base_perfection);
-        let mode_targets_met = (goals.mode_completion <= 0.0
-            || state.completion >= goals.mode_completion)
-            && (goals.mode_perfection <= 0.0 || state.perfection >= goals.mode_perfection);
-        let target_met_bonus = total_target_magnitude * TARGET_MET_MULTIPLIER;
-        if mode_targets_met {
-            expected_score += target_met_bonus
-                * if self.input.config.is_sublime_craft {
-                    SUBLIME_MET_EXTRA
-                } else {
-                    1.0
-                };
-        } else if base_targets_met {
-            expected_score += target_met_bonus;
-        }
         expected_score - state.step as f64 * STEP_PENALTY
     }
 
@@ -1256,55 +1333,45 @@ impl Engine {
         self.input.config.max_qi.max(1.0)
     }
 
+    fn outcome_bands(&self) -> OutcomeBands {
+        build_outcome_bands(
+            self.input.target_completion,
+            self.input.target_perfection,
+            self.input.config.is_sublime_craft,
+            self.input.config.max_completion,
+            self.input.config.max_perfection,
+        )
+    }
+
     fn goals(&self) -> Goals {
-        let target_multiplier = if self.input.config.target_multiplier > 0.0 {
-            self.input.config.target_multiplier
-        } else {
-            default_target_multiplier()
+        let bands = self.outcome_bands();
+        let perfect_req = tier_requirement(OutcomeTier::Perfect);
+        let target_req = tier_requirement(bands.target_tier);
+        let clamp_by_cap = |goal: f64, cap: Option<f64>| -> f64 {
+            match cap {
+                Some(cap) if cap.is_finite() && cap > 0.0 => goal.min(cap),
+                _ => goal,
+            }
         };
-        let raw_mode_completion = if self.input.config.is_sublime_craft {
-            self.input.target_completion * target_multiplier
-        } else {
-            self.input.target_completion
-        };
-        let raw_mode_perfection = if self.input.config.is_sublime_craft {
-            self.input.target_perfection * target_multiplier
-        } else {
-            self.input.target_perfection
-        };
-        let mode_completion = self
-            .input
-            .config
-            .max_completion
-            .filter(|value| value.is_finite())
-            .map(|cap| raw_mode_completion.min(cap))
-            .unwrap_or(raw_mode_completion);
-        let mode_perfection = self
-            .input
-            .config
-            .max_perfection
-            .filter(|value| value.is_finite())
-            .map(|cap| raw_mode_perfection.min(cap))
-            .unwrap_or(raw_mode_perfection);
-        let base_completion = self
-            .input
-            .config
-            .max_completion
-            .filter(|value| value.is_finite())
-            .map(|cap| self.input.target_completion.min(cap))
-            .unwrap_or(self.input.target_completion);
-        let base_perfection = self
-            .input
-            .config
-            .max_perfection
-            .filter(|value| value.is_finite())
-            .map(|cap| self.input.target_perfection.min(cap))
-            .unwrap_or(self.input.target_perfection);
+
         Goals {
-            mode_completion,
-            mode_perfection,
-            base_completion,
-            base_perfection,
+            mode_completion: clamp_by_cap(
+                band_threshold(self.input.target_completion, target_req.completion),
+                self.input.config.max_completion,
+            ),
+            mode_perfection: clamp_by_cap(
+                band_threshold(self.input.target_perfection, target_req.perfection),
+                self.input.config.max_perfection,
+            ),
+            base_completion: clamp_by_cap(
+                band_threshold(self.input.target_completion, perfect_req.completion),
+                self.input.config.max_completion,
+            ),
+            base_perfection: clamp_by_cap(
+                band_threshold(self.input.target_perfection, perfect_req.perfection),
+                self.input.config.max_perfection,
+            ),
+            bands,
         }
     }
 
@@ -1475,32 +1542,37 @@ struct SkillGains {
     toxicity_cleanse: f64,
 }
 
+/// Band-derived goal thresholds, mirroring `deriveBandGoals` in
+/// `src/optimizer/search.ts`.
+///
+/// `base_*` is the perfect-tier (1-band) success floor; `mode_*` is the target
+/// tier's threshold (2 bands for sublime). These are real band thresholds, not
+/// the cap-derived multipliers the engine used before, which overshot the true
+/// requirement and made sublime crafts look unreachable.
 #[derive(Clone, Copy)]
 struct Goals {
     mode_completion: f64,
     mode_perfection: f64,
     base_completion: f64,
     base_perfection: f64,
+    bands: OutcomeBands,
 }
 
 impl MctsInput {
+    /// Score magnitude of the craft, used to size the near-tie window the
+    /// native prior is allowed to influence.
+    ///
+    /// Derived from the target tier's real band thresholds rather than the
+    /// legacy `target_multiplier` guess, so it matches the scale the scorers
+    /// actually produce.
     fn effective_target_magnitude(&self) -> f64 {
-        let target_multiplier = if self.config.target_multiplier > 0.0 {
-            self.config.target_multiplier
+        let requirement = tier_requirement(if self.config.is_sublime_craft {
+            OutcomeTier::Sublime
         } else {
-            default_target_multiplier()
-        };
-        let completion = if self.config.is_sublime_craft {
-            self.target_completion * target_multiplier
-        } else {
-            self.target_completion
-        };
-        let perfection = if self.config.is_sublime_craft {
-            self.target_perfection * target_multiplier
-        } else {
-            self.target_perfection
-        };
-        completion + perfection
+            OutcomeTier::Perfect
+        });
+        band_threshold(self.target_completion, requirement.completion)
+            + band_threshold(self.target_perfection, requirement.perfection)
     }
 }
 
@@ -1592,18 +1664,6 @@ fn threshold_for_guaranteed_count(target: f64, guaranteed: i32) -> f64 {
     }
     total
 }
-
-fn progress_toward_raw_goal(value: f64, raw_goal: f64, base_target: f64) -> f64 {
-    if raw_goal <= 0.0 {
-        return 0.0;
-    }
-    if base_target <= 0.0 {
-        return value.min(raw_goal);
-    }
-    let progress = get_bonus_and_chance(value, base_target);
-    threshold_for_guaranteed_count(base_target, progress.guaranteed).min(raw_goal)
-}
-
 fn expected_crit_multiplier(crit_chance: f64, crit_multiplier: f64) -> f64 {
     let excess_crit = (crit_chance - 100.0).max(0.0);
     let effective_multiplier = crit_multiplier + excess_crit * 3.0;
@@ -1621,7 +1681,11 @@ fn effective_forge_heat(data: Option<&ForgeWorksData>) -> i32 {
     if heat != 1 {
         return heat;
     }
-    clamp_i32(data.and_then(|fw| fw.last_buffed_heat).unwrap_or(heat), 0, 10)
+    clamp_i32(
+        data.and_then(|fw| fw.last_buffed_heat).unwrap_or(heat),
+        0,
+        10,
+    )
 }
 
 fn eccentric_decree_modifiers(focused_bar: &str) -> HarmonyStatModifiers {
@@ -2490,6 +2554,102 @@ impl SmallRng {
     }
 }
 
+fn weighted_margin_average(
+    completion_margin: f64,
+    perfection_margin: f64,
+    completion_weight: f64,
+    perfection_weight: f64,
+) -> f64 {
+    let total = completion_weight + perfection_weight;
+    if !(total > 0.0) {
+        return (completion_margin + perfection_margin) / 2.0;
+    }
+    (completion_margin * completion_weight + perfection_margin * perfection_weight) / total
+}
+
+/// Joint bonus-roll credit when the rolls could still raise the banked tier.
+fn bonus_chance_credit_when_one_band_short(outcome: &OutcomeClassification) -> f64 {
+    if outcome.optimistic_tier.rank() <= outcome.tier.rank() {
+        return 0.0;
+    }
+    // Bars that already meet their requirement contribute certainty.
+    let completion_factor = if outcome.completion_margin >= 1.0 {
+        1.0
+    } else {
+        outcome.completion_bonus_chance.clamp(0.0, 1.0)
+    };
+    let perfection_factor = if outcome.perfection_margin >= 1.0 {
+        1.0
+    } else {
+        outcome.perfection_bonus_chance.clamp(0.0, 1.0)
+    };
+    (completion_factor * perfection_factor).clamp(0.0, 1.0)
+}
+
+/// Point-level fill of the target tier's thresholds (0-1).
+///
+/// Supplies an early gradient while the tier rank is still flat at `failed`.
+fn residual_shortfall_progress(outcome: &OutcomeClassification, bands: &OutcomeBands) -> f64 {
+    let req = tier_requirement(bands.target_tier);
+    let comp_need = band_threshold(bands.completion_target, req.completion);
+    let perf_need = band_threshold(bands.perfection_target, req.perfection);
+    let total_need = comp_need + perf_need;
+    if total_need <= 0.0 {
+        return 1.0;
+    }
+    let filled = (comp_need - outcome.completion_shortfall).max(0.0)
+        + (perf_need - outcome.perfection_shortfall).max(0.0);
+    (filled / total_need).clamp(0.0, 1.0)
+}
+
+/// Guaranteed bands past the target tier, counted conjunctively.
+fn extra_resolved_bands(outcome: &OutcomeClassification, bands: &OutcomeBands) -> i32 {
+    let req = tier_requirement(bands.target_tier);
+    let completion_required = if bands.completion_target > 0.0 {
+        req.completion
+    } else {
+        0
+    };
+    let perfection_required = if bands.perfection_target > 0.0 {
+        req.perfection
+    } else {
+        0
+    };
+    let extra_completion = (outcome.completion_bands - completion_required).max(0);
+    let extra_perfection = (outcome.perfection_bands - perfection_required).max(0);
+    // Only bands cleared on BOTH bars count toward a better item.
+    if completion_required > 0 && perfection_required > 0 {
+        return extra_completion.min(extra_perfection);
+    }
+    if completion_required > 0 {
+        return extra_completion;
+    }
+    if perfection_required > 0 {
+        return extra_perfection;
+    }
+    0
+}
+
+/// Discrete tier rank used inside the goal score.
+///
+/// Live search toward perfect/sublime suppresses the completion-only `basic`
+/// checkpoint, so banking completion alone cannot outrank progress on the
+/// binding perfection bar. Finished crafts pass `count_basic_checkpoint`
+/// because a basic item is a real result.
+fn goal_score_tier_rank(
+    outcome: &OutcomeClassification,
+    target_tier: OutcomeTier,
+    count_basic_checkpoint: bool,
+) -> i32 {
+    if !count_basic_checkpoint
+        && outcome.tier == OutcomeTier::Basic
+        && target_tier.rank() >= OutcomeTier::Perfect.rank()
+    {
+        return OutcomeTier::Failed.rank();
+    }
+    outcome.tier.rank()
+}
+
 fn clamp(value: f64, min: f64, max: f64) -> f64 {
     value.max(min).min(max)
 }
@@ -2777,11 +2937,13 @@ mod tests {
             ..HarmonyData::default()
         };
         assert_eq!(
-            get_harmony_cost_multipliers(&data, Some("enhancingEcho"), "fusion").pool_cost_percentage,
+            get_harmony_cost_multipliers(&data, Some("enhancingEcho"), "fusion")
+                .pool_cost_percentage,
             ENHANCING_ECHO_MATCH_COST_PERCENTAGE
         );
         assert_eq!(
-            get_harmony_cost_multipliers(&data, Some("enhancingEcho"), "refine").pool_cost_percentage,
+            get_harmony_cost_multipliers(&data, Some("enhancingEcho"), "refine")
+                .pool_cost_percentage,
             ENHANCING_ECHO_DISCORD_COST_PERCENTAGE
         );
     }
@@ -2813,6 +2975,58 @@ mod tests {
         assert_eq!(
             data.eccentric_decree.unwrap().focused_bar,
             "perfection".to_string()
+        );
+    }
+
+    fn sublime_scoring_input() -> MctsInput {
+        let mut input = basic_input();
+        input.config.is_sublime_craft = true;
+        input.config.crafting_type = Some("forge".to_string());
+        input.target_completion = 100.0;
+        input.target_perfection = 80.0;
+        input
+    }
+
+    /// The reported failure mode: dumping everything into completion while
+    /// perfection sits a band short must not outscore a balanced sublime state.
+    #[test]
+    fn over_completion_cannot_outscore_a_reachable_sublime_state() {
+        let engine = Engine::new(sublime_scoring_input());
+        let mut over_completed = engine.input.state.clone();
+        over_completed.completion = 2000.0;
+        over_completed.perfection = 100.0;
+        let mut balanced = engine.input.state.clone();
+        balanced.completion = 230.0;
+        balanced.perfection = 184.0;
+
+        assert!(
+            engine.score_state(&balanced) > engine.score_state(&over_completed),
+            "balanced sublime state must outscore an over-completed perfect state"
+        );
+    }
+
+    /// Once both bars pass their finish flats the game ends the craft, so the
+    /// engine must not keep planning actions from that state.
+    #[test]
+    fn states_past_the_finish_flats_are_terminal() {
+        let mut engine = Engine::new(sublime_scoring_input());
+        let mut state = engine.input.state.clone();
+        state.completion = 5000.0;
+        state.perfection = 5000.0;
+        let action = Action {
+            skill_index: Some(0),
+            key: engine.input.skills[0].key.clone(),
+            name: engine.input.skills[0].name.clone(),
+        };
+        let (next, condition, queue) = engine
+            .apply_action(&state, "neutral", &[], &action)
+            .expect("action is legal");
+        assert!(next.finished, "auto-finish predicate should end the craft");
+        assert!(
+            engine
+                .ordered_legal_actions(&next, &condition, &queue)
+                .is_empty(),
+            "a finished craft offers no further actions"
         );
     }
 
