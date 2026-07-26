@@ -18,13 +18,13 @@ Generated on: 2026-07-26
 
 | Category | Count |
 |---|---|
-| project | 14 |
+| project | 15 |
 | dev-request | 2 |
 | project-meta | 1 |
 | history | 0 |
 | reference | 20 |
 | root-or-other | 14 |
-| total | 51 |
+| total | 52 |
 
 ## Authoritative Docs
 
@@ -35,6 +35,7 @@ Generated on: 2026-07-26
 | `docs/DOC_INVENTORY.md` | project-meta | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/ARCHITECTURE.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/DOCS_GOVERNANCE.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
+| `docs/project/ENGINE_PERFORMANCE_075.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/INTEGRATION_MODAPI.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/MECHANICS_PARITY.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/OPTIMIZER_DESIGN.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
