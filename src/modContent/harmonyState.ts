@@ -1,13 +1,11 @@
 import {
+  clampForgeHeat,
+  getForgeRecommendedTechniqueTypes,
   HarmonyData,
   HarmonyType,
   TechniqueType,
   TrackedBuff,
 } from '../optimizer';
-import {
-  clampForgeHeat,
-  getForgeRecommendedTechniqueTypes,
-} from '../optimizer/harmony';
 
 export type HarmonyDataSource =
   | 'progressState'

@@ -91,6 +91,8 @@ export {
   initHarmonyData,
   getHarmonyStatModifiers,
   getHarmonyCostMultipliers,
+  clampForgeHeat,
+  getForgeRecommendedTechniqueTypes,
   INSCRIBED_PATTERN_BLOCK,
 } from './harmony';
 export type {
@@ -115,6 +117,11 @@ export {
   resolveStartingHarmony,
 } from './harmonyRegistry';
 export type { HarmonyDefinition } from './harmonyRegistry';
+
+// Native-runtime bridges. Exported so `src/modContent/*` never reaches past
+// this facade: the search already depends on both, so this adds no coupling.
+export { preloadNativeMctsPolicyEngine } from './nativeMcts';
+export { buildCanonicalNativeVariables } from './nativeVariables';
 
 // Game-accurate type exports
 export {

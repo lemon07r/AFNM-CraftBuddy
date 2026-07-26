@@ -1,10 +1,11 @@
 import { CraftingState, findBestSkill } from '../optimizer';
 import type {
+  OptimizerConfig,
   SearchConfig,
   SearchResult,
+  SkillDefinition,
   SkillRecommendation,
 } from '../optimizer';
-import type { SkillDefinition, OptimizerConfig } from '../optimizer/skills';
 import type { HarmonyDataSource } from './harmonyState';
 
 export interface OptimizerReplaySearchConfigSnapshot extends Pick<

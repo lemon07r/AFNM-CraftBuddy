@@ -4,8 +4,8 @@ import {
   applyComplexityMultiplier,
   getComplexityMultiplier,
   normalizeHarmonyType,
-} from '../optimizer/harmonyRegistry';
-import type { HarmonyType } from '../optimizer/gameTypes';
+} from '../optimizer';
+import type { HarmonyType } from '../optimizer';
 
 /**
  * The active harmony system for a craft.
