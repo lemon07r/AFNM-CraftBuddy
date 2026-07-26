@@ -138,7 +138,7 @@ Output zip: `builds/afnm-craftbuddy.zip`
 - Optimizer (`src/optimizer/*`, behind a single `index.ts` facade) simulates candidate actions and runs lookahead search.
 - `src/optimizer/outcome.ts` is the single authority for band thresholds, outcome tiers, and the auto-finish predicate.
 - Search combines deterministic simulation with expected-value modeling for probabilistic outcomes, plus a guaranteed survivability floor so a craft is never bet on a recovery proc.
-- A Rust/WASM engine (`crates/craftbuddy-engine/`) models the same mechanics and supplies a search prior; parity is proven by a 1,222-transition differential corpus.
+- A Rust/WASM engine (`crates/craftbuddy-engine/`) models the same mechanics and supplies a search prior; parity is proven by a 1,417-transition differential corpus.
 - UI (`src/ui/*`) renders the recommendation, outcome rows, and alternatives.
 
 ## Technical notes

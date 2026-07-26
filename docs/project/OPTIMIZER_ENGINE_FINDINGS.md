@@ -25,7 +25,7 @@ Raw measurements, reproduction commands and the profiling harness live in `docs/
 | --- | --- |
 | Does Rust model the same mechanics as TypeScript? | **Yes.** Effect trees, generic active buffs, mastery, Soulflame triggers and stack consumption, toxicity, and pill/reagent actions all live in `crates/craftbuddy-engine/src/effects.rs`; `outcome.rs` mirrors the conjunctive outcome model. |
 | Does Rust see the same action space? | **Yes.** `buildNativeMctsInput` no longer filters `actionKind !== 'item'`, and serialises effects, mastery, granted buffs, buff gates, `items`, `consumedPillsThisTurn` and buffs. |
-| Is that parity proven? | **Yes** — 129 scenarios / 1,222 transitions in the differential corpus, asserted on both sides, plus 43 Rust unit tests for the ported mechanics. |
+| Is that parity proven? | **Yes** — 129 scenarios / 1,417 transitions in the differential corpus, asserted on both sides, plus the Rust unit suite (58 passing tests, 3 ignored long-running profiles) covering the ported mechanics. |
 | Is Rust the authority for recommendations? | **No, deliberately.** It supplies a root MCTS policy prior for near-tie ordering. TypeScript owns final ranking and stays the differential oracle and the no-WASM fallback. |
 | Is the recommendation deterministic? | **Yes**, and now directly tested (`differential_tests::mcts_search_is_deterministic`). It was not before 0.7.5. |
 

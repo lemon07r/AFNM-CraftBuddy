@@ -67,7 +67,7 @@ Community feedback on 5.x, and what was actually wrong:
 
 ### Engine
 
-- The Rust engine models the **same action space** as TypeScript: effect trees, generic buffs, mastery, Soulflame, toxicity and pill/reagent actions. Proven by a 129-scenario / 1,222-transition differential corpus, up from 65 / 585.
+- The Rust engine models the **same action space** as TypeScript: effect trees, generic buffs, mastery, Soulflame, toxicity and pill/reagent actions. Proven by a 129-scenario / 1,417-transition differential corpus, up from 65 / 585.
 - **The native policy prior was silently dead on every real craft** — one `null` field (188 of the game's 226 skills carry `mastery: null`) failed the whole payload. Fixed: benchmark runs carrying a native policy went from 0 of 98 to 42 of 98.
 - **The recommendation was not deterministic**; a hash-ordered condition merge could flip the policy between identical runs. Fixed and now directly tested.
 - Native search is **1.90x faster at an identical search shape**, with byte-identical ranked scores.

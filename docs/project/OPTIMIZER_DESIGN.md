@@ -135,7 +135,7 @@ No legal skill is hard-filtered before evaluation. If a move class is mis-ordere
 
 ## Rust/WASM engine
 
-The Rust engine models the **same searchable action space** as TypeScript — generic buffs, effect trees, mastery, Soulflame, toxicity, item actions — and shares the conjunctive outcome model via `crates/craftbuddy-engine/src/outcome.rs`. Parity is proven by a 129-scenario / 1,222-transition differential corpus (`docs/project/MECHANICS_PARITY.md`).
+The Rust engine models the **same searchable action space** as TypeScript — generic buffs, effect trees, mastery, Soulflame, toxicity, item actions — and shares the conjunctive outcome model via `crates/craftbuddy-engine/src/outcome.rs`. Parity is proven by a 129-scenario / 1,417-transition differential corpus (`docs/project/MECHANICS_PARITY.md`).
 
 Its role in a search is still a **root policy prior**, by design:
 

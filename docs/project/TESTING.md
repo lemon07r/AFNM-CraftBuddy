@@ -97,7 +97,7 @@ Because search is wall-clock-budgeted, CI/browser/live runs can reach different 
 
 ## Cross-engine differential testing
 
-The corpus (`src/__tests__/fixtures/differentialCorpus.ts` → `crates/craftbuddy-engine/tests/differential_corpus.json`) is the parity contract between the TypeScript simulator and the Rust engine: schema v2, **129 scenarios / 1,222 transitions**, asserting scalar state plus the active-buff set, `items`, `consumedPillsThisTurn`, and a `harmonyData` digest.
+The corpus (`src/__tests__/fixtures/differentialCorpus.ts` → `crates/craftbuddy-engine/tests/differential_corpus.json`) is the parity contract between the TypeScript simulator and the Rust engine: schema v2, **129 scenarios / 1,417 transitions**, asserting scalar state plus the active-buff set, `items`, `consumedPillsThisTurn`, and a `harmonyData` digest.
 
 Rules:
 

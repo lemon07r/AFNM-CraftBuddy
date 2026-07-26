@@ -114,7 +114,7 @@ Recorded from the docs workstream's vantage point, which merges last. "Delivered
 | --- | --- |
 | Shared contracts | landed on `main` |
 | Runtime — auto-use coexistence + dispatch-time guard | delivered on `feat/native-auto-use-coexistence` |
-| Engine — Rust mechanics parity + expanded corpus | delivered on `feat/rust-effect-parity`; corpus at 129 scenarios / 1,222 transitions |
+| Engine — Rust mechanics parity + expanded corpus | delivered on `feat/rust-effect-parity`; corpus at 129 scenarios / 1,417 transitions |
 | Engine — performance | delivered: 1.90x at identical search shape. Compact state + mutate/undo **rejected with measurements**, not deferred |
 | UI — outcome/band/harmony surfacing | delivered on `feat/outcome-surfacing` |
 | Docs — architecture refresh | this branch |
