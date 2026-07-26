@@ -3,7 +3,7 @@ title: Documentation Inventory
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-06
+last_verified: 2026-07-26
 source_of_truth: repository markdown file inventory
 review_cycle_days: 30
 related_files:
@@ -12,19 +12,19 @@ related_files:
 
 # Documentation Inventory
 
-Generated on: 2026-07-06
+Generated on: 2026-07-26
 
 ## Summary
 
 | Category | Count |
 |---|---|
-| project | 12 |
+| project | 14 |
 | dev-request | 2 |
 | project-meta | 1 |
 | history | 0 |
 | reference | 20 |
 | root-or-other | 14 |
-| total | 49 |
+| total | 51 |
 
 ## Authoritative Docs
 
@@ -42,9 +42,11 @@ Generated on: 2026-07-06
 | `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/RELEASE_PROCESS.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/ROADMAP.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
+| `docs/project/RUNTIME_EVIDENCE_075.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/START_HERE_FOR_AGENTS.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/TESTING.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/WORKSHOP_DESCRIPTION.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
+| `docs/project/WORKSTREAM_OWNERSHIP.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 
 ## Historical Docs
 
