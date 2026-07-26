@@ -1,10 +1,17 @@
-import { CraftingState } from './state';
+import { CraftingState, TrackedBuff } from './state';
 import {
   getConditionEffectsForConfig,
   OptimizerConfig,
   SkillDefinition,
+  SkillMastery,
 } from './skills';
-import type { ConditionEffect, HarmonyData, TechniqueType } from './gameTypes';
+import type {
+  BuffDefinition,
+  ConditionEffect,
+  HarmonyData,
+  TechniqueEffect,
+  TechniqueType,
+} from './gameTypes';
 
 declare const process:
   | {
@@ -75,6 +82,31 @@ interface NativeMctsState {
   cooldowns: number[];
   completion_bonus: number;
   step: number;
+  /** Generic active buffs, mirroring `CraftingState.buffs` insertion order. */
+  buffs: NativeTrackedBuff[];
+  /** Remaining craft-usable item counts, mirroring `CraftingState.items`. */
+  items: NativeItemStack[];
+  consumed_pills_this_turn: number;
+}
+
+/**
+ * Generic active buff crossing the bridge.
+ *
+ * `definition` is handed over verbatim (camelCase game shape) so the Rust
+ * effect-tree evaluator sees exactly the payload `src/optimizer/skills.ts`
+ * evaluates; converting it field by field would be a second model to keep in
+ * sync.
+ */
+interface NativeTrackedBuff {
+  key: string;
+  name: string;
+  stacks: number;
+  definition?: BuffDefinition;
+}
+
+interface NativeItemStack {
+  key: string;
+  count: number;
 }
 
 interface NativeMctsConfig {
@@ -92,6 +124,16 @@ interface NativeMctsConfig {
   target_multiplier: number;
   training_mode: boolean;
   goal_priority_bias: number;
+  /**
+   * Config-level targets. Distinct from the input-level `target_completion` /
+   * `target_perfection`: the config pair seeds the `maxcompletion` /
+   * `maxperfection` scaling variables, while the input pair drives the
+   * completion-bonus recomputation. `src/optimizer/skills.ts` reads them from
+   * two different places, so the bridge must carry both.
+   */
+  target_completion: number;
+  target_perfection: number;
+  pills_per_round: number;
 }
 
 interface NativeMctsSkill {
@@ -120,6 +162,18 @@ interface NativeMctsSkill {
   restores_max_stability_to_full: boolean;
   consumes_turn: boolean;
   condition_requirement?: string;
+  /** Authoritative game effect tree, passed through verbatim. */
+  effects?: TechniqueEffect[];
+  /** Raw mastery entries, passed through verbatim for conditional masteries. */
+  mastery_entries?: Array<Record<string, unknown>>;
+  /** Pre-resolved mastery bonuses (cost reductions and flat stat bonuses). */
+  mastery?: SkillMastery;
+  granted_buff?: BuffDefinition;
+  is_disciplined_touch: boolean;
+  buff_requirement?: { buff_name: string; amount: number };
+  buff_cost?: { buff_name: string; amount?: number; consume_all: boolean };
+  item_name?: string;
+  reagent_only_at_step_zero: boolean;
 }
 
 interface NativeConditionEffectSummary {
@@ -257,6 +311,40 @@ function finiteNumber(value: unknown, fallback: number = 0): number {
 function optionalFiniteNumber(value: unknown): number | undefined {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+/**
+ * Deep-copies verbatim game data, dropping every `null` and `undefined`.
+ *
+ * `serde` treats an explicit `null` as a *present* value, so a `null` on a
+ * non-optional engine field - `mastery`, `effects`, `masteryEntries` - fails
+ * the whole `MctsInput` deserialization and silently costs the search its
+ * native prior, while an *absent* key falls back to `#[serde(default)]`. Game
+ * objects and replay snapshots both use `null` for "no value", so the
+ * difference is normalized here, at the one boundary that crosses into Rust.
+ */
+function stripNullish<T>(value: T): T | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((entry: unknown) => stripNullish(entry))
+      .filter((entry: unknown) => entry !== undefined) as T;
+  }
+  if (typeof value === 'object') {
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      const cleanedEntry = stripNullish(entry);
+      if (cleanedEntry !== undefined) {
+        cleaned[key] = cleanedEntry;
+      }
+    }
+    return cleaned as T;
+  }
+  return value;
 }
 
 function actionConsumesTurn(skill: SkillDefinition): boolean {
@@ -422,6 +510,33 @@ function buildConditionEffectMap(
   return result;
 }
 
+function convertTrackedBuffs(
+  buffs: ReadonlyMap<string, TrackedBuff>,
+): NativeTrackedBuff[] {
+  const converted: NativeTrackedBuff[] = [];
+  buffs.forEach((tracked, key) => {
+    if (!Number.isFinite(tracked.stacks)) return;
+    converted.push({
+      key,
+      name: tracked.name || key,
+      stacks: Math.floor(tracked.stacks),
+      definition: tracked.definition,
+    });
+  });
+  return converted;
+}
+
+function convertItemStacks(
+  items: ReadonlyMap<string, number>,
+): NativeItemStack[] {
+  const converted: NativeItemStack[] = [];
+  items.forEach((count, key) => {
+    if (!Number.isFinite(count)) return;
+    converted.push({ key, count: Math.floor(count) });
+  });
+  return converted;
+}
+
 function buildNativeSkill(skill: SkillDefinition): NativeMctsSkill {
   return {
     name: skill.name,
@@ -451,6 +566,28 @@ function buildNativeSkill(skill: SkillDefinition): NativeMctsSkill {
     condition_requirement: skill.conditionRequirement
       ? normalizeConditionForMcts(String(skill.conditionRequirement))
       : undefined,
+    effects: stripNullish(skill.effects),
+    mastery_entries: stripNullish(skill.masteryEntries) as
+      | Array<Record<string, unknown>>
+      | undefined,
+    mastery: stripNullish(skill.mastery),
+    granted_buff: stripNullish(skill.grantedBuff),
+    is_disciplined_touch: skill.isDisciplinedTouch === true,
+    buff_requirement: skill.buffRequirement
+      ? {
+          buff_name: skill.buffRequirement.buffName,
+          amount: finiteNumber(skill.buffRequirement.amount),
+        }
+      : undefined,
+    buff_cost: skill.buffCost
+      ? {
+          buff_name: skill.buffCost.buffName,
+          amount: optionalFiniteNumber(skill.buffCost.amount),
+          consume_all: skill.buffCost.consumeAll === true,
+        }
+      : undefined,
+    item_name: skill.itemName ?? undefined,
+    reagent_only_at_step_zero: skill.reagentOnlyAtStepZero === true,
   };
 }
 
@@ -474,9 +611,10 @@ export function buildNativeMctsInput(params: {
     goalPriorityBias = 0,
     search = {},
   } = params;
-  const skills = (config.skills || []).filter(
-    (skill) => skill.actionKind !== 'item',
-  );
+  // Item (pill/reagent) actions are part of the searchable action space: the
+  // Rust engine models them, so filtering them out here would hand the native
+  // prior a strictly smaller action space than the TypeScript search.
+  const skills = config.skills || [];
 
   return {
     state: {
@@ -511,6 +649,9 @@ export function buildNativeMctsInput(params: {
       ),
       completion_bonus: finiteNumber(state.completionBonus),
       step: finiteNumber(state.step),
+      buffs: convertTrackedBuffs(state.buffs),
+      items: convertItemStacks(state.items),
+      consumed_pills_this_turn: finiteNumber(state.consumedPillsThisTurn),
     },
     config: {
       max_qi: finiteNumber(config.maxQi),
@@ -527,6 +668,12 @@ export function buildNativeMctsInput(params: {
       target_multiplier: finiteNumber(config.targetMultiplier, 2),
       training_mode: config.trainingMode === true,
       goal_priority_bias: finiteNumber(goalPriorityBias),
+      target_completion: finiteNumber(config.targetCompletion),
+      target_perfection: finiteNumber(config.targetPerfection),
+      pills_per_round: Math.max(
+        1,
+        Math.floor(finiteNumber(config.pillsPerRound, 1)),
+      ),
     },
     skills: skills.map(buildNativeSkill),
     target_completion: finiteNumber(targetCompletion),

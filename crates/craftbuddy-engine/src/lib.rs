@@ -2,10 +2,22 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
+#[macro_use]
+mod profiling;
+
 #[cfg(test)]
 mod differential_tests;
+mod effects;
+#[cfg(test)]
+mod effects_tests;
 mod outcome;
+#[cfg(test)]
+mod profile_tests;
 
+use effects::{
+    ActionEnv, ActiveBuff, BuffCost, BuffDefinition, BuffRequirement, Effect, ItemStack,
+    MasteryBonuses, MasteryEntry,
+};
 use outcome::{
     band_threshold, build_outcome_bands, classify_outcome, tier_requirement, OutcomeBands,
     OutcomeClassification, OutcomeTier,
@@ -78,7 +90,7 @@ struct MctsInput {
     search: MctsSearchConfig,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 struct EngineState {
     #[serde(default)]
     qi: f64,
@@ -131,9 +143,23 @@ struct EngineState {
     step: i32,
     #[serde(default)]
     finished: bool,
+    /// Generic active buffs, mirroring `CraftingState.buffs`.
+    ///
+    /// This replaces the two hardcoded timers as the *authoritative* buff
+    /// channel: the scalar `control_buff_turns` / `intensity_buff_turns` pair is
+    /// retained only because the TypeScript simulator still keeps it as a fast
+    /// path for simple turn-based buffs, and parity requires reproducing it.
+    #[serde(default)]
+    buffs: Vec<ActiveBuff>,
+    /// Remaining craft-usable item counts, keyed by normalized item name.
+    #[serde(default)]
+    items: Vec<ItemStack>,
+    /// Items consumed during the current turn; resets when a turn advances.
+    #[serde(default)]
+    consumed_pills_this_turn: i32,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 struct EngineConfig {
     #[serde(default)]
     max_qi: f64,
@@ -171,9 +197,18 @@ struct EngineConfig {
     training_mode: bool,
     #[serde(default)]
     goal_priority_bias: f64,
+    /// Config-level completion target. Seeds the `maxcompletion` scaling
+    /// variable; the input-level `target_completion` drives the completion
+    /// bonus. The TypeScript simulator reads them from two different places.
+    #[serde(default)]
+    target_completion: f64,
+    #[serde(default)]
+    target_perfection: f64,
+    #[serde(default = "default_pills_per_round")]
+    pills_per_round: f64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 struct EngineSkill {
     name: String,
     key: String,
@@ -223,6 +258,26 @@ struct EngineSkill {
     consumes_turn: bool,
     #[serde(default)]
     condition_requirement: Option<String>,
+    /// Authoritative game effect tree. When present it supersedes the scalar
+    /// summary above, exactly as `calculateSkillGains` prefers it.
+    #[serde(default, deserialize_with = "null_default")]
+    effects: Vec<Effect>,
+    #[serde(default, deserialize_with = "null_default")]
+    mastery_entries: Vec<MasteryEntry>,
+    #[serde(default, deserialize_with = "null_default")]
+    mastery: MasteryBonuses,
+    #[serde(default)]
+    granted_buff: Option<BuffDefinition>,
+    #[serde(default)]
+    is_disciplined_touch: bool,
+    #[serde(default)]
+    buff_requirement: Option<BuffRequirement>,
+    #[serde(default)]
+    buff_cost: Option<BuffCost>,
+    #[serde(default)]
+    item_name: Option<String>,
+    #[serde(default)]
+    reagent_only_at_step_zero: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -269,6 +324,10 @@ struct HarmonyData {
     recommended_technique_types: Vec<String>,
     #[serde(default)]
     alchemical_reaction_modifiers: Option<HarmonyStatModifiers>,
+    /// Numeric entries of the runtime's `additionalData` payload, exposed to
+    /// game-authored formulas as scaling variables.
+    #[serde(default)]
+    additional_data: std::collections::BTreeMap<String, f64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -506,6 +565,8 @@ impl Engine {
             &self.input.current_condition,
             &root_queue,
         );
+        profile_count!(StateClone);
+        profile_count!(NodeCreated);
         nodes.push(Node {
             state: self.input.state.clone(),
             condition: normalize_condition(&self.input.current_condition),
@@ -526,6 +587,7 @@ impl Engine {
             if nodes.len() >= max_nodes {
                 break;
             }
+            profile_count!(Iteration);
 
             let mut selected = 0usize;
             let mut path = vec![selected];
@@ -560,6 +622,7 @@ impl Engine {
                     let child_untried =
                         self.ordered_legal_actions(&next_state, &next_condition, &next_queue);
                     let child_index = nodes.len();
+                    profile_count!(NodeCreated);
                     nodes.push(Node {
                         state: next_state,
                         condition: next_condition,
@@ -579,6 +642,7 @@ impl Engine {
                 }
             }
 
+            profile_count!(StateClone);
             let raw_score = self.rollout_score(
                 nodes[selected].state.clone(),
                 nodes[selected].condition.clone(),
@@ -640,6 +704,7 @@ impl Engine {
             let action = self.pick_rollout_action(&state, &condition, &queue, &actions);
             match self.apply_action(&state, &condition, &queue, &action) {
                 Some((next_state, next_condition, next_queue)) => {
+                    profile_count!(RolloutStep);
                     let consumed_turn = action
                         .skill_index
                         .and_then(|idx| self.input.skills.get(idx))
@@ -675,11 +740,15 @@ impl Engine {
             return actions[self.rng.next_usize(actions.len())].clone();
         }
 
+        // Resolved once for the whole candidate set: every candidate is judged
+        // against the same state, so the buff resolution cannot differ.
+        let env = self.action_env();
+        let active = effects::resolve_active_buffs(state, env.config, env.skills);
         let mut scored: Vec<(f64, &Action)> = actions
             .iter()
             .map(|action| {
                 let score = self
-                    .preview_action_score(state, condition, queue, action)
+                    .preview_action_score(state, condition, queue, action, &active)
                     .unwrap_or(f64::NEG_INFINITY);
                 (score, action)
             })
@@ -700,15 +769,21 @@ impl Engine {
         condition: &str,
         queue: &[String],
     ) -> Vec<Action> {
+        profile_count!(OrderedLegalActions);
         if state.finished || state.stability <= 0.0 || self.goals_met(state) {
             return Vec::new();
         }
+        // One buff resolution for the whole action space. It used to run once
+        // per skill for legality and again inside every candidate transition,
+        // which profiling measured at ~12,300 resolutions per search.
+        let env = self.action_env();
+        let active = effects::resolve_active_buffs(state, env.config, env.skills);
         let mut actions: Vec<Action> = self
             .input
             .skills
             .iter()
             .enumerate()
-            .filter(|(idx, skill)| self.can_apply_skill(state, *idx, skill, condition))
+            .filter(|(idx, skill)| self.can_apply_skill(state, *idx, skill, condition, &active))
             .map(|(idx, skill)| Action {
                 skill_index: Some(idx),
                 key: skill.key.clone(),
@@ -728,7 +803,7 @@ impl Engine {
             .into_iter()
             .map(|action| {
                 let score = self
-                    .preview_action_score(state, condition, queue, &action)
+                    .preview_action_score(state, condition, queue, &action, &active)
                     .unwrap_or(f64::NEG_INFINITY);
                 (score, action)
             })
@@ -747,49 +822,40 @@ impl Engine {
         condition: &str,
         queue: &[String],
         action: &Action,
+        active_buffs: &[ActiveBuff],
     ) -> Option<f64> {
+        profile_count!(PreviewActionScore);
         let mut rng = SmallRng::new(0x9E37_79B9_7F4A_7C15);
-        let (next_state, _, _) =
-            self.apply_action_with_rng(state, condition, queue, action, &mut rng)?;
+        let (next_state, _, _) = self.apply_action_with_rng(
+            state,
+            condition,
+            queue,
+            action,
+            &mut rng,
+            Some(active_buffs),
+        )?;
         Some(self.score_state(&next_state))
     }
 
+    /// Legality, delegated to the shared port of `canApplySkill` so technique,
+    /// buff-gated and item actions are all judged by one implementation.
     fn can_apply_skill(
         &self,
         state: &EngineState,
         skill_index: usize,
         skill: &EngineSkill,
         condition: &str,
+        active_buffs: &[ActiveBuff],
     ) -> bool {
-        if state.finished || state.stability <= 0.0 {
-            return false;
-        }
-        if let Some(required) = &skill.condition_requirement {
-            if normalize_condition(required) != normalize_condition(condition) {
-                return false;
-            }
-        }
-        if state.cooldowns.get(skill_index).copied().unwrap_or(0) > 0 {
-            return false;
-        }
-        let effects = self.condition_effects(condition);
-        let costs = self.effective_costs(state, skill, effects);
-        if state.qi + 1e-9 < costs.qi {
-            return false;
-        }
-        // No post-cost stability gate: the game lets you spend into a failed
-        // craft, and `canApplySkill` in `src/optimizer/skills.ts` matches that.
-        // Gating here would hide survivable lines from the native prior that
-        // the TypeScript search still explores, and scoring already prices
-        // death far below any progress path.
-        //
-        // The TypeScript simulator gates toxicity on the *config* ceiling only;
-        // using the state's own max here would reject actions the game allows.
-        let max_toxicity = self.input.config.max_toxicity.max(0.0);
-        if max_toxicity > 0.0 && state.toxicity + skill.toxicity_cost > max_toxicity {
-            return false;
-        }
-        true
+        effects::can_apply_skill(
+            &self.action_env(),
+            state,
+            skill_index,
+            skill,
+            condition,
+            self.condition_effects(condition),
+            active_buffs,
+        )
     }
 
     fn apply_action(
@@ -800,7 +866,7 @@ impl Engine {
         action: &Action,
     ) -> Option<(EngineState, String, Vec<String>)> {
         let mut rng = self.rng.clone();
-        let result = self.apply_action_with_rng(state, condition, queue, action, &mut rng);
+        let result = self.apply_action_with_rng(state, condition, queue, action, &mut rng, None);
         self.rng = rng;
         result
     }
@@ -812,8 +878,12 @@ impl Engine {
         queue: &[String],
         action: &Action,
         rng: &mut SmallRng,
+        // Buffs already resolved for `state` by the caller, if any. Passing them
+        // avoids re-resolving once per candidate transition.
+        active_buffs: Option<&[ActiveBuff]>,
     ) -> Option<(EngineState, String, Vec<String>)> {
         if action.skill_index.is_none() {
+            profile_count!(StateClone);
             let mut finished = state.clone();
             finished.finished = true;
             return Some((finished, normalize_condition(condition), queue.to_vec()));
@@ -821,159 +891,32 @@ impl Engine {
 
         let skill_index = action.skill_index?;
         let skill = self.input.skills.get(skill_index)?;
-        if !self.can_apply_skill(state, skill_index, skill, condition) {
-            return None;
-        }
 
         let condition = normalize_condition(condition);
-        let effects = self.condition_effects(&condition);
-        let costs = self.effective_costs(state, skill, effects);
-        let gains = self.skill_gains(state, skill, effects);
         let consumes_turn = skill.consumes_turn;
 
-        let mut next = state.clone();
-        next.step += if consumes_turn { 1 } else { 0 };
-        next.qi = clamp(next.qi - costs.qi, 0.0, self.max_qi_for_state(state));
-        if skill.restores_qi && skill.qi_restore > 0.0 {
-            next.qi = clamp(
-                next.qi + skill.qi_restore,
-                0.0,
-                self.max_qi_for_state(state),
-            );
-        }
-
-        if consumes_turn && !skill.prevents_max_stability_decay {
-            next.stability_penalty += 1.0;
-        }
-        next.stability_penalty = clamp(next.stability_penalty, 0.0, state.initial_max_stability);
-        if skill.max_stability_change != 0.0 {
-            next.stability_penalty = clamp(
-                next.stability_penalty - skill.max_stability_change,
-                0.0,
-                state.initial_max_stability,
-            );
-        }
-        if skill.restores_max_stability_to_full {
-            next.stability_penalty = 0.0;
-        }
-
-        let max_stability = next.max_stability();
-        next.stability = clamp(
-            (next.stability - costs.stability + gains.stability).floor(),
-            0.0,
-            max_stability,
-        );
-
-        next.completion = (next.completion + gains.completion).floor();
-        next.perfection = (next.perfection + gains.perfection).floor();
-        if let Some(cap) = self.input.config.max_completion {
-            if cap.is_finite() {
-                next.completion = next.completion.min(cap);
-            }
-        }
-        if let Some(cap) = self.input.config.max_perfection {
-            if cap.is_finite() {
-                next.perfection = next.perfection.min(cap);
-            }
-        }
-
-        next.toxicity = (next.toxicity + skill.toxicity_cost - gains.toxicity_cleanse).max(0.0);
-
-        if consumes_turn {
-            if next.control_buff_turns > 0 {
-                next.control_buff_turns -= 1;
-            }
-            if next.intensity_buff_turns > 0 {
-                next.intensity_buff_turns -= 1;
-            }
-        }
-
-        if skill.buff_type == 1 {
-            next.control_buff_turns = skill.buff_duration;
-            next.control_buff_multiplier =
-                if skill.buff_multiplier > 0.0 && skill.buff_multiplier != 1.0 {
-                    skill.buff_multiplier
-                } else {
-                    self.input.config.default_buff_multiplier
-                };
-        } else if skill.buff_type == 2 {
-            next.intensity_buff_turns = skill.buff_duration;
-            next.intensity_buff_multiplier =
-                if skill.buff_multiplier > 0.0 && skill.buff_multiplier != 1.0 {
-                    skill.buff_multiplier
-                } else {
-                    self.input.config.default_buff_multiplier
-                };
-        }
-
-        if next.cooldowns.len() < self.input.skills.len() {
-            next.cooldowns.resize(self.input.skills.len(), 0);
-        }
-        if consumes_turn {
-            for turns in &mut next.cooldowns {
-                if *turns > 1 {
-                    *turns -= 1;
-                } else {
-                    *turns = 0;
-                }
-            }
-            if skill.cooldown > 0 {
-                next.cooldowns[skill_index] = skill.cooldown;
-            }
-        }
-
-        if consumes_turn && self.input.target_completion > 0.0 {
-            let bonus = get_bonus_and_chance(next.completion, self.input.target_completion);
-            next.completion_bonus = (bonus.guaranteed - 1).max(0);
-        }
-
-        if consumes_turn
-            && skill.action_kind != "item"
-            && self.input.config.is_sublime_craft
-            && self.input.config.crafting_type.is_some()
-        {
-            // Eccentric Decree reads the *post-action* bars, so this must run
-            // after completion/perfection have been updated.
-            let harmony_context = HarmonyProcessContext {
-                completion: next.completion,
-                perfection: next.perfection,
-                max_completion: self.input.config.max_completion.unwrap_or(next.completion),
-                max_perfection: self.input.config.max_perfection.unwrap_or(next.perfection),
-                target_completion: self.input.target_completion,
-                target_perfection: self.input.target_perfection,
-            };
-            let harmony_result = process_harmony_effect(
-                &mut next.harmony_data,
-                self.input.config.crafting_type.as_deref().unwrap_or(""),
-                &skill.technique_type,
-                harmony_context,
-            );
-            next.harmony = clamp(
-                harmony_result
-                    .harmony_override
-                    .unwrap_or(next.harmony + harmony_result.harmony_delta),
-                -100.0,
-                100.0,
-            );
-            next.qi = clamp(
-                next.qi + harmony_result.pool_delta,
-                0.0,
-                self.max_qi_for_state(&next),
-            );
-            next.stability = clamp(
-                next.stability + harmony_result.stability_delta,
-                0.0,
-                next.max_stability(),
-            );
-            if harmony_result.stability_penalty_delta != 0.0 {
-                next.stability_penalty = clamp(
-                    next.stability_penalty + harmony_result.stability_penalty_delta,
-                    0.0,
-                    next.initial_max_stability,
-                );
-                next.stability = next.stability.min(next.max_stability());
-            }
-        }
+        // One implementation of the transition, shared with the differential
+        // oracle: costs, effect tree, mastery, buffs, items and harmony all live
+        // in `effects::apply_skill`.
+        let env = self.action_env();
+        let resolved_buffs = match active_buffs {
+            Some(_) => None,
+            None => Some(effects::resolve_active_buffs(state, env.config, env.skills)),
+        };
+        let mut next = effects::apply_skill_with_buffs(
+            &env,
+            state,
+            skill_index,
+            skill,
+            &condition,
+            self.condition_effects(&condition),
+            self.input.target_completion,
+            active_buffs.unwrap_or_else(|| {
+                resolved_buffs
+                    .as_deref()
+                    .expect("buffs are resolved when the caller has none")
+            }),
+        )?;
 
         let (next_condition, next_queue) = if consumes_turn {
             advance_condition(&condition, queue, next.harmony, rng)
@@ -1001,145 +944,8 @@ impl Engine {
         Some((next, next_condition, next_queue))
     }
 
-    /// Action costs, in the runtime's own order and rounding.
-    ///
-    /// Mirrors `calculateEffectiveActionCosts` in `src/optimizer/skills.ts`:
-    /// - condition `pool`/`stability` effects scale the cost *percentages*,
-    ///   unrounded, rather than the raw costs;
-    /// - pool adds the flat surcharge first, then a single floor;
-    /// - stability applies a single ceil to the negative delta;
-    /// - the harmony multiplier is a *separate outer* floor, not folded into
-    ///   the percentage - folding it drifts by 1 on fractional cases.
-    fn effective_costs(
-        &self,
-        state: &EngineState,
-        skill: &EngineSkill,
-        effects: ConditionEffectSummary,
-    ) -> ActionCosts {
-        let crafting_type = self.input.config.crafting_type.as_deref();
-        let harmony_mods = get_harmony_stat_modifiers(&state.harmony_data, crafting_type);
-        let harmony_cost =
-            get_harmony_cost_multipliers(&state.harmony_data, crafting_type, &skill.technique_type);
-        let harmony_pool_multiplier = (harmony_mods.pool_cost_percentage / 100.0)
-            * (harmony_cost.pool_cost_percentage / 100.0);
-        let harmony_stability_multiplier = (harmony_mods.stability_cost_percentage / 100.0)
-            * (harmony_cost.stability_cost_percentage / 100.0);
-
-        let pool_cost_flat = state.pool_cost_flat.floor().max(0.0);
-        let pool_cost_percentage =
-            normalize_cost_percentage(state.pool_cost_percentage) * effects.pool_cost_multiplier;
-        let stability_cost_percentage = normalize_cost_percentage(state.stability_cost_percentage)
-            * effects.stability_cost_multiplier;
-
-        let mut qi_cost = skill.qi_cost.max(0.0).ceil();
-        if pool_cost_flat > 0.0 {
-            qi_cost = (qi_cost + pool_cost_flat).max(0.0);
-        }
-        if pool_cost_percentage != 100.0 {
-            qi_cost = (qi_cost * pool_cost_percentage / 100.0).floor();
-        }
-        if harmony_pool_multiplier != 1.0 {
-            qi_cost = (qi_cost.max(0.0) * harmony_pool_multiplier).floor();
-        }
-
-        let mut stability_delta = -skill.stability_cost.max(0.0).ceil();
-        if stability_delta < 0.0 && stability_cost_percentage != 100.0 {
-            stability_delta = (stability_delta * stability_cost_percentage / 100.0).ceil();
-        }
-        if stability_delta < 0.0 && harmony_stability_multiplier != 1.0 {
-            stability_delta = (stability_delta * harmony_stability_multiplier).floor();
-        }
-
-        ActionCosts {
-            qi: qi_cost.max(0.0),
-            stability: (-stability_delta).max(0.0),
-        }
-    }
-
-    fn skill_gains(
-        &self,
-        state: &EngineState,
-        skill: &EngineSkill,
-        effects: ConditionEffectSummary,
-    ) -> SkillGains {
-        let harmony_mods = get_harmony_stat_modifiers(
-            &state.harmony_data,
-            self.input.config.crafting_type.as_deref(),
-        );
-        // No rounding between steps: the TypeScript simulator (and the game)
-        // keep control/intensity fractional until the gain itself is floored.
-        let mut control =
-            self.input.config.base_control * (1.0 + state.completion_bonus as f64 * 0.1);
-        if state.control_buff_turns > 0 {
-            control *= state.control_buff_multiplier;
-        }
-        control *= effects.control_multiplier;
-        control *= harmony_mods.control_multiplier;
-
-        let mut intensity = self.input.config.base_intensity;
-        if state.intensity_buff_turns > 0 {
-            intensity *= state.intensity_buff_multiplier;
-        }
-        intensity *= effects.intensity_multiplier;
-        intensity *= harmony_mods.intensity_multiplier;
-
-        let crit_chance = state.crit_chance + harmony_mods.crit_chance_bonus;
-        let crit_multiplier = state.crit_multiplier;
-        let crit_factor = expected_crit_multiplier(crit_chance, crit_multiplier);
-        let success_chance = clamp(
-            skill.success_chance
-                + state.success_chance_bonus
-                + harmony_mods.success_chance_bonus
-                + effects.success_chance_bonus,
-            0.0,
-            1.0,
-        );
-
-        let mut completion = skill.base_completion_gain;
-        let mut perfection = skill.base_perfection_gain;
-        if skill.scales_with_control {
-            perfection = (skill.base_perfection_gain * control).floor();
-            completion = if skill.base_completion_gain > 0.0 {
-                (skill.base_completion_gain * control).floor()
-            } else {
-                0.0
-            };
-        }
-        if skill.scales_with_intensity && skill.technique_type == "fusion" {
-            completion = (skill.base_completion_gain * intensity).floor();
-        }
-
-        // Clamp to the remaining headroom *before* weighting by success chance,
-        // mirroring `expectedProgressGain` in src/optimizer/skills.ts. On success
-        // the game grants `min(gain, headroom)`; on failure it grants nothing, so
-        // the expectation is `p * min(gain, headroom)`. Weighting first would let
-        // the clamp swallow the failure risk of any overshooting technique.
-        completion = (completion * crit_factor).floor();
-        perfection = (perfection * crit_factor).floor();
-
-        if let Some(cap) = self.input.config.max_completion {
-            if cap.is_finite() && completion > 0.0 {
-                completion = completion.min((cap - state.completion).max(0.0));
-            }
-        }
-        if let Some(cap) = self.input.config.max_perfection {
-            if cap.is_finite() && perfection > 0.0 {
-                perfection = perfection.min((cap - state.perfection).max(0.0));
-            }
-        }
-
-        completion = (completion * success_chance).floor();
-        perfection = (perfection * success_chance).floor();
-
-        SkillGains {
-            completion,
-            perfection,
-            stability: (skill.stability_gain * success_chance).floor(),
-            toxicity_cleanse: (skill.toxicity_cleanse * success_chance).floor(),
-        }
-    }
-
     fn score_state(&self, state: &EngineState) -> f64 {
+        profile_count!(ScoreState);
         if state.finished {
             return self.score_finished_outcome(state);
         }
@@ -1337,8 +1143,11 @@ impl Engine {
             .unwrap_or_default()
     }
 
-    fn max_qi_for_state(&self, _state: &EngineState) -> f64 {
-        self.input.config.max_qi.max(1.0)
+    fn action_env(&self) -> ActionEnv<'_> {
+        ActionEnv {
+            config: &self.input.config,
+            skills: &self.input.skills,
+        }
     }
 
     fn outcome_bands(&self) -> OutcomeBands {
@@ -1536,20 +1345,6 @@ impl Engine {
     }
 }
 
-#[derive(Clone, Copy)]
-struct ActionCosts {
-    qi: f64,
-    stability: f64,
-}
-
-#[derive(Clone, Copy)]
-struct SkillGains {
-    completion: f64,
-    perfection: f64,
-    stability: f64,
-    toxicity_cleanse: f64,
-}
-
 /// Band-derived goal thresholds, mirroring `deriveBandGoals` in
 /// `src/optimizer/search.ts`.
 ///
@@ -1585,8 +1380,22 @@ impl MctsInput {
 }
 
 impl EngineState {
-    fn max_stability(&self) -> f64 {
-        (self.initial_max_stability - self.stability_penalty).max(0.0)
+    /// Stacks of a buff by normalized key. Mirrors `CraftingState.getBuffStacks`.
+    fn buff_stacks(&self, key: &str) -> i32 {
+        self.buffs
+            .iter()
+            .find(|buff| buff.key == key)
+            .map(|buff| buff.stacks)
+            .unwrap_or(0)
+    }
+
+    /// Remaining count of a craft-usable item by normalized key.
+    fn item_count(&self, key: &str) -> i32 {
+        self.items
+            .iter()
+            .find(|item| item.key == key)
+            .map(|item| item.count)
+            .unwrap_or(0)
     }
 }
 
@@ -2422,15 +2231,31 @@ fn generated_condition_distribution(
     ])
 }
 
+/// Mirrors `normalizeConditionDistribution` in `src/optimizer/search.ts`.
+///
+/// The merge keeps *insertion* order, exactly like the TypeScript `Map` it
+/// mirrors, and the sort is stable. Both matter: a `HashMap` here made the
+/// engine non-deterministic in two ways at once - the probability total was
+/// summed in hash order, so it drifted by an ULP between runs, and equal
+/// probabilities (harmony 0 puts `positive` and `negative` at exactly 0.5)
+/// were tie-broken by hash order, so `most_likely_condition` could return a
+/// different forecast for the same input.
 fn normalize_distribution(entries: Vec<(String, f64)>) -> Vec<(String, f64)> {
-    let mut merged = HashMap::<String, f64>::new();
+    let mut merged: Vec<(String, f64)> = Vec::with_capacity(entries.len());
     for (condition, probability) in entries {
         let probability = clamp(probability, 0.0, 1.0);
-        if probability > 0.0 {
-            *merged.entry(condition).or_insert(0.0) += probability;
+        if probability <= 0.0 {
+            continue;
+        }
+        match merged.iter_mut().find(|(key, _)| *key == condition) {
+            Some(entry) => entry.1 += probability,
+            None => merged.push((condition, probability)),
         }
     }
-    let total = merged.values().sum::<f64>();
+    let total = merged
+        .iter()
+        .map(|(_, probability)| probability)
+        .sum::<f64>();
     if total <= 0.0 {
         return vec![("neutral".to_string(), 1.0)];
     }
@@ -2674,6 +2499,22 @@ fn default_condition() -> String {
     "neutral".to_string()
 }
 
+/// Accepts an explicit `null` where `#[serde(default)]` is wanted.
+///
+/// Game objects use `null` for "no value", but serde treats `null` as a
+/// *present* value and fails a non-optional field, which rejects the whole
+/// payload. `src/optimizer/nativeMcts.ts` already strips nullish game data at
+/// the bridge; this is the second line of defence for the fields most likely to
+/// carry one, so a stray `null` degrades to the default instead of costing the
+/// search its native prior.
+pub(crate) fn null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 fn default_initial_max_stability() -> f64 {
     60.0
 }
@@ -2699,6 +2540,10 @@ fn default_success_chance() -> f64 {
 }
 
 fn default_unit() -> f64 {
+    1.0
+}
+
+fn default_pills_per_round() -> f64 {
     1.0
 }
 
@@ -2753,6 +2598,7 @@ mod tests {
                 completion_bonus: 0,
                 step: 0,
                 finished: false,
+                ..EngineState::default()
             },
             config: EngineConfig {
                 max_qi: 120.0,
@@ -2769,6 +2615,7 @@ mod tests {
                 target_multiplier: 2.0,
                 training_mode: false,
                 goal_priority_bias: 0.0,
+                ..EngineConfig::default()
             },
             skills: vec![
                 EngineSkill {
@@ -2797,6 +2644,7 @@ mod tests {
                     restores_max_stability_to_full: false,
                     consumes_turn: true,
                     condition_requirement: None,
+                    ..EngineSkill::default()
                 },
                 EngineSkill {
                     name: "Refine".to_string(),
@@ -2824,6 +2672,7 @@ mod tests {
                     restores_max_stability_to_full: false,
                     consumes_turn: true,
                     condition_requirement: None,
+                    ..EngineSkill::default()
                 },
                 EngineSkill {
                     name: "Stabilize".to_string(),
@@ -2851,6 +2700,7 @@ mod tests {
                     restores_max_stability_to_full: false,
                     consumes_turn: true,
                     condition_requirement: None,
+                    ..EngineSkill::default()
                 },
             ],
             target_completion: 24.0,
