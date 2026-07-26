@@ -105,4 +105,5 @@ crates/craftbuddy-engine/target/
 /skills-lock.json
 
 old-nonMinifiedCode/
+0.7.3-nonMinifiedCode/
 CraftingCode/
