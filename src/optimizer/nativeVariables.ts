@@ -1,5 +1,6 @@
 import type { HarmonyData } from './gameTypes';
 import type { TrackedBuff } from './state';
+import { normalizeIdentifier } from './nameNormalization';
 
 const DERIVED_NATIVE_VARIABLE_KEYS = new Set([
   'pool',
@@ -26,10 +27,7 @@ const DERIVED_NATIVE_VARIABLE_KEYS = new Set([
 ]);
 
 function normalizeNativeVariableKey(key: string | undefined): string {
-  return String(key || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '_');
+  return normalizeIdentifier(key);
 }
 
 function clampForgeHeat(value: number): number {

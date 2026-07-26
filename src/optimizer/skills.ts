@@ -36,6 +36,7 @@ import {
   applyDerivedNativeVariableAliases,
   buildCanonicalNativeVariables,
 } from './nativeVariables';
+import { normalizeIdentifier } from './nameNormalization';
 
 /**
  * Simplified skill definition for optimizer.
@@ -536,10 +537,7 @@ export function setNativeCanUseActionProvider(
 }
 
 function normalizeBuffName(name: string | undefined): string {
-  return String(name || '')
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '_');
+  return normalizeIdentifier(name);
 }
 
 function isDerivedForgeHeatBuff(
@@ -676,6 +674,19 @@ function getBuffDefinitionLookup(
   return lookup;
 }
 
+/**
+ * Per-state memo for `getResolvedActiveBuffs`.
+ *
+ * Resolution is pure in `(state, config)` and `CraftingState` is immutable
+ * once constructed - the same invariant `getCacheKey()` already relies on.
+ * Without this the forge path reallocates the stripped buff map on every call,
+ * which also defeats the identity check the scaling-variable memo below uses.
+ */
+const resolvedActiveBuffsCache = new WeakMap<
+  CraftingState,
+  { config: OptimizerConfig | undefined; buffs: ActiveBuffMap }
+>();
+
 function getResolvedActiveBuffs(
   state: CraftingState,
   config: OptimizerConfig | undefined,
@@ -684,6 +695,19 @@ function getResolvedActiveBuffs(
     return state.buffs;
   }
 
+  const cached = resolvedActiveBuffsCache.get(state);
+  if (cached && cached.config === config) {
+    return cached.buffs;
+  }
+  const resolvedBuffs = resolveActiveBuffs(state, config);
+  resolvedActiveBuffsCache.set(state, { config, buffs: resolvedBuffs });
+  return resolvedBuffs;
+}
+
+function resolveActiveBuffs(
+  state: CraftingState,
+  config: OptimizerConfig,
+): ActiveBuffMap {
   let hasMissingDefinition = false;
   state.buffs.forEach((tracked) => {
     if (!tracked.definition) {
@@ -953,6 +977,37 @@ function propagateNativeVariablesAfterAction(
   });
 }
 
+/**
+ * Per-state memo for the state-derived half of the scaling variables.
+ *
+ * Every candidate technique at a node asks for the same ~30 state fields,
+ * buff-stack entries and derived aliases; only control, intensity and the two
+ * crit scalars differ. Building that once per state instead of once per
+ * technique was ~8% of search time on a Skyfall Bow replay.
+ */
+const techniqueScalingBaseCache = new WeakMap<
+  CraftingState,
+  {
+    config: OptimizerConfig;
+    activeBuffs: ActiveBuffMap;
+    base: ScalingVariables;
+  }
+>();
+
+function getTechniqueScalingBase(
+  state: CraftingState,
+  config: OptimizerConfig,
+  activeBuffs: ActiveBuffMap,
+): ScalingVariables {
+  const cached = techniqueScalingBaseCache.get(state);
+  if (cached && cached.config === config && cached.activeBuffs === activeBuffs) {
+    return cached.base;
+  }
+  const base = buildTechniqueScalingBase(state, config, activeBuffs);
+  techniqueScalingBaseCache.set(state, { config, activeBuffs, base });
+  return base;
+}
+
 function buildTechniqueScalingVariables(
   state: CraftingState,
   config: OptimizerConfig,
@@ -961,6 +1016,21 @@ function buildTechniqueScalingVariables(
   critChance: number,
   critMultiplier: number,
   activeBuffs: ActiveBuffMap = state.buffs,
+): ScalingVariables {
+  // Always hand back a fresh object: callers mutate their copy.
+  return {
+    ...getTechniqueScalingBase(state, config, activeBuffs),
+    control,
+    intensity,
+    critchance: critChance,
+    critmultiplier: critMultiplier,
+  };
+}
+
+function buildTechniqueScalingBase(
+  state: CraftingState,
+  config: OptimizerConfig,
+  activeBuffs: ActiveBuffMap,
 ): ScalingVariables {
   const completionTarget = Math.max(0, config.targetCompletion ?? 0);
   const perfectionTarget = Math.max(0, config.targetPerfection ?? 0);
@@ -973,10 +1043,11 @@ function buildTechniqueScalingVariables(
       ? getBonusAndChance(state.perfection, perfectionTarget)
       : { guaranteed: 0, bonusChance: 0 };
   const vars: ScalingVariables = {
-    control,
-    intensity,
-    critchance: critChance,
-    critmultiplier: critMultiplier,
+    // Overwritten per technique by `buildTechniqueScalingVariables`.
+    control: 0,
+    intensity: 0,
+    critchance: 0,
+    critmultiplier: 0,
     pool: state.qi,
     maxpool: config.maxQi,
     toxicity: state.toxicity,
