@@ -2643,3 +2643,65 @@ describe('expression-gated buff intensity (False Fusion / Strive for Completion)
     expect(overGains.perfection).toBeCloseTo(80, 5);
   });
 });
+
+describe('success chance and progress headroom interaction', () => {
+  // Regression guard for the `user-report-resonance-regression` finding.
+  //
+  // The 0.7.5 runtime applies a technique's progress only on success (the
+  // completion applier `fms` does a plain `r.completion += e`), so the expected
+  // gain of an unreliable technique is `p * min(gain, headroom)`.
+  //
+  // The old model computed `min(p * gain, headroom)`, which let the headroom
+  // clamp swallow the failure risk entirely whenever the raw gain overshot the
+  // remaining bar. A 50%-success burst then looked like a guaranteed bar-filler
+  // and outranked reliable alternatives.
+  const overshootingSkill = (successChance: number): SkillDefinition =>
+    createTestSkill({
+      key: 'explosive_burst',
+      qiCost: 0,
+      stabilityCost: 10,
+      successChance,
+      baseCompletionGain: 5,
+      scalesWithIntensity: true,
+      type: 'fusion',
+    });
+
+  function gainsAt(successChance: number): number {
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 900,
+    });
+    const config = createTestConfig({
+      baseIntensity: 400,
+      // Headroom is 100 while the raw gain is 5 * 400 = 2000.
+      maxCompletion: 1000,
+    });
+    return calculateSkillGains(state, overshootingSkill(successChance), config, [])
+      .completion;
+  }
+
+  it('weights an overshooting gain by success chance instead of hiding it behind the cap', () => {
+    // Raw 2000 clamped to the 100 headroom, then weighted: 0.5 * 100 = 50.
+    expect(gainsAt(0.5)).toBe(50);
+    expect(gainsAt(0.65)).toBe(65);
+  });
+
+  it('still reports the full headroom for a guaranteed technique', () => {
+    expect(gainsAt(1)).toBe(100);
+  });
+
+  it('scales monotonically with success chance once the gain overshoots', () => {
+    const samples = [0.1, 0.25, 0.5, 0.75, 1].map(gainsAt);
+    for (let i = 1; i < samples.length; i += 1) {
+      expect(samples[i]).toBeGreaterThan(samples[i - 1]);
+    }
+  });
+
+  it('never exceeds the remaining headroom', () => {
+    for (const chance of [0.1, 0.5, 0.65, 1]) {
+      expect(gainsAt(chance)).toBeLessThanOrEqual(100);
+    }
+  });
+});

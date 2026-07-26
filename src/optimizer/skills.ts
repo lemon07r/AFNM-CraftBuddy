@@ -1795,6 +1795,31 @@ export function calculateSkillGains(
     return Math.min(gain, remaining);
   };
 
+  /**
+   * Expected progress for one action, clamping *before* the success-chance
+   * weighting.
+   *
+   * The order matters. On success the game grants `min(gain, headroom)`, because
+   * value past the top band is worthless; on failure it grants nothing. So the
+   * expectation is `p * min(gain, headroom)`.
+   *
+   * Weighting first and clamping second - `min(p * gain, headroom)` - silently
+   * erases the failure risk of any technique whose raw gain overshoots the
+   * headroom, making an unreliable burst look like a guaranteed bar-filler.
+   */
+  const expectedProgressGain = (
+    gainWithCrit: number,
+    current: number,
+    cap: number | undefined,
+    expectedFactor: number,
+  ): number =>
+    safeFloor(
+      safeMultiply(
+        clampPredictedProgressGain(safeFloor(gainWithCrit), current, cap),
+        expectedFactor,
+      ),
+    );
+
   // Handle Disciplined Touch specially - it uses both intensity and control with buffs
   if (skill.isDisciplinedTouch) {
     const disciplined = calculateDisciplinedTouchGains(
@@ -1951,27 +1976,18 @@ export function calculateSkillGains(
     const perfectionWithCrit =
       perfectionGain > 0 ? perfectionGain * critFactor : perfectionGain;
 
-    const predictedCompletion = safeFloor(
-      safeMultiply(completionWithCrit, expectedFactor),
-    );
-    const predictedPerfection = safeFloor(
-      safeMultiply(perfectionWithCrit, expectedFactor),
-    );
-
     return {
-      completion: safeFloor(
-        clampPredictedProgressGain(
-          predictedCompletion,
-          state.completion,
-          config.maxCompletion,
-        ),
+      completion: expectedProgressGain(
+        completionWithCrit,
+        state.completion,
+        config.maxCompletion,
+        expectedFactor,
       ),
-      perfection: safeFloor(
-        clampPredictedProgressGain(
-          predictedPerfection,
-          state.perfection,
-          config.maxPerfection,
-        ),
+      perfection: expectedProgressGain(
+        perfectionWithCrit,
+        state.perfection,
+        config.maxPerfection,
+        expectedFactor,
       ),
       stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
       toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),
@@ -2017,27 +2033,18 @@ export function calculateSkillGains(
     );
   }
 
-  const predictedCompletion = safeFloor(
-    safeMultiply(safeMultiply(completionGain, critFactor), expectedFactor),
-  );
-  const predictedPerfection = safeFloor(
-    safeMultiply(safeMultiply(perfectionGain, critFactor), expectedFactor),
-  );
-
   return {
-    completion: safeFloor(
-      clampPredictedProgressGain(
-        predictedCompletion,
-        state.completion,
-        config.maxCompletion,
-      ),
+    completion: expectedProgressGain(
+      safeMultiply(completionGain, critFactor),
+      state.completion,
+      config.maxCompletion,
+      expectedFactor,
     ),
-    perfection: safeFloor(
-      clampPredictedProgressGain(
-        predictedPerfection,
-        state.perfection,
-        config.maxPerfection,
-      ),
+    perfection: expectedProgressGain(
+      safeMultiply(perfectionGain, critFactor),
+      state.perfection,
+      config.maxPerfection,
+      expectedFactor,
     ),
     stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
     toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),

@@ -1109,19 +1109,27 @@ impl Engine {
             completion = (skill.base_completion_gain * intensity).floor();
         }
 
-        completion = (completion * crit_factor * success_chance).floor();
-        perfection = (perfection * crit_factor * success_chance).floor();
+        // Clamp to the remaining headroom *before* weighting by success chance,
+        // mirroring `expectedProgressGain` in src/optimizer/skills.ts. On success
+        // the game grants `min(gain, headroom)`; on failure it grants nothing, so
+        // the expectation is `p * min(gain, headroom)`. Weighting first would let
+        // the clamp swallow the failure risk of any overshooting technique.
+        completion = (completion * crit_factor).floor();
+        perfection = (perfection * crit_factor).floor();
 
         if let Some(cap) = self.input.config.max_completion {
-            if cap.is_finite() {
+            if cap.is_finite() && completion > 0.0 {
                 completion = completion.min((cap - state.completion).max(0.0));
             }
         }
         if let Some(cap) = self.input.config.max_perfection {
-            if cap.is_finite() {
+            if cap.is_finite() && perfection > 0.0 {
                 perfection = perfection.min((cap - state.perfection).max(0.0));
             }
         }
+
+        completion = (completion * success_chance).floor();
+        perfection = (perfection * success_chance).floor();
 
         SkillGains {
             completion,

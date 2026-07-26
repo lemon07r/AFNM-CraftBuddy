@@ -5038,3 +5038,74 @@ describe('survivability regression lock', () => {
     );
   });
 });
+
+describe('user-report-resonance-regression: deterministic contract', () => {
+  // The benchmark drives this fixture with wall-clock budgets, so the depth it
+  // completes - and therefore the ranking of the runners-up - varies by machine.
+  // Measured here: depth 4 ranks focused_refine first, depth 5 inverts it, and
+  // depth 6+ restores it. That instability is why the benchmark's runner-up
+  // ordering clause is materiality-aware rather than strict.
+  //
+  // The underlying defect was real, though: `calculateSkillGains` weighted
+  // progress by success chance *before* clamping it to the remaining headroom.
+  // Explosive Fusion lands 65% of the time and its raw completion gain
+  // overshoots the 9,170 completion left in this snapshot, so
+  // `min(0.65 * raw, 9170)` collapsed to the full 9,170 and advertised a
+  // 35%-failure gamble as a guaranteed bar-filler. The assertions below pin the
+  // corrected order without paying for a deep search.
+  const snapshot = loadOptimizerReplaySnapshot(
+    'user-report-resonance-regression.snapshot.json',
+  );
+
+  it('expects less than the full headroom from an unreliable overshooting fusion', () => {
+    const input = getReplaySearchInput(snapshot);
+    const conditionEffects = getConditionEffectsForConfig(
+      input.config,
+      input.currentCondition,
+    );
+    const fusion = input.config.skills.find(
+      (s) => s.key === 'explosive_fusion',
+    );
+    if (!fusion) throw new Error('fixture is missing explosive_fusion');
+
+    const headroom =
+      (input.config.maxCompletion ?? Infinity) - input.state.completion;
+    const successChance = fusion.successChance ?? 1;
+    // Guard the premise: this only tests anything while the raw gain overshoots.
+    expect(successChance).toBeLessThan(1);
+
+    const gains = calculateSkillGains(
+      input.state,
+      fusion,
+      input.config,
+      conditionEffects,
+    );
+
+    expect(gains.completion).toBeLessThan(headroom);
+    expect(gains.completion).toBe(Math.floor(headroom * successChance));
+  });
+
+  it('never recommends the unreliable burst at a fixed node budget', () => {
+    const input = getReplaySearchInput(snapshot);
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      64,
+      input.currentCondition,
+      input.forecastConditions,
+      {
+        // Node-bound rather than wall-clock-bound, so the outcome is stable
+        // across machines. Kept small on purpose: the mechanic is pinned by the
+        // assertion above, this only guards the recommendation itself.
+        timeBudgetMs: 600000,
+        maxNodes: 1000,
+        beamWidth: 5,
+        useMonteCarloTreeSearch: false,
+        goalPriorityBias: input.searchConfig.goalPriorityBias ?? 0,
+      },
+    );
+    expect(result.recommendation?.skill.key).not.toBe('explosive_fusion');
+  });
+});
