@@ -18,13 +18,13 @@ Generated on: 2026-07-26
 
 | Category | Count |
 |---|---|
-| project | 15 |
+| project | 16 |
 | dev-request | 2 |
 | project-meta | 1 |
 | history | 0 |
 | reference | 20 |
 | root-or-other | 14 |
-| total | 52 |
+| total | 53 |
 
 ## Authoritative Docs
 

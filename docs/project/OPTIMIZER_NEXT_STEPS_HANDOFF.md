@@ -33,14 +33,16 @@ Baseline for the next agent working on recommendation accuracy or speed. It reco
 | Rust models the same action space, but TypeScript owns final ranking | Parity is proven by the corpus; split authority over ranking is not worth the divergence risk. |
 | Compact Rust state with mutate/undo | Measured: clone is 4.70% of a transition, so the ceiling was under 5%. Rejected. |
 | Packed numeric transposition key | Measured at 1.0-1.4% of the budget. Dropped. |
+| Expected progress is `p * min(gain, headroom)` | Runtime-verified: the completion/perfection appliers run only in the success branch, so the headroom clamp must sit **inside** the success weighting. Clamping first credits an overshooting technique with its whole headroom and hides its failure risk. |
 | MCTS iterations stay at `250`, beam stays at `5` | Both measured; more of either costs more frontier than it buys. |
 
 ## Genuinely open
 
-1. **`user-report-resonance-regression` contract.** One config still fails `mustRankBefore` on a 0.29% tie between two non-recommended alternatives. The model is runtime-faithful, so the open question is the contract's materiality rule. Evidence: `docs/project/OPTIMIZER_ENGINE_FINDINGS.md` and `docs/project/RUNTIME_EVIDENCE_075.md` section 3.
-2. **Replay corpus size.** 14 curated fixtures is enough for regression, not enough to prove broad high-realm accuracy. This is the highest-value work available and it needs player snapshots, not more constants.
-3. **Per-harmony item effects (`harmonyAugment`).** Unmodelled by choice: they change what the finished item does, not which action is best. If the game ever makes them affect in-craft state, this becomes real work.
-4. **Native cost-preview helpers.** Still internally modelled; see `docs/dev-requests/STATUS.md` Q3.
+1. **Replay corpus size.** 14 curated fixtures is enough for regression, not enough to prove broad high-realm accuracy. This is the highest-value work available and it needs player snapshots, not more constants.
+2. **Per-harmony item effects (`harmonyAugment`).** Unmodelled by choice: they change what the finished item does, not which action is best. If the game ever makes them affect in-craft state, this becomes real work.
+3. **Native cost-preview helpers.** Still internally modelled; see `docs/dev-requests/STATUS.md` Q3.
+
+`user-report-resonance-regression` used to head this list. It is closed: the cause was the success-weighted-progress bug in the table above, not the contract and not resonance. `bun run optimizer:bench` reports 98 of 98 contracts passing. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
 
 ## Where new fixtures come from
 

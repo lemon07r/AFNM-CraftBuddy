@@ -237,22 +237,36 @@ e.resonance.resonance?e.recommendedTechniqueTypes=[e.resonance.resonance]:e.reco
 reads "-15 harmony"; the value actually subtracted from `progressState.harmony`
 is `9`. CraftBuddy is right and the log text is stale.
 
-### 3.3 Bearing on `user-report-resonance-regression`
+### 3.3 Bearing on `user-report-resonance-regression` — closed
 
 The resonance model is byte-for-byte faithful to the runtime, so the benchmark's
-`mustRankBefore` failure **cannot** be explained by a wrong resonance formula.
-Combined with the already-recorded facts that the fixture snapshot carries no
-`harmonyData` at all (so the harmony block never runs for it either way) and
-that the two alternatives sit 0.29% apart while the actual recommendation is a
-third action, the evidence points at the benchmark contract rather than the
-model. No scoring constant may be tuned for it.
+`mustRankBefore` failure could **not** be explained by a wrong resonance
+formula. The fixture snapshot also carries no `harmonyData` at all, so the
+harmony block never ran for it either way. Nothing about the finding was
+resonance-specific.
 
-Since this was recorded, the engine work removed one of the two failing configs
-for an unrelated reason: the native policy prior was never running at all on
-real data (`docs/project/OPTIMIZER_ENGINE_FINDINGS.md`). The finding is now a
-single `legacy_balanced` failure, and the open question is purely whether
-`mustRankBefore` should treat an immaterial tie between two non-recommended
-alternatives as a correctness failure.
+The cause was found elsewhere, and it was a real mechanics bug in both engines.
+Expected progress was computed as `min(p * gain, headroom)`. In the runtime the
+completion and perfection appliers are plain `r.completion += e` /
+`r.perfection += e` statements inside the **success** branch, so the correct
+expectation is `p * min(gain, headroom)`. Clamping before weighting let the
+headroom cap swallow the failure risk of any technique whose raw gain overshot
+the bar: on this fixture Explosive Fusion (65% success, raw gain above the 9,170
+completion remaining) was credited the full 9,170 and became the top
+recommendation past depth 6 — exactly the reported behaviour.
+
+Fixed identically in `calculateSkillGains` and `effects.rs::calculate_skill_gains`;
+11 of 585 corpus transitions shifted by one point and both engines still agree on
+every transition. `bun run optimizer:bench` now reports **98 of 98 contracts
+passing**. No scoring constant was tuned.
+
+One contract change came with the fix. The runner-up ordering clause is now
+materiality-aware: it always fails when the losing candidate is actually
+recommended, and otherwise only when the score gap exceeds an explicit
+tolerance. Search scores are not normalised across depths (~18k at depth 4
+against ~44k at depth 5), so an ordering claim must be node-budget bound rather
+than wall-clock bound — measured on this fixture, refine leads at depth 4,
+inverts at 5, and leads again from 6.
 
 ---
 

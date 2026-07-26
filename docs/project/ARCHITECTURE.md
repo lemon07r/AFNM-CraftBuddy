@@ -64,7 +64,8 @@ Four rules define the shape:
 
 | Module | Role |
 | --- | --- |
-| `index.ts` | bootstrap and wiring: craft detection, state extraction, config construction, search invocation, overlay mount, debug hooks |
+| `index.ts` | the polling loop and wiring: craft detection, session state, config construction, search invocation, auto-craft sync, overlay and hotkey registration |
+| `craftSession.ts`, `craftStateExtraction.ts`, `modApiProviders.ts`, `overlayMount.ts`, `debugHooks.ts` | the seams extracted from `index.ts` — see [modContent seams](#modcontent-seams) |
 | `craftingContext.ts` | recipe/craft-type/harmony-selection resolution from live craft state |
 | `harmonyState.ts` | harmony hydration and canonicalization from authoritative payloads, with verified forge-only fallback |
 | `configStats.ts` | base crafting stat resolution from game entities |
@@ -82,19 +83,24 @@ Four rules define the shape:
 
 ### modContent seams
 
-`index.ts` is bootstrap and wiring. Its extracted responsibilities are:
+`index.ts` is the craft polling loop plus wiring. 6.0.0 moved 1,478 lines of it — everything that does not read or write live session state — into five seams, verbatim, as one behaviour-neutral commit:
 
 | Seam | Owns |
 | --- | --- |
-| `craftSession.ts` | the module-level mutable session state the other seams share |
-| `craftStateExtraction.ts` | live payload → optimizer state/config |
-| `harmonyContextResolution.ts` | harmony selection and hydration, with `craftingContext.ts` / `harmonyState.ts` |
-| `modApiProviders.ts` | native provider wiring and guarded fallbacks |
-| `executorLifecycle.ts` | auto-craft controller/executor lifecycle |
-| `overlayMount.ts` | overlay container and React root |
-| `debugHooks.ts` | `window.craftBuddyDebug` surface |
+| `craftSession.ts` | the integration-diagnostics record and its types: the session state more than one seam shares |
+| `craftStateExtraction.ts` | pure runtime/DOM shape readers: signature serializers, numeric normalisers, cap/toxicity resolution, buff and mastery extraction, technique and item conversion |
+| `modApiProviders.ts` | optional-ModAPI-helper lookup (`getPathValue`, `findFirstFunction`, next-condition / technique-from-known / action-cost probes) and the shared buff-key normaliser |
+| `overlayMount.ts` | React root commit, paint scheduling, HUD anchor geometry, title-screen indicator |
+| `debugHooks.ts` | clipboard/file export and the debug toast behind the snapshot hotkeys |
 
-The extraction lands as its own behaviour-neutral commit in the 6.0.0 integration, proven by replay-snapshot parity. If a seam's code is still inside `index.ts` in the tree you are reading, that is the pre-split state — it is never a second authority alongside a seam module.
+`src/__tests__/modContentSeams.test.ts` pins each extracted contract.
+
+Two seams from the original 6.0.0 proposal were deliberately **not** created, and this is the intended end state rather than pending work:
+
+- **`harmonyContextResolution.ts`** — harmony selection and hydration already live in `craftingContext.ts` and `harmonyState.ts`, each with their own suite. A third module would only add indirection.
+- **`executorLifecycle.ts`** — the auto-craft snapshot, fingerprint and arm/stop helpers read about fifteen mutable variables that the polling loop writes on every tick. Moving them means either threading a live-craft view through them or converting the polling loop's 59 module-level `let`s (~600 references) into an accessor object; both are rewrites, not moves, and neither is worth the risk of a silent behaviour change in the dispatch-safety path. They stay next to the loop that owns their state.
+
+What remains in `index.ts` is therefore intentional: the polling loop, the session state it mutates, config construction, search invocation, the auto-craft wiring, and every import-time side effect.
 
 ## UI (`src/ui/`, `src/utils/`)
 

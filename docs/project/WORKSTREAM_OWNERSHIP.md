@@ -118,14 +118,14 @@ Recorded from the docs workstream's vantage point, which merges last. "Delivered
 | Engine — performance | delivered: 1.90x at identical search shape. Compact state + mutate/undo **rejected with measurements**, not deferred |
 | UI — outcome/band/harmony surfacing | delivered on `feat/outcome-surfacing` |
 | Docs — architecture refresh | this branch |
-| Lead — resonance contract decision, `modContent/index.ts` split, 6.0.0 release | outstanding at the time of writing |
+| Lead — resonance finding, `modContent/index.ts` split, 6.0.0 release | delivered on `main`: all four branches merged, the resonance finding closed as a real mechanics bug, `index.ts` split into five seams, 6.0.0 packaged |
 
 Two things the docs deliberately describe as _decided_, not open:
 
 - the packed numeric transposition-cache key (measured at 1.0-1.4% of the search budget, dropped)
 - compact Rust state with mutate/undo (clone is 4.70% of a transition, rejected)
 
-One thing they describe as _genuinely open_: the `user-report-resonance-regression` benchmark contract, now a single `legacy_balanced` failure on a 0.29% tie between two non-recommended candidates.
+The `user-report-resonance-regression` finding the docs described as open was closed during integration, and not in the way anyone expected: it was a real success-weighting bug in both engines (`p * min(gain, headroom)`, not `min(p * gain, headroom)`), not a contract-materiality question. `bun run optimizer:bench` reports 98 of 98 contracts passing. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
 
 ## When this document expires
 

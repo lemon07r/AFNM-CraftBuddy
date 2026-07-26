@@ -115,17 +115,24 @@ Rules for using it:
 - A failing contract is evidence to investigate the model, not licence to tune a scoring constant until it passes.
 - Contracts may only change with recorded runtime-oracle evidence.
 
-## Open finding: `user-report-resonance-regression`
+## Settled finding: `user-report-resonance-regression`
 
-Status: **one** config (`legacy_balanced`) fails `mustRankBefore`; the `experimental_balanced` half disappeared with the null-mastery fix.
+Status: **closed in 6.0.0.** The whole benchmark is green — 98 of 98 contracts pass. Nothing about it turned out to be resonance-specific, and no scoring constant was tuned.
 
-Evidence gathered so far:
+What the investigation ruled out first:
 
-- The resonance model is byte-for-byte faithful to the 0.7.5 runtime, including the `-9` harmony / `-3` stability mismatch penalty and the pending-switch exemption (`docs/project/RUNTIME_EVIDENCE_075.md` section 3). A wrong resonance formula cannot explain the failure.
-- The fixture's snapshot carries **no `harmonyData` at all**, so the harmony block never runs for it either way. The earlier "harmony is wrongly gated behind `isSublimeCraft`" hypothesis is ruled out _for this fixture_.
-- At depth 64 the two alternatives sit **0.29%** apart (43479.7 vs 43354.7) and the actual recommendation is a third action (`focused_fusion`), so this is a near-tie between two candidates that are not recommended either way.
+- The resonance model is byte-for-byte faithful to the 0.7.5 runtime, including the `-9` harmony / `-3` stability mismatch penalty and the pending-switch exemption (`docs/project/RUNTIME_EVIDENCE_075.md` section 3). A wrong resonance formula could not explain it.
+- The fixture's snapshot carries **no `harmonyData` at all**, so the harmony block never ran for it either way. The "harmony is wrongly gated behind `isSublimeCraft`" hypothesis is ruled out _for this fixture_.
 
-The remaining decision is therefore whether `mustRankBefore` should treat an immaterial tie between non-recommended alternatives as a correctness failure. The release step owns that call; no scoring constant may be tuned for it.
+What it actually was — a real mechanics bug in **both** engines:
+
+`calculateSkillGains` (and `evaluate_skill_gains`) weighted progress by success chance and only then clamped it to the remaining bar: `min(p * gain, headroom)`. The runtime applies progress **only on success** — the completion applier is a plain `r.completion += e` inside the success branch — so the expectation is `p * min(gain, headroom)`.
+
+With the old order, the clamp swallowed the failure risk of any technique whose raw gain overshot the bar. On this snapshot Explosive Fusion lands 65% of the time and its raw completion gain exceeds the 9,170 completion remaining, so it was credited with the **full** 9,170: a 35%-failure gamble advertised as a guaranteed bar-filler, and the top recommendation once the search ran past depth 6. That is exactly the user report. Fixed identically in both engines; 11 of 585 corpus transitions shifted by one point and both engines still agree on every transition.
+
+One contract change came with it. The runner-up ordering clause (`focused_refine` before `explosive_fusion`) tracks whichever depth the wall-clock budget happens to finish — measured on this fixture, refine leads at depth 4, inverts at 5, and leads again from 6 — so it is now materiality-aware: it **always** fails when the losing candidate is actually recommended, and otherwise only when the score gap exceeds an explicit tolerance. `rankedScores` was added to the report so an ordering claim always comes with numbers.
+
+Search scores are not normalised across depths (~18k at depth 4 against ~44k at depth 5). Any assertion about ranking must therefore be node-budget bound, never wall-clock bound; `search.test.ts` pins this fixture at a fixed node budget for that reason.
 
 ## Validation commands
 
