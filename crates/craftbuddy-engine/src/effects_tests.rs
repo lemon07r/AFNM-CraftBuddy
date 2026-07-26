@@ -585,7 +585,7 @@ fn buff_stats_contribute_additively_and_multiplicatively() {
     let skills: Vec<EngineSkill> = Vec::new();
     let active = resolve_active_buffs(&state, &config, &skills);
     let base = build_technique_scaling_base(&state, &config, &active);
-    let adjusted = apply_buff_stat_contributions(&state, &base, &UpgradeMap::new(), &active);
+    let adjusted = apply_buff_stat_contributions(&state, &base, &UpgradeMap::default(), &active);
     // The base intensity variable starts at 0 here, so this isolates the buff.
     assert_eq!(get_variable_value(&adjusted, "intensity"), 6.0);
     // 100% * 50% composes multiplicatively into 50.

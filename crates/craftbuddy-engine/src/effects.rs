@@ -27,14 +27,68 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::rc::Rc;
 
 use serde::Deserialize;
 
 use crate::{normalize_cost_percentage, EngineConfig, EngineSkill, EngineState};
 
+/// `FxHasher`, the short-key hash rustc itself uses.
+///
+/// The standard library's SipHash is the wrong trade here: profiling attributed
+/// roughly 90% of one transition to rebuilding the ~40-key scaling-variable map
+/// (three times per transition - twice inside `effective_max_pool`, once in
+/// `resolve_action`), and for keys this short the hash dominates the lookup.
+///
+/// This cannot change a result: every map below is read strictly by key, never
+/// iterated. The one exception, `additional_data`, is a `BTreeMap` precisely
+/// because its order *is* observed.
+#[derive(Clone, Copy, Default)]
+pub struct FxHasher {
+    hash: u64,
+}
+
+const FX_SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+
+impl FxHasher {
+    #[inline]
+    fn add_to_hash(&mut self, value: u64) {
+        self.hash = (self.hash.rotate_left(5) ^ value).wrapping_mul(FX_SEED);
+    }
+}
+
+impl Hasher for FxHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut buffer = [0u8; 8];
+            buffer[..chunk.len()].copy_from_slice(chunk);
+            self.add_to_hash(u64::from_le_bytes(buffer));
+        }
+    }
+
+    #[inline]
+    fn write_u8(&mut self, value: u8) {
+        self.add_to_hash(u64::from(value));
+    }
+
+    #[inline]
+    fn write_usize(&mut self, value: usize) {
+        self.add_to_hash(value as u64);
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.hash
+    }
+}
+
+pub type FxBuildHasher = BuildHasherDefault<FxHasher>;
+pub type FxHashMap<K, V> = HashMap<K, V, FxBuildHasher>;
+
 /// Scaling variables handed to game-authored formulas.
-pub type Variables = HashMap<String, f64>;
+pub type Variables = FxHashMap<String, f64>;
 
 /// `trim -> lowercase -> spaces become underscores`, mirroring
 /// `normalizeIdentifier` in `src/optimizer/nameNormalization.ts`.
@@ -256,7 +310,7 @@ pub struct UpgradeRule {
     pub multiplier: f64,
 }
 
-pub type UpgradeMap = HashMap<String, UpgradeRule>;
+pub type UpgradeMap = FxHashMap<String, UpgradeRule>;
 
 // ---------------------------------------------------------------------------
 // Expression evaluation
@@ -303,8 +357,8 @@ thread_local! {
     /// Compiled-expression memo. Mirrors `EXPRESSION_CACHE` in
     /// `src/optimizer/gameTypes.ts`; without it every node re-parses the same
     /// handful of game formulas.
-    static EXPRESSION_CACHE: RefCell<HashMap<String, Option<Rc<Expr>>>> =
-        RefCell::new(HashMap::new());
+    static EXPRESSION_CACHE: RefCell<FxHashMap<String, Option<Rc<Expr>>>> =
+        RefCell::new(FxHashMap::default());
 }
 
 const MAX_EXPRESSION_LENGTH: usize = 1024;
@@ -1147,7 +1201,7 @@ pub fn build_technique_scaling_base(
         }
     };
 
-    let mut variables: Variables = HashMap::new();
+    let mut variables: Variables = Variables::default();
     variables.insert("control".to_string(), 0.0);
     variables.insert("intensity".to_string(), 0.0);
     variables.insert("critchance".to_string(), 0.0);
@@ -1332,11 +1386,11 @@ pub fn resolve_mastery_bonuses(
     variables: &Variables,
 ) -> (MasteryBonuses, UpgradeMap) {
     if skill.mastery_entries.is_empty() {
-        return (skill.mastery, UpgradeMap::new());
+        return (skill.mastery, UpgradeMap::default());
     }
 
     let mut bonuses = MasteryBonuses::default();
-    let mut upgrades = UpgradeMap::new();
+    let mut upgrades = UpgradeMap::default();
 
     for entry in &skill.mastery_entries {
         let evaluation = evaluate_effect_condition(entry.condition.as_ref(), state, variables, 0);
@@ -1427,12 +1481,34 @@ pub fn build_pre_mastery_action_variables(
     with_conditions
 }
 
+/// Whether any active buff can move `maxpool` at all.
+///
+/// `maxpool` starts at `config.max_qi` and only ever moves in
+/// `apply_buff_stat_contributions`, which writes a stat key only when some
+/// active buff *declares* that key. When none does, the entire
+/// scaling-variable build is provably a no-op and the effective ceiling is the
+/// configured one. That identity is the single largest measured saving in a
+/// transition: `effective_max_pool` runs twice per `apply_skill` and accounted
+/// for ~46% of its cost.
+pub fn buffs_can_change_max_pool(active_buffs: &[ActiveBuff]) -> bool {
+    active_buffs.iter().any(|buff| {
+        buff.definition
+            .as_ref()
+            .and_then(|definition| definition.stats.as_ref())
+            .is_some_and(|stats| stats.contains_key("maxpool"))
+    })
+}
+
 /// `getEffectiveMaxPool`.
 pub fn effective_max_pool(
     state: &EngineState,
     config: &EngineConfig,
     active_buffs: &[ActiveBuff],
 ) -> f64 {
+    if !buffs_can_change_max_pool(active_buffs) {
+        return config.max_qi.max(1.0);
+    }
+
     let mut base = build_technique_scaling_base(state, config, active_buffs);
     base.insert(
         "control".to_string(),
@@ -1441,7 +1517,7 @@ pub fn effective_max_pool(
     base.insert("intensity".to_string(), config.base_intensity);
     base.insert("critchance".to_string(), state.crit_chance);
     base.insert("critmultiplier".to_string(), state.crit_multiplier);
-    let buffed = apply_buff_stat_contributions(state, &base, &UpgradeMap::new(), active_buffs);
+    let buffed = apply_buff_stat_contributions(state, &base, &UpgradeMap::default(), active_buffs);
     let maxpool = get_variable_value(&buffed, "maxpool");
     if maxpool.is_finite() {
         maxpool.max(1.0)
@@ -1462,12 +1538,13 @@ pub fn resolve_active_buffs(
     config: &EngineConfig,
     skills: &[EngineSkill],
 ) -> Vec<ActiveBuff> {
+    profile_count!(ResolveActiveBuffs);
     let mut resolved: Vec<ActiveBuff> = Vec::with_capacity(state.buffs.len());
     let needs_lookup = state.buffs.iter().any(|buff| buff.definition.is_none());
     let lookup = if needs_lookup {
         build_buff_definition_lookup(skills)
     } else {
-        HashMap::new()
+        FxHashMap::default()
     };
 
     let strip_forge_heat = config.crafting_type.as_deref() == Some("forge")
@@ -1505,10 +1582,10 @@ pub fn resolve_active_buffs(
     resolved
 }
 
-fn build_buff_definition_lookup(skills: &[EngineSkill]) -> HashMap<String, BuffDefinition> {
-    let mut lookup: HashMap<String, BuffDefinition> = HashMap::new();
+fn build_buff_definition_lookup(skills: &[EngineSkill]) -> FxHashMap<String, BuffDefinition> {
+    let mut lookup: FxHashMap<String, BuffDefinition> = FxHashMap::default();
     let add = |definition: Option<&BuffDefinition>,
-               lookup: &mut HashMap<String, BuffDefinition>| {
+               lookup: &mut FxHashMap<String, BuffDefinition>| {
         let Some(definition) = definition else { return };
         if definition.name.is_empty() {
             return;
@@ -1803,7 +1880,7 @@ pub fn resolve_action(
         active_buffs,
         condition_effects,
         harmony,
-        &UpgradeMap::new(),
+        &UpgradeMap::default(),
     );
     let (mut mastery, mut upgrades) = resolve_mastery_bonuses(state, skill, &variables);
     if !upgrades.is_empty() {
@@ -1900,7 +1977,7 @@ pub fn calculate_effective_action_costs(
             active_buffs,
             crate::ConditionEffectSummary::default(),
             neutral_harmony,
-            &UpgradeMap::new(),
+            &UpgradeMap::default(),
         );
         pool_cost_flat = get_variable_value(&runtime_vars, "poolCostFlat")
             .floor()
@@ -2140,6 +2217,7 @@ pub fn can_apply_skill(
     condition_effects: crate::ConditionEffectSummary,
     active_buffs: &[ActiveBuff],
 ) -> bool {
+    profile_count!(CanApplySkill);
     if state.finished || state.stability <= 0.0 {
         return false;
     }
@@ -2221,6 +2299,11 @@ pub fn can_apply_skill(
 /// Returns the post-action state without advancing the condition timeline or
 /// evaluating the auto-finish predicate; both are the caller's job because they
 /// depend on the search's condition queue.
+///
+/// Test-only convenience: the search resolves a state's buffs once per action
+/// space and calls [`apply_skill_with_buffs`] directly, so keeping this on the
+/// hot path would reintroduce the per-candidate buff resolution it removed.
+#[cfg(test)]
 pub fn apply_skill(
     env: &ActionEnv<'_>,
     state: &EngineState,
@@ -2230,8 +2313,37 @@ pub fn apply_skill(
     condition_effects: crate::ConditionEffectSummary,
     target_completion: f64,
 ) -> Option<EngineState> {
+    let active_buffs = resolve_active_buffs(state, env.config, env.skills);
+    apply_skill_with_buffs(
+        env,
+        state,
+        skill_index,
+        skill,
+        condition,
+        condition_effects,
+        target_completion,
+        &active_buffs,
+    )
+}
+
+/// `apply_skill` for a caller that has already resolved the state's buffs.
+///
+/// Buff resolution is not cheap - it clones every active buff and its
+/// definition - and move ordering evaluates every candidate against one shared
+/// state, so resolving per candidate was pure duplication.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_skill_with_buffs(
+    env: &ActionEnv<'_>,
+    state: &EngineState,
+    skill_index: usize,
+    skill: &EngineSkill,
+    condition: &str,
+    condition_effects: crate::ConditionEffectSummary,
+    target_completion: f64,
+    active_buffs: &[ActiveBuff],
+) -> Option<EngineState> {
+    profile_count!(ApplySkill);
     let config = env.config;
-    let active_buffs = resolve_active_buffs(state, config, env.skills);
     if !can_apply_skill(
         env,
         state,
@@ -2239,7 +2351,7 @@ pub fn apply_skill(
         skill,
         condition,
         condition_effects,
-        &active_buffs,
+        active_buffs,
     ) {
         return None;
     }
@@ -2248,11 +2360,11 @@ pub fn apply_skill(
     let consumes_turn = skill.consumes_turn;
     let next_step = state.step + i32::from(consumes_turn);
 
-    let mut qi_cap = effective_max_pool(state, config, &active_buffs);
-    let resolved = resolve_action(env, state, skill, condition_effects, &active_buffs);
+    let mut qi_cap = effective_max_pool(state, config, active_buffs);
+    let resolved = resolve_action(env, state, skill, condition_effects, active_buffs);
     let gains = calculate_skill_gains(env, state, skill, &resolved);
     let costs =
-        calculate_effective_action_costs(env, state, skill, condition_effects, &active_buffs);
+        calculate_effective_action_costs(env, state, skill, condition_effects, active_buffs);
 
     let mut new_qi = clamp(state.qi - costs.qi_cost, 0.0, qi_cap);
     let has_explicit_pool_effect = skill.effects.iter().any(|effect| effect.kind == "pool");
@@ -2355,7 +2467,7 @@ pub fn apply_skill(
         }
     }
 
-    let mut buffs = BuffSet::new(active_buffs.clone());
+    let mut buffs = BuffSet::new(active_buffs.to_vec());
     if let Some(buff_cost) = skill.buff_cost.as_ref() {
         let have = buffs.stacks(&buff_cost.buff_name);
         if have > 0 {
@@ -2371,18 +2483,26 @@ pub fn apply_skill(
     // The TypeScript simulator refreshes the Qi ceiling here - after the buff
     // cost has been paid but *before* any technique effect runs - so a buff this
     // action creates cannot raise the cap the same action is clamped against.
-    qi_cap = effective_max_pool(
-        &EngineState {
-            qi: new_qi,
-            stability: new_stability,
-            stability_penalty: penalty,
-            toxicity: new_toxicity,
-            buffs: buffs.as_slice().to_vec(),
-            ..state.clone()
-        },
-        config,
-        buffs.as_slice(),
-    );
+    //
+    // The interim state is only materialized when a buff can actually move the
+    // ceiling; otherwise this was a full state clone thrown away one line later.
+    if buffs_can_change_max_pool(buffs.as_slice()) {
+        profile_count!(StateClone);
+        qi_cap = effective_max_pool(
+            &EngineState {
+                qi: new_qi,
+                stability: new_stability,
+                stability_penalty: penalty,
+                toxicity: new_toxicity,
+                buffs: buffs.as_slice().to_vec(),
+                ..state.clone()
+            },
+            config,
+            buffs.as_slice(),
+        );
+    } else {
+        qi_cap = config.max_qi.max(1.0);
+    }
 
     let action_vars = apply_mastery_to_variables(&resolved.variables, &resolved.mastery);
     let action_success_chance = if is_item {
@@ -2605,6 +2725,7 @@ pub fn apply_skill(
         }
     }
 
+    profile_count!(StateClone);
     let mut next = EngineState {
         qi: new_qi,
         stability: new_stability,

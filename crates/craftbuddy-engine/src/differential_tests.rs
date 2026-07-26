@@ -335,6 +335,7 @@ fn matches_the_typescript_simulator() {
                 &queue,
                 &action,
                 &mut rng,
+                None,
             );
 
             match (applied, case.expected) {

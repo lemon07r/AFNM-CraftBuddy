@@ -2,12 +2,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
+#[macro_use]
+mod profiling;
+
 #[cfg(test)]
 mod differential_tests;
 mod effects;
 #[cfg(test)]
 mod effects_tests;
 mod outcome;
+#[cfg(test)]
+mod profile_tests;
 
 use effects::{
     ActionEnv, ActiveBuff, BuffCost, BuffDefinition, BuffRequirement, Effect, ItemStack,
@@ -560,6 +565,8 @@ impl Engine {
             &self.input.current_condition,
             &root_queue,
         );
+        profile_count!(StateClone);
+        profile_count!(NodeCreated);
         nodes.push(Node {
             state: self.input.state.clone(),
             condition: normalize_condition(&self.input.current_condition),
@@ -580,6 +587,7 @@ impl Engine {
             if nodes.len() >= max_nodes {
                 break;
             }
+            profile_count!(Iteration);
 
             let mut selected = 0usize;
             let mut path = vec![selected];
@@ -614,6 +622,7 @@ impl Engine {
                     let child_untried =
                         self.ordered_legal_actions(&next_state, &next_condition, &next_queue);
                     let child_index = nodes.len();
+                    profile_count!(NodeCreated);
                     nodes.push(Node {
                         state: next_state,
                         condition: next_condition,
@@ -633,6 +642,7 @@ impl Engine {
                 }
             }
 
+            profile_count!(StateClone);
             let raw_score = self.rollout_score(
                 nodes[selected].state.clone(),
                 nodes[selected].condition.clone(),
@@ -694,6 +704,7 @@ impl Engine {
             let action = self.pick_rollout_action(&state, &condition, &queue, &actions);
             match self.apply_action(&state, &condition, &queue, &action) {
                 Some((next_state, next_condition, next_queue)) => {
+                    profile_count!(RolloutStep);
                     let consumed_turn = action
                         .skill_index
                         .and_then(|idx| self.input.skills.get(idx))
@@ -729,11 +740,15 @@ impl Engine {
             return actions[self.rng.next_usize(actions.len())].clone();
         }
 
+        // Resolved once for the whole candidate set: every candidate is judged
+        // against the same state, so the buff resolution cannot differ.
+        let env = self.action_env();
+        let active = effects::resolve_active_buffs(state, env.config, env.skills);
         let mut scored: Vec<(f64, &Action)> = actions
             .iter()
             .map(|action| {
                 let score = self
-                    .preview_action_score(state, condition, queue, action)
+                    .preview_action_score(state, condition, queue, action, &active)
                     .unwrap_or(f64::NEG_INFINITY);
                 (score, action)
             })
@@ -754,15 +769,21 @@ impl Engine {
         condition: &str,
         queue: &[String],
     ) -> Vec<Action> {
+        profile_count!(OrderedLegalActions);
         if state.finished || state.stability <= 0.0 || self.goals_met(state) {
             return Vec::new();
         }
+        // One buff resolution for the whole action space. It used to run once
+        // per skill for legality and again inside every candidate transition,
+        // which profiling measured at ~12,300 resolutions per search.
+        let env = self.action_env();
+        let active = effects::resolve_active_buffs(state, env.config, env.skills);
         let mut actions: Vec<Action> = self
             .input
             .skills
             .iter()
             .enumerate()
-            .filter(|(idx, skill)| self.can_apply_skill(state, *idx, skill, condition))
+            .filter(|(idx, skill)| self.can_apply_skill(state, *idx, skill, condition, &active))
             .map(|(idx, skill)| Action {
                 skill_index: Some(idx),
                 key: skill.key.clone(),
@@ -782,7 +803,7 @@ impl Engine {
             .into_iter()
             .map(|action| {
                 let score = self
-                    .preview_action_score(state, condition, queue, &action)
+                    .preview_action_score(state, condition, queue, &action, &active)
                     .unwrap_or(f64::NEG_INFINITY);
                 (score, action)
             })
@@ -801,10 +822,18 @@ impl Engine {
         condition: &str,
         queue: &[String],
         action: &Action,
+        active_buffs: &[ActiveBuff],
     ) -> Option<f64> {
+        profile_count!(PreviewActionScore);
         let mut rng = SmallRng::new(0x9E37_79B9_7F4A_7C15);
-        let (next_state, _, _) =
-            self.apply_action_with_rng(state, condition, queue, action, &mut rng)?;
+        let (next_state, _, _) = self.apply_action_with_rng(
+            state,
+            condition,
+            queue,
+            action,
+            &mut rng,
+            Some(active_buffs),
+        )?;
         Some(self.score_state(&next_state))
     }
 
@@ -816,17 +845,16 @@ impl Engine {
         skill_index: usize,
         skill: &EngineSkill,
         condition: &str,
+        active_buffs: &[ActiveBuff],
     ) -> bool {
-        let env = self.action_env();
-        let active = effects::resolve_active_buffs(state, env.config, env.skills);
         effects::can_apply_skill(
-            &env,
+            &self.action_env(),
             state,
             skill_index,
             skill,
             condition,
             self.condition_effects(condition),
-            &active,
+            active_buffs,
         )
     }
 
@@ -838,7 +866,7 @@ impl Engine {
         action: &Action,
     ) -> Option<(EngineState, String, Vec<String>)> {
         let mut rng = self.rng.clone();
-        let result = self.apply_action_with_rng(state, condition, queue, action, &mut rng);
+        let result = self.apply_action_with_rng(state, condition, queue, action, &mut rng, None);
         self.rng = rng;
         result
     }
@@ -850,8 +878,12 @@ impl Engine {
         queue: &[String],
         action: &Action,
         rng: &mut SmallRng,
+        // Buffs already resolved for `state` by the caller, if any. Passing them
+        // avoids re-resolving once per candidate transition.
+        active_buffs: Option<&[ActiveBuff]>,
     ) -> Option<(EngineState, String, Vec<String>)> {
         if action.skill_index.is_none() {
+            profile_count!(StateClone);
             let mut finished = state.clone();
             finished.finished = true;
             return Some((finished, normalize_condition(condition), queue.to_vec()));
@@ -866,14 +898,24 @@ impl Engine {
         // One implementation of the transition, shared with the differential
         // oracle: costs, effect tree, mastery, buffs, items and harmony all live
         // in `effects::apply_skill`.
-        let mut next = effects::apply_skill(
-            &self.action_env(),
+        let env = self.action_env();
+        let resolved_buffs = match active_buffs {
+            Some(_) => None,
+            None => Some(effects::resolve_active_buffs(state, env.config, env.skills)),
+        };
+        let mut next = effects::apply_skill_with_buffs(
+            &env,
             state,
             skill_index,
             skill,
             &condition,
             self.condition_effects(&condition),
             self.input.target_completion,
+            active_buffs.unwrap_or_else(|| {
+                resolved_buffs
+                    .as_deref()
+                    .expect("buffs are resolved when the caller has none")
+            }),
         )?;
 
         let (next_condition, next_queue) = if consumes_turn {
@@ -903,6 +945,7 @@ impl Engine {
     }
 
     fn score_state(&self, state: &EngineState) -> f64 {
+        profile_count!(ScoreState);
         if state.finished {
             return self.score_finished_outcome(state);
         }
