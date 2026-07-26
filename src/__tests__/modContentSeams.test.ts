@@ -25,6 +25,7 @@ import {
   serializeTechniqueCooldowns,
   toFiniteNumber,
   toFinitePositiveNumber,
+  type InventoryItemLike,
 } from '../modContent/craftStateExtraction';
 import {
   findFirstFunction,
@@ -81,9 +82,13 @@ describe('craftStateExtraction: fingerprint serializers', () => {
       ),
     ).toBe('qi pill:4|missing pill:0');
     expect(serializeQuickAccessInventory(['Qi Pill'], [])).toBe('none');
-    expect(serializeQuickAccessInventory([], [{ name: 'Qi Pill' }])).toBe(
-      'none',
-    );
+    // An inventory row without `stacks` is a shape the runtime can produce, so
+    // the cast is the point of the case rather than a convenience.
+    expect(
+      serializeQuickAccessInventory([], [
+        { name: 'Qi Pill' },
+      ] as unknown as InventoryItemLike[]),
+    ).toBe('none');
   });
 });
 
