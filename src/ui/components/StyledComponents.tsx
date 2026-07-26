@@ -29,11 +29,21 @@ import {
   progressGlow,
   transitions,
 } from '../animations';
-import { getOverlayPanelMaxWidth } from '../../utils/overlayLayout';
+import {
+  getOverlayPanelMaxWidth,
+  OVERLAY_EDGE_MARGIN_PX,
+} from '../../utils/overlayLayout';
 
 // ============================================================================
 // Panel Components
 // ============================================================================
+
+/**
+ * Height budget the overlay host gives the panel (`computeOverlayLayout` returns
+ * `viewportHeight - 2 * OVERLAY_EDGE_MARGIN_PX`). Expressed in viewport units so
+ * the panel clamps itself even though its host is `overflow: visible`.
+ */
+const PANEL_MAX_VIEWPORT_HEIGHT = `calc(100vh - ${OVERLAY_EDGE_MARGIN_PX * 2}px)`;
 
 interface PanelContainerProps {
   children: React.ReactNode;
@@ -93,7 +103,19 @@ export const PanelContainer = memo(function PanelContainer({
         border: `1px solid ${getBorderColor()}`,
         borderRadius: 2,
         boxShadow: shadows.panel,
-        overflow: allowOverflowVisible ? 'visible' : 'hidden',
+        // The overlay host clamps its own box to `layout.maxHeight` but keeps
+        // `overflow: visible`, so a tall panel used to grow straight past the
+        // bottom of a short game window. Clamp to the same budget here and
+        // scroll instead. Skipped while the settings drawer is open, which needs
+        // to overflow the panel on purpose.
+        ...(allowOverflowVisible
+          ? { overflow: 'visible' }
+          : {
+              maxHeight: PANEL_MAX_VIEWPORT_HEIGHT,
+              overflowX: 'hidden',
+              overflowY: 'auto',
+              scrollbarWidth: 'thin',
+            }),
         animation: animate ? `${slideInRight} 0.3s ease-out` : 'none',
         // Decorative corner accents
         '&::before': {
