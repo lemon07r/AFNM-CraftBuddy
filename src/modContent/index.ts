@@ -117,6 +117,65 @@ import {
   buildKnownCraftingTechniqueNameMap,
   resolveLiveCraftingTechnique,
 } from './techniqueResolution';
+import {
+  copyTextToClipboard,
+  downloadTextFile,
+  showDebugToast,
+} from './debugHooks';
+import {
+  createTitleScreenIndicator,
+  extractCraftingProgressPair,
+  findVisibleCraftingProgressElement,
+  getElementRectSnapshot,
+  getGameRootElement,
+  getVisibleCraftingUiOccupiedRect,
+  isElementInCraftBuddyOverlay,
+  isElementVisible,
+  pickCraftingHudAnchorRect,
+  renderReactRoot,
+  scheduleAfterNextPaint,
+  scheduleSearchAfterLoadingShell,
+} from './overlayMount';
+import {
+  computeObservedMaxStability,
+  convertGameItemsToActions,
+  convertGameTechniques,
+  extractBuffInfo,
+  extractCapCandidate,
+  extractCompletionBonusStacks,
+  extractMasteryData,
+  findPositiveGameNumber,
+  getKnownCraftingTechniquesFromState,
+  normalizeChance,
+  normalizeConditionKey,
+  normalizeRuntimeCostPercentage,
+  parsePositiveGameNumber,
+  pickPositiveGameNumber,
+  resolveDomProgressTarget,
+  resolveMaxToxicityCap,
+  resolveNativeCraftingVariables,
+  sanitizeNativeCraftingVariables,
+  serializeCraftingBuffs,
+  serializeQuickAccessInventory,
+  serializeTechniqueCooldowns,
+  toFiniteNumber,
+  toFinitePositiveNumber,
+  type InventoryItemLike,
+} from './craftStateExtraction';
+import {
+  findFirstFunction,
+  getModApiCompletionBonusBuffKey,
+  getModApiNextConditionResolver,
+  getModApiTechniqueFromKnownResolver,
+  getNativeActionCost,
+  getPathValue,
+  normalizeBuffKey,
+} from './modApiProviders';
+import {
+  integrationDiagnostics,
+  type CompletionBonusSource,
+  type IntegrationDiagnostics,
+} from './craftSession';
 import { getCraftBuddyHotkeyAction } from './hotkeys';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
@@ -136,16 +195,6 @@ declare const MOD_METADATA: {
   description: string;
 };
 
-const OVERLAY_OCCUPIED_RECT_PADDING = {
-  top: 8,
-  right: 28,
-  bottom: 8,
-  left: 12,
-} as const;
-const MAX_HUD_RECT_PARENT_DEPTH = 4;
-const MAX_HUD_RECT_VIEWPORT_WIDTH_RATIO = 0.72;
-const MAX_HUD_RECT_VIEWPORT_HEIGHT_RATIO = 0.72;
-
 // Global state for the optimizer
 let currentRecommendation: SearchResult | null = null;
 let currentConfig: OptimizerConfig | null = null;
@@ -162,84 +211,6 @@ let currentStep = 0;
 let currentCondition: CraftingCondition | undefined = undefined;
 let nextConditions: CraftingCondition[] = [];
 let conditionEffectsCache: RecipeConditionEffect | null = null;
-
-type CompletionBonusSource = 'buff' | 'computed' | 'none';
-
-interface IntegrationDiagnostics {
-  conditionQueueNormalizedCount: number;
-  conditionQueueTrimmedCount: number;
-  conditionQueuePaddedCount: number;
-  conditionProviderUsedCount: number;
-  conditionProviderFailureCount: number;
-  conditionProviderFallbackCount: number;
-  completionBonusSource: CompletionBonusSource;
-  completionBonusMismatchCount: number;
-  usingModApiCompletionBonusBuffName: boolean;
-  usingModApiGetNextCondition: boolean;
-  usingModApiTechniqueFromKnown: boolean;
-  techniqueFromKnownMatchCount: number;
-  techniqueFromKnownFallbackCount: number;
-  techniqueFromKnownResolverFailureCount: number;
-  usingModApiScalingEvaluator: boolean;
-  usingModApiOvercritHelper: boolean;
-  usingModApiCanUseActionPrecheck: boolean;
-  usingModApiCapGetters: boolean;
-  usingModApiCraftingVariableResolver: boolean;
-  usingModApiMaxToxicityGetter: boolean;
-  usingModApiGetActionCost: boolean;
-  usingModApiEvaluateCraftingCondition: boolean;
-  usingModApiGetActualCraftingStat: boolean;
-  nativeGetActionCostCalls: number;
-  nativeGetActionCostErrors: number;
-  nativeCanUseActionCalls: number;
-  nativeCanUseActionBlocked: number;
-  nativeCanUseActionErrors: number;
-  lastCraftingTypeDetectionSource: CraftingTypeDetectionSource;
-  lastSublimeDetectionSignals: SublimeDetectionSignal[];
-  lastHarmonyDataSource: HarmonyDataSource;
-  harmonyDataFromProgressStateCount: number;
-  harmonyDataFromNativeVariablesCount: number;
-  harmonyDataFromBuffsCount: number;
-  harmonyDataMissingCount: number;
-}
-
-const integrationDiagnostics: IntegrationDiagnostics = {
-  conditionQueueNormalizedCount: 0,
-  conditionQueueTrimmedCount: 0,
-  conditionQueuePaddedCount: 0,
-  conditionProviderUsedCount: 0,
-  conditionProviderFailureCount: 0,
-  conditionProviderFallbackCount: 0,
-  completionBonusSource: 'none',
-  completionBonusMismatchCount: 0,
-  usingModApiCompletionBonusBuffName: false,
-  usingModApiGetNextCondition: false,
-  usingModApiTechniqueFromKnown: false,
-  techniqueFromKnownMatchCount: 0,
-  techniqueFromKnownFallbackCount: 0,
-  techniqueFromKnownResolverFailureCount: 0,
-  usingModApiScalingEvaluator: false,
-  usingModApiOvercritHelper: false,
-  usingModApiCanUseActionPrecheck: false,
-  usingModApiCapGetters: false,
-  usingModApiCraftingVariableResolver: false,
-  usingModApiMaxToxicityGetter: false,
-  usingModApiGetActionCost: false,
-  usingModApiEvaluateCraftingCondition: false,
-  usingModApiGetActualCraftingStat: false,
-  nativeGetActionCostCalls: 0,
-  nativeGetActionCostErrors: 0,
-  nativeCanUseActionCalls: 0,
-  nativeCanUseActionBlocked: 0,
-  nativeCanUseActionErrors: 0,
-  lastCraftingTypeDetectionSource: 'unchanged',
-  lastSublimeDetectionSignals: [],
-  lastHarmonyDataSource: 'missing',
-  harmonyDataFromProgressStateCount: 0,
-  harmonyDataFromNativeVariablesCount: 0,
-  harmonyDataFromBuffsCount: 0,
-  harmonyDataMissingCount: 0,
-};
 
 // Toxicity tracking for alchemy crafting
 let currentToxicity = 0;
@@ -413,7 +384,6 @@ let craftStartPending = false;
 let craftStartPendingUntil = 0;
 let overlayForcedByActiveCraft = false;
 let missingVisibleCraftingUiPolls = 0;
-let hasLoggedMissingHostFlushSync = false;
 let hasConfirmedCraftSession = false;
 
 // Polling interval for crafting state detection
@@ -439,87 +409,6 @@ function isCraftStartPendingActive(): boolean {
   return false;
 }
 
-function scheduleAfterNextPaint(callback: () => void): void {
-  if (
-    typeof window !== 'undefined' &&
-    typeof window.requestAnimationFrame === 'function'
-  ) {
-    window.requestAnimationFrame(() => {
-      setTimeout(callback, 0);
-    });
-    return;
-  }
-
-  setTimeout(callback, 0);
-}
-
-function hostReactDomSupportsFlushSync(): boolean {
-  return (
-    typeof (ReactDOM as typeof ReactDOM & { flushSync?: unknown }).flushSync ===
-    'function'
-  );
-}
-
-function scheduleSearchAfterLoadingShell(callback: () => void): void {
-  if (hostReactDomSupportsFlushSync()) {
-    scheduleAfterNextPaint(callback);
-    return;
-  }
-
-  // The host game exposes createRoot via ReactDOM, but some builds do not
-  // expose flushSync on that same object. Give the concurrent root a full
-  // paint to commit the loading shell before starting synchronous search work.
-  scheduleAfterNextPaint(() => {
-    scheduleAfterNextPaint(callback);
-  });
-}
-
-function renderReactRoot(
-  root: ReactDOM.Root,
-  element: React.ReactNode,
-  { sync = false }: { sync?: boolean } = {},
-): void {
-  const reactDomCompat = ReactDOM as typeof ReactDOM & {
-    flushSync?: (callback: () => void) => void;
-  };
-
-  if (sync && typeof reactDomCompat.flushSync === 'function') {
-    reactDomCompat.flushSync(() => {
-      root.render(element);
-    });
-    return;
-  }
-
-  if (sync && !hasLoggedMissingHostFlushSync) {
-    hasLoggedMissingHostFlushSync = true;
-    debugLog(
-      '[CraftBuddy] Host ReactDOM does not expose flushSync; using async overlay commit',
-    );
-  }
-
-  root.render(element);
-}
-
-function serializeCraftingBuffs(
-  buffs: CraftingBuff[] | undefined | null,
-): string {
-  if (!buffs?.length) {
-    return 'none';
-  }
-
-  return buffs
-    .map((buff) => {
-      const name = String(buff?.name || '')
-        .trim()
-        .toLowerCase();
-      const stacks = Number(buff?.stacks ?? 0) || 0;
-      return `${name}:${stacks}`;
-    })
-    .filter(Boolean)
-    .sort()
-    .join('|');
-}
-
 function buildAutoCraftBuffSignature(): string {
   return serializeCraftingBuffs(lastEntity?.buffs);
 }
@@ -535,46 +424,6 @@ function buildAutoCraftCooldownSignature(): string {
     .join('|');
 }
 
-function serializeTechniqueCooldowns(
-  techniques: CraftingTechnique[] | undefined,
-): string {
-  if (!techniques?.length) {
-    return 'none';
-  }
-
-  return (
-    techniques
-      .map((technique) => {
-        const key = String(technique?.name || '')
-          .toLowerCase()
-          .trim()
-          .replace(/\s+/g, '_');
-        const cooldown = Number(technique?.currentCooldown || 0) || 0;
-        return key && cooldown > 0 ? `${key}:${cooldown}` : null;
-      })
-      .filter((entry): entry is string => Boolean(entry))
-      .sort()
-      .join('|') || 'none'
-  );
-}
-
-function serializeQuickAccessInventory(
-  quickAccess: (string | undefined)[] | undefined,
-  inventoryItems: InventoryItemLike[] | undefined,
-): string {
-  if (!inventoryItems?.length || !quickAccess?.length) {
-    return 'none';
-  }
-
-  return quickAccess
-    .filter(Boolean)
-    .map((name) => {
-      const entry = inventoryItems.find((item) => item?.name === name);
-      return `${String(name).toLowerCase()}:${Number(entry?.stacks ?? 0) || 0}`;
-    })
-    .join('|');
-}
-
 function buildAutoCraftInventorySignature(): string {
   const inventoryItems = cachedStore?.getState?.()?.inventory?.items as
     | InventoryItemLike[]
@@ -584,23 +433,6 @@ function buildAutoCraftInventorySignature(): string {
     | undefined
   )[];
   return serializeQuickAccessInventory(quickAccess, inventoryItems);
-}
-
-function computeObservedMaxStability(
-  progressState: ProgressState | null | undefined,
-  maxStabilityTarget: number,
-  fallbackValue: number,
-): number {
-  const stabilityPenalty = parseGameNumber(
-    (progressState as any)?.stabilityPenalty,
-    0,
-  );
-
-  if (maxStabilityTarget > 0) {
-    return Math.max(0, maxStabilityTarget - stabilityPenalty);
-  }
-
-  return fallbackValue;
 }
 
 function buildAutoCraftStateFingerprint(): string {
@@ -799,7 +631,6 @@ let currentOptimizerReplayTurn: OptimizerReplayTurnSnapshot | null = null;
 let optimizerReplayHistoryTurns: OptimizerReplayTurnSnapshot[] = [];
 let optimizerReplayHistoryDroppedTurns = 0;
 let optimizerReplayTurnSequence = 0;
-let debugToastTimeout: number | null = null;
 
 function buildOptimizerReplayAutoCraftSnapshot(): OptimizerReplayAutoCraftSnapshot {
   return {
@@ -995,136 +826,6 @@ function getSerializableOptimizerReplaySnapshot(): {
   return { data, json };
 }
 
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  const clipboard = (globalThis as any)?.navigator?.clipboard;
-  if (clipboard?.writeText) {
-    try {
-      await clipboard.writeText(text);
-      return true;
-    } catch {
-      // Fallback to document.execCommand below.
-    }
-  }
-
-  try {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.setAttribute('readonly', 'true');
-    Object.assign(textarea.style, {
-      position: 'fixed',
-      opacity: '0',
-      pointerEvents: 'none',
-      left: '-9999px',
-      top: '-9999px',
-    });
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    const copied = document.execCommand('copy');
-    document.body.removeChild(textarea);
-    return copied;
-  } catch {
-    return false;
-  }
-}
-
-function downloadTextFile(fileName: string, text: string): boolean {
-  try {
-    const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.style.display = 'none';
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function showDebugToast(
-  message: string,
-  tone: 'info' | 'success' | 'warn' | 'error' = 'info',
-  durationMs: number = 2600,
-): void {
-  const existing = document.getElementById('craftbuddy-debug-toast');
-  if (existing && existing.parentNode) {
-    existing.parentNode.removeChild(existing);
-  }
-  if (debugToastTimeout !== null) {
-    window.clearTimeout(debugToastTimeout);
-    debugToastTimeout = null;
-  }
-
-  const toast = document.createElement('div');
-  toast.id = 'craftbuddy-debug-toast';
-  toast.textContent = message;
-
-  const toneStyles: Record<
-    string,
-    { bg: string; border: string; text: string }
-  > = {
-    info: {
-      bg: 'rgba(15, 23, 42, 0.92)',
-      border: 'rgba(59, 130, 246, 0.7)',
-      text: '#dbeafe',
-    },
-    success: {
-      bg: 'rgba(6, 78, 59, 0.92)',
-      border: 'rgba(16, 185, 129, 0.7)',
-      text: '#d1fae5',
-    },
-    warn: {
-      bg: 'rgba(120, 53, 15, 0.92)',
-      border: 'rgba(251, 191, 36, 0.7)',
-      text: '#fef3c7',
-    },
-    error: {
-      bg: 'rgba(127, 29, 29, 0.92)',
-      border: 'rgba(248, 113, 113, 0.75)',
-      text: '#fee2e2',
-    },
-  };
-
-  const palette = toneStyles[tone];
-  Object.assign(toast.style, {
-    position: 'fixed',
-    right: '18px',
-    top: '18px',
-    zIndex: '10002',
-    maxWidth: '420px',
-    padding: '10px 14px',
-    borderRadius: '8px',
-    border: `1px solid ${palette.border}`,
-    backgroundColor: palette.bg,
-    color: palette.text,
-    fontFamily: `'Trebuchet MS', 'Verdana', sans-serif`,
-    fontSize: '12px',
-    fontWeight: '600',
-    lineHeight: '1.3',
-    boxShadow: '0 10px 26px rgba(0, 0, 0, 0.35)',
-    pointerEvents: 'none',
-    opacity: '1',
-    transition: 'opacity 220ms ease-out',
-    whiteSpace: 'pre-wrap',
-  });
-
-  document.body.appendChild(toast);
-  debugToastTimeout = window.setTimeout(() => {
-    toast.style.opacity = '0';
-    window.setTimeout(() => {
-      if (toast.parentNode) {
-        toast.parentNode.removeChild(toast);
-      }
-    }, 240);
-    debugToastTimeout = null;
-  }, durationMs);
-}
-
 /**
  * Save target values to localStorage for mid-craft save recovery.
  */
@@ -1191,238 +892,6 @@ function clearCachedTargets(): void {
   } catch (e) {
     // Ignore
   }
-}
-
-/**
- * Extract buff information from game's CraftingBuff array.
- */
-function extractBuffInfo(buffs: CraftingBuff[] | undefined): {
-  controlBuffTurns: number;
-  intensityBuffTurns: number;
-  controlBuffMultiplier: number;
-  intensityBuffMultiplier: number;
-} {
-  let controlBuffTurns = 0;
-  let intensityBuffTurns = 0;
-  let controlBuffMultiplier = 1.4;
-  let intensityBuffMultiplier = 1.4;
-
-  if (!buffs)
-    return {
-      controlBuffTurns,
-      intensityBuffTurns,
-      controlBuffMultiplier,
-      intensityBuffMultiplier,
-    };
-
-  for (const buff of buffs) {
-    const name = (buff.name || '').toLowerCase();
-    const stacks = buff.stacks || 0;
-
-    if (name.includes('control') || name.includes('inner focus')) {
-      controlBuffTurns = Math.max(controlBuffTurns, stacks);
-      if (buff.stats?.control?.value !== undefined) {
-        controlBuffMultiplier = 1 + buff.stats.control.value;
-      }
-    }
-    if (name.includes('intensity') || name.includes('inner fire')) {
-      intensityBuffTurns = Math.max(intensityBuffTurns, stacks);
-      if (buff.stats?.intensity?.value !== undefined) {
-        intensityBuffMultiplier = 1 + buff.stats.intensity.value;
-      }
-    }
-  }
-
-  return {
-    controlBuffTurns,
-    intensityBuffTurns,
-    controlBuffMultiplier,
-    intensityBuffMultiplier,
-  };
-}
-
-/**
- * Extract mastery data from a technique's mastery array.
- *
- * In addition to simple numeric bonuses, some masteries use `kind: 'effect'`
- * and add additional technique effects (e.g., granting extra buff stacks).
- */
-function extractMasteryData(mastery: any[] | undefined): {
-  bonuses: SkillMastery;
-  extraEffects: any[];
-  masteryEntries: any[];
-} {
-  const bonuses: SkillMastery = {};
-  const extraEffects: any[] = [];
-  const masteryEntries: any[] = [];
-
-  if (!mastery || mastery.length === 0)
-    return { bonuses, extraEffects, masteryEntries };
-
-  for (const m of mastery) {
-    if (!m) continue;
-    masteryEntries.push(m);
-
-    switch (m.kind) {
-      case 'control':
-        bonuses.controlBonus =
-          (bonuses.controlBonus || 0) + (m.percentage || 0);
-        break;
-      case 'intensity':
-        bonuses.intensityBonus =
-          (bonuses.intensityBonus || 0) + (m.percentage || 0);
-        break;
-      case 'poolcost':
-        bonuses.poolCostReduction =
-          (bonuses.poolCostReduction || 0) + (m.change || 0);
-        break;
-      case 'stabilitycost':
-        bonuses.stabilityCostReduction =
-          (bonuses.stabilityCostReduction || 0) + (m.change || 0);
-        break;
-      case 'successchance':
-        bonuses.successChanceBonus =
-          (bonuses.successChanceBonus || 0) + (m.change || 0);
-        break;
-      case 'critchance':
-        bonuses.critChanceBonus =
-          (bonuses.critChanceBonus || 0) + (m.percentage || 0);
-        break;
-      case 'critmultiplier':
-        bonuses.critMultiplierBonus =
-          (bonuses.critMultiplierBonus || 0) + (m.percentage || 0);
-        break;
-      case 'effect':
-        if (Array.isArray(m.effects)) {
-          if (m.condition) {
-            for (const effect of m.effects) {
-              if (!effect) continue;
-              extraEffects.push({
-                ...effect,
-                condition: effect.condition || m.condition,
-              });
-            }
-          } else {
-            extraEffects.push(...m.effects);
-          }
-        }
-        break;
-    }
-  }
-
-  return { bonuses, extraEffects, masteryEntries };
-}
-
-function normalizeChance(value: number | undefined): number {
-  if (!value || !Number.isFinite(value)) return 0;
-  return value > 1 ? value / 100 : value;
-}
-
-function normalizeBuffKey(name: string | undefined): string {
-  return String(name || '')
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '_');
-}
-
-function normalizeRuntimeCostPercentage(raw: unknown): number {
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) {
-    return 100;
-  }
-  // Game runtime can report 0 as the neutral "no modifier" baseline.
-  // Optimizer internals use 100 as the neutral percentage.
-  if (parsed === 0) {
-    return 100;
-  }
-  return parsed;
-}
-
-function normalizeConditionKey(
-  condition: string | undefined,
-): CraftingCondition {
-  const value = String(condition || '')
-    .toLowerCase()
-    .trim();
-  switch (value) {
-    case 'neutral':
-    case 'balanced':
-      return 'neutral';
-    case 'positive':
-    case 'harmonious':
-      return 'positive';
-    case 'negative':
-    case 'resistant':
-      return 'negative';
-    case 'verypositive':
-    case 'excellent':
-    case 'brilliant':
-      return 'veryPositive';
-    case 'verynegative':
-    case 'corrupted':
-      return 'veryNegative';
-    default:
-      return 'neutral';
-  }
-}
-
-function getPathValue(root: any, path: string[]): any {
-  let current = root;
-  for (const segment of path) {
-    if (!current || typeof current !== 'object') {
-      return undefined;
-    }
-    current = current[segment];
-  }
-  return current;
-}
-
-function findFirstFunction(
-  root: any,
-  paths: string[][],
-): ((...args: any[]) => any) | undefined {
-  for (const path of paths) {
-    const candidate = getPathValue(root, path);
-    if (typeof candidate === 'function') {
-      return candidate as (...args: any[]) => any;
-    }
-  }
-  return undefined;
-}
-
-function getModApiNextConditionResolver():
-  | ((progress: any) => any)
-  | undefined {
-  const modApi = (window as any)?.modAPI;
-  return findFirstFunction(modApi, [
-    ['utils', 'getNextCondition'],
-    ['store', 'turnHandling', 'getNextCondition'],
-    ['Store', 'turnHandling', 'getNextCondition'],
-    ['crafting', 'getNextCondition'],
-    ['getNextCondition'],
-  ]) as ((progress: any) => any) | undefined;
-}
-
-function getModApiCompletionBonusBuffKey(): string | undefined {
-  const rawName = window.modAPI?.utils?.completionBonusBuffName;
-  if (typeof rawName !== 'string' || rawName.trim().length === 0) {
-    return undefined;
-  }
-
-  integrationDiagnostics.usingModApiCompletionBonusBuffName = true;
-  return normalizeBuffKey(rawName);
-}
-
-function getModApiTechniqueFromKnownResolver():
-  | ((known: KnownCraftingTechnique | undefined) => CraftingTechnique)
-  | undefined {
-  const resolver = window.modAPI?.utils?.craftingTechniqueFromKnown;
-  if (typeof resolver !== 'function') {
-    return undefined;
-  }
-  return resolver.bind(window.modAPI.utils) as (
-    known: KnownCraftingTechnique | undefined,
-  ) => CraftingTechnique;
 }
 
 function configureNativeOptimizerProviders(): void {
@@ -1647,106 +1116,6 @@ function ensureNativeProvidersInitialized(): void {
   }
 }
 
-/**
- * Use native getActionCost to get the game's actual computed costs for a
- * technique. Returns undefined if the native API is unavailable or fails.
- * Only usable in the integration layer with live game state.
- */
-function getNativeActionCost(
-  technique: CraftingTechnique,
-  entity: CraftingEntity,
-  recipeStats: CraftingRecipeStats | undefined,
-  progressState: ProgressState | undefined,
-): { poolCost: number; stabilityCost: number } | undefined {
-  const modUtils = (window as any)?.modAPI?.utils;
-  if (
-    typeof modUtils?.getActionCost !== 'function' ||
-    !recipeStats ||
-    !progressState
-  ) {
-    return undefined;
-  }
-
-  integrationDiagnostics.nativeGetActionCostCalls++;
-  try {
-    const result = modUtils.getActionCost(
-      technique,
-      entity,
-      recipeStats,
-      progressState,
-    );
-    if (
-      result &&
-      typeof result.poolCost === 'number' &&
-      typeof result.stabilityCost === 'number'
-    ) {
-      return {
-        poolCost: Math.max(0, result.poolCost),
-        stabilityCost: Math.max(0, result.stabilityCost),
-      };
-    }
-  } catch (error) {
-    integrationDiagnostics.nativeGetActionCostErrors++;
-    debugLog(
-      '[CraftBuddy] ModAPI getActionCost failed, using local costs:',
-      error,
-    );
-  }
-
-  return undefined;
-}
-
-function toFinitePositiveNumber(value: unknown): number | undefined {
-  const parsed =
-    typeof value === 'number'
-      ? value
-      : typeof value === 'string'
-        ? Number(value)
-        : undefined;
-  if (parsed === undefined || !Number.isFinite(parsed) || parsed <= 0) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function toFiniteNumber(value: unknown): number | undefined {
-  const parsed =
-    typeof value === 'number'
-      ? value
-      : typeof value === 'string'
-        ? Number(value)
-        : undefined;
-  if (parsed === undefined || !Number.isFinite(parsed)) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function parsePositiveGameNumber(value: unknown): number | undefined {
-  const parsed = parseGameNumber(value, Number.NaN);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function findPositiveGameNumber(candidates: unknown[]): number | undefined {
-  for (const candidate of candidates) {
-    const parsed = parsePositiveGameNumber(candidate);
-    if (parsed !== undefined) {
-      return parsed;
-    }
-  }
-  return undefined;
-}
-
-function pickPositiveGameNumber(
-  candidates: unknown[],
-  fallback: number,
-): number {
-  return findPositiveGameNumber(candidates) ?? fallback;
-}
-
 function applyCapTargetFallbacks(params: {
   recipe: RecipeItem | undefined;
   recipeStats: CraftingRecipeStats | undefined;
@@ -1774,26 +1143,6 @@ function applyCapTargetFallbacks(params: {
     perfection: usedPerfectionCap,
   };
 }
-
-function resolveDomProgressTarget(params: {
-  domTarget: number | undefined;
-  cap: number | undefined;
-  recipe: RecipeItem | undefined;
-  recipeStats: CraftingRecipeStats | undefined;
-}): number | undefined {
-  const { domTarget, cap, recipe, recipeStats } = params;
-  if (domTarget === undefined || domTarget <= 0) {
-    return undefined;
-  }
-  if (
-    cap !== undefined &&
-    shouldUseCapAsTargetFallback({ recipe, recipeStats })
-  ) {
-    return cap;
-  }
-  return domTarget;
-}
-
 
 function recordHarmonyDataSource(source: HarmonyDataSource): void {
   integrationDiagnostics.lastHarmonyDataSource = source;
@@ -1979,108 +1328,6 @@ function syncCraftingContextFromState(
   }
 }
 
-function sanitizeNativeCraftingVariables(
-  raw: unknown,
-): Record<string, number> | undefined {
-  if (!raw || typeof raw !== 'object') {
-    return undefined;
-  }
-
-  const result: Record<string, number> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    const parsed = toFiniteNumber(value);
-    if (parsed !== undefined) {
-      result[key] = parsed;
-    }
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
-function resolveNativeCraftingVariables(
-  entity: CraftingEntity,
-  progressState: ProgressState,
-  recipeStats?: CraftingRecipeStats,
-): Record<string, number> | undefined {
-  if (!recipeStats) {
-    return undefined;
-  }
-
-  const modUtils = (window as any)?.modAPI?.utils;
-  if (typeof modUtils?.getVariablesFromCraftingEntity !== 'function') {
-    return undefined;
-  }
-
-  try {
-    const raw = modUtils.getVariablesFromCraftingEntity(
-      entity,
-      recipeStats,
-      progressState,
-    );
-    const sanitized = sanitizeNativeCraftingVariables(raw);
-    if (sanitized) {
-      integrationDiagnostics.usingModApiCraftingVariableResolver = true;
-      return sanitized;
-    }
-  } catch (error) {
-    console.warn(
-      '[CraftBuddy] ModAPI variable resolver failed, using local variable fallback:',
-      error,
-    );
-  }
-
-  return undefined;
-}
-
-function resolveMaxToxicityCap(
-  realm: string | undefined,
-  fallbackValue: number,
-): number {
-  const modUtils = (window as any)?.modAPI?.utils;
-  if (!realm || typeof modUtils?.getMaxToxicity !== 'function') {
-    return fallbackValue;
-  }
-
-  try {
-    const nativeCap = toFinitePositiveNumber(modUtils.getMaxToxicity(realm));
-    if (nativeCap !== undefined) {
-      integrationDiagnostics.usingModApiMaxToxicityGetter = true;
-      return nativeCap;
-    }
-  } catch (error) {
-    console.warn(
-      '[CraftBuddy] ModAPI max toxicity getter failed, using local fallback:',
-      error,
-    );
-  }
-
-  return fallbackValue;
-}
-
-function extractCapCandidate(source: any, keys: string[]): number | undefined {
-  for (const key of keys) {
-    const raw = source?.[key];
-    if (raw === undefined || raw === null) continue;
-
-    if (typeof raw === 'object') {
-      const nested =
-        toFinitePositiveNumber(raw.flat) ??
-        toFinitePositiveNumber(raw.value) ??
-        toFinitePositiveNumber(raw.max) ??
-        toFinitePositiveNumber(raw.cap);
-      if (nested !== undefined) {
-        return nested;
-      }
-      continue;
-    }
-
-    const parsed = toFinitePositiveNumber(raw);
-    if (parsed !== undefined) {
-      return parsed;
-    }
-  }
-  return undefined;
-}
-
 function updateProgressCapsFromRecipeStats(recipeStats: any): void {
   if (!recipeStats) return;
 
@@ -2181,89 +1428,6 @@ function updateProgressCapsFromModApi(
   }
 }
 
-function extractCompletionBonusStacks(
-  buffs: CraftingBuff[] | undefined,
-  completion: number,
-  completionTarget: number,
-): { stacks: number; source: CompletionBonusSource; mismatch: boolean } {
-  const expectedFromProgress =
-    completionTarget > 0
-      ? Math.max(
-          0,
-          getBonusAndChance(completion, completionTarget).guaranteed - 1,
-        )
-      : undefined;
-
-  let stacksFromBuff: number | undefined = undefined;
-  const completionBonusBuffKey = getModApiCompletionBonusBuffKey();
-  if (buffs) {
-    for (const buff of buffs) {
-      const stacks = Number((buff as any)?.stacks ?? 0);
-      if (!Number.isFinite(stacks) || stacks <= 0) continue;
-
-      const key = normalizeBuffKey(buff?.name);
-      const isNamedCompletionBonus =
-        key === completionBonusBuffKey ||
-        key === 'completion_bonus' ||
-        (key.includes('completion') && key.includes('bonus'));
-
-      const controlStat = (buff as any)?.stats?.control;
-      const controlValue = Number(controlStat?.value ?? NaN);
-      const controlScaling = String(controlStat?.scaling ?? '').toLowerCase();
-      const hasNoActionBlocks =
-        !(buff as any)?.effects?.length &&
-        !(buff as any)?.onFusion?.length &&
-        !(buff as any)?.onRefine?.length &&
-        !(buff as any)?.onStabilize?.length &&
-        !(buff as any)?.onSupport?.length;
-      const isControlStacksSignature =
-        Number.isFinite(controlValue) &&
-        Math.abs(controlValue - 0.1) < 1e-6 &&
-        controlScaling === 'stacks' &&
-        hasNoActionBlocks;
-
-      if (isNamedCompletionBonus || isControlStacksSignature) {
-        const normalizedStacks = Math.max(0, Math.floor(stacks));
-        stacksFromBuff =
-          stacksFromBuff === undefined
-            ? normalizedStacks
-            : Math.max(stacksFromBuff, normalizedStacks);
-      }
-    }
-  }
-
-  if (stacksFromBuff !== undefined) {
-    const mismatch =
-      expectedFromProgress !== undefined &&
-      stacksFromBuff !== expectedFromProgress;
-    if (mismatch) {
-      debugLog(
-        `[CraftBuddy] Completion bonus mismatch (buff=${stacksFromBuff}, computed=${expectedFromProgress}), using buff value`,
-      );
-    }
-    return { stacks: stacksFromBuff, source: 'buff', mismatch };
-  }
-
-  if (expectedFromProgress !== undefined) {
-    return {
-      stacks: expectedFromProgress,
-      source: 'computed',
-      mismatch: false,
-    };
-  }
-
-  return { stacks: 0, source: 'none', mismatch: false };
-}
-
-function getKnownCraftingTechniquesFromState(
-  state: RootState | any,
-): KnownCraftingTechnique[] | undefined {
-  const knownTechniques = state?.player?.player?.craftingTechniques;
-  return Array.isArray(knownTechniques)
-    ? (knownTechniques as KnownCraftingTechnique[])
-    : undefined;
-}
-
 function getCurrentKnownCraftingTechniques():
   | KnownCraftingTechnique[]
   | undefined {
@@ -2275,378 +1439,6 @@ function getCurrentKnownCraftingTechniques():
   }
 
   return lastKnownCraftingTechniques;
-}
-
-/**
- * Convert game CraftingTechnique array to our skill definitions.
- */
-function convertGameTechniques(
-  techniques: CraftingTechnique[] | undefined,
-  knownTechniques?: KnownCraftingTechnique[],
-): SkillDefinition[] {
-  if (!techniques || techniques.length === 0) {
-    console.warn('[CraftBuddy] No techniques provided');
-    return [];
-  }
-
-  // Log full technique data for debugging
-  debugLog(
-    '[CraftBuddy] Raw techniques from game:',
-    JSON.stringify(
-      techniques.map((t) => ({
-        name: t?.name,
-        type: t?.type,
-        effects: t?.effects?.map((e) => ({
-          kind: e?.kind,
-          amount: (e as any)?.amount,
-        })),
-      })),
-      null,
-      2,
-    ),
-  );
-
-  const skills: SkillDefinition[] = [];
-  const modApiTechniqueFromKnown = getModApiTechniqueFromKnownResolver();
-  const knownTechniqueByName =
-    buildKnownCraftingTechniqueNameMap(knownTechniques);
-
-  for (const tech of techniques) {
-    if (!tech) continue;
-
-    let sourceTech = tech;
-    let usedModApiTechniqueFromKnown = false;
-    if (modApiTechniqueFromKnown && knownTechniqueByName.size > 0) {
-      try {
-        const resolvedTechnique = resolveLiveCraftingTechnique({
-          liveTechnique: tech,
-          knownTechniqueByName,
-          resolveTechniqueFromKnown: modApiTechniqueFromKnown,
-        });
-        if (resolvedTechnique.source === 'known') {
-          sourceTech = resolvedTechnique.technique;
-          usedModApiTechniqueFromKnown = true;
-          integrationDiagnostics.usingModApiTechniqueFromKnown = true;
-          integrationDiagnostics.techniqueFromKnownMatchCount++;
-        } else {
-          integrationDiagnostics.techniqueFromKnownFallbackCount++;
-          debugLog(
-            `[CraftBuddy] No known-technique name match for live technique "${tech.name}", using live payload`,
-          );
-        }
-      } catch (error) {
-        integrationDiagnostics.techniqueFromKnownFallbackCount++;
-        integrationDiagnostics.techniqueFromKnownResolverFailureCount++;
-        console.warn(
-          '[CraftBuddy] ModAPI craftingTechniqueFromKnown resolver failed, using live technique:',
-          error,
-        );
-      }
-    }
-
-    const qiCost = sourceTech.noQiCost ? 0 : sourceTech.poolCost || 0;
-    const stabilityCost = sourceTech.stabilityCost || 0;
-    const toxicityCost = sourceTech.toxicityCost || 0;
-    const techType = sourceTech.type || 'support';
-    const techName = sourceTech.name || 'Unknown';
-    const cooldown = (() => {
-      const staticCooldown = Number(sourceTech.cooldown || 0);
-      if (Number.isFinite(staticCooldown) && staticCooldown > 0) {
-        return staticCooldown;
-      }
-      const observedCooldown = Number(sourceTech.currentCooldown || 0);
-      if (Number.isFinite(observedCooldown) && observedCooldown > 0) {
-        return observedCooldown;
-      }
-      return 0;
-    })();
-    const preventsMaxStabilityDecay = sourceTech.noMaxStabilityLoss === true;
-    const masteryData = extractMasteryData(sourceTech.mastery);
-    // poolcost/stabilitycost/successchance masteries are already baked into
-    // technique pool/stability/success values by game-side technique construction.
-    // Keep only runtime-applied mastery kinds to avoid double counting in simulation.
-    const masteryEntries = masteryData.masteryEntries.filter((entry) => {
-      const kind = String((entry as any)?.kind || '').toLowerCase();
-      if (
-        kind === 'poolcost' ||
-        kind === 'stabilitycost' ||
-        kind === 'successchance'
-      ) {
-        return false;
-      }
-      // If we resolved a mastery-applied technique from known-technique data,
-      // avoid double-applying upgrade masteries in simulation.
-      if (usedModApiTechniqueFromKnown && kind === 'upgrade') {
-        return false;
-      }
-      return true;
-    });
-    const mastery: SkillMastery = { ...masteryData.bonuses };
-    delete mastery.poolCostReduction;
-    delete mastery.stabilityCostReduction;
-    delete mastery.successChanceBonus;
-
-    let baseCompletionGain = 0;
-    let basePerfectionGain = 0;
-    let stabilityGain = 0;
-    let maxStabilityChange = 0;
-    let restoresMaxStabilityToFull = false;
-    let toxicityCleanse = 0;
-    let buffType = BuffType.NONE;
-    let buffDuration = 0;
-    let buffMultiplier = 1.0;
-    // Track scaling stat for each effect type separately
-    let completionScalingStat: string | undefined;
-    let perfectionScalingStat: string | undefined;
-
-    // Track stack-buff requirements/consumption (e.g., Pressure)
-    let buffRequirement: { buffName: string; amount: number } | undefined;
-    let buffCost:
-      | { buffName: string; amount?: number; consumeAll?: boolean }
-      | undefined;
-
-    const effects = [
-      ...(sourceTech.effects || []),
-      ...(masteryData.extraEffects || []),
-    ];
-    for (const effect of effects) {
-      if (!effect) continue;
-
-      // Handle buff gating/consumption effects (game types are loosely typed; use best-effort parsing)
-      const kind = String((effect as any).kind || '');
-      if (
-        /restore.*maxstability/i.test(kind) ||
-        /maxstability.*restore/i.test(kind)
-      ) {
-        restoresMaxStabilityToFull = true;
-      }
-      if (/requirebuff/i.test(kind)) {
-        const buff = (effect as any).buff;
-        const rawName = (buff?.name || '').toLowerCase().trim();
-        const buffName = rawName.replace(/\s+/g, '_');
-        const amount =
-          (effect as any).stacks?.value ?? (effect as any).amount?.value ?? 1;
-        if (buffName) {
-          buffRequirement = { buffName, amount };
-        }
-      }
-      if (/consumebuff/i.test(kind)) {
-        const buff = (effect as any).buff;
-        const rawName = (buff?.name || '').toLowerCase().trim();
-        const buffName = rawName.replace(/\s+/g, '_');
-        const amount =
-          (effect as any).stacks?.value ?? (effect as any).amount?.value;
-        if (buffName) {
-          buffCost =
-            amount !== undefined
-              ? { buffName, amount }
-              : { buffName, consumeAll: true };
-        }
-      }
-
-      switch (effect.kind) {
-        case 'completion':
-          baseCompletionGain = effect.amount?.value || 0;
-          completionScalingStat = effect.amount?.stat;
-          break;
-        case 'perfection':
-          basePerfectionGain = effect.amount?.value || 0;
-          perfectionScalingStat = effect.amount?.stat;
-          break;
-        case 'stability':
-          stabilityGain = effect.amount?.value || 0;
-          break;
-        case 'maxStability':
-          maxStabilityChange = effect.amount?.value || 0;
-          break;
-        case 'cleanseToxicity':
-          toxicityCleanse = effect.amount?.value || 0;
-          break;
-        case 'createBuff':
-          const buff = effect.buff;
-          const buffName = (buff?.name || '').toLowerCase();
-
-          if (
-            buffName.includes('control') ||
-            buffName.includes('inner focus')
-          ) {
-            buffType = BuffType.CONTROL;
-            if (buff?.stats?.control?.value) {
-              buffMultiplier = 1 + (buff.stats.control.value || 0.4);
-            }
-          } else if (
-            buffName.includes('intensity') ||
-            buffName.includes('inner fire')
-          ) {
-            buffType = BuffType.INTENSITY;
-            if (buff?.stats?.intensity?.value) {
-              buffMultiplier = 1 + (buff.stats.intensity.value || 0.4);
-            }
-          }
-          buffDuration = effect.stacks?.value || 2;
-          break;
-      }
-    }
-
-    // Some skills (e.g., Restoring Brilliance) fully restore max stability.
-    // The effect shape for this can vary; use a name-based fallback if we didn't detect a dedicated effect kind.
-    if (
-      !restoresMaxStabilityToFull &&
-      techName.toLowerCase().includes('restoring brilliance')
-    ) {
-      restoresMaxStabilityToFull = true;
-    }
-
-    // Only set scaling flags based on actual effect scaling stats, not just technique type
-    // This fixes the bug where skills without perfection effects were showing predicted perfection gains
-    const scalesWithIntensity = completionScalingStat === 'intensity';
-    const scalesWithControl = perfectionScalingStat === 'control';
-    const hasConsumeBuff = effects.some((e) => e?.kind === 'consumeBuff');
-    const isDisciplinedTouch =
-      hasConsumeBuff || techName.toLowerCase().includes('disciplined');
-
-    // Extract condition requirement (e.g., Harmonious skills require 'positive' or 'veryPositive')
-    const conditionRequirement = sourceTech.conditionRequirement as
-      | string
-      | undefined;
-
-    // Extract Qi restore from 'pool' effect (for skills like Siphon Qi)
-    let qiRestore = 0;
-    for (const effect of effects) {
-      if (effect?.kind === 'pool' && effect.amount?.value) {
-        qiRestore = effect.amount.value;
-      }
-    }
-
-    // Extract icon from technique (game provides icon as string path)
-    const icon = sourceTech.icon as string | undefined;
-
-    skills.push({
-      name: techName,
-      key: techName.toLowerCase().replace(/\s+/g, '_'),
-      qiCost,
-      stabilityCost,
-      successChance:
-        typeof (sourceTech as any).successChance === 'number'
-          ? normalizeChance((sourceTech as any).successChance)
-          : undefined,
-      baseCompletionGain,
-      basePerfectionGain,
-      stabilityGain,
-      maxStabilityChange,
-      buffType,
-      buffDuration,
-      buffMultiplier,
-      type: techType,
-      icon,
-      nativeTechnique: sourceTech,
-      scalesWithControl,
-      scalesWithIntensity,
-      isDisciplinedTouch,
-      preventsMaxStabilityDecay,
-      toxicityCost: toxicityCost > 0 ? toxicityCost : undefined,
-      toxicityCleanse: toxicityCleanse > 0 ? toxicityCleanse : undefined,
-      cooldown: cooldown > 0 ? cooldown : undefined,
-      mastery: Object.keys(mastery).length > 0 ? mastery : undefined,
-      masteryEntries: masteryEntries.length > 0 ? masteryEntries : undefined,
-      conditionRequirement,
-      buffRequirement,
-      buffCost,
-      restoresQi: qiRestore > 0,
-      qiRestore: qiRestore > 0 ? qiRestore : undefined,
-      restoresMaxStabilityToFull: restoresMaxStabilityToFull || undefined,
-      effects: effects as any,
-      grantedBuff: effects.find((e) => e?.kind === 'createBuff')?.buff as any,
-    });
-  }
-
-  debugLog(`[CraftBuddy] Loaded ${skills.length} techniques from game`);
-  return skills;
-}
-
-interface InventoryItemLike {
-  name: string;
-  stacks: number;
-}
-
-function convertGameItemsToActions(
-  entity: CraftingEntity,
-  inventoryItems: InventoryItemLike[] | undefined,
-  /**
-   * Items the native auto-use loadout will apply itself.
-   *
-   * Excluding them keeps the optimizer from planning a consumption the game is
-   * already going to perform, which would double-spend the player's pills.
-   */
-  excludedItemNames: ReadonlySet<string> = new Set<string>(),
-): { itemActions: SkillDefinition[]; itemCounts: Map<string, number> } {
-  const itemActions: SkillDefinition[] = [];
-  const itemCounts = new Map<string, number>();
-  const quickAccess = ((entity as any)?.craftingQuickAccess || []) as (
-    | string
-    | undefined
-  )[];
-  if (!quickAccess || quickAccess.length === 0) {
-    return { itemActions, itemCounts };
-  }
-
-  const gameItems = (window as any)?.modAPI?.gameData?.items || {};
-  const seen = new Set<string>();
-
-  for (const name of quickAccess) {
-    if (!name) continue;
-    const normalizedName = String(name)
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, '_');
-    if (!normalizedName || seen.has(normalizedName)) continue;
-    seen.add(normalizedName);
-    if (excludedItemNames.has(normalizedName)) continue;
-
-    const inventoryEntry = inventoryItems?.find(
-      (entry) => entry?.name === name,
-    );
-    const stacks = Number(inventoryEntry?.stacks ?? 0);
-    if (!Number.isFinite(stacks) || stacks <= 0) continue;
-
-    const gameItem = gameItems[name] as
-      | CraftingPillItem
-      | CraftingReagentItem
-      | undefined;
-    if (!gameItem) continue;
-    if (gameItem.kind !== 'pill' && gameItem.kind !== 'reagent') continue;
-
-    const effects = Array.isArray((gameItem as any).effects)
-      ? (gameItem as any).effects
-      : [];
-    if (effects.length === 0) continue;
-
-    itemCounts.set(normalizedName, Math.floor(stacks));
-    itemActions.push({
-      name: `Use ${name}`,
-      key: `item_${normalizedName}`,
-      actionKind: 'item',
-      itemName: normalizedName,
-      consumesTurn: false,
-      reagentOnlyAtStepZero: gameItem.kind === 'reagent',
-      qiCost: 0,
-      stabilityCost: 0,
-      successChance: 1,
-      baseCompletionGain: 0,
-      basePerfectionGain: 0,
-      stabilityGain: 0,
-      maxStabilityChange: 0,
-      buffType: BuffType.NONE,
-      buffDuration: 0,
-      buffMultiplier: 1,
-      type: 'support',
-      toxicityCost: Number((gameItem as any).toxicity || 0) || undefined,
-      effects: effects as any,
-      icon: (gameItem as any).icon as string | undefined,
-    });
-  }
-
-  return { itemActions, itemCounts };
 }
 
 /**
@@ -3614,241 +2406,6 @@ function refreshReduxStoreConnection(force: boolean = false): void {
   if (!unsubscribeFromReduxStore) {
     connectReduxStore(discoveredStore);
   }
-}
-
-function getGameRootElement(): ParentNode {
-  return (
-    document.getElementById('root') ||
-    document.getElementById('app') ||
-    document.body
-  );
-}
-
-function isElementInCraftBuddyOverlay(element: Element | null): boolean {
-  return !!element?.closest('#craftbuddy-overlay');
-}
-
-function isElementVisible(element: Element): boolean {
-  const htmlElement = element as HTMLElement;
-  const style = window.getComputedStyle(htmlElement);
-  return isRenderableOnscreenElement({
-    isConnected: htmlElement.isConnected,
-    isHidden: htmlElement.hidden || !!htmlElement.closest('[hidden]'),
-    isAriaHidden:
-      htmlElement.getAttribute('aria-hidden') === 'true' ||
-      !!htmlElement.closest('[aria-hidden="true"]'),
-    display: style.display,
-    visibility: style.visibility,
-    opacity: style.opacity,
-    clientRects: Array.from(htmlElement.getClientRects()).map((rect) => ({
-      top: rect.top,
-      left: rect.left,
-      right: rect.right,
-      bottom: rect.bottom,
-      width: rect.width,
-      height: rect.height,
-    })),
-    viewportWidth:
-      window.innerWidth || document.documentElement.clientWidth || 0,
-    viewportHeight:
-      window.innerHeight || document.documentElement.clientHeight || 0,
-  });
-}
-
-function getElementRectSnapshot(element: Element): OverlayRectLike | null {
-  const rect = element.getBoundingClientRect();
-  if (!(rect.width > 0) || !(rect.height > 0)) {
-    return null;
-  }
-
-  return {
-    top: rect.top,
-    left: rect.left,
-    right: rect.right,
-    bottom: rect.bottom,
-    width: rect.width,
-    height: rect.height,
-  };
-}
-
-function pickCraftingHudAnchorRect(
-  element: Element,
-  viewportWidth: number,
-  viewportHeight: number,
-): OverlayRectLike | null {
-  const elementRect = getElementRectSnapshot(element);
-  if (!elementRect) {
-    return null;
-  }
-
-  let current: Element | null = element;
-  let best: OverlayRectLike | null = null;
-  let bestArea = 0;
-
-  for (
-    let depth = 0;
-    current && depth < MAX_HUD_RECT_PARENT_DEPTH;
-    depth++, current = current.parentElement
-  ) {
-    if (isElementInCraftBuddyOverlay(current) || !isElementVisible(current)) {
-      continue;
-    }
-
-    const rect = getElementRectSnapshot(current);
-    if (!rect) {
-      continue;
-    }
-
-    if (
-      rect.width > viewportWidth * MAX_HUD_RECT_VIEWPORT_WIDTH_RATIO ||
-      rect.height > viewportHeight * MAX_HUD_RECT_VIEWPORT_HEIGHT_RATIO
-    ) {
-      continue;
-    }
-
-    if (!isOverlayParentRectUsable({ elementRect, candidateRect: rect })) {
-      continue;
-    }
-
-    const area = rect.width * rect.height;
-    if (area > bestArea) {
-      best = rect;
-      bestArea = area;
-    }
-  }
-
-  return best ?? elementRect;
-}
-
-function findVisibleCraftingProgressElement(
-  gameRoot: ParentNode,
-  selector: string,
-  fallbackPattern: RegExp,
-): Element | undefined {
-  const pickSmallestVisible = (elements: Element[]): Element | undefined => {
-    return elements
-      .filter((el) => !isElementInCraftBuddyOverlay(el) && isElementVisible(el))
-      .map((el) => ({
-        element: el,
-        rect: getElementRectSnapshot(el),
-      }))
-      .filter(
-        (
-          candidate,
-        ): candidate is {
-          element: Element;
-          rect: OverlayRectLike;
-        } => candidate.rect !== null,
-      )
-      .sort((a, b) => {
-        const areaA = a.rect.width * a.rect.height;
-        const areaB = b.rect.width * b.rect.height;
-        return areaA - areaB;
-      })[0]?.element;
-  };
-
-  const selectorMatch = pickSmallestVisible(
-    Array.from(gameRoot.querySelectorAll(selector)),
-  );
-  if (selectorMatch) {
-    return selectorMatch;
-  }
-
-  return pickSmallestVisible(
-    Array.from(gameRoot.querySelectorAll('*')).filter(
-      (el) =>
-        fallbackPattern.test(el.textContent || '') && el.children.length < 5,
-    ),
-  );
-}
-
-function extractCraftingProgressPair(
-  element: Element | undefined,
-): { current: number; target: number } | undefined {
-  if (!element) {
-    return undefined;
-  }
-
-  const candidates = [
-    (element as HTMLElement).innerText,
-    element.textContent,
-    element.getAttribute('aria-label'),
-    element.parentElement?.textContent,
-  ];
-
-  for (const candidate of candidates) {
-    const parsed = parseCraftingProgressPair(candidate || '');
-    if (parsed) {
-      return parsed;
-    }
-  }
-
-  return undefined;
-}
-
-function getVisibleCraftingUiOccupiedRect(): OverlayRectLike | null {
-  const gameRoot = getGameRootElement();
-  const viewportWidth =
-    window.innerWidth || document.documentElement.clientWidth || 0;
-  const viewportHeight =
-    window.innerHeight || document.documentElement.clientHeight || 0;
-  if (!(viewportWidth > 0) || !(viewportHeight > 0)) {
-    return null;
-  }
-
-  const progressElements = [
-    findVisibleCraftingProgressElement(
-      gameRoot,
-      '[class*="stability"]',
-      /Stability:/i,
-    ),
-    findVisibleCraftingProgressElement(
-      gameRoot,
-      '[class*="completion"]',
-      /Completion:/i,
-    ),
-    findVisibleCraftingProgressElement(
-      gameRoot,
-      '[class*="perfection"]',
-      /Perfection:/i,
-    ),
-    findVisibleCraftingProgressElement(
-      gameRoot,
-      '[class*="pool"], [class*="qi"]',
-      /(?:Qi|Pool):/i,
-    ),
-  ].filter((element): element is Element => !!element);
-
-  const progressRects = progressElements
-    .map((element) => getElementRectSnapshot(element))
-    .map((rect) =>
-      rect ? expandOverlayRect(rect, OVERLAY_OCCUPIED_RECT_PADDING) : null,
-    );
-  const progressRect = unionOverlayRects(progressRects);
-
-  const supplementalRects = Array.from(
-    gameRoot.querySelectorAll(
-      'button, [role="button"], [class*="buff"], [class*="condition"]',
-    ),
-  )
-    .filter(
-      (element) =>
-        !isElementInCraftBuddyOverlay(element) && isElementVisible(element),
-    )
-    .map((element) => getElementRectSnapshot(element))
-    .filter((rect): rect is OverlayRectLike => {
-      return (
-        !!rect &&
-        isRectInOverlayHudCluster({
-          rect,
-          progressRect,
-          viewportWidth,
-        })
-      );
-    })
-    .map((rect) => expandOverlayRect(rect, OVERLAY_OCCUPIED_RECT_PADDING));
-
-  return unionOverlayRects([...progressRects, ...supplementalRects]);
 }
 
 function applyOverlayContainerLayout(): void {
@@ -5359,58 +3916,8 @@ try {
   console.warn('[CraftBuddy] Failed to register keyboard shortcuts:', e);
 }
 
-/**
- * Create title screen indicator.
- */
-function createTitleScreenIndicator(): void {
-  try {
-    if (document.getElementById('craftbuddy-indicator')) {
-      return;
-    }
-
-    const indicator = document.createElement('div');
-    indicator.id = 'craftbuddy-indicator';
-    indicator.innerHTML = `AFNM-CraftBuddy v${MOD_METADATA.version} Loaded`;
-
-    Object.assign(indicator.style, {
-      position: 'fixed',
-      top: '10px',
-      right: '10px',
-      padding: '8px 12px',
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
-      color: '#FFD700',
-      fontFamily: 'sans-serif',
-      fontSize: '12px',
-      fontWeight: 'bold',
-      borderRadius: '4px',
-      border: '1px solid rgba(255, 215, 0, 0.5)',
-      zIndex: '9999',
-      pointerEvents: 'none',
-      textShadow: '0 0 5px rgba(255, 215, 0, 0.5)',
-      opacity: '1',
-      transition: 'opacity 1s ease',
-    });
-
-    document.body.appendChild(indicator);
-    debugLog('[CraftBuddy] Title screen indicator created');
-
-    setTimeout(() => {
-      if (indicator) {
-        indicator.style.opacity = '0';
-        setTimeout(() => {
-          if (indicator && indicator.parentNode) {
-            indicator.parentNode.removeChild(indicator);
-          }
-        }, 1000);
-      }
-    }, 5000);
-  } catch (e) {
-    console.warn('[CraftBuddy] Failed to create title screen indicator:', e);
-  }
-}
-
 // Initialize
-createTitleScreenIndicator();
+createTitleScreenIndicator(MOD_METADATA.version);
 createOverlayContainer();
 startPolling();
 
