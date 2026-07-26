@@ -32,6 +32,7 @@ Community feedback on 5.x, and what was actually wrong:
 | "Disciplined Touch doesn't scale perfection off intensity" | Real bug: it used control. | Fixed against the 0.7.5 tooltip. |
 | "ignores harmonious and brilliant conditions" | They were small additive nudges. | Routed through reachable tier. |
 | "doesn't stop one action short of finishing; spams perfection with leftover qi" | Terminal states were not modelled. | `willAutoFinish` makes those states terminal. |
+| "picks a risky overshooting technique as if the bar were already filled" | Real bug: expected progress was clamped to the remaining bar _before_ being weighted by success chance, so a 65%-success gamble was credited the full remaining bar. | The clamp now sits inside the success weighting, matching the runtime. |
 | "does it account for stability loss from soulflame triggers?" | It did not — soulflame existed only in a test fixture. | Modelled through the definition-driven buff path, with a runtime-parity test. |
 | Praise: "good at juggling Qi Pool and Stability" | — | Protected: the guaranteed survivability floor and its replays are regression assets. |
 
@@ -48,6 +49,7 @@ Community feedback on 5.x, and what was actually wrong:
 
 - The additive weighted scorer is gone. Tier value, the binding-bar gate, bar balance, bonus-roll credit and residual shortfall now compose one conjunctive goal score with documented commensurability: banking a tier always beats margin polish, and dying never beats the progress made on the way there.
 - Sublime goals come from real band thresholds instead of cap-derived multipliers, which used to overshoot the true two-band requirement.
+- **Expected progress is weighted by success chance _under_ the headroom cap**, not over it: `p * min(gain, headroom)`, not `min(p * gain, headroom)`. The runtime applies completion and perfection only in the success branch, so the old order let the cap swallow the failure risk of any technique whose raw gain overshot the bar — a 65%-success Explosive Fusion was credited the whole 9,170 completion remaining and became the top recommendation. Fixed identically in both engines; 11 of 585 corpus transitions moved by one point and the two engines still agree on every transition. This closed the last failing benchmark contract, which now reports 98 of 98 passing.
 
 ### Terminal states
 
@@ -72,6 +74,11 @@ Community feedback on 5.x, and what was actually wrong:
 - **The recommendation was not deterministic**; a hash-ordered condition merge could flip the policy between identical runs. Fixed and now directly tested.
 - Native search is **1.90x faster at an identical search shape**, with byte-identical ranked scores.
 
+### Internals
+
+- `src/modContent/index.ts` was 5,827 lines mixing four unrelated jobs. 1,478 lines moved out verbatim into five seams — `craftSession.ts`, `craftStateExtraction.ts`, `modApiProviders.ts`, `overlayMount.ts` and `debugHooks.ts` — leaving the polling loop and the session state it mutates. No behaviour changed; the seam contracts are pinned by their own suite and the existing integration suites pass unchanged.
+- Outside the optimizer, everything now imports the single `src/optimizer/index.ts` facade, including the conjunctive outcome evaluator.
+
 ## Measured and rejected
 
 Recorded so nobody re-attempts them without new data:
@@ -83,7 +90,6 @@ Recorded so nobody re-attempts them without new data:
 ## Known limitations
 
 - Per-harmony item effects (`harmonyAugment`) and craft-result material returns are not modelled: they resolve after the craft and cannot change which action is best this turn.
-- One benchmark contract (`user-report-resonance-regression`) still flags a 0.29% ranking tie between two alternatives that are not the recommendation. The resonance model itself is verified byte-for-byte against the runtime.
 - Native auto-use slot conditions cannot be evaluated without the game's condition engine, so CraftBuddy assumes a configured slot will fire — the safe direction, since it withholds a duplicate rather than causing one.
 - The panel is English-only; localization is a roadmap item.
 
