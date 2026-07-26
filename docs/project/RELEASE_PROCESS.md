@@ -3,7 +3,7 @@ title: Release Process
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-06
+last_verified: 2026-07-26
 source_of_truth: package.json, scripts/workshop-upload.ts, scripts/installed-game-runtime.js, .github/workflows/release.yml, ../ModUploader-AFNM/package.json, ../ModUploader-AFNM/electron/main/cli.ts
 review_cycle_days: 30
 related_files:
@@ -11,6 +11,7 @@ related_files:
   - docs/project/TESTING.md
   - scripts/workshop-upload.ts
   - docs/project/WORKSHOP_DESCRIPTION.md
+  - docs/project/RELEASE_NOTES_6.0.0.md
   - .github/workflows/release.yml
 ---
 
@@ -27,6 +28,12 @@ Update both version strings together:
 
 Use the same semantic version in both places, for example `3.5.22`.
 
+Bump the **major** version when the mechanics model, scoring architecture or terminal-state semantics change incompatibly (`v5.0.0` for ModAPI adoption, `v6.0.0` for the 0.7.5 rework).
+
+## 1b. Write the release notes
+
+A major or feature release gets `docs/project/RELEASE_NOTES_<version>.md` covering what changed, what was measured and rejected, and the limitations that genuinely remain. Mirror the player-facing subset into [`WORKSHOP_DESCRIPTION.md`](./WORKSHOP_DESCRIPTION.md)'s "Latest update" block so the Workshop page and the repository agree.
+
 ## 2. Run validation
 
 Minimum release gate:
@@ -41,6 +48,15 @@ If docs changed, regenerate inventory before the release gate:
 bun run docs:inventory
 bun run release:validate
 ```
+
+For a release that touches optimizer mechanics or the Rust engine, also run:
+
+```bash
+bun run wasm:test && bun run wasm:build
+bun run optimizer:bench
+```
+
+`release:validate` does not cover the Rust crate or the benchmark contracts.
 
 If the task changed behavior or workflow but the docs did not need edits after review, explicitly confirm that no authoritative docs became stale before continuing.
 

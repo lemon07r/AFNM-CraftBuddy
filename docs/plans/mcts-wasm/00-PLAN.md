@@ -1,5 +1,7 @@
 # Rust/WASM + MCTS Optimizer Upgrade Plan
 
+> **Historical plan — superseded. Applies to the whole `docs/plans/mcts-wasm/` folder.** It records the intent of the original Rust/WASM migration, not the architecture that shipped. Notably: the Rust engine is a search **prior**, not a replacement for the TypeScript search; there is no manual `Finish Craft` action in 0.7.5; outcome tiers are conjunctive band gates owned by `src/optimizer/outcome.ts`; and a compact mutate/undo state model was measured and rejected. For current truth read `docs/project/ARCHITECTURE.md`, `OPTIMIZER_DESIGN.md`, `MECHANICS_PARITY.md` and `OPTIMIZER_ENGINE_FINDINGS.md`.
+
 ## Goal
 
 Replace the current beam-limited TypeScript lookahead search with a Rust optimizer compiled to WebAssembly, while preserving the existing CraftBuddy TypeScript integration surface.

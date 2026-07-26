@@ -27,7 +27,8 @@ Use this to prove the root cause before changing code.
 - Runtime boundary drift? Load `craftbuddy-runtime-integration` and inspect `src/modContent/*` plus `docs/project/INTEGRATION_MODAPI.md`.
 - Search/scoring drift? Load `craftbuddy-optimizer`, then check `docs/project/OPTIMIZER_DESIGN.md`, `search.test.ts`, and `craftSimulation.test.ts`.
 - UI/layout drift? Load `craftbuddy-ui-validation` and use the browser harness.
-- Auto-craft stalled? Verify the one-action bridge, synthesized `Finish Craft` -> native `Wait`, and the observed state-advance latch.
+- Auto-craft stalled? Check in this order: the dispatch-time verification result (`stale` recalculates, `unverifiable` pauses by design — a pause is often correct, not a bug), a native auto-use loadout downgrading the policy, the one-action bridge, and the observed state-advance latch.
+- Cross-engine disagreement? Regenerate the differential corpus and run both sides before suspecting search; a bridge serialization gap (an explicit `null`, a dropped field) is more likely than a scoring bug.
 - Debug state needed? Use or extend `window.craftBuddyDebug`; keep exported replay snapshots parity-grade.
 
 ## Phase 3: Test One Hypothesis
@@ -46,7 +47,8 @@ Use this to prove the root cause before changing code.
 ## Rules
 
 - Stop after three failed attempts and re-check the runtime/code/test evidence.
-- Do not patch optimizer constants without a named scenario and regression proof.
+- Do not patch optimizer constants without a named scenario and regression proof, and never to make a benchmark contract pass.
+- Check `docs/project/OPTIMIZER_ENGINE_FINDINGS.md` before optimizing the engine: several plausible ideas were already measured and rejected.
 - Do not add runtime assumptions outside `src/modContent/*`.
 - Do not launch the installed game UI unless the user explicitly requests live validation or a non-disruptive automated path exists.
 

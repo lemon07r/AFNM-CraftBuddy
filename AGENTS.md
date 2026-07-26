@@ -13,8 +13,10 @@ Use Vera before opening many files: `vera search "goal"`, `vera grep "pattern"`,
 - `bun install`: install dependencies.
 - `bun run typecheck`: TypeScript strict-mode check.
 - `bun run test` / `bun run jest src/__tests__/<file>.test.ts`: full or focused Jest tests.
-- `bun run wasm:test`: Rust engine unit tests.
+- `bun run wasm:test`: Rust engine unit, effect-parity, and differential-corpus tests.
 - `bun run wasm:build`: compile Rust/WASM and regenerate the inline WASM module.
+- `bun run optimizer:differential-corpus`: regenerate the TypeScript/Rust parity corpus after any mechanics change.
+- `bun run optimizer:bench`: replay-contract and recommendation-trend comparison.
 - `bun run build`: production webpack build and package `builds/afnm-craftbuddy.zip`.
 - `bun run ui:harness:build` then `bun run ui:harness:serve`: browser harness at `http://127.0.0.1:4173`.
 - `bun run runtime:oracle`, `bun run runtime:extract`, `bun run runtime:grep -- "<pattern>"`: installed-game runtime verification without launching the game UI.
@@ -24,7 +26,10 @@ Use Vera before opening many files: `vera search "goal"`, `vera grep "pattern"`,
 
 ## Hard Rules
 
-- Keep optimizer/search logic pure in `src/optimizer/*`; game access belongs in `src/modContent/*`.
+- Keep optimizer/search logic pure in `src/optimizer/*`; game access belongs in `src/modContent/*`. Outside the optimizer, import only `src/optimizer/index.ts`.
+- `src/optimizer/outcome.ts` is the single authority for band thresholds, outcome tiers, and the auto-finish predicate. Never recompute one elsewhere, including in the UI.
+- Target game version is **0.7.5**: harmony is player-selected across seven types, outcome tiers are conjunctive band gates, there is no manual Finish Craft, and the game applies its own crafting auto-use loadout before every technique.
+- Never tune a scoring constant to make a benchmark contract pass; contracts change only with recorded runtime evidence.
 - Use strict TypeScript, optional chaining for ModAPI access, and `unknown` + narrowing instead of `any`.
 - Formatting follows `.prettierrc`: 2 spaces, single quotes, trailing commas, LF endings.
 - Treat the installed runtime as authoritative when docs, types, and observed behavior disagree.

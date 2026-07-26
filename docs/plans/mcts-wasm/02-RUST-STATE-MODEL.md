@@ -1,5 +1,7 @@
 # Phase 2: Rust Deterministic Engine Parity
 
+> **Historical plan — superseded.** See the banner in `00-PLAN.md`. Parity shipped differently: `crates/craftbuddy-engine/src/effects.rs` plus a generated differential corpus, and the compact fixed-layout state with mutate/undo was measured and rejected (`docs/project/OPTIMIZER_ENGINE_FINDINGS.md`).
+
 ## Goal
 
 Port the deterministic optimizer core from TypeScript to Rust before adding MCTS:

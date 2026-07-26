@@ -8,11 +8,19 @@ source_of_truth: installed AFNM 0.7.5 runtime bundle (scripts/installed-game-run
 review_cycle_days: 90
 related_files:
   - docs/project/MECHANICS_PARITY.md
-  - docs/project/WORKSTREAM_OWNERSHIP.md
+  - docs/project/INTEGRATION_MODAPI.md
+  - docs/project/OPTIMIZER_ENGINE_FINDINGS.md
   - src/optimizer/harmony.ts
   - src/modContent/nativeAutoUse.ts
   - src/modContent/autoCraftExecutor.ts
 ---
+
+<!-- prettier-ignore-start -->
+<!--
+  Do NOT run Prettier over this file. The fenced `js` blocks are verbatim
+  minified runtime source; Prettier reformats embedded JavaScript and would
+  silently destroy the evidence this document exists to preserve.
+-->
 
 # Runtime Evidence 0.7.5
 
@@ -114,11 +122,11 @@ Details that matter:
 
 - It is a *hook*, not a background timer. There is no window in which to "react"
   to native consumption — it happens inside the same user gesture.
-- `autoCraftExecutor.ts` prefers a direct
+- `autoCraftExecutor.ts` used to prefer a direct
   `store.dispatch({ type: 'crafting/executeTechnique' })`, which **bypasses the
-  React handler and therefore skips this hook entirely**. The DOM-click fallback
-  (`dispatchClickSequence`) goes through the handler and does trigger it. The two
-  execution paths are observably different, which is the bug Step 2 must fix.
+  React handler and therefore skips this hook entirely**. The DOM-click path
+  (`dispatchClickSequence`) goes through the handler and does trigger it. That
+  divergence was the bug; see section 4 for how it was resolved.
 - `CRAFTING_AUTO_USE_PILL` / `CRAFTING_AUTO_USE_REAGENT` are **react-dnd drag
   type strings for the loadout editor rows**, not part of this system. The
   earlier identification in the Phase 5 notes was wrong.
@@ -182,12 +190,10 @@ for "finish now".
 
 - `outcome.ts` is correct that 0.7.5 has no manual finish, and `willAutoFinish`
   is the right terminal predicate.
-- The executor still synthesises a `Finish Craft` action and maps it to native
-  `Wait`. That is wrong twice over: if the auto-finish predicate already holds
-  the craft has *already* resolved and no dispatch is needed, and if it does not
-  hold then dispatching `Wait` silently spends 10 stability. Step 2 owns
-  reconciling this, and the UI wording must say "will auto-finish", never
-  "finish the craft".
+- Synthesising a `Finish Craft` action and mapping it to native `Wait` is wrong
+  twice over: if the auto-finish predicate already holds the craft has *already*
+  resolved and no dispatch is needed, and if it does not hold then dispatching
+  `Wait` silently spends 10 stability. See section 4.
 
 ---
 
@@ -239,4 +245,29 @@ Combined with the already-recorded facts that the fixture snapshot carries no
 `harmonyData` at all (so the harmony block never runs for it either way) and
 that the two alternatives sit 0.29% apart while the actual recommendation is a
 third action, the evidence points at the benchmark contract rather than the
-model. Step 7 owns that decision; no scoring constant may be tuned for it.
+model. No scoring constant may be tuned for it.
+
+Since this was recorded, the engine work removed one of the two failing configs
+for an unrelated reason: the native policy prior was never running at all on
+real data (`docs/project/OPTIMIZER_ENGINE_FINDINGS.md`). The finding is now a
+single `legacy_balanced` failure, and the open question is purely whether
+`mustRankBefore` should treat an immaterial tie between two non-recommended
+alternatives as a correctness failure.
+
+---
+
+## 4. What was done about each finding
+
+Recorded here so the evidence and its resolution stay together.
+
+| Finding | Resolution |
+| --- | --- |
+| Auto-use is a pre-technique hook (1.1) | `src/modContent/nativeAutoUse.ts` reads the loadout and projects what it will consume; the policy layer withholds covered items and downgrades `fullActionSpace`, so the two systems never contend for the same pill. |
+| The two execution paths differ (1.1) | Resolved deliberately: **with** a loadout active a technique is executed through the in-game control so the hook runs, and automation stops (`NativeAutoUseUnreachableError`) rather than dispatching in a way that skips it. **Without** a loadout the direct dispatch stays preferred — equivalent for the craft, and far more precise than DOM matching. |
+| The 10-rule slot selector (1.2) | Mirrored by `projectNativeAutoUse`, including the step-0 reagent sort, the `floor(pillsPerRound) - consumedPills` budget, `maxCount` against `pillTracking`, and the cumulative toxicity ceiling that skips a slot but keeps iterating. Slot condition expressions cannot be evaluated without the game's condition engine, so a slot is assumed *satisfiable* — the safe direction. |
+| `trainingMode` applies without removing (1.2) | Inventory-based verification treats it as expected, not as a stale mismatch. |
+| There is no manual finish (2) | Auto mode no longer synthesises a finish once `willAutoFinish` holds, and all player-facing copy says "will auto-finish". |
+| `Wait` costs 10 stability (2.2) | Treated as a normal technique everywhere; it is never used as a stand-in for "finish now". |
+| Resonance matches the runtime (3) | No model change. The benchmark contract carries the open question instead. |
+
+<!-- prettier-ignore-end -->

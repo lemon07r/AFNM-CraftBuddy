@@ -7,19 +7,21 @@ A mod for **Ascend From Nine Mountains** that calculates and displays the recomm
 - Real-time recommendation for the next action during crafting
 - Expected completion/perfection/stability gain preview
 - Effective qi/stability cost preview (current + follow-up), condition/buff/harmony aware
+- Projected outcome tier with per-bar band progress and the bar that is blocking the next tier
 - Alternative action suggestions
 - Lookahead search with presets and manual performance controls
 - Condition forecast awareness and probabilistic branching beyond forecast queue
-- Harmony-aware simulation for sublime crafts
-- Buff/mastery-aware simulation
+- Harmony-aware simulation for all seven 0.7.5 harmonies, including their complexity multipliers
+- Buff, mastery, Soulflame, and toxicity-aware simulation
+- Coexists with the game's crafting auto-use loadout instead of double-spending pills
 - Large-number-safe parsing and formatting for late-game values
 - Snapshot export for bug reports and replayable optimizer debugging
 
+Built for game version **0.7.5**.
+
 ![CraftBuddy Workshop Preview](pictures/workshop_preview.png)
 
-Now the most popular mod on steam workshop.
-<img width="828" height="970" alt="image" src="https://github.com/user-attachments/assets/4a251ba0-5929-4641-8f09-a83cdadfc2fd" />
-
+Now the most popular mod on steam workshop. <img width="828" height="970" alt="image" src="https://github.com/user-attachments/assets/4a251ba0-5929-4641-8f09-a83cdadfc2fd" />
 
 ## Installation
 
@@ -36,12 +38,15 @@ Subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedet
 
 ## Usage
 
-During crafting (forge/alchemical/inscription/resonance), the panel shows:
+During any craft, the panel shows:
 
 - recommended next action
 - expected gains
-- brief reasoning
+- the outcome tier you are on track for, each bar's band count, and which bar is holding the tier back
+- brief reasoning, including when an action is setting up a gated technique
 - alternatives
+
+Crafts in 0.7.5 finish on their own once both bars are far enough along, so CraftBuddy tells you when the craft will auto-finish instead of asking you to confirm anything.
 
 ![CraftBuddy GUI](pictures/gui.png)
 
@@ -56,11 +61,13 @@ During crafting (forge/alchemical/inscription/resonance), the panel shows:
 ![CraftBuddy Settings](pictures/settings.png)
 
 - The settings view opens as a dedicated slide-over panel face inside CraftBuddy, instead of expanding the panel footprint
-- Search presets: `Instant`, `Fast`, `Balanced` (default), `High Accuracy`, `Max`
-- `Lookahead Depth` (`1-96`, default `64`)
-- `Search Time Budget` (`100-10,000ms`, default `4,500ms`)
-- `Search Max Nodes` (`1,000-5,000,000`, default `2,000,000`)
-- `Search Beam Width` (`3-20`, default `8`)
+- Search presets: `Instant`, `Fast` (default), `Balanced`, `High Accuracy`, `Max`
+- `Lookahead Depth` (`1-96`, default `48`)
+- `Search Time Budget` (`100-10,000ms`, default `2,000ms`)
+- `Search Max Nodes` (`1,000-5,000,000`, default `1,000,000`)
+- `Search Beam Width` (`3-20`, default `5`)
+- `Goal Priority` (completion ↔ perfection, default balanced)
+- engine selector (`Legacy` default, `Experimental` Rust/WASM assistance)
 - display controls (rotation/final state/conditions/alternatives)
 
 If you are unsure, use a preset. Presets overwrite all four search sliders together and keep them in safer ratios.
@@ -127,16 +134,18 @@ Output zip: `builds/afnm-craftbuddy.zip`
 
 ## How it works
 
-- Integration layer (`src/modContent/index.ts`) reads crafting state from game/Redux, with DOM/cache fallback paths for resilience.
-- Optimizer (`src/optimizer/*`) simulates candidate actions and runs lookahead search.
-- Search combines deterministic simulation with expected-value modeling for probabilistic outcomes.
-- UI (`src/ui/*`) renders recommendation + alternatives.
+- Integration layer (`src/modContent/*`) reads crafting state from game/Redux root state, with DOM/cache fallback paths for resilience.
+- Optimizer (`src/optimizer/*`, behind a single `index.ts` facade) simulates candidate actions and runs lookahead search.
+- `src/optimizer/outcome.ts` is the single authority for band thresholds, outcome tiers, and the auto-finish predicate.
+- Search combines deterministic simulation with expected-value modeling for probabilistic outcomes, plus a guaranteed survivability floor so a craft is never bet on a recovery proc.
+- A Rust/WASM engine (`crates/craftbuddy-engine/`) models the same mechanics and supplies a search prior; parity is proven by a 1,222-transition differential corpus.
+- UI (`src/ui/*`) renders the recommendation, outcome rows, and alternatives.
 
 ## Technical notes
 
-- TypeScript + React + Material UI
-- Uses AFNM ModAPI hooks (including `onDeriveRecipeDifficulty`) and runtime state extraction
-- Includes harmony simulation and training-mode-aware scoring behavior
+- TypeScript + React + Material UI, plus Rust compiled to inline WASM
+- Uses AFNM ModAPI hooks, utilities, and root-state extraction, with guarded fallbacks throughout
+- Includes harmony simulation and training-mode-aware behavior
 - Includes docs health scripts (`bun run docs:check`)
 
 ## Data accuracy policy
@@ -145,13 +154,17 @@ CraftBuddy prefers direct game data when available and uses documented fallback 
 
 ## Known limitations
 
-- Native game APIs are used where available (scaling, overcrit, can-use-action, caps) with guarded fallback paths for resilience; fallback code may drift if upstream mechanics change
-- Some mechanics still await API exposure (canonical post-modifier cost preview helpers, stable `getNextCondition` path); cost previews currently use internal runtime modeling/parity checks — see `docs/dev-requests/STATUS.md`
+- Native game APIs are used where available (overcrit, can-use-action, caps, condition transitions) with guarded fallback paths for resilience; fallback code may drift if upstream mechanics change
+- Canonical post-modifier cost preview helpers are still unexposed, so cost previews use internal runtime modeling with parity checks — see `docs/dev-requests/STATUS.md`
 - Fallback extraction paths are used when complete runtime state is unavailable
+- Post-craft outcomes (per-harmony item effects, material returns) are not modeled: they cannot change which action is best this turn
+- The panel is English-only
+- Search is wall-clock budgeted, so reachable depth varies by machine; the recommendation for a fixed budget is deterministic
 
 ## Documentation
 
 - Authoritative project docs: `docs/project/`
+- Latest release notes: `docs/project/RELEASE_NOTES_6.0.0.md`
 - Dev API request tracking: `docs/dev-requests/`
 - Curated AFNM reference subset: `docs/reference/`
 - Agent entrypoint: `docs/project/START_HERE_FOR_AGENTS.md`

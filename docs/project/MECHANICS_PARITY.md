@@ -3,85 +3,148 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-06
-source_of_truth: src/optimizer/gameTypes.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*
-review_cycle_days: 14
+last_verified: 2026-07-26
+source_of_truth: src/optimizer/outcome.ts, src/optimizer/skills.ts, src/optimizer/harmony.ts, src/optimizer/harmonyRegistry.ts, src/optimizer/gameTypes.ts, src/optimizer/state.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*
+review_cycle_days: 30
 related_files:
-  - docs/project/ROADMAP.md
-  - docs/dev-requests/API_EXPOSURE_REQUESTS.md
+  - docs/project/RUNTIME_EVIDENCE_075.md
+  - docs/project/OPTIMIZER_DESIGN.md
+  - docs/project/OPTIMIZER_ENGINE_FINDINGS.md
+  - docs/dev-requests/STATUS.md
 ---
 
 # Mechanics Parity Status
 
-## Implemented
+Which AFNM **0.7.5** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
 
-- scaling evaluation pipeline (mastery upgrade hooks, recursive `upgradeKey` search, additive/multiplicative upgrades)
-- crit expected-value handling with excess crit conversion
-- technique effect simulation in transition path
-- buff stat contributions and per-turn/action-specific buff effect execution
-- dynamic max-pool buff evaluation for `% maxpool` restores and qi-cap clamping (for example `Harmonious Expansion` interacting with `Focused Opposition` / `Brilliant Respite`)
-- active-buff definition hydration from skill payloads when runtime snapshots omit buff definitions
-- harmony subsystem simulation (forge/alchemical/inscription/resonance)
-- authoritative harmony-data hydration from `progressState.harmonyTypeData`, with forge-only fallback recovery from verified runtime mirrors (`Heat` native variables / heat buff stacks) when the live payload omits forge heat
-- search-side harmony frontier valuation now reads subsystem-specific setup state for non-forge harmonies as well, so resonance strength/pending-switch state and partial alchemical charge progress are no longer flattened to neutral when ordering bounded search frontiers
-- crafting-context resolution now uses live `modAPI.gameData.itemTypeToHarmonyType` mapping as a fallback when recipe harmony fields are absent, and replay snapshots capture detection provenance plus raw craft-context fields for parity triage
-- condition-effect handling from recipe condition config
-- integration guard against stale recipe condition-effect cache across craft transitions
-- fixed 3-condition forecast queue normalization with probability-weighted EV beyond forecast
-- non-turn item actions keep turn-depth/index in lookahead search
-- training-mode-aware scoring policy
-- large-number-safe parsing/formatting
-- local expression evaluator hardening (guarded formula filtering + bounded compile cache)
-- local scaling evaluation throughout optimizer simulation, with guarded native `modAPI.utils` overcrit fallback
-- native all-depth `canUseAction` precheck with simulated-variable propagation, with fallback
-- native max completion/perfection cap getters in integration layer, with fallback
-- native crafting variable snapshot seeding (`getVariablesFromCraftingEntity`)
-- canonical native-variable storage that strips state/buff/harmony mirrors from persisted optimizer state and re-derives those aliases at native-availability evaluation time
-- native condition transition provider via documented `modAPI.utils.getNextCondition`, with legacy fallback probing
-- native mastery-applied technique resolution via `modAPI.utils.craftingTechniqueFromKnown`, keyed by stable live technique names and preserving live cooldown/session state with fallback
-- native completion-bonus identifier via `modAPI.utils.completionBonusBuffName`, with heuristic fallback
-- native max toxicity getter (`getMaxToxicity`) for alchemy crafts
-- root-state-backed ModAPI craft-session detection via `subscribe` / `getGameStateSnapshot`, removing the old English-DOM dependency for “is the recipe screen active?”
-- flat Qi-cost surcharge modeling via runtime `poolCostFlat`, carried through state/cache/replay/effective-cost evaluation
-- internal effective action-cost modeling (buff/harmony/condition aware) used by recommendation and follow-up previews
-- voluntary `Finish Craft` modeling as a search-local action, using the runtime `getBonusAndChance(...)` ladder for both completion and perfection craft-end rolls; finished scoring now evaluates fail/basic/perfect/sublime EV from that exact distribution, and the persisted completion/perfection goal-priority bias slider (`-100` perfection to `100` completion, `0` balanced default) feeds the same underlying scorer
-- optional Experimental Rust/WASM MCTS root policy for large/sublime searches. The native engine mirrors scalar costs/gains, condition generation, finish EV, and harmony sub-state rollouts for policy guidance only; TypeScript remains the parity source of truth for exact transition/scoring behavior. The Legacy engine remains the default.
-- optimizer replay snapshots now include serialized `harmonyData` plus a `harmonyDataSource` tag, and exported snapshot bundles retain the newest bounded turn history plus auto-mode state so bug reports can distinguish authoritative parity data from fallback/debug context
-- installed runtime extraction from the current game bundle is the tiebreaker when UI/help text or older notes drift from executable behavior; forge low-control penalties are verified against the live bundle at heat `2-3`, not `1-3`
-- installed runtime exposes recipe `basicBestCompletion` / `perfectBestCompletion` / `sublimeBestCompletion`; this affects craft-result/material-return parity, not turn-to-turn optimizer choice, so it is currently tracked in docs/oracle rather than search scoring
-- native provider detection for `getActionCost`, `evaluateCraftingCondition`, `getActualCraftingStat`
-- `noQiCost` technique field handling — techniques marked with `noQiCost` skip Qi-cost evaluation
-- `craftingTeamUpOverride` companion buff integration — companion crafting buffs flow into optimizer state
+Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE_075.md` holds the extracted runtime source for the mechanics that were re-verified for 0.7.5.
 
-## Community guide validation status
+## How parity is proven
 
-- percentage-buff order-of-operations: implemented and explicitly covered in `gameAccuracy.test.ts` runtime-shaped percent buffs (`stat: 'intensity'` / `stat: 'control'`) scale the pre-craft base stat and do not multiply flat in-craft reagent/pill-style bonuses
-- Inscribed Patterns stack-halving penalty: implemented and covered in `harmony.test.ts`
-- Spiritual Resonance double-switch target shifting: implemented and covered in `harmony.test.ts`
-- partial completion / chance-based finish: verified against the installed runtime; completion and perfection resolve as independent nonlinear craft-end ladder rolls rather than deterministic hard bars, and search now matches that distribution directly
-- toxicity detox per-turn handling: implemented in `skills.ts` and explicitly covered for multi-turn active-buff cleansing in `skills.test.ts`
-- cost-percentage buff stacking order: verified against the installed runtime; `poolCostPercentage` / `stabilityCostPercentage` buffs floor after each buff application, then action costs apply condition multipliers in the same order the optimizer now uses
-- soft-cap Qi surcharge: implemented via the runtime `poolCostFlat` crafting stat; action-cost evaluation now carries the flat additive tax alongside the older percentage modifier path
-- static `poolcost` / `stabilitycost` / `successchance` masteries: verified against the installed runtime as technique-construction modifiers that are already baked into the live technique payload; current integration filtering avoids double counting, and no conditional variants were found in the installed bundle
-- instant-craft material returns: verified against installed runtime as best-completion-tier based with an `80%` cap; no optimizer/search adjustment is needed because the effect resolves after craft completion, but replay/docs/oracle should treat it as current runtime behavior
+| Layer | Proof |
+| --- | --- |
+| Formula/transition parity vs the game | `gameAccuracy.test.ts`, `runtimeParity.test.ts`, `skills.test.ts`, `harmony.test.ts`, verified against the extracted 0.7.5 bundle |
+| Outcome/band/tier model | `outcome.test.ts`, `outcomeProjection.test.ts` |
+| TypeScript ↔ Rust engine parity | the differential corpus: `src/__tests__/fixtures/differentialCorpus.ts` → `engineDifferential.test.ts` (TS side) and `crates/craftbuddy-engine/tests/differential_corpus.json` → `differential_tests.rs` (Rust side) |
+| Multi-turn behaviour | `craftSimulation.test.ts`, replay fixtures in `src/__tests__/__fixtures__/replay-snapshots/` |
 
-## Dependency-gated
+The corpus is schema v2 and covers **129 scenarios / 1,222 transitions**, with `expected` asserting qi, stability, stability penalty, completion, perfection, toxicity, harmony, step, completion bonus, cooldowns, the active-buff set, `items`, `consumedPillsThisTurn`, and a `harmonyData` digest. Regenerate with `bun run optimizer:differential-corpus`; never hand-edit the JSON.
 
-See `docs/dev-requests/STATUS.md` for full status and open questions on pending APIs.
+## 0.7.5 model changes
 
-## Heuristic/fallback-sensitive areas
+These are the semantics that changed with the 0.7.5 harmony rework. Older CraftBuddy notes describing the opposite are wrong and have been removed.
 
-- integration fallback extraction paths when full runtime state is missing forge heat fallback is verified against runtime mirrors; non-forge harmony state is treated as missing instead of guessed when authoritative subtype data is absent
-- condition fallback table in `gameTypes.ts` (used when real condition data is unavailable)
-- local expression compilation path (internal evaluator for optimizer simulation)
-- native scaling is intentionally disabled in optimizer simulation because the live provider can diverge from hypothetical future-state variables
-- native MCTS uses a compact scalar model and deliberately excludes item actions from rollouts because inventory consumption is still owned by TypeScript search
+| 0.7.5 behaviour | CraftBuddy |
+| --- | --- |
+| Harmony type is **chosen by the player** and is no longer derived from the item type | `src/modContent/craftingContext.ts` reads the selection from live craft state; `recipe.harmonyTypeOverride` remains the forced case. There is **no** item-kind inference anywhere, and the removed `modAPI.gameData.itemTypeToHarmonyType` utility is not referenced. |
+| **Seven** harmony types | `src/optimizer/harmonyRegistry.ts` defines all seven; `src/optimizer/harmony.ts` simulates each subsystem. |
+| Each harmony carries a **complexity multiplier** on sublime recipe targets | `applyComplexityMultiplier` applies `round(stat * cm)` wherever effective targets are derived, guarded against a non-positive multiplier. |
+| Outcome tiers are decided **conjunctively** from completion _and_ perfection band counts | `src/optimizer/outcome.ts` is the single authority (`deriveOutcomeBands`, `classifyOutcome`, `TIER_REQUIREMENTS`, `willAutoFinish`); search, the Rust engine, and the panel all consume it. |
+| There is **no manual finish action**; the craft resolves itself | `willAutoFinish` is the terminal predicate. `Wait` is a real technique costing 10 stability, not a finish button. |
+| Native crafting **auto-use loadout** applies pills/reagents immediately before every technique | `src/modContent/nativeAutoUse.ts` mirrors the runtime selector; auto mode coexists with it instead of duplicating consumption. |
+| Quality no longer blanket-improves an item; each harmony grants its own effect | CraftBuddy optimises the **reachable outcome tier**, not an abstract "quality" number. Per-harmony `harmonyAugment` item effects are out of scope: they resolve after the craft and cannot change turn-to-turn play. |
 
-## Verification test suites
+Harmony registry values, verified against the installed bundle:
 
-`gameAccuracy.test.ts`, `harmony.test.ts`, `skills.test.ts`, `search.test.ts`, `nativeMcts.test.ts`, `state.test.ts`, `gameTypes.test.ts`, `largeNumbers.test.ts`, `modContentHarmonyState.test.ts`, `crates/craftbuddy-engine` Rust unit tests
+| Harmony | Complexity multiplier | Starting harmony (sublime) | Notes |
+| --- | --: | --: | --- |
+| Forge Works | 1.2 | 0 | heat sweet spot verified at `2-3`, plus the `lastBuffedHeat` heat-1 quirk |
+| Alchemical Arts | 1.2 | 0 | charge/reaction sequencing |
+| Inscribed Patterns | 0.9 | 0 | stack-halving penalty on invalid colour |
+| Spiritual Resonance | 1.3 | 0 | mismatch applies `-9` harmony / `-3` stability (the in-game log text saying `-15` is stale) |
+| Formless Way | 1.5 | 33 | pins the harmony value every action instead of accumulating deltas |
+| Enhancing Echo | 1.3 | 0 | only harmony that scales live Qi/stability action costs |
+| Eccentric Decree | 1.0 | 0 | — |
+
+The multiplier only applies to **sublime** recipes, matching the runtime's `initCrafting` guard.
+
+## Implemented mechanics
+
+Transition and formula layer (`src/optimizer/skills.ts`, `gameTypes.ts`, `state.ts`):
+
+- effect-tree technique evaluation, effect conditions, and the local JS-subset expression evaluator (guarded formula filtering, bounded compile cache)
+- scaling evaluation with mastery `upgradeKey` rewrites, additive/multiplicative upgrades, and `percentage` fields treated as percentages
+- crit expected value including excess-crit conversion
+- generic active buffs with full definitions: stat contributions, per-turn effects, action-type effects (`onFusion` / `onRefine` / `onStabilize` / `onSupport`), expression gates, stack consumption. Definition-driven buffs such as False Fusion, Strive for Completion, and Fallen Soulflame fragments flow through this path — there are no per-skill special cases
+- dynamic max-pool buff evaluation for `% maxpool` restores with qi-cap clamping
+- active-buff definition hydration from skill payloads when a runtime snapshot omits definitions
+- Qi/stability cost order: percentage buffs floor after each application, then condition multipliers, then the flat `poolCostFlat` surcharge
+- Turbid Qi step surcharge: first stack at step `100`, then every `3` steps, granted _after_ the step bump so it taxes later actions
+- toxicity effects with the runtime's sign convention, per-turn detox, and the native `getMaxToxicity` ceiling for alchemy
+- `noQiCost` techniques, `craftingTeamUpOverride` companion buffs, cooldowns, max-stability decay and `preventsMaxStabilityDecay`
+- large-number-safe arithmetic, parsing, and formatting
+
+Outcome layer (`src/optimizer/outcome.ts`):
+
+- band widths from the recipe's completion/perfection stats, each successive band costing `1.3x` the previous (runtime `qIa`)
+- `TIER_REQUIREMENTS`: `basic` = 1 completion band; `perfect` = 1 + 1; `sublime` = **2 + 2**, and only when the recipe has a distinct sublime item
+- fractional bonus-roll chance carried separately from guaranteed bands, so a near-miss is never reported as banked
+- `willAutoFinish` mirroring the runtime predicate, including the overcraft branch at `>= 5` guaranteed completion bands
+
+Search layer (`src/optimizer/search.ts`): see `docs/project/OPTIMIZER_DESIGN.md`.
+
+Integration layer (`src/modContent/*`):
+
+- root-state ModAPI craft-session detection via `subscribe` / `getGameStateSnapshot`, with no English-DOM dependency for "is a craft open?"
+- authoritative harmony hydration from `progressState.harmonyTypeData`, with forge-only recovery from verified runtime mirrors (`Heat` native variables / heat buff stacks) when the payload omits forge heat; other harmonies are treated as _missing_ rather than guessed
+- native providers with guarded fallbacks: `getNextCondition`, `craftingTechniqueFromKnown`, `completionBonusBuffName`, `getActionCost`, `evaluateCraftingCondition`, `getActualCraftingStat`, `getMaxToxicity`, completion/perfection cap getters, all-depth `canUseAction` precheck
+- canonical native-variable storage that strips state/buff/harmony mirrors from persisted optimizer state and re-derives them at evaluation time
+- fixed 3-condition forecast queue normalization with probability-weighted EV beyond the forecast
+- native crafting auto-use coexistence and the dispatch-time state-revision guard (`nativeAutoUse.ts`, `craftStateSignature.ts`)
+- replay snapshots carrying `harmonyData` + `harmonyDataSource`, craft-context provenance, bounded turn history, and auto-mode state
+
+## 0.7.5 bugs found and fixed
+
+Each was verified against the installed bundle before the fix and has a regression test:
+
+| Bug | Fix |
+| --- | --- |
+| Disciplined Touch scaled perfection off **control** | scales off `effectiveVars.intensity`, matching the 0.7.5 tooltip |
+| Overcrit ratios divided by `100` twice | crit EV integration corrected |
+| Mastery `percentage` fields used as raw multipliers | treated as percentages |
+| Mastery upgrades multiplied across every numeric field | the game's replace behaviour applies to the intended field only |
+| Soulflame triggers and their stability loss were absent | modelled through the generic buff-effect path (`runtimeParity.test.ts`) |
+| Turbid Qi future-step stacks generated on the wrong step | grants after the step bump, from step `100` every `3` |
+| Reversed toxicity sign on buff effects | corrected |
+| Cost/stability rounding applied in the wrong order | floors after each buff, then condition multipliers |
+| `completionPercentage` / `perfectionPercentage` casing mismatch evaluated to zero | canonical casing |
+| Sublime targets derived from cap-based multipliers, overshooting the real 2-band requirement | real band thresholds from `outcome.ts` |
+| `cloneHarmonyData` dropped `enhancingEcho` / `eccentricDecree`, resetting attunement and the focused bar on every state copy | fixed; found by the differential corpus |
+| Rust rejected the whole `MctsInput` when any field arrived as an explicit `null`, silently disabling the native prior on real game data | deep `stripNullish` at the bridge plus a `null_default` serde helper |
+| The Rust recommendation was not deterministic (hash-ordered condition merge) | insertion-ordered merge mirroring `normalizeConditionDistribution` |
+
+## Cross-engine parity
+
+The Rust engine models the **same searchable action space** as TypeScript: generic active buffs, effect-tree techniques, mastery, Soulflame triggers and stack consumption, toxicity effects, and pill/reagent actions. Item actions are no longer filtered out of the bridge payload.
+
+Both engines share the conjunctive outcome model (`outcome.ts` / `crates/craftbuddy-engine/src/outcome.rs`) and agree on all 1,222 corpus transitions.
+
+What is still asymmetric, deliberately:
+
+- TypeScript owns the returned recommendation. The Rust engine contributes a root MCTS **policy prior** for near-tie ordering; it cannot hard-filter a legal skill or overturn a clear TypeScript score difference.
+- The Rust scorer mirrors the tier/gate model but not TypeScript's `ScoringContext` sampling, so absolute scores are not comparable across engines — only rankings and transitions are.
+- An unknown effect kind is skipped deterministically on both sides, so the corpus stays green instead of drifting.
+
+## Heuristic / fallback-sensitive areas
+
+- condition fallback table in `gameTypes.ts`, used only when real condition data is unavailable
+- the local expression compiler, used instead of `modAPI.utils.evaluateScaling` because the native provider can diverge on hypothetical future states
+- forge heat recovery from runtime mirrors when `harmonyTypeData` omits it
+- native auto-use slot conditions: CraftBuddy cannot evaluate the game's inline condition expressions, so `projectNativeAutoUse` treats a slot as _satisfiable_ unless a caller injects an evaluator. Over-estimating native consumption is the safe direction — it withholds a CraftBuddy item action rather than duplicating one
+- DOM-derived progress recovery: structural `X/Y` first, compact HUD forms such as `31K` accepted, reconciled against exact caps on non-overcraft crafts
+
+## Known limitations
+
+Stated plainly rather than tracked as pending work:
+
+1. **Per-harmony item effects (`harmonyAugment`) are not modelled.** They decide what the finished item does, not which action is best this turn.
+2. **Craft-result material returns are not modelled in search.** Verified as best-completion-tier based with an `80%` cap; resolves after the craft.
+3. **Hidden RNG streams are not replicated.** Success/crit/bonus rolls are expected values, never predicted rolls.
+4. **Absolute Rust scores are not TypeScript scores** (see above).
+5. **Wall-clock search depth is machine-dependent.** Presets are a budget envelope, not a determinism guarantee; the _recommendation_ is deterministic for a fixed budget, and that is now directly tested on the Rust side.
 
 ## Non-goals
 
-- exact hidden RNG stream replication (not exposed via API)
-- complete modeling of every non-technique item family without normalized runtime payloads
+- exact hidden RNG stream replication (not exposed by the game)
+- modelling every non-technique item family without normalized runtime payloads
+- combat-side systems, including the combat auto-use path

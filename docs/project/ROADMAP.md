@@ -3,56 +3,57 @@ title: Roadmap
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-06
-source_of_truth: src/optimizer/*, src/modContent/index.ts, docs/dev-requests/STATUS.md
+last_verified: 2026-07-26
+source_of_truth: src/optimizer/*, src/modContent/*, docs/dev-requests/STATUS.md, docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md
 review_cycle_days: 30
 related_files:
   - docs/project/MECHANICS_PARITY.md
+  - docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md
   - docs/dev-requests/STATUS.md
 ---
 
 # Roadmap
 
+Post-0.7.5 priorities. Anything the 0.7.5 rework settled is recorded in `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md` and is not a roadmap item.
+
 ## Active priorities
 
-### P1: Native API cutover
+### P1: Accuracy evidence, not accuracy guesses
 
-- keep native overcrit/all-depth can-use-action precheck path enabled with fallback
-- keep guarded native condition-transition provider enabled with fallback
-- keep the root-state ModAPI path (`subscribe` / `getGameStateSnapshot`) as the primary store/session source; treat DOM/fiber probing as fallback only
-- require a documented pure hypothetical-state scaling contract before reconsidering native scaling in search
-- switch to game-native finalized post-modifier cost helpers when exposed
-- validate all-depth native precheck parity in live crafts
-- retire fallback only after one full release proves stable
+- grow the replay corpus with real high-realm and sublime snapshots, especially for `formless`, `enhancingEcho` and `eccentricDecree`
+- add a benchmark contract per new fixture, then compare against the player's stated rationale before touching search
+- keep `bun run optimizer:bench` and the differential corpus green; a contract change needs recorded runtime evidence
+- acceptance: a reported bad recommendation can be reproduced from a checked-in fixture rather than argued about
+
+### P2: Native API cutover
+
+- keep the native overcrit, all-depth `canUseAction`, condition-transition, cap getter and cost-preview paths enabled **with** their fallbacks
+- adopt game-native finalized post-modifier cost helpers when exposed
+- require a documented pure hypothetical-state scaling contract before reconsidering native scaling inside search
+- retire a fallback only after one full release proves the native path stable
 - see `docs/dev-requests/STATUS.md` for API status and open questions
 
-### P2: Localization and UI-host migration
+### P3: Localization and UI host
 
-- keep the current locale-safe root-state craft visibility path as the primary fix for non-English clients
+- keep the locale-safe root-state craft-visibility path as the primary fix for non-English clients
 - adopt `injectUI` when it can replace the manual overlay container without losing layout control
-- add CraftBuddy-owned translations via ModAPI instead of shipping English-only panel copy
-- evaluate `onReduxAction` as a replacement for some polling/manual transition observation once action contracts are documented
+- ship CraftBuddy-owned translations through `actions.addTranslation` instead of English-only panel copy
 
-### P3: Cap-aware scoring and gains
+### P4: Auto-mode confidence
 
-- keep native max completion/perfection getter path enabled with fallback
-- clamp/score with canonical caps
-- acceptance: cap regression tests prove no-value overshoot is de-prioritized
-
-### P4: Item action expansion hardening
-
-- broaden item action normalization
-- add mixed technique+item sequence regression tests
-- acceptance: deterministic recommendations in representative item-enabled scenarios
+- extend coexistence coverage as the game's auto-use system evolves (loadout switching mid-craft, new slot condition forms)
+- surface why automation paused or recalculated in the panel, so a pause reads as a decision rather than a stall
+- acceptance: no automated dispatch can be traced to state the executor did not verify
 
 ### P5: Integration observability
 
-- add structured diagnostics for fallback path usage
-- track native precheck call/block/error counters and condition-provider fallback rates
-- surface missing-field counters for faster breakage triage after game updates
+- structured diagnostics for fallback-path usage, native precheck call/block/error counters, and condition-provider fallback rates
+- missing-field counters so a game update's breakage is triaged from output rather than by reading code
 - acceptance: debug output identifies fallback reliance by category
 
 ## Deferred by design
 
-- aggressive heuristic features outside game-aligned behavior
-- removal of all fallbacks before native API path is proven stable
+- heuristic features that are not grounded in game behaviour
+- removing fallbacks before the native path is proven over a release
+- modelling post-craft outcomes (per-harmony `harmonyAugment` effects, material returns): they cannot change which action is best this turn
+- combat-side systems, including the combat auto-use path

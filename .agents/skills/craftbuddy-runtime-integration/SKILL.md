@@ -5,7 +5,9 @@ description: CraftBuddy runtime integration workflow. Activate for src/modConten
 
 # CraftBuddy Runtime Integration
 
-`src/modContent/index.ts` and neighboring modules are the only boundary between AFNM runtime objects and the optimizer/UI.
+`src/modContent/index.ts` and neighboring modules are the only boundary between AFNM runtime objects and the optimizer/UI. Target runtime: AFNM **0.7.5**.
+
+Reach the optimizer only through `src/optimizer/index.ts`. If something is missing from the barrel, add it there rather than importing a submodule.
 
 ## Activate When
 
@@ -24,6 +26,16 @@ description: CraftBuddy runtime integration workflow. Activate for src/modConten
 5. Local cache fallback for resilience during mid-craft restoration.
 
 Do not scatter fallback logic into optimizer/UI modules. Centralize drift-prone assumptions in `src/modContent/*`.
+
+## 0.7.5 Essentials
+
+1. **Harmony is player-selected.** Read it from live craft state in `craftingContext.ts`; `recipe.harmonyTypeOverride` is the forced case. The `itemTypeToHarmonyType` ModAPI utility was removed by the game — do not reintroduce item-kind inference. When the selection cannot be read, treat harmony data as missing (forge heat is the one verified-mirror exception). Sublime targets are scaled by the harmony's complexity multiplier.
+2. **Native crafting auto-use is a pre-technique hook.** The game applies `player.player.currentCraftingAutoUseLoadout.slots` immediately before every technique dispatch. `nativeAutoUse.ts` mirrors the selector; covered items leave the action space and `fullActionSpace` degrades to techniques + finish with a visible reason. Never let CraftBuddy consume an item the loadout covers.
+3. **Execution path is a correctness decision.** With a loadout active, execute the technique through the in-game control so the hook runs, and stop (`NativeAutoUseUnreachableError`) rather than dispatching around it. With no loadout, the direct `crafting/executeTechnique` dispatch is preferred: equivalent for the craft and more precise than DOM matching.
+4. **There is no manual finish.** The craft resolves itself when `willAutoFinish` holds. `Wait` is a real technique costing 10 stability, so it is never a stand-in for "finish now". Say "will auto-finish" in any copy.
+5. **Verify at dispatch time.** `craftStateSignature.ts` covers step, resources, condition + forecast, buffs, cooldowns, quick-access inventory, harmony value, a canonical `harmonyData` digest and the available-technique roster. `stale` → recalculate, `unverifiable` → pause. Never dispatch against unverified state.
+
+Ground truth for all five: `docs/project/RUNTIME_EVIDENCE_075.md`. Do not re-derive them from tooltips or patch notes.
 
 ## Preferred Runtime Helpers
 
@@ -44,15 +56,19 @@ If a helper is missing or throws, keep the existing guarded fallback and verify 
 ## Auto-Craft Boundaries
 
 - Controller policy and state transitions belong in `autoCraftController.ts`.
-- Native action dispatch bridge belongs in `autoCraftExecutor.ts`.
-- Synthesized `Finish Craft` recommendations map to the native `Wait` technique before DOM fallback.
-- Auto mode must execute one action, then wait for an observed craft-state change before continuing.
+- The native dispatch bridge and dispatch-time verification belong in `autoCraftExecutor.ts`.
+- Typed failures live in `autoCraftErrors.ts` and mean different things: `StaleCraftStateError` → recalculate, `UnverifiableCraftStateError` → pause, `NativeAutoUseConflictError` / `NativeAutoUseUnreachableError` → refuse. Do not collapse them into a generic error.
+- Auto mode executes one action, then waits for an observed craft-state change; native item consumption gets its own settle phase so it is never mistaken for the technique advancing the craft.
+- Automation must be able to do nothing. Pausing with an explanation is always better than dispatching a guess.
 
 ## Validation
 
 ```bash
 bun run runtime:oracle
 bun run runtime:grep -- "getGameStateSnapshot|injectUI|basicBestCompletion|perfectBestCompletion|sublimeBestCompletion|poolCostFlat"
+bun run runtime:grep -- "currentCraftingAutoUseLoadout|pillsPerRound|pillTracking|trainingMode"
+bun run jest src/__tests__/nativeAutoUse.test.ts src/__tests__/craftStateSignature.test.ts
+bun run jest src/__tests__/autoCraftController.test.ts src/__tests__/autoCraftExecutor.test.ts
 bun run test
 ```
 
@@ -63,13 +79,18 @@ Add focused tests for controller state, replay parity, or integration regression
 1. **`onReduxAction` runs inside the reducer**: observation only; no async side effects or state mutation.
 2. **Runtime docs can drift**: installed bundle grep beats old notes and assumptions.
 3. **DOM state is locale fragile**: never make English labels the sole truth source when root state exists.
-4. **Replay snapshots are bug reports**: preserve runtime-shaped skill fields, active buff definitions, craft-context provenance, current turn, and recent history.
+4. **Replay snapshots are bug reports**: preserve runtime-shaped skill fields, active buff definitions, `harmonyData` and its provenance, craft-context fields, current turn, and recent history.
+5. **`trainingMode !== undefined` suppresses inventory removal**: the game applies items without consuming them, so inventory-diff verification must not read that as a mismatch. The check is definedness, not truthiness.
+6. **`CRAFTING_AUTO_USE_PILL` / `CRAFTING_AUTO_USE_REAGENT` are react-dnd drag types** for the loadout editor, not the auto-use system.
 
 ## References
 
 - `docs/project/INTEGRATION_MODAPI.md`
+- `docs/project/RUNTIME_EVIDENCE_075.md`
 - `docs/project/ARCHITECTURE.md`
 - `docs/project/TESTING.md`
 - `src/modContent/index.ts`
+- `src/modContent/nativeAutoUse.ts`
+- `src/modContent/craftStateSignature.ts`
 - `src/modContent/autoCraftController.ts`
 - `src/modContent/autoCraftExecutor.ts`
