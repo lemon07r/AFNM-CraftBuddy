@@ -51,6 +51,44 @@ struct Expectation {
     control_buff_turns: i32,
     intensity_buff_turns: i32,
     cooldowns: Vec<i32>,
+    buffs: Vec<BuffExpectation>,
+    items: Vec<ItemExpectation>,
+    consumed_pills_this_turn: i32,
+    harmony_data: HarmonyDigest,
+}
+
+#[derive(Debug, Deserialize)]
+struct BuffExpectation {
+    key: String,
+    stacks: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct ItemExpectation {
+    key: String,
+    count: i32,
+}
+
+/// Flattened harmony-subsystem digest, mirroring `DifferentialHarmonyDigest`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HarmonyDigest {
+    forge_heat: Option<i32>,
+    forge_last_buffed_heat: Option<i32>,
+    alchemical_charges: Option<Vec<String>>,
+    alchemical_last_combo: Option<Vec<String>>,
+    inscription_current_block: Option<Vec<String>>,
+    inscription_completed_blocks: Option<i32>,
+    inscription_stacks: Option<i32>,
+    resonance_type: Option<String>,
+    resonance_strength: Option<i32>,
+    resonance_pending: Option<String>,
+    resonance_pending_count: Option<i32>,
+    echo_attuned_type: Option<String>,
+    echo_last_outcome: Option<String>,
+    decree_focused_bar: Option<String>,
+    decree_last_completion: Option<f64>,
+    decree_last_perfection: Option<f64>,
 }
 
 fn parse_corpus() -> Corpus {
@@ -72,12 +110,200 @@ fn diff_field(
     }
 }
 
+fn diff_debug<T: std::fmt::Debug + PartialEq>(
+    failures: &mut Vec<String>,
+    scenario: &str,
+    skill_key: &str,
+    field: &str,
+    actual: T,
+    expected: T,
+) {
+    if actual != expected {
+        failures.push(format!(
+            "{scenario}/{skill_key}: {field} = {actual:?}, expected {expected:?}"
+        ));
+    }
+}
+
+fn diff_opt_number(
+    failures: &mut Vec<String>,
+    scenario: &str,
+    skill_key: &str,
+    field: &str,
+    actual: Option<f64>,
+    expected: Option<f64>,
+) {
+    let matches = match (actual, expected) {
+        (None, None) => true,
+        (Some(a), Some(b)) => (a - b).abs() <= 1e-6,
+        _ => false,
+    };
+    if !matches {
+        failures.push(format!(
+            "{scenario}/{skill_key}: {field} = {actual:?}, expected {expected:?}"
+        ));
+    }
+}
+
+/// Compare the harmony subsystem state field by field.
+///
+/// The scalar `harmony` value alone is not enough: a wrong Forge heat or a stale
+/// Resonance pending switch can produce the same delta this turn and diverge on
+/// the next one.
+fn diff_harmony(
+    failures: &mut Vec<String>,
+    scenario: &str,
+    skill_key: &str,
+    actual: &HarmonyData,
+    expected: &HarmonyDigest,
+) {
+    let forge = actual.forge_works.as_ref();
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.forgeHeat",
+        forge.map(|data| data.heat),
+        expected.forge_heat,
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.forgeLastBuffedHeat",
+        forge.and_then(|data| data.last_buffed_heat),
+        expected.forge_last_buffed_heat,
+    );
+
+    let alchemical = actual.alchemical_arts.as_ref();
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.alchemicalCharges",
+        alchemical.map(|data| data.charges.clone()),
+        expected.alchemical_charges.clone(),
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.alchemicalLastCombo",
+        alchemical.map(|data| data.last_combo.clone()),
+        expected.alchemical_last_combo.clone(),
+    );
+
+    let inscription = actual.inscribed_patterns.as_ref();
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.inscriptionCurrentBlock",
+        inscription.map(|data| data.current_block.clone()),
+        expected.inscription_current_block.clone(),
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.inscriptionCompletedBlocks",
+        inscription.map(|data| data.completed_blocks),
+        expected.inscription_completed_blocks,
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.inscriptionStacks",
+        inscription.map(|data| data.stacks),
+        expected.inscription_stacks,
+    );
+
+    let resonance = actual.resonance.as_ref();
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.resonanceType",
+        resonance.and_then(|data| data.resonance.clone()),
+        expected.resonance_type.clone(),
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.resonanceStrength",
+        resonance.map(|data| data.strength),
+        expected.resonance_strength,
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.resonancePending",
+        resonance.and_then(|data| data.pending_resonance.clone()),
+        expected.resonance_pending.clone(),
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.resonancePendingCount",
+        resonance.map(|data| data.pending_count),
+        expected.resonance_pending_count,
+    );
+
+    let echo = actual.enhancing_echo.as_ref();
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.echoAttunedType",
+        echo.and_then(|data| data.attuned_type.clone()),
+        expected.echo_attuned_type.clone(),
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.echoLastOutcome",
+        echo.and_then(|data| data.last_outcome.clone()),
+        expected.echo_last_outcome.clone(),
+    );
+
+    let decree = actual.eccentric_decree.as_ref();
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.decreeFocusedBar",
+        decree.map(|data| data.focused_bar.clone()),
+        expected.decree_focused_bar.clone(),
+    );
+    diff_opt_number(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.decreeLastCompletion",
+        decree.map(|data| data.last_completion),
+        expected.decree_last_completion,
+    );
+    diff_opt_number(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.decreeLastPerfection",
+        decree.map(|data| data.last_perfection),
+        expected.decree_last_perfection,
+    );
+}
+
 #[test]
 fn matches_the_typescript_simulator() {
     let corpus = parse_corpus();
-    assert_eq!(corpus.version, 1, "unexpected differential corpus version");
+    assert_eq!(corpus.version, 2, "unexpected differential corpus version");
     assert!(
-        corpus.scenarios.len() >= 40,
+        corpus.scenarios.len() >= 120,
         "differential corpus is suspiciously small"
     );
 
@@ -216,12 +442,60 @@ fn matches_the_typescript_simulator() {
                             *expected_cd as f64,
                         );
                     }
+                    diff_field(
+                        &mut failures,
+                        &name,
+                        key,
+                        "consumed_pills_this_turn",
+                        next.consumed_pills_this_turn as f64,
+                        expected.consumed_pills_this_turn as f64,
+                    );
+                    // Order matters: buff iteration order decides which buff
+                    // composes its cost percentage first.
+                    diff_debug(
+                        &mut failures,
+                        &name,
+                        key,
+                        "buffs",
+                        next.buffs
+                            .iter()
+                            .map(|buff| (buff.key.clone(), buff.stacks))
+                            .collect::<Vec<_>>(),
+                        expected
+                            .buffs
+                            .iter()
+                            .map(|buff| (buff.key.clone(), buff.stacks))
+                            .collect::<Vec<_>>(),
+                    );
+                    diff_debug(
+                        &mut failures,
+                        &name,
+                        key,
+                        "items",
+                        next.items
+                            .iter()
+                            .map(|item| (item.key.clone(), item.count))
+                            .collect::<Vec<_>>(),
+                        expected
+                            .items
+                            .iter()
+                            .map(|item| (item.key.clone(), item.count))
+                            .collect::<Vec<_>>(),
+                    );
+                    diff_harmony(
+                        &mut failures,
+                        &name,
+                        key,
+                        &next.harmony_data,
+                        &expected.harmony_data,
+                    );
                 }
             }
         }
     }
 
-    assert!(compared > 300, "compared only {compared} transitions");
+    assert!(compared > 900, "compared only {compared} transitions");
+    println!("differential corpus: compared {compared} transitions");
 
     if !failures.is_empty() {
         let shown = failures.iter().take(40).cloned().collect::<Vec<_>>();

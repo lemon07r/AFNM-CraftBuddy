@@ -38,6 +38,13 @@ function cloneHarmonyData(hd: HarmonyData): HarmonyData {
       stacks: hd.inscribedPatterns.stacks,
     };
   if (hd.resonance) clone.resonance = { ...hd.resonance };
+  // Enhancing Echo and Eccentric Decree were added in 0.7.5. Omitting them here
+  // silently reset the player's attunement and focused bar on every state copy,
+  // so the simulator could never plan more than one turn of either subsystem.
+  // Found by the cross-engine differential corpus, which compares the harmony
+  // subsystem field by field.
+  if (hd.enhancingEcho) clone.enhancingEcho = { ...hd.enhancingEcho };
+  if (hd.eccentricDecree) clone.eccentricDecree = { ...hd.eccentricDecree };
   if (hd.additionalData !== undefined) {
     clone.additionalData = JSON.parse(
       JSON.stringify(hd.additionalData),
