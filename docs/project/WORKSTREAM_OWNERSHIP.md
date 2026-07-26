@@ -117,7 +117,7 @@ Recorded from the docs workstream's vantage point, which merges last. "Delivered
 | Engine — Rust mechanics parity + expanded corpus | delivered on `feat/rust-effect-parity`; corpus at 129 scenarios / 1,417 transitions |
 | Engine — performance | delivered: 1.90x at identical search shape. Compact state + mutate/undo **rejected with measurements**, not deferred |
 | UI — outcome/band/harmony surfacing | delivered on `feat/outcome-surfacing` |
-| Docs — architecture refresh | this branch |
+| Docs — architecture refresh | delivered on `docs/075-architecture-refresh` |
 | Lead — resonance finding, `modContent/index.ts` split, 6.0.0 release | delivered on `main`: all four branches merged, the resonance finding closed as a real mechanics bug, `index.ts` split into five seams, 6.0.0 packaged |
 
 Two things the docs deliberately describe as _decided_, not open:
@@ -127,9 +127,30 @@ Two things the docs deliberately describe as _decided_, not open:
 
 The `user-report-resonance-regression` finding the docs described as open was closed during integration, and not in the way anyone expected: it was a real success-weighting bug in both engines (`p * min(gain, headroom)`, not `min(p * gain, headroom)`), not a contract-materiality question. `bun run optimizer:bench` reports 98 of 98 contracts passing. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
 
+## Final integration state
+
+All four branches are merged into `main`, each verified as an ancestor of it, and the four `../cb-ws-*` worktrees are removed. The branch refs are kept locally; nothing depends on them any more.
+
+Gates on the merged 6.0.0 tree:
+
+| Gate | Result |
+| --- | --- |
+| `bun run typecheck` | pass |
+| `bun run test` | pass — 31 suites, **800 tests**, ~283 s |
+| `bun run wasm:test` | pass — 58 Rust tests |
+| `bun run wasm:build` | pass |
+| `bun run build` | pass — `builds/afnm-craftbuddy.zip`, 5 entries, version `6.0.0` in both the manifest and the bundle |
+| `bun run optimizer:bench` | pass — **98 of 98** contracts |
+| `bun run optimizer:differential-corpus` | regenerates byte-identically at 129 scenarios / **1,417** transitions |
+| `bun run docs:inventory` / `docs:check` | pass — 53 files, links, freshness and authority |
+| `bun run release:validate` | pass |
+| `ui:harness:build` + `ui:harness:serve` | pass — the panel renders the tier, band counts, binding-bar marker and `v6.0.0` in a real browser |
+
+**Not pushed.** `git push origin main` fails on this machine for lack of credentials: no `credential.helper`, no `GH_TOKEN` / `GITHUB_TOKEN`, `gh auth status` reports the stored token invalid, and `ssh -T git@github.com` answers `Permission denied (publickey)`. Re-authenticating is interactive, so the release commits sit on local `main`. Push, tag `v6.0.0`, and the Workshop upload are the remaining human steps — in that order, per `docs/project/RELEASE_PROCESS.md`.
+
 ## When this document expires
 
-This is a delivery-coordination record for one phase. Once 6.0.0 is pushed and the worktrees are removed, it stops being a working agreement and becomes history: keep it for the ownership and ordering pattern, but do not treat its branch names or gate numbers as current.
+This is a delivery-coordination record for one phase, and it has already stopped being a working agreement: the worktrees are gone and the only step left is the push. Read it as history — keep the ownership and ordering pattern, but do not treat its branch names as live or its fork-time gate numbers as current.
 
 ## Runtime authority
 
