@@ -1,10 +1,16 @@
 import type { SearchResult, SkillDefinition } from '../optimizer';
 import {
+  StaleCraftStateError,
+  UnverifiableCraftStateError,
+} from './autoCraftErrors';
+import {
   INACTIVE_NATIVE_AUTO_USE,
+  isCoveredByNativeAutoUse,
   type NativeAutoUseStatus,
 } from './nativeAutoUse';
 import {
   createDefaultAutoCraftUiState,
+  resolveEffectiveAutoCraftPolicy,
   type AutoCraftPhase,
   type AutoCraftPolicy,
   type AutoCraftTone,
@@ -13,6 +19,15 @@ import {
 
 const READY_DELAY_MS = 90;
 const STATE_ADVANCE_TIMEOUT_MS = 4500;
+/**
+ * Extra grace granted once the native auto-use loadout has been observed
+ * consuming something, before the technique itself is expected to land.
+ */
+const NATIVE_SETTLE_TIMEOUT_MS = 1500;
+/** How many native consumptions may be observed before giving up on the turn. */
+const MAX_NATIVE_SETTLE_OBSERVATIONS = 4;
+/** How long to wait before re-checking a craft state that could not be read. */
+const PAUSE_RETRY_MS = 750;
 
 type AutoCraftExecutionKind = 'skill' | 'item' | 'finish';
 const GUARANTEED_FINISH_EPSILON = 1e-9;
@@ -42,9 +57,7 @@ function hasGuaranteedFinishAvailable(result: SearchResult): boolean {
     result.recommendation,
     ...result.alternativeSkills,
   ].filter(
-    (
-      candidate,
-    ): candidate is NonNullable<SearchResult['recommendation']> =>
+    (candidate): candidate is NonNullable<SearchResult['recommendation']> =>
       candidate !== null,
   );
 
@@ -53,8 +66,7 @@ function hasGuaranteedFinishAvailable(result: SearchResult): boolean {
       return false;
     }
     return (
-      (candidate.projectedSuccessChance ?? 0) >=
-      1 - GUARANTEED_FINISH_EPSILON
+      (candidate.projectedSuccessChance ?? 0) >= 1 - GUARANTEED_FINISH_EPSILON
     );
   });
 }
@@ -103,6 +115,14 @@ export interface AutoCraftRuntimeSnapshot {
   isCalculating: boolean;
   result: SearchResult | null;
   stateFingerprint: string;
+  /**
+   * `progressState.step` at snapshot time.
+   *
+   * Native auto-use changes the craft state *without* consuming a turn, so the
+   * step is what separates "the loadout applied a pill" from "the technique
+   * landed".
+   */
+  craftStep?: number;
   /**
    * Monotonic revision bumped whenever `stateFingerprint` changes.
    *
@@ -160,7 +180,7 @@ type ResolvedActionPlan =
     }
   | {
       kind: 'stop';
-      phase: Extract<AutoCraftPhase, 'stopped' | 'unsupported'>;
+      phase: Extract<AutoCraftPhase, 'stopped' | 'unsupported' | 'completed'>;
       tone: Extract<AutoCraftTone, 'warning' | 'success'>;
       title: string;
       detail: string;
@@ -197,6 +217,7 @@ function isPolicyAllowed(
 function resolveActionPlan(
   snapshot: AutoCraftRuntimeSnapshot,
   policy: AutoCraftPolicy,
+  nativeAutoUse: NativeAutoUseStatus,
 ): ResolvedActionPlan {
   if (!snapshot.result) {
     return {
@@ -209,6 +230,20 @@ function resolveActionPlan(
       detail: snapshot.isCalculating
         ? 'CraftBuddy is searching before the next automatic action.'
         : 'Auto mode is armed and will start once a recommendation is available.',
+    };
+  }
+
+  if (snapshot.result.outcomeProjection?.willAutoFinish) {
+    // 0.7.5 has no finish action: once this predicate holds the game resolves the
+    // craft by itself. Sending anything else here would only spend stability the
+    // craft no longer needs.
+    return {
+      kind: 'stop',
+      phase: 'completed',
+      tone: 'success',
+      title: 'Craft will auto-finish',
+      detail:
+        'The craft has reached the point where the game resolves it automatically, so auto mode stopped instead of spending another turn.',
     };
   }
 
@@ -259,6 +294,22 @@ function resolveActionPlan(
 
   const actionKind = resolveExecutionKind(recommendation.skill);
   if (
+    actionKind === 'item' &&
+    isCoveredByNativeAutoUse(nativeAutoUse, recommendation.skill.itemName)
+  ) {
+    // Defence in depth: covered items are already excluded from the optimizer's
+    // action space, so reaching here means the two views disagreed. Stopping is
+    // the only safe answer, because using it would consume the item twice.
+    return {
+      kind: 'stop',
+      phase: 'unsupported',
+      tone: 'warning',
+      title: 'Auto-use loadout owns that item',
+      detail: `The best move is ${recommendation.skill.name}, but your crafting auto-use loadout already applies it before each technique, so auto mode stopped rather than consuming it twice.`,
+    };
+  }
+
+  if (
     !isPolicyAllowed(policy, 'finish') &&
     recommendationEndsCraft(recommendation)
   ) {
@@ -286,6 +337,19 @@ function resolveActionPlan(
   }
 
   if (!isPolicyAllowed(policy, actionKind)) {
+    if (actionKind === 'item' && nativeAutoUse.active) {
+      // Items share the runtime's `pillsPerRound` budget with the native loadout,
+      // so CraftBuddy spending one would change which items the game applies
+      // even when it is not the same item. Consumption belongs to one side only.
+      return {
+        kind: 'stop',
+        phase: 'unsupported',
+        tone: 'warning',
+        title: 'Auto-use loadout owns item usage',
+        detail: `The best move is ${recommendation.skill.name}, but your crafting auto-use loadout is handling items this craft, so auto mode stopped rather than spending from the same per-turn item budget.`,
+      };
+    }
+
     const policyLabel =
       actionKind === 'finish' ? 'finish crafts' : 'use item actions';
     return {
@@ -324,7 +388,10 @@ export function createAutoCraftController({
   let scheduledExecutionFingerprint: string | null = null;
   let awaitingFingerprint: string | null = null;
   let awaitingRequest: AutoCraftExecutionRequest | null = null;
+  let awaitingStep: number | null = null;
+  let nativeSettleObservations = 0;
   let waitingTimeoutHandle: unknown = null;
+  let pauseRetryHandle: unknown = null;
   let stopReason = 'Auto mode will stop after the current action resolves.';
 
   const emit = () => {
@@ -363,11 +430,24 @@ export function createAutoCraftController({
     waitingTimeoutHandle = null;
   };
 
+  const cancelPauseRetry = () => {
+    if (!pauseRetryHandle) return;
+    clearScheduled(pauseRetryHandle);
+    pauseRetryHandle = null;
+  };
+
+  const clearAwaitingState = () => {
+    awaitingFingerprint = null;
+    awaitingRequest = null;
+    awaitingStep = null;
+    nativeSettleObservations = 0;
+  };
+
   const resetTransientState = () => {
     cancelScheduledExecution();
     cancelWaitingTimeout();
-    awaitingFingerprint = null;
-    awaitingRequest = null;
+    cancelPauseRetry();
+    clearAwaitingState();
     stopReason = 'Auto mode stopped.';
   };
 
@@ -402,7 +482,129 @@ export function createAutoCraftController({
 
   const startAwaitingStateAdvance = (executionFingerprint: string) => {
     awaitingFingerprint = executionFingerprint;
+    nativeSettleObservations = 0;
     cancelWaitingTimeout();
+  };
+
+  /**
+   * The live craft moved before the action was dispatched.
+   *
+   * This is not an error: the right answer is to throw the stale plan away and
+   * let the next recommendation decide, which is exactly what staying armed with
+   * no scheduled execution does.
+   */
+  const handleStaleCraftState = (changed: readonly string[]) => {
+    cancelScheduledExecution();
+    cancelWaitingTimeout();
+    clearAwaitingState();
+
+    setUiState({
+      phase: 'armed',
+      tone: 'active',
+      statusTitle: 'Recalculating',
+      statusDetail: `The live craft changed${
+        changed.length > 0 ? ` (${changed.join(', ')})` : ''
+      } before the action was sent, so auto mode is recalculating instead of executing a stale action.`,
+      isRunning: false,
+      canStop: true,
+    });
+  };
+
+  /**
+   * The live craft state could not be confirmed, so nothing may be dispatched.
+   *
+   * Automation stays armed but idle and re-checks on a timer, so it recovers by
+   * itself once the store is readable again without ever acting on a guess.
+   */
+  const handleUnverifiableCraftState = (reason: string) => {
+    cancelScheduledExecution();
+    cancelWaitingTimeout();
+    clearAwaitingState();
+
+    setUiState({
+      phase: 'armed',
+      tone: 'warning',
+      statusTitle: 'Auto mode paused',
+      statusDetail: `${reason} Auto mode paused instead of acting on unconfirmed state.`,
+      isRunning: false,
+      canStop: true,
+    });
+
+    if (pauseRetryHandle) {
+      return;
+    }
+    pauseRetryHandle = schedule(() => {
+      pauseRetryHandle = null;
+      if (!uiState.armed || uiState.stopRequested || !lastSnapshot) {
+        return;
+      }
+      controller.sync(lastSnapshot);
+    }, PAUSE_RETRY_MS);
+  };
+
+  /**
+   * Decide whether an observed state change is native auto-use rather than the
+   * technique landing.
+   *
+   * The native loadout applies items before the technique without consuming a
+   * turn, so an unchanged step means the craft has not actually advanced yet.
+   * Treating that as "the action worked" is how automation ends up one action
+   * ahead of the game.
+   */
+  const isNativeAutoUseSettle = (
+    snapshot: AutoCraftRuntimeSnapshot,
+  ): boolean => {
+    if (!resolveSnapshotNativeAutoUse(snapshot).active) {
+      return false;
+    }
+    if (!awaitingRequest || awaitingRequest.kind === 'item') {
+      return false;
+    }
+    if (
+      typeof awaitingStep !== 'number' ||
+      typeof snapshot.craftStep !== 'number'
+    ) {
+      return false;
+    }
+    return (
+      snapshot.craftStep === awaitingStep &&
+      nativeSettleObservations < MAX_NATIVE_SETTLE_OBSERVATIONS
+    );
+  };
+
+  const observeNativeAutoUseSettle = (snapshot: AutoCraftRuntimeSnapshot) => {
+    nativeSettleObservations += 1;
+    // Re-baseline on the post-consumption state so the next real change is still
+    // detected as an advance.
+    awaitingFingerprint = snapshot.stateFingerprint;
+    const request = awaitingRequest;
+
+    cancelWaitingTimeout();
+    waitingTimeoutHandle = schedule(() => {
+      finalizeStoppedState(
+        'error',
+        'error',
+        'Auto mode error',
+        `${
+          request?.actionName ?? 'The action'
+        } did not advance the craft after your auto-use loadout applied items. Auto mode stopped to avoid duplicate inputs.`,
+      );
+    }, STATE_ADVANCE_TIMEOUT_MS + NATIVE_SETTLE_TIMEOUT_MS);
+
+    setUiState({
+      phase: uiState.stopRequested ? 'stop_requested' : 'waiting_for_state',
+      tone: uiState.stopRequested ? 'warning' : 'active',
+      statusTitle: uiState.stopRequested
+        ? 'Stopping after current action'
+        : 'Auto-use items applied',
+      statusDetail: uiState.stopRequested
+        ? stopReason
+        : `Your crafting auto-use loadout applied items; waiting for ${
+            request?.actionName ?? 'the action'
+          } to advance the craft.`,
+      isRunning: true,
+      canStop: true,
+    });
   };
 
   const waitForStateAdvance = (
@@ -454,6 +656,18 @@ export function createAutoCraftController({
     scheduledExecutionHandle = null;
     scheduledExecutionFingerprint = null;
 
+    // Dispatch-time re-verification. The fingerprint comparison above only proves
+    // CraftBuddy's own view is unchanged; this proves the *live* craft is.
+    const verification = verifySnapshotState(lastSnapshot);
+    if (verification.kind === 'stale') {
+      handleStaleCraftState(verification.changed);
+      return;
+    }
+    if (verification.kind === 'unverifiable') {
+      handleUnverifiableCraftState(verification.reason);
+      return;
+    }
+
     setUiState({
       phase: 'executing',
       tone: 'active',
@@ -473,13 +687,29 @@ export function createAutoCraftController({
     const executionSnapshot = lastSnapshot;
     startAwaitingStateAdvance(executionFingerprint);
     awaitingRequest = request;
+    awaitingStep =
+      typeof executionSnapshot.craftStep === 'number'
+        ? executionSnapshot.craftStep
+        : null;
 
     try {
       await executor.execute(request, executionSnapshot);
       waitForStateAdvance(request, executionFingerprint);
     } catch (error) {
       cancelWaitingTimeout();
-      awaitingFingerprint = null;
+      clearAwaitingState();
+
+      // The executor verifies again at the moment of dispatch, so it can catch a
+      // change this function was too early to see.
+      if (error instanceof StaleCraftStateError) {
+        handleStaleCraftState(error.changed);
+        return;
+      }
+      if (error instanceof UnverifiableCraftStateError) {
+        handleUnverifiableCraftState(error.reason);
+        return;
+      }
+
       const message =
         error instanceof Error ? error.message : String(error ?? 'Unknown');
       finalizeStoppedState('error', 'error', 'Auto mode error', message);
@@ -568,9 +798,15 @@ export function createAutoCraftController({
     },
 
     setPolicy(policy) {
+      const resolution = resolveEffectiveAutoCraftPolicy(
+        policy,
+        lastSnapshot ? resolveSnapshotNativeAutoUse(lastSnapshot) : undefined,
+      );
       setUiState(
         {
           policy,
+          effectivePolicy: resolution.policy,
+          policyNotice: resolution.reason,
           statusDetail: uiState.armed
             ? uiState.statusDetail
             : createDefaultAutoCraftUiState(policy).statusDetail,
@@ -587,20 +823,41 @@ export function createAutoCraftController({
         return;
       }
 
+      const nativeAutoUse = resolveSnapshotNativeAutoUse(snapshot);
+      const policyResolution = resolveEffectiveAutoCraftPolicy(
+        uiState.policy,
+        nativeAutoUse,
+      );
+      if (
+        uiState.effectivePolicy !== policyResolution.policy ||
+        uiState.policyNotice !== policyResolution.reason ||
+        uiState.nativeAutoUseActive !== nativeAutoUse.active
+      ) {
+        setUiState({
+          effectivePolicy: policyResolution.policy,
+          policyNotice: policyResolution.reason,
+          nativeAutoUseActive: nativeAutoUse.active,
+        });
+      }
+
       if (
         awaitingFingerprint &&
         awaitingFingerprint !== snapshot.stateFingerprint
       ) {
+        if (isNativeAutoUseSettle(snapshot)) {
+          observeNativeAutoUseSettle(snapshot);
+          return;
+        }
+
         cancelWaitingTimeout();
-        awaitingFingerprint = null;
         const completedRequest = awaitingRequest;
-        awaitingRequest = null;
+        clearAwaitingState();
         if (completedRequest?.kind === 'finish') {
           finalizeStoppedState(
             'completed',
             'success',
             'Craft finished',
-            'Auto mode sent Finish Craft and is waiting for the next craft.',
+            'Auto mode advanced the craft to resolution and is waiting for the next craft.',
           );
           return;
         }
@@ -656,7 +913,11 @@ export function createAutoCraftController({
         return;
       }
 
-      const plan = resolveActionPlan(snapshot, uiState.policy);
+      const plan = resolveActionPlan(
+        snapshot,
+        policyResolution.policy,
+        nativeAutoUse,
+      );
       if (plan.kind === 'stop') {
         finalizeStoppedState(plan.phase, plan.tone, plan.title, plan.detail);
         return;
@@ -668,7 +929,12 @@ export function createAutoCraftController({
           phase: plan.phase,
           tone: plan.tone,
           statusTitle: plan.title,
-          statusDetail: plan.detail,
+          // While idle is the one moment where explaining the policy downgrade
+          // costs the player nothing, so the reason is visible without needing a
+          // dedicated panel row.
+          statusDetail: policyResolution.reason
+            ? `${plan.detail} ${policyResolution.reason}`
+            : plan.detail,
           isRunning: false,
           canStop: true,
         });

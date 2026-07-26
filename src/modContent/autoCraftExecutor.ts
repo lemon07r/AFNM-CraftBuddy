@@ -1,4 +1,20 @@
-import type { AutoCraftExecutor, AutoCraftExecutionRequest, AutoCraftRuntimeSnapshot } from './autoCraftController';
+import {
+  resolveSnapshotNativeAutoUse,
+  verifySnapshotState,
+  type AutoCraftExecutor,
+  type AutoCraftExecutionRequest,
+  type AutoCraftRuntimeSnapshot,
+} from './autoCraftController';
+import {
+  NativeAutoUseConflictError,
+  NativeAutoUseUnreachableError,
+  StaleCraftStateError,
+  UnverifiableCraftStateError,
+} from './autoCraftErrors';
+import {
+  isCoveredByNativeAutoUse,
+  type NativeAutoUseStatus,
+} from './nativeAutoUse';
 
 interface DomAutoCraftExecutorOptions {
   getRootElement: () => ParentNode;
@@ -195,12 +211,10 @@ function scoreSearchText(searchText: string, aliases: string[]): number {
   return bestScore;
 }
 
-function scoreCandidate(
-  candidate: ButtonCandidate,
-  aliases: string[],
-): number {
+function scoreCandidate(candidate: ButtonCandidate, aliases: string[]): number {
   return (
-    scoreSearchText(candidate.searchText, aliases) + (candidate.sourceBoost ?? 0)
+    scoreSearchText(candidate.searchText, aliases) +
+    (candidate.sourceBoost ?? 0)
   );
 }
 
@@ -338,10 +352,7 @@ function buildIconHints(request: AutoCraftExecutionRequest): string[] {
     | { icon?: string }
     | undefined;
 
-  const possibleHints = [
-    request.skill?.icon,
-    nativeTechnique?.icon,
-  ];
+  const possibleHints = [request.skill?.icon, nativeTechnique?.icon];
   possibleHints.forEach((hint) => {
     const normalized = normalizeImageHint(hint);
     if (normalized) {
@@ -476,7 +487,8 @@ function scoreFinishCandidate(
   let bestScore = scoreCandidate(candidate, aliases);
 
   if (searchText.includes('finish')) bestScore = Math.max(bestScore, 100);
-  if (searchText.includes('complete craft')) bestScore = Math.max(bestScore, 94);
+  if (searchText.includes('complete craft'))
+    bestScore = Math.max(bestScore, 94);
   if (searchText.includes('complete')) bestScore = Math.max(bestScore, 88);
   if (
     searchText.includes('perfect craft') ||
@@ -484,7 +496,8 @@ function scoreFinishCandidate(
   ) {
     bestScore = Math.max(bestScore, 80);
   }
-  if (searchText.includes('success chance')) bestScore = Math.max(bestScore, 74);
+  if (searchText.includes('success chance'))
+    bestScore = Math.max(bestScore, 74);
   if (
     searchText.includes('craft result') ||
     searchText.includes('final result') ||
@@ -507,7 +520,10 @@ function scoreFinishCandidate(
     bestScore -= 28;
   }
 
-  const areaBonus = Math.min(14, Math.round(rectArea(candidate.element) / 8000));
+  const areaBonus = Math.min(
+    14,
+    Math.round(rectArea(candidate.element) / 8000),
+  );
   return bestScore + areaBonus;
 }
 
@@ -517,7 +533,9 @@ function listVisibleButtons({
   isIgnoredElement,
 }: DomAutoCraftExecutorOptions): ButtonCandidate[] {
   return Array.from(getRootElement().querySelectorAll(BUTTON_SELECTORS))
-    .filter((element) => !isIgnoredElement(element) && isElementVisible(element))
+    .filter(
+      (element) => !isIgnoredElement(element) && isElementVisible(element),
+    )
     .map((element) => element as HTMLElement)
     .filter((element) => {
       if (element.hasAttribute('disabled')) return false;
@@ -543,12 +561,11 @@ function listFinishCandidates(
     }
 
     const searchText = buildElementSearchText(element);
-    if (hasFinishCue(searchText) || rectArea(element) >= FINISH_REGION_THRESHOLD_PX) {
-      addCandidate(
-        candidates,
-        element,
-        searchText || 'craft region',
-      );
+    if (
+      hasFinishCue(searchText) ||
+      rectArea(element) >= FINISH_REGION_THRESHOLD_PX
+    ) {
+      addCandidate(candidates, element, searchText || 'craft region');
     }
   });
 
@@ -616,15 +633,19 @@ function dispatchClickSequence(element: HTMLElement): void {
   element.click();
 }
 
-function executeFinishAction(
+/**
+ * Find the control that executes a finish/`Wait` request.
+ *
+ * 0.7.5 has no Finish Craft action; the craft resolves on its own. CraftBuddy's
+ * synthesized finish therefore maps to the native `Wait` technique, which does
+ * advance the craft but costs 10 stability, so it is a real technique dispatch
+ * and goes through the same native-auto-use-preserving path as any other.
+ */
+function findFinishControl(
   options: DomAutoCraftExecutorOptions,
   request: AutoCraftExecutionRequest,
   aliases: string[],
-): void {
-  if (dispatchTechniqueAction(options, request)) {
-    return;
-  }
-
+): HTMLElement | null {
   const candidates = [
     ...listActionCandidates(options, request, aliases),
     ...listFinishCandidates(options),
@@ -636,48 +657,121 @@ function executeFinishAction(
     .filter((candidate) => candidate.score >= 60)
     .sort((a, b) => b.score - a.score);
 
-  const candidate = candidates[0];
-  if (!candidate) {
+  return candidates[0]?.element ?? null;
+}
+
+/** Find the control that executes a named technique or item action. */
+function findActionControl(
+  options: DomAutoCraftExecutorOptions,
+  request: AutoCraftExecutionRequest,
+  aliases: string[],
+): HTMLElement | null {
+  const candidates = listActionCandidates(options, request, aliases)
+    .map((candidate) => ({
+      ...candidate,
+      score: scoreCandidate(candidate, aliases),
+    }))
+    .filter((candidate) => candidate.score >= 80)
+    .sort((a, b) => b.score - a.score);
+
+  return candidates[0]?.element ?? null;
+}
+
+/**
+ * Re-verify the live craft state at dispatch time.
+ *
+ * The controller's own fingerprint check happens `READY_DELAY_MS` before this
+ * point and is never repeated, so this is the last - and only - place where
+ * "the state the recommendation was produced from" is compared against the state
+ * the action is about to hit.
+ */
+function assertFreshCraftState(snapshot: AutoCraftRuntimeSnapshot): void {
+  const verification = verifySnapshotState(snapshot);
+  if (verification.kind === 'stale') {
+    throw new StaleCraftStateError(verification.changed);
+  }
+  if (verification.kind === 'unverifiable') {
+    throw new UnverifiableCraftStateError(verification.reason);
+  }
+}
+
+/**
+ * Execute a technique (or the synthesized finish, which maps to `Wait`).
+ *
+ * The path matters for correctness, not just reliability. The native crafting
+ * auto-use loadout is applied by the React technique handler *immediately before*
+ * it dispatches the technique (see `docs/project/RUNTIME_EVIDENCE_075.md` 1.1),
+ * so:
+ *
+ * - With a loadout active, only a real click reproduces the player's gesture.
+ *   Dispatching `crafting/executeTechnique` straight to the store would skip the
+ *   hook and silently drop the pills the player configured, so if the control
+ *   cannot be found automation stops rather than bypassing it.
+ * - With no loadout, the direct dispatch is behaviourally equivalent for the
+ *   craft itself and far more precise than DOM matching, so it stays preferred.
+ *   The only thing it misses is the `recordCraftingActionUsed` statistics
+ *   dispatch, which does not affect the craft.
+ */
+function executeTechniqueLike(
+  options: DomAutoCraftExecutorOptions,
+  request: AutoCraftExecutionRequest,
+  aliases: string[],
+  nativeAutoUse: NativeAutoUseStatus,
+): void {
+  if (!nativeAutoUse.active && dispatchTechniqueAction(options, request)) {
+    return;
+  }
+
+  const element =
+    request.kind === 'finish'
+      ? findFinishControl(options, request, aliases)
+      : findActionControl(options, request, aliases);
+
+  if (!element) {
+    if (nativeAutoUse.active) {
+      throw new NativeAutoUseUnreachableError(request.actionName);
+    }
     throw new Error(
-      'Could not find a visible game control or confirm keybinding for Finish Craft. Auto mode stopped before sending another input.',
+      request.kind === 'finish'
+        ? 'Could not find a visible game control or confirm keybinding for Finish Craft. Auto mode stopped before sending another input.'
+        : `Could not find a visible game control for ${request.actionName}. Auto mode stopped before sending another input.`,
     );
   }
 
-  dispatchClickSequence(candidate.element);
+  dispatchClickSequence(element);
 }
 
 export function createDomAutoCraftExecutor(
   options: DomAutoCraftExecutorOptions,
 ): AutoCraftExecutor {
   return {
-    execute(request: AutoCraftExecutionRequest, _snapshot: AutoCraftRuntimeSnapshot) {
+    execute(
+      request: AutoCraftExecutionRequest,
+      snapshot: AutoCraftRuntimeSnapshot,
+    ) {
+      assertFreshCraftState(snapshot);
+
+      const nativeAutoUse = resolveSnapshotNativeAutoUse(snapshot);
       const aliases = buildSearchAliases(request);
-      if (request.kind === 'finish') {
-        executeFinishAction(options, request, aliases);
+
+      if (request.kind === 'item') {
+        const itemName = request.skill?.itemName ?? request.actionName;
+        if (isCoveredByNativeAutoUse(nativeAutoUse, request.skill?.itemName)) {
+          throw new NativeAutoUseConflictError(itemName);
+        }
+
+        const element = findActionControl(options, request, aliases);
+        if (!element) {
+          throw new Error(
+            `Could not find a visible game control for ${request.actionName}. Auto mode stopped before sending another input.`,
+          );
+        }
+
+        dispatchClickSequence(element);
         return;
       }
 
-      if (request.kind === 'skill' && dispatchTechniqueAction(options, request)) {
-        return;
-      }
-
-      const rawCandidates = listActionCandidates(options, request, aliases);
-      const candidates = rawCandidates
-        .map((candidate) => ({
-          ...candidate,
-          score: scoreCandidate(candidate, aliases),
-        }))
-        .filter((candidate) => candidate.score >= 80)
-        .sort((a, b) => b.score - a.score);
-
-      const candidate = candidates[0];
-      if (!candidate) {
-        throw new Error(
-          `Could not find a visible game control for ${request.actionName}. Auto mode stopped before sending another input.`,
-        );
-      }
-
-      dispatchClickSequence(candidate.element);
+      executeTechniqueLike(options, request, aliases, nativeAutoUse);
     },
   };
 }
