@@ -15,11 +15,66 @@ import {
   unionOverlayRects,
   type OverlayRectLike,
 } from '../../src/utils/overlayLayout';
+import { type HarmonyType } from '../../src/optimizer';
 
 resetSettings();
 
 (window as any).craftBuddyDebug = {
   exportOptimizerReplaySnapshot: async () => {},
+};
+
+/**
+ * Outcome projection fixtures.
+ *
+ * These mirror the shape `src/optimizer/search` publishes on `SearchResult`; the
+ * harness never derives band numbers itself, exactly like the panel.
+ */
+const perfectionBoundProjection = {
+  tier: 'perfect',
+  optimisticTier: 'sublime',
+  targetTier: 'sublime',
+  completion: {
+    value: 260,
+    bands: 2,
+    requiredBands: 2,
+    nextThreshold: 390,
+    pointsToNextBand: 130,
+    bonusChance: 0.24,
+  },
+  perfection: {
+    value: 118,
+    bands: 1,
+    requiredBands: 2,
+    nextThreshold: 230,
+    pointsToNextBand: 112,
+    bonusChance: 0.42,
+  },
+  bindingBar: 'perfection',
+  willAutoFinish: false,
+};
+
+const autoFinishProjection = {
+  tier: 'sublime',
+  optimisticTier: 'sublime',
+  targetTier: 'sublime',
+  completion: {
+    value: 452,
+    bands: 3,
+    requiredBands: 2,
+    nextThreshold: 620,
+    pointsToNextBand: 168,
+    bonusChance: 0.11,
+  },
+  perfection: {
+    value: 318,
+    bands: 2,
+    requiredBands: 2,
+    nextThreshold: 390,
+    pointsToNextBand: 72,
+    bonusChance: 0.35,
+  },
+  bindingBar: 'none',
+  willAutoFinish: true,
 };
 
 const fixtureResult = {
@@ -89,7 +144,52 @@ const fixtureResult = {
     qi: 0,
     turnsRemaining: 4,
   },
+  outcomeProjection: perfectionBoundProjection,
 } as any;
+
+/** A gated-technique setup turn: weak gains now, False Fusion unlocked next. */
+const setupFixtureResult = {
+  ...fixtureResult,
+  recommendation: {
+    ...fixtureResult.recommendation,
+    immediateGains: { completion: 34, perfection: 0, stability: 0 },
+    expectedGains: { completion: 31, perfection: 0, stability: 0 },
+    reasoning: 'Push completion to the gate instead of banking perfection',
+    setupFor: {
+      techniqueKey: 'false_fusion',
+      reason:
+        'Reaching 100% completion unlocks False Fusion, which converts the overflow into perfection next turn.',
+    },
+  },
+} as any;
+
+/** The craft has already met every band, so the game resolves it by itself. */
+const autoFinishFixtureResult = {
+  ...fixtureResult,
+  outcomeProjection: autoFinishProjection,
+} as any;
+
+/**
+ * Pre-0.7.5 replay snapshot: no `outcomeProjection` at all. The panel must fall
+ * back to the legacy layout rather than inventing thresholds.
+ */
+const legacyFixtureResult = {
+  ...fixtureResult,
+  outcomeProjection: undefined,
+} as any;
+
+function buildFixtureResult(state: string): unknown {
+  switch (state) {
+    case 'outcome-setup':
+      return setupFixtureResult;
+    case 'outcome-autofinish':
+      return autoFinishFixtureResult;
+    case 'outcome-legacy':
+      return legacyFixtureResult;
+    default:
+      return fixtureResult;
+  }
+}
 
 const harnessParams = new URLSearchParams(window.location.search);
 const harnessState = harnessParams.get('state') || 'default';
@@ -112,6 +212,9 @@ function parseHarnessViewport(value: string | null): {
 }
 
 const harnessViewport = parseHarnessViewport(harnessParams.get('viewport'));
+/** Selected harmony, so the harness can show any of the seven 0.7.5 types. */
+const harnessHarmony = (harnessParams.get('harmony') ||
+  'resonance') as HarmonyType;
 
 function buildGameHudRects(viewport: { width: number; height: number }): {
   progressRects: OverlayRectLike[];
@@ -245,6 +348,26 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
         isRunning: true,
         stopRequested: true,
       };
+    case 'auto-native-autouse':
+      // `policyNotice` / `nativeAutoUseActive` are supplied by the runtime
+      // workstream's controller; the panel reads them structurally, so the
+      // harness can exercise the row before that branch merges.
+      return {
+        policy: 'techniquesAndFinish',
+        armed: true,
+        phase: 'ready',
+        tone: 'active',
+        statusTitle: 'Ready to act',
+        statusDetail: 'Preparing to use Simple Fusion.',
+        lastActionName: 'Forceful Stabilize',
+        canArm: false,
+        canStop: true,
+        isRunning: true,
+        stopRequested: false,
+        nativeAutoUseActive: true,
+        policyNotice:
+          'Full action space downgraded to techniques: your crafting auto-use loadout already consumes Spirit Dew and Clear Mind Pill.',
+      } as AutoCraftUiState;
     case 'auto-error':
       return {
         policy: 'fullActionSpace',
@@ -311,7 +434,7 @@ function Harness() {
       result={
         harnessState === 'loading' || harnessState === 'loading-auto'
           ? null
-          : fixtureResult
+          : (buildFixtureResult(harnessState) as any)
       }
       currentCompletion={20}
       currentPerfection={10}
@@ -326,6 +449,7 @@ function Harness() {
       nextConditions={['positive', 'veryPositive', 'neutral']}
       currentToxicity={0}
       maxToxicity={100}
+      craftingType={harnessHarmony}
       settings={settings}
       onSettingsChange={setSettings}
       onSearchSettingsChange={setSettings}
@@ -337,7 +461,7 @@ function Harness() {
       onAutoModeArm={() => {}}
       onAutoModeStop={() => {}}
       onAutoModePolicyChange={() => {}}
-      version="5.2.0"
+      version="6.0.0"
     />
   );
 

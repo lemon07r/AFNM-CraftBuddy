@@ -44,6 +44,16 @@ import {
   LARGE_NUMBER_THRESHOLD,
 } from '../utils/largeNumbers';
 import {
+  buildAutoUseNotice,
+  buildOutcomeSummary,
+  buildSetupSummary,
+  type AutoUseNoticeRow,
+  type OutcomeBarRow,
+  type OutcomeSummary,
+  type OutcomeSummaryTone,
+  type SetupSummaryRow,
+} from '../utils/outcomeSummary';
+import {
   colors,
   gradients,
   shadows,
@@ -1268,6 +1278,355 @@ const ProgressSection = memo(function ProgressSection({
   );
 });
 
+// ============================================================================
+// Outcome projection (0.7.5 conjunctive outcome model)
+// ============================================================================
+
+/**
+ * Panel palette for a summary row tone.
+ *
+ * The only outcome knowledge this file holds: which colour a tone maps to.
+ * Every threshold, band count and tier decision arrives pre-derived from
+ * `src/utils/outcomeSummary`, which in turn only reads the shared evaluator's
+ * projection.
+ */
+const OUTCOME_TONE_COLORS: Readonly<Record<OutcomeSummaryTone, string>> = {
+  neutral: colors.textSecondary,
+  positive: colors.completion,
+  warning: colors.stability,
+  danger: colors.error,
+  accent: colors.gold,
+};
+
+/** One bar's band standing against the target tier. */
+const OutcomeBandCard = memo(function OutcomeBandCard({
+  row,
+}: {
+  row: OutcomeBarRow;
+}) {
+  const accent = OUTCOME_TONE_COLORS[row.tone];
+
+  return (
+    <Box
+      data-testid={`outcome-bar-${row.bar}`}
+      sx={{
+        minWidth: 0,
+        px: 0.85,
+        py: 0.7,
+        borderRadius: 1.35,
+        border: `1px solid ${row.isBinding ? accent : colors.borderSubtle}`,
+        background:
+          'linear-gradient(180deg, rgba(20, 22, 30, 0.9), rgba(13, 14, 20, 0.9))',
+      }}
+    >
+      <FlexRow
+        gap={0.4}
+        align="center"
+        sx={{ justifyContent: 'space-between' }}
+      >
+        <Typography
+          variant="caption"
+          sx={{
+            color: colors.textMuted,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            fontSize: '0.58rem',
+          }}
+        >
+          {row.label}
+        </Typography>
+        {row.isBinding && (
+          <Box
+            component="span"
+            data-testid="outcome-binding-marker"
+            sx={{
+              px: 0.45,
+              borderRadius: 0.75,
+              color: accent,
+              border: `1px solid ${accent}`,
+              fontSize: '0.52rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              lineHeight: 1.5,
+            }}
+          >
+            Binding
+          </Box>
+        )}
+        {!row.isBinding && row.satisfied && (
+          <CheckCircleOutlineIcon sx={{ color: accent, fontSize: 12 }} />
+        )}
+      </FlexRow>
+
+      <Typography
+        variant="body2"
+        sx={{
+          mt: 0.2,
+          color: accent,
+          fontWeight: 700,
+          lineHeight: 1.2,
+          fontSize: '0.82rem',
+        }}
+      >
+        {row.bandsLabel}
+      </Typography>
+
+      <Typography
+        variant="caption"
+        sx={{
+          display: 'block',
+          color: colors.textMuted,
+          fontSize: '0.6rem',
+          lineHeight: 1.35,
+        }}
+      >
+        {row.nextBandLabel
+          ? `${row.valueLabel} | ${row.nextBandLabel}`
+          : row.valueLabel}
+        {row.bonusChanceLabel && (
+          <Box
+            component="span"
+            sx={{ color: colors.perfection, opacity: 0.85 }}
+          >
+            {` | ${row.bonusChanceLabel}`}
+          </Box>
+        )}
+      </Typography>
+    </Box>
+  );
+});
+
+/**
+ * Projected outcome tier, per-bar band standing, binding bar, selected harmony
+ * and the auto-finish indication.
+ */
+const OutcomeSection = memo(function OutcomeSection({
+  summary,
+  autoUseNotice,
+  compact = false,
+}: {
+  summary: OutcomeSummary;
+  autoUseNotice?: AutoUseNoticeRow | null;
+  compact?: boolean;
+}) {
+  const tierColor = OUTCOME_TONE_COLORS[summary.tierTone];
+
+  return (
+    <Box data-testid="outcome-section" sx={{ mb: 1.35 }}>
+      <FlexRow gap={0.5} align="center" wrap sx={{ mb: 0.55 }}>
+        <StarsIcon sx={{ color: tierColor, fontSize: 15 }} />
+        <Typography
+          data-testid="outcome-tier-headline"
+          variant="body2"
+          sx={{ color: tierColor, fontWeight: 700, lineHeight: 1.25 }}
+        >
+          {summary.tierHeadline}
+        </Typography>
+        {summary.tierDetail && (
+          <Chip
+            label={summary.tierDetail}
+            size="small"
+            data-testid="outcome-target-tier"
+            sx={{
+              height: 16,
+              fontSize: '0.58rem',
+              fontWeight: 700,
+              color: colors.gold,
+              backgroundColor: 'rgba(197, 160, 89, 0.14)',
+              border: `1px solid ${colors.borderSubtle}`,
+              '& .MuiChip-label': { px: 0.55 },
+            }}
+          />
+        )}
+        {summary.autoFinish.active && (
+          <Chip
+            icon={<CheckCircleIcon sx={{ fontSize: '0.7rem !important' }} />}
+            label={summary.autoFinish.label}
+            size="small"
+            data-testid="outcome-auto-finish"
+            sx={{
+              height: 16,
+              fontSize: '0.58rem',
+              fontWeight: 700,
+              color: OUTCOME_TONE_COLORS[summary.autoFinish.tone],
+              backgroundColor: 'rgba(74, 222, 128, 0.14)',
+              border: `1px solid ${OUTCOME_TONE_COLORS[summary.autoFinish.tone]}`,
+              '& .MuiChip-label': { px: 0.5 },
+              '& .MuiChip-icon': { ml: 0.4, mr: -0.2 },
+            }}
+          />
+        )}
+      </FlexRow>
+
+      {summary.harmony && (
+        <Typography
+          data-testid="outcome-harmony"
+          variant="caption"
+          sx={{
+            display: 'block',
+            mb: 0.55,
+            color: colors.textSecondary,
+            fontSize: '0.62rem',
+            lineHeight: 1.35,
+          }}
+        >
+          Harmony:{' '}
+          <Box component="span" sx={{ color: colors.gold, fontWeight: 700 }}>
+            {summary.harmony.label}
+          </Box>
+          {!compact && (
+            <Box component="span" sx={{ color: colors.textMuted }}>
+              {` | ${summary.harmony.detail}`}
+            </Box>
+          )}
+        </Typography>
+      )}
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 0.6,
+        }}
+      >
+        {summary.bars.map((row) => (
+          <OutcomeBandCard key={row.bar} row={row} />
+        ))}
+      </Box>
+
+      <Typography
+        data-testid="outcome-binding-label"
+        variant="caption"
+        sx={{
+          display: 'block',
+          mt: 0.45,
+          color:
+            summary.bindingBar === 'none'
+              ? colors.completion
+              : colors.stability,
+          fontSize: '0.62rem',
+          lineHeight: 1.35,
+        }}
+      >
+        {summary.bindingLabel}
+        {summary.optimisticTierLabel && !compact && (
+          <Box
+            component="span"
+            data-testid="outcome-optimistic-tier"
+            sx={{ color: colors.perfection, opacity: 0.85 }}
+          >
+            {` | ${summary.optimisticTierLabel}`}
+          </Box>
+        )}
+      </Typography>
+
+      {summary.autoFinish.active && !compact && (
+        <Typography
+          data-testid="outcome-auto-finish-detail"
+          variant="caption"
+          sx={{
+            display: 'block',
+            color: colors.textMuted,
+            fontSize: '0.6rem',
+            lineHeight: 1.35,
+          }}
+        >
+          {summary.autoFinish.detail}
+        </Typography>
+      )}
+
+      {autoUseNotice && (
+        <Box
+          data-testid="outcome-auto-use-notice"
+          sx={{
+            mt: 0.6,
+            px: 0.8,
+            py: 0.55,
+            borderRadius: 1.2,
+            border: `1px solid ${colors.borderSubtle}`,
+            background: 'rgba(197, 160, 89, 0.08)',
+          }}
+        >
+          <FlexRow gap={0.4} align="center">
+            <Inventory2Icon
+              sx={{
+                color: OUTCOME_TONE_COLORS[autoUseNotice.tone],
+                fontSize: 12,
+              }}
+            />
+            <Typography
+              variant="caption"
+              sx={{
+                color: OUTCOME_TONE_COLORS[autoUseNotice.tone],
+                fontWeight: 700,
+                fontSize: '0.6rem',
+              }}
+            >
+              {autoUseNotice.label}
+            </Typography>
+          </FlexRow>
+          <Typography
+            variant="caption"
+            sx={{
+              display: 'block',
+              color: colors.textMuted,
+              fontSize: '0.58rem',
+              lineHeight: 1.35,
+            }}
+          >
+            {autoUseNotice.detail}
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+});
+
+/** Gated-technique setup reason, so a low-gain turn reads as deliberate. */
+const SetupHintRow = memo(function SetupHintRow({
+  row,
+}: {
+  row: SetupSummaryRow;
+}) {
+  const accent = OUTCOME_TONE_COLORS[row.tone];
+
+  return (
+    <Box
+      data-testid="setup-hint"
+      sx={{
+        mb: 0.7,
+        px: 0.8,
+        py: 0.5,
+        borderRadius: 1.2,
+        border: `1px solid ${accent}`,
+        background: 'rgba(197, 160, 89, 0.1)',
+      }}
+    >
+      <FlexRow gap={0.4} align="center">
+        <ElectricBoltIcon sx={{ color: accent, fontSize: 13 }} />
+        <Typography
+          variant="caption"
+          sx={{ color: accent, fontWeight: 700, fontSize: '0.62rem' }}
+        >
+          {row.label}
+        </Typography>
+      </FlexRow>
+      <Typography
+        variant="caption"
+        sx={{
+          display: 'block',
+          color: colors.textSecondary,
+          fontSize: '0.6rem',
+          lineHeight: 1.35,
+        }}
+      >
+        {row.detail}
+      </Typography>
+    </Box>
+  );
+});
+
 /**
  * Conditions display section.
  */
@@ -1898,6 +2257,23 @@ export function RecommendationPanel({
     previousAutoPhaseRef.current = currentPhase;
   }, [autoMode?.phase]);
 
+  // Outcome rows come entirely from the shared evaluator's projection. A result
+  // without one is a legacy replay snapshot, in which case `summary` is null and
+  // the panel falls back to the pre-0.7.5 layout instead of guessing bands.
+  const outcomeSummary = useMemo(
+    () =>
+      buildOutcomeSummary({
+        projection: result?.outcomeProjection,
+        harmonyType: craftingType,
+      }),
+    [result?.outcomeProjection, craftingType],
+  );
+  const autoUseNotice = useMemo(() => buildAutoUseNotice(autoMode), [autoMode]);
+  const setupHint = useMemo(
+    () => buildSetupSummary(result?.recommendation?.setupFor),
+    [result?.recommendation?.setupFor],
+  );
+
   // Panel not visible
   if (settings?.panelVisible === false) {
     return null;
@@ -2201,6 +2577,13 @@ export function RecommendationPanel({
               currentToxicity={currentToxicity}
               maxToxicity={maxToxicity}
             />
+            {outcomeSummary && (
+              <OutcomeSection
+                summary={outcomeSummary}
+                autoUseNotice={autoUseNotice}
+                compact={compactMode}
+              />
+            )}
           </Box>
 
           <Box sx={{ mb: 0.75 }}>
@@ -2219,6 +2602,8 @@ export function RecommendationPanel({
                 : 'Previewing the move AutoBuddy will take once you enable auto mode.'}
             </Typography>
           </Box>
+
+          {setupHint && <SetupHintRow row={setupHint} />}
 
           <SkillCard rec={result.recommendation} isPrimary compact />
         </>
@@ -2274,11 +2659,24 @@ export function RecommendationPanel({
         <Typography variant="body2" sx={{ color: colors.textSecondary }}>
           Perfection: {currentPerfection}/{targetPerfection}
         </Typography>
+
+        {outcomeSummary && (
+          <Box sx={{ mt: 1.15 }}>
+            <OutcomeSection
+              summary={outcomeSummary}
+              autoUseNotice={autoUseNotice}
+              compact={compactMode}
+            />
+          </Box>
+        )}
+
         <Typography
           variant="body2"
           sx={{ color: colors.completionLight, mt: 1 }}
         >
-          You can finish crafting now!
+          {outcomeSummary?.autoFinish.active
+            ? 'The craft resolves itself from here - there is no manual finish in 0.7.5.'
+            : 'Every band this tier needs is banked.'}
         </Typography>
         {autoMode && (showAutoModePanel || autoMode.phase !== 'off') && (
           <Box sx={{ mt: 1.25 }}>
@@ -2313,11 +2711,23 @@ export function RecommendationPanel({
 
         <BlockedReasonsSection blockedReasons={result.blockedReasons || []} />
 
+        {outcomeSummary && (
+          <Box sx={{ mt: 1.25 }}>
+            <OutcomeSection
+              summary={outcomeSummary}
+              autoUseNotice={autoUseNotice}
+              compact={compactMode}
+            />
+          </Box>
+        )}
+
         <Typography
           variant="body2"
           sx={{ color: 'rgba(255, 200, 200, 0.8)', mt: 1.5 }}
         >
-          Consider finishing the craft or check your Qi/Stability.
+          {outcomeSummary?.autoFinish.active
+            ? 'The craft is already at the point where the game resolves it by itself.'
+            : 'Check your Qi Pool and Stability - the craft ends on its own once it runs out.'}
         </Typography>
         {autoMode && (showAutoModePanel || autoMode.phase !== 'off') && (
           <Box sx={{ mt: 1.25 }}>
@@ -2395,6 +2805,14 @@ export function RecommendationPanel({
               maxToxicity={maxToxicity}
             />
 
+            {outcomeSummary && (
+              <OutcomeSection
+                summary={outcomeSummary}
+                autoUseNotice={autoUseNotice}
+                compact={compactMode}
+              />
+            )}
+
             {showForecastedConditions && !compactMode && (
               <ConditionsSection
                 currentCondition={currentCondition}
@@ -2402,6 +2820,9 @@ export function RecommendationPanel({
               />
             )}
           </Box>
+
+          {/* Gated-technique setup reason for the primary recommendation */}
+          {setupHint && <SetupHintRow row={setupHint} />}
 
           {/* Primary recommendation */}
           <SkillCard
