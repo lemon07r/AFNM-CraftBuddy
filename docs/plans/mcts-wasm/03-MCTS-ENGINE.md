@@ -1,5 +1,7 @@
 # Phase 3: MCTS Engine
 
+> **Historical plan — superseded.** See the banner in `00-PLAN.md`. The MCTS engine shipped as a root **policy prior**, and 0.7.5 has no manual `Finish Craft` action: terminal states are decided by `willAutoFinish` in `src/optimizer/outcome.ts`.
+
 ## Goal
 
 Add a stochastic search engine on top of the deterministic Rust core that is better suited than the current bounded beam search for long crafts with chance-based outcomes.

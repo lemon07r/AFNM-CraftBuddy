@@ -1,332 +1,141 @@
 ---
-title: Optimizer Engine Findings and Improvement Brief
+title: Optimizer Engine Findings
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-06
-source_of_truth: src/settings/index.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/src/lib.rs, src/__tests__/__fixtures__/replay-snapshots/*
+last_verified: 2026-07-26
+source_of_truth: crates/craftbuddy-engine/*, src/optimizer/nativeMcts.ts, src/optimizer/search.ts, src/settings/index.ts, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 30
 related_files:
   - docs/project/OPTIMIZER_DESIGN.md
+  - docs/project/MECHANICS_PARITY.md
+  - docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md
   - docs/project/TESTING.md
-  - src/settings/index.ts
-  - src/optimizer/search.ts
-  - src/optimizer/nativeMcts.ts
-  - crates/craftbuddy-engine/src/lib.rs
 ---
 
-# Optimizer Engine Findings and Improvement Brief
+# Optimizer Engine Findings
 
-Last updated: 2026-04-25  
-Release context: `v5.1.0`
+What is actually true about the Rust/WASM engine after the 0.7.5 rework, and which candidate improvements have already been measured and rejected. Read this before proposing engine work.
 
-## Purpose
+Raw measurements, reproduction commands and the profiling harness live in `docs/project/ENGINE_PERFORMANCE_075.md`. This file is the decision record.
 
-This brief captures the preset tuning, benchmark observations, and recommended next steps for improving CraftBuddy optimizer speed and recommendation quality. It is written for follow-up AI coding agents so they can start from the current findings instead of rediscovering the same context.
+## Current state
 
-## Executive Summary
+| Question | Answer |
+| --- | --- |
+| Does Rust model the same mechanics as TypeScript? | **Yes.** Effect trees, generic active buffs, mastery, Soulflame triggers and stack consumption, toxicity, and pill/reagent actions all live in `crates/craftbuddy-engine/src/effects.rs`; `outcome.rs` mirrors the conjunctive outcome model. |
+| Does Rust see the same action space? | **Yes.** `buildNativeMctsInput` no longer filters `actionKind !== 'item'`, and serialises effects, mastery, granted buffs, buff gates, `items`, `consumedPillsThisTurn` and buffs. |
+| Is that parity proven? | **Yes** — 129 scenarios / 1,222 transitions in the differential corpus, asserted on both sides, plus 43 Rust unit tests for the ported mechanics. |
+| Is Rust the authority for recommendations? | **No, deliberately.** It supplies a root MCTS policy prior for near-tie ordering. TypeScript owns final ranking and stays the differential oracle and the no-WASM fallback. |
+| Is the recommendation deterministic? | **Yes**, and now directly tested (`differential_tests::mcts_search_is_deterministic`). It was not before 0.7.5. |
 
-- The Rust/WASM path is currently **not a full replacement engine**. It is a native Monte Carlo Tree Search (MCTS) **root-policy prior** layered on top of the TypeScript search.
-- Because TypeScript still owns exact scoring, transitions, legality, and final recommendation ranking, Rust/WASM usually does **not** make the same quality result happen at a much lower budget yet.
-- The MCTS prior can help at tight budgets when root ordering is the bottleneck, but it can also consume budget before TypeScript has reached a stable frontier.
-- The largest current quality risks are high-realm, long-horizon, harmony-heavy, and large-skill-set crafts where the TypeScript beam/frontier is shallow and the Rust rollout model is too compact to be authoritative.
-- `v5.1.0` adds a tracked replay benchmark harness, tightens harmony setup scoring, keeps experimental presets conservative, and continues treating Rust/WASM as a bounded root-policy prior.
+## The two bugs that mattered more than any tuning
 
-## Current Presets
+Both were invisible to unit tests and were only exposed by feeding real production-shaped payloads through the engine in a loop.
 
-Defined in `src/settings/index.ts`.
+### The native prior was dead on every real craft
 
-### Legacy Presets
+`serde` treats an explicit `null` as a _present_ value, so one `null` on a non-optional engine field fails the **entire** `MctsInput` deserialization. Real 0.7.5 technique data spells "no value" as `null`, and **188 of the game's 226** crafting skills carry `mastery: null`. Every real craft therefore lost its native prior and silently fell back to plain heuristic ordering, with no error anywhere.
 
-| Preset        | Depth |  Time | Nodes | Beam |
-| ------------- | ----: | ----: | ----: | ---: |
-| Instant       |    32 |  1.0s |  400k |    5 |
-| Fast          |    48 |  2.0s |  1.0M |    5 |
-| Balanced      |    64 |  4.5s |  2.0M |    5 |
-| High Accuracy |    80 |  8.0s |  3.5M |    9 |
-| Max           |    96 | 10.0s |  5.0M |   12 |
+Fixed with a deep `stripNullish` at the single bridge boundary in `src/optimizer/nativeMcts.ts`, plus a `null_default` serde helper in Rust as defence in depth. Guarded by `nativeMcts.test.ts` asserting that no `null` survives into the serialized payload at all.
 
-Legacy default was changed to `Fast` (`48`, `2.0s`, `1.0M`, beam `5`).
+`bun run optimizer:bench` across 98 runs, before → after:
 
-### Experimental / Rust-WASM Presets
+| Metric                             | Before      | After        |
+| ---------------------------------- | ----------- | ------------ |
+| Runs carrying a native MCTS policy | **0 of 98** | **42 of 98** |
+| Contracts passed / failed          | 96 / 2      | **97 / 1**   |
 
-| Preset        | Depth |  Time | Nodes | Beam |
-| ------------- | ----: | ----: | ----: | ---: |
-| Instant       |    32 | 1.25s |  400k |    5 |
-| Fast          |    32 |  1.5s |  500k |    5 |
-| Balanced      |    48 | 2.25s |  800k |    5 |
-| High Accuracy |    64 | 3.25s |  1.3M |    5 |
-| Max           |    80 |  4.0s |  2.0M |    5 |
+End-to-end node counts move `-2.9%`, concentrated in the MCTS-enabled configs (`-6%` to `-8%`). That is the expected price of a prior that now genuinely runs and consumes part of the budget, not a regression.
 
-Experimental MCTS config:
+### The recommendation was not deterministic
 
-- `mctsIterations`: `250`
-- `mctsMaxNodes`: `5000`
-- `mctsRolloutDepth`: `clamp(round(lookaheadDepth / 4), 8, 16)`
-- `mctsExploration`: inherited default `1.15`
+`normalize_distribution` merged the generated condition distribution through a `HashMap`, so the probability total was summed in hash order _and_ exact ties (`positive` vs `negative` at harmony `0`) were broken by hash order. Two of eight identical runs of `forge-heat-runway-step-3` produced a different policy.
 
-## Why These Presets Were Chosen
+It is now an insertion-ordered merge mirroring `normalizeConditionDistribution` in `search.ts`. A non-deterministic recommender cannot be regression-tested at all, so the property is asserted directly over all corpus scenarios.
 
-The presets are intentionally conservative:
+## Performance: 1.90x at identical search shape
 
-1. **Wall-clock budgets vary by PC.** The slowest experimental preset is `4.0s`, not `4.5s`, to leave headroom for slower machines, WASM initialization, and runtime UI overhead.
-2. **Beam width stays at `5`.** Prior replay regressions showed wider beams can make partial-frontier results worse by preventing search from reaching enough depth.
-3. **MCTS iterations stay low.** Direct checks showed higher MCTS iteration counts quickly consume seconds before TypeScript can do useful authoritative search work.
-4. **Depth increases gradually.** Experimental depth is lower than legacy at high tiers because the MCTS prior and TS search share the same user-facing time budget.
-5. **The presets optimize for sane cross-PC behavior, not one benchmark machine.** They are safe defaults, not proof of global optimality.
+112 runs over the 14 replay payloads at a fixed node budget: `369.801 → 194.555 ms` per run (**-47.4%**), with nodes (25,048), iterations (28,000) and the ranked candidate-score digest **unchanged**.
 
-## Benchmark Findings
+Three measured redundancies, in impact order:
 
-### Focused Preset Timing Check
+1. `resolve_active_buffs` hoisted out of the candidate loop — 12,308.9 → 893.6 calls per run.
+2. `effective_max_pool` fast path — `maxpool` can only move if an active buff declares that stat, but the full recomputation ran twice per transition at 7,400 ns/call, about 46% of a transition. Now 15.9 ns/call, and it removed the interim state clone it fed.
+3. `FxHasher` instead of SipHash for the hot maps, whose keys are short ASCII identifiers.
 
-Using `user-report-resonance-regression.snapshot.json` as a hard harmony proxy:
+Because no `perf`/`valgrind`/`rustup` is available in the development container, the measurement harness ships with the crate: a Cargo-feature-gated counter module (compiled out by default, never enabled for the WASM artefact) and three `#[ignore]`d tests, one of which prints the ranked-policy digest that any future optimization must leave byte-identical.
 
-| Experimental preset | Observed elapsed | Recommendation     | Depth reached |
-| ------------------- | ---------------: | ------------------ | ------------: |
-| Instant             |           ~1.25s | `focused_refine`   |             3 |
-| Fast                |           ~1.50s | `focused_refine`   |             3 |
-| Balanced            |           ~2.25s | `explosive_fusion` |             4 |
-| High Accuracy       |           ~3.25s | `explosive_fusion` |             4 |
-| Max                 |           ~4.00s | `explosive_fusion` |             4 |
+## Rejected with data — do not re-attempt without new evidence
 
-Important: the existing `search.test.ts` regression expects this snapshot to prefer `focused_refine` under a stable legacy budget. The fact that deeper experimental presets still return fusion here means the current MCTS prior is not a general quality fix for harmony-heavy cases.
+### Compact fixed-layout `EngineState` with mutate/undo
 
-### Cross-Fixture Proxy Sweep
+**Measured, then rejected.** The premise was that per-node clones dominate. They do not: `EngineState::clone()` costs 1,358.9 ns against a 28,919.3 ns transition — **4.70%** — so the entire theoretical ceiling of eliminating cloning was under 5%. Against that sits a high divergence risk, since an undo must exactly reverse harmony subsystems, buff sets, items and cooldowns. The three changes above were taken instead: 47.4% for no behavioural risk. Post-change, cloning is 7.31% of a much smaller transition, so the absolute headroom in nanoseconds shrank further.
 
-A temporary benchmark compared 14 replay fixtures with a simple contract score:
+### Packed numeric transposition-cache key
 
-- allowed/disallowed skill keys or technique types,
-- average elapsed time,
-- average reached depth,
-- failures per fixture.
+**Dropped deliberately.** Profiling put stringified cache keys at **1.0-1.4%** of the search budget. The collision risk of a packed key is not justified by that, and the original assumption that key construction was the bottleneck was simply wrong — the cost was spread across pure per-node helpers.
 
-Useful observations:
+### Higher MCTS iteration counts
 
-- Experimental `Fast` at about `1.5s` had no proxy failures in one sweep, while legacy `Fast` at `2.0s` still failed the resonance proxy. This is the strongest evidence that MCTS can sometimes reach comparable-or-better quality at lower budget.
-- Experimental `Balanced`, `High Accuracy`, and `Max` did not consistently beat legacy quality proxies; the resonance snapshot remained a recurring failure.
-- Same-budget experimental and legacy runs had similar wall time because both engines spend the configured time budget. Rust/WASM is not currently replacing the expensive TypeScript search.
+Measured on the resonance replay: `250` iterations ≈ `0.75 s`, `500` ≈ `1.45 s`, `1000` ≈ `2.64 s`, `2000` ≈ `4.72 s`. Inside a shared 1-4 s user budget, more iterations buy less than the TypeScript frontier they displace. `250` stays.
 
-### Direct MCTS Iteration Timing
+### Wider beams
 
-On the resonance replay, approximate direct MCTS timings were:
+Replay sweeps repeatedly showed a wider beam reaching a shallower frontier and producing _worse_ recommendations, including forge turns that strand on a shallow terminal frontier and drift into heat overshoot. Beam stays at `5` through mid-budget presets.
 
-| Rollout depth | Iterations | Approx elapsed |
-| ------------: | ---------: | -------------: |
-|            12 |        250 |         ~0.75s |
-|            12 |        500 |         ~1.45s |
-|            12 |       1000 |         ~2.64s |
-|            12 |       1500 |         ~3.71s |
-|            12 |       2000 |         ~4.72s |
+## Presets
 
-This is why `250` iterations was selected. Higher values are not viable inside a 1–4 second shared search budget unless MCTS becomes the primary search or moves off the main path.
+Defined in `src/settings/index.ts`. Unchanged by the 0.7.5 rework.
 
-## Current Rust/WASM Integration Limits
+| Preset | Legacy (depth / time / nodes / beam) | Experimental |
+| --- | --- | --- |
+| Instant | 32 / 1.0 s / 400k / 5 | 32 / 1.25 s / 400k / 5 |
+| Fast | **48 / 2.0 s / 1.0M / 5** (default) | 32 / 1.5 s / 500k / 5 |
+| Balanced | 64 / 4.5 s / 2.0M / 5 | 48 / 2.25 s / 800k / 5 |
+| High Accuracy | 80 / 8.0 s / 3.5M / 9 | 64 / 3.25 s / 1.3M / 5 |
+| Max | 96 / 10.0 s / 5.0M / 12 | 80 / 4.0 s / 2.0M / 5 |
 
-Relevant files:
+Experimental depth is lower than legacy at high tiers because the prior and the TypeScript search share one user-facing budget, and the ceiling is `4.0 s` to stay under the `4.5 s` responsiveness cap on slower machines. These are safe cross-machine defaults, not proof of optimality on one benchmark box.
 
-- `src/optimizer/search.ts`
-  - Decides whether to call native MCTS.
-  - Uses native policy only for root ordering/tie-breaking.
-  - TypeScript remains authoritative.
-- `src/optimizer/nativeMcts.ts`
-  - Builds compact DTOs for Rust.
-  - Derives and runs native MCTS.
-- `crates/craftbuddy-engine/src/lib.rs`
-  - Rust MCTS implementation.
-- `src/settings/index.ts`
-  - Preset values and MCTS settings passed through `getSearchConfig()`.
+MCTS config: `mctsIterations 250`, `mctsMaxNodes 5000`, `mctsRolloutDepth clamp(round(lookaheadDepth / 4), 8, 16)`, `mctsExploration 1.15`.
 
-Key limitation in `src/optimizer/search.ts`:
-
-- MCTS is only used when `useMonteCarloTreeSearch !== false`, depth is above `1`, skills exist, and craft/search complexity is high enough.
-- MCTS policy only breaks root ties where TypeScript already considers moves close.
-- It cannot override a clear TypeScript score difference.
-- It does not own multi-turn final scoring, exact buffs, exact harmony semantics, cooldown parity, finish policy, or full recommendation ranking.
-
-This design is safe, but it caps possible speed/quality gains.
-
-## Answer: Is Rust/WASM Faster At Equal Accuracy?
-
-Current answer: **not reliably**.
-
-More precise:
-
-- **Sometimes yes at tight budgets**: the MCTS prior can improve root ordering enough that a lower-budget experimental run matches or beats a higher-budget legacy run on some fixtures.
-- **Not generally yes**: for high-realm/harmony cases, the current native engine is too shallow/compact and too limited in authority. It does not consistently recover the high-quality recommendation at lower wall time.
-- **Same-budget speed is not meaningfully better**: because MCTS is additive and TypeScript still spends the configured budget, same-budget runs usually take about the same wall time.
-
-## What To Improve Next
-
-### Implemented in `v5.0.2`
-
-- Native MCTS is now requested only after cheap terminal/target checks, and the actual request is capped to a small share of remaining search budget so TypeScript frontier search keeps priority.
-- MCTS policy tie-breaking now requires both candidate actions to be present in the native policy, preventing unmodeled item or mechanics-heavy actions from losing a near-tie solely because Rust did not represent them.
-- The TypeScript move-ordering path reuses each candidate's guaranteed survivability floor instead of recomputing it while sorting, and recursive search applies the safe-stabilize guard to unresolved base-goal states without suppressing already-secured sublime forge recovery lines.
-- Finished craft scoring now probability-weights the sublime finish bonus by resolved craft-end bonus bands instead of treating raw `200/200` overcraft as equivalent to the guaranteed second-band `230/230` threshold.
-- Rust MCTS expansion now previews deeper nodes with their actual condition queue and avoids cloning the full `MctsInput` for every preview score.
-
-### Implemented in `v5.1.0`
-
-- Added `scripts/optimizer/benchmark-engines.ts` plus `optimizer:bench` / `optimizer:bench:verbose` package scripts for repeatable replay-snapshot comparisons.
-- The benchmark harness emits JSON and Markdown reports, validates flexible per-fixture contracts, supports custom fixture directories, includes same-budget MCTS on/off configs, and rejects unknown config IDs.
-- Harmony subsystem scoring now values normalized Forge Works heat distance, partial Inscribed Patterns block progress, and imminent Spiritual Resonance switches more accurately.
-- `buildScoringContext(...)` samples the top three productive moves to reduce outlier effects in high-skill-count crafts.
-- Follow-up display no longer runs an extra deep search after root ranking; it uses cached best moves first and shallow fallback to preserve recommendation budget.
-- Native MCTS dispatch now scales the requested work by craft complexity while keeping the actual request capped to roughly `15-20%` of remaining TypeScript search budget.
-- Non-MCTS iterative deepening can report a conservative stable-recommendation early exit via `searchMetrics.earlyExit`.
-
-### P0: Maintain the Real Benchmark Harness
-
-Maintain the tracked benchmark script under `scripts/optimizer/benchmark-engines.ts`. It can:
-
-1. Load replay snapshots.
-2. Run legacy and experimental configs.
-3. Compare:
-   - recommendation key/type,
-   - final simulated completion/perfection/stability,
-   - death/failure/early-finish risk,
-   - score margin vs known bad alternatives,
-   - depth reached,
-   - nodes explored,
-   - time elapsed,
-   - MCTS iterations/nodes/policy choice.
-4. Output JSON and markdown summaries.
-
-Suggested command shape:
+## Benchmark harness
 
 ```bash
-bun run optimizer:bench -- --json tmp/engine-benchmark.json --markdown tmp/engine-benchmark.md
+bun run optimizer:bench
+bun run optimizer:bench -- --json tmp/engine-benchmark.json --markdown tmp/engine-benchmark.md --verbose
 ```
 
-Do not assert strict wall-clock times in CI. Use local reports for tuning and CI assertions for deterministic quality contracts.
+`scripts/optimizer/benchmark-engines.ts` runs the replay corpus across seven tracked configs (legacy presets, experimental presets, same-budget MCTS on/off), validates per-fixture contracts (`mustRecommendOneOf`, `mustNotRecommend`, `preferredTypes`, `forbiddenTypes`, `mustRankBefore`, `minDepthReached`), and emits JSON plus Markdown.
 
-### P1: Expand Replay Corpus
+Rules for using it:
 
-Capture more real high-realm and harmony-heavy crafts:
+- Never assert wall clock in CI. Use the reports for trend comparison and deterministic contracts for regressions.
+- A failing contract is evidence to investigate the model, not licence to tune a scoring constant until it passes.
+- Contracts may only change with recorded runtime-oracle evidence.
 
-- long sublime crafts,
-- many known techniques,
-- complicated cooldown/resource skills,
-- forge heat edge cases,
-- alchemical sequence/charge cases,
-- resonance pending-switch cases,
-- low-stability high-value crafts,
-- cases where old CraftBuddy recommended bad finish/fusion/stabilize actions.
+## Open finding: `user-report-resonance-regression`
 
-Good snapshot source:
+Status: **one** config (`legacy_balanced`) fails `mustRankBefore`; the `experimental_balanced` half disappeared with the null-mastery fix.
 
-- `window.craftBuddyDebug.exportOptimizerReplaySnapshot()`
+Evidence gathered so far:
 
-Store curated fixtures under:
+- The resonance model is byte-for-byte faithful to the 0.7.5 runtime, including the `-9` harmony / `-3` stability mismatch penalty and the pending-switch exemption (`docs/project/RUNTIME_EVIDENCE_075.md` section 3). A wrong resonance formula cannot explain the failure.
+- The fixture's snapshot carries **no `harmonyData` at all**, so the harmony block never runs for it either way. The earlier "harmony is wrongly gated behind `isSublimeCraft`" hypothesis is ruled out _for this fixture_.
+- At depth 64 the two alternatives sit **0.29%** apart (43479.7 vs 43354.7) and the actual recommendation is a third action (`focused_fusion`), so this is a near-tie between two candidates that are not recommended either way.
 
-- `src/__tests__/__fixtures__/replay-snapshots/`
+The remaining decision is therefore whether `mustRankBefore` should treat an immaterial tie between non-recommended alternatives as a correctness failure. The release step owns that call; no scoring constant may be tuned for it.
 
-### P1: Port More Authoritative Mechanics To Rust
-
-To get real speedups, Rust/WASM needs to own more than root policy. Candidate path:
-
-1. Port exact skill legality and costs.
-2. Port exact transition mechanics for buffs, cooldowns, conditions, resource costs, toxicity, and stability.
-3. Port harmony subsystems with parity tests:
-   - Forge Works heat,
-   - Alchemical Arts charges/reactions,
-   - Inscribed Patterns,
-   - Resonance.
-4. Port finish-craft expected-value scoring.
-5. Add deterministic parity fixtures against TypeScript before trusting Rust results.
-
-Only after this can Rust search replace large parts of TypeScript search instead of merely hinting at root ordering.
-
-### P1: Make Native Search Budget-Aware
-
-Current MCTS remains bounded and complexity-scaled. Continue improving by:
-
-- skipping native MCTS below a minimum budget/complexity threshold,
-- measuring WASM warmup separately,
-- adapting iterations from observed rollout speed rather than a fixed ms-per-iteration estimate,
-- increasing MCTS only after parity improves for high-skill-count, sublime, or harmony crafts.
-
-### P2: Use MCTS More Intelligently
-
-Possible improvements:
-
-- Use MCTS to seed more than tie-breaks, but only after parity improves.
-- Feed top-N MCTS root moves into TypeScript principal variation ordering.
-- Reuse MCTS trees across adjacent turns when state fingerprints match expected transitions.
-- Keep a small native policy cache keyed by state/config/condition fingerprint.
-
-### P2: Refine Early Exit / Stability Detection
-
-TypeScript can still spend the full time budget. A conservative non-MCTS early exit exists; refine it only with replay evidence. It returns early when:
-
-- top recommendation stays stable across multiple completed iterative-deepening frontiers,
-- score margin is well above tie window,
-- no unsafe/probabilistic/terminal branch is near the top.
-
-This may improve perceived speed more than tuning MCTS alone.
-
-### P2: Improve Scoring For High-Realm/Harmony Crafts
-
-Likely issues to investigate:
-
-- Harmony value may be too delayed or too compressed in post-move scoring.
-- Partial subsystem progress may be under/overvalued depending on craft type.
-- Finish Craft EV and continuation EV can diverge at shallow depth.
-- Resource/stability runway estimates may not scale enough with very large targets.
-- Complicated skills with cooldowns/buffs need direct parity fixtures.
-
-Use `craftbuddy-optimizer` skill and add replay tests before changing heuristics.
-
-## Suggested Agent Workflow
-
-1. Run focused tests:
+## Validation commands
 
 ```bash
-bun run jest src/__tests__/search.test.ts src/__tests__/craftSimulation.test.ts
+bun run wasm:test                                        # Rust unit + differential tests
+bun run wasm:build                                       # rebuild the inline WASM artefact
+bun run jest src/__tests__/engineDifferential.test.ts    # TypeScript side of the corpus
+bun run jest src/__tests__/nativeMcts.test.ts            # bridge shaping, no-null assertion
+bun run optimizer:differential-corpus                    # regenerate the corpus after a mechanics change
+bun run optimizer:bench                                  # contract + trend comparison
 ```
 
-2. Run `bun run optimizer:bench` before and after candidate changes; avoid ad-hoc temp scripts.
-3. Add or curate at least 10 high-realm/harmony replay fixtures.
-4. Establish/refresh baseline tables for:
-   - legacy presets,
-   - experimental presets,
-   - same-budget legacy vs MCTS,
-   - MCTS off/on under identical depth/time/node/beam.
-5. Only then tune MCTS iterations, rollout depth, node cap, and beam.
-6. If recommendation quality remains mixed, fix scoring/parity before adding more constants.
-
-## Validation Commands
-
-For preset/settings changes:
-
-```bash
-bun run typecheck
-bun run jest src/__tests__/settings.test.ts src/__tests__/search.test.ts src/__tests__/nativeMcts.test.ts
-bun run test
-```
-
-For Rust/WASM changes:
-
-```bash
-bun run wasm:test
-bun run wasm:build
-bun run build
-```
-
-For release:
-
-```bash
-bun run release:validate
-```
-
-## Known Caveats
-
-- Existing Jest tests disable native MCTS by default unless explicitly enabled or called through local scripts outside Jest.
-- Wall-clock numbers are machine-dependent and should not become hard CI assertions.
-- MCTS startup/warmup affects short-budget measurements.
-- The current replay corpus is too small to prove broad high-realm accuracy.
-- The experimental engine is safer than a full replacement because TypeScript remains authoritative, but that same safety limits speedups.
-
-## Bottom Line For Future Agents
-
-Do not assume the Rust/WASM engine is already faster or more accurate. Treat it as a useful but limited root-prior experiment. The highest-impact next step is a real benchmark harness plus more high-realm/harmony fixtures, followed by moving exact mechanics and larger parts of search into Rust only after parity is proven.
+Native MCTS is disabled under Jest unless `CRAFTBUDDY_ENABLE_WASM_MCTS_TESTS=1`.

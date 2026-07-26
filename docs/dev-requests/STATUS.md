@@ -3,15 +3,29 @@ title: API Request Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-06
+last_verified: 2026-07-26
 source_of_truth: docs/dev-requests/API_EXPOSURE_REQUESTS.md
-review_cycle_days: 14
+review_cycle_days: 30
 related_files:
   - docs/dev-requests/API_EXPOSURE_REQUESTS.md
   - docs/project/ROADMAP.md
+  - docs/project/INTEGRATION_MODAPI.md
+  - docs/project/RUNTIME_EVIDENCE_075.md
 ---
 
 # API Request Status
+
+Verified against the installed AFNM **0.7.5** runtime.
+
+## 0.7.5 API changes
+
+| Change | Effect on CraftBuddy |
+| --- | --- |
+| `modAPI.gameData.itemTypeToHarmonyType` **removed** | No longer needed: harmony is a player selection read from live craft state. All references were deleted; no replacement heuristic is allowed. |
+| Harmony types extended to seven, each with a complexity multiplier | Modelled in `src/optimizer/harmonyRegistry.ts`. |
+| Native crafting auto-use loadout (`player.player.currentCraftingAutoUseLoadout`, `storedCraftingAutoUseLoadouts`) | Read-only consumer. CraftBuddy detects it and steps back from item consumption; no API request needed. |
+| No manual finish action; craft auto-resolves | Terminal handling moved to `willAutoFinish`. |
+| `afnm-types` `0.7.5` | Pinned in `package.json`. |
 
 ## Status snapshot
 
@@ -38,6 +52,9 @@ related_files:
 | Condition transition (`getNextCondition`) | Available | Primary wiring now uses `modAPI.utils.getNextCondition`; legacy fallback probing remains for older runtimes |
 | Technique resolution via known-technique name matching | Available | Primary wiring now matches live `CraftingTechnique.name` to `player.player.craftingTechniques[*].technique` and resolves via `modAPI.utils.craftingTechniqueFromKnown`, with live fallback for missing matches |
 | Stable completion-bonus identifier | Available | Wired via `modAPI.utils.completionBonusBuffName` with heuristic fallback |
+| Max toxicity getter (`getMaxToxicity`) | Available | Wired for alchemy crafts |
+| Item type → harmony type mapping utility | **Removed in 0.7.5** | Correctly obsolete; harmony is player-selected |
+| Crafting auto-use loadout state | Available | Read defensively in `src/modContent/nativeAutoUse.ts`; drives the item-policy downgrade |
 
 ## Open questions (dependency-gated)
 
@@ -53,6 +70,7 @@ These unresolved questions block specific improvements:
 
 1. Request timeline for finalized post-modifier cost preview helpers.
 2. Request docs that `CraftingTechnique.name` is a stable, non-localized canonical key matching `KnownCraftingTechnique.technique` and `modAPI.gameData.craftingTechniques`.
+3. Request a documented, stable shape for crafting auto-use slots (condition group, `maxCount`, item reference) so `projectNativeAutoUse` can evaluate slot conditions instead of conservatively assuming they fire.
 
 ## Update rule
 

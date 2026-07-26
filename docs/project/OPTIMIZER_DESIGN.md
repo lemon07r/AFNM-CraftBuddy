@@ -3,94 +3,162 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-06
-source_of_truth: src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*, src/settings/index.ts
+last_verified: 2026-07-26
+source_of_truth: src/optimizer/outcome.ts, src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/index.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*, src/settings/index.ts
 review_cycle_days: 30
 related_files:
   - AGENTS.md
+  - docs/project/MECHANICS_PARITY.md
+  - docs/project/OPTIMIZER_ENGINE_FINDINGS.md
   - docs/project/TESTING.md
   - scripts/optimizer/benchmark-engines.ts
 ---
 
 # Optimizer Design
 
+How CraftBuddy decides what to do next in AFNM **0.7.5**. Use `.agents/skills/craftbuddy-optimizer/SKILL.md` for the action checklist; this is the reference.
+
+## Module boundary
+
+`src/optimizer/index.ts` is the **only** entry point for everything outside `src/optimizer/*`. `src/modContent/*` and `src/ui/*` import from `../optimizer`, never from a submodule, so there is one authority per rule and no consumer can depend on internal layout. Anything the integration layer legitimately needs is added to the barrel (for example `clampForgeHeat`, `getForgeRecommendedTechniqueTypes`, `preloadNativeMctsPolicyEngine`, `buildCanonicalNativeVariables`) rather than reached for directly.
+
+| Module | Owns |
+| --- | --- |
+| `outcome.ts` | band widths, tier requirements, `willAutoFinish`. The single authority for every threshold. |
+| `state.ts` | immutable `CraftingState`, generic `TrackedBuff` set, cache-key generation |
+| `gameTypes.ts` | game-aligned types and shared formulas (`evaluateScaling`, expression evaluator, condition parsing, crit EV, `getBonusAndChance`) |
+| `skills.ts` | transition engine (`calculateSkillGains`, `applySkill`, `canApplySkill`), masteries, buffs, harmony application |
+| `harmony.ts` + `harmonyRegistry.ts` | the seven harmony subsystems and their static data |
+| `search.ts` | move ordering, bounded lookahead, scoring, `OutcomeProjection` |
+| `nativeMcts.ts` | the bridge to the Rust engine |
+
+## The conjunctive outcome model
+
+This is the core of the 0.7.5 rework and the reason the old additive scorer was deleted.
+
+The game resolves a craft by counting **bands** on each bar independently, then requiring a conjunction:
+
+```text
+band widths grow by 1.3x each (runtime qIa)
+basic   = 1 completion band
+perfect = 1 completion band AND 1 perfection band
+sublime = 2 completion bands AND 2 perfection bands   (recipe must have a sublime item)
+```
+
+`deriveOutcomeBands(config)` derives the widths, the auto-finish flats and the recipe's reachable `targetTier`; `classifyOutcome(state, bands)` returns the guaranteed tier, per-bar band counts and margins, and which bar is blocking.
+
+Consequences that must not be re-litigated with weights:
+
+- Pouring points into one bar cannot raise the tier once that bar's requirement is met. An additive weighted sum could, which is exactly why sublime crafts were mis-played before 0.7.5 (over-completion, or Perfection spam that never banked completion).
+- `basic` is a real floor for a finished craft, but as a _live_ checkpoint it is suppressed while aiming at perfect/sublime, so banking completion alone cannot outrank progress on the binding bar.
+
+## Terminal states: there is no manual finish
+
+0.7.5 has no `Finish Craft` action. The craft resolves itself the moment `willAutoFinish(state, bands)` holds — see `docs/project/RUNTIME_EVIDENCE_075.md` section 2 for the extracted predicate and the proof that `Wait` is a normal technique costing 10 stability, not a finish button.
+
+Search therefore:
+
+- treats an auto-finishing state as **terminal** and scores it by its resolved tier, so nothing "improves" a state the game has already ended;
+- keeps an internal, non-turn-consuming `Finish Craft` pseudo-action (`actionKind: 'finish'`) purely to price craft-end EV against continuing lines at the search frontier;
+- never lets automation dispatch a finish once `willAutoFinish` holds, because the craft has already resolved. The auto-mode policy name `techniquesAndFinish` predates 0.7.5 and now means "may act on a craft-resolving recommendation", not "may press a finish button".
+
+UI wording is "will auto-finish", never "you can finish crafting now".
+
 ## State and actions
 
-- State: immutable `CraftingState` with deterministic cache key.
-- State defensively clones tracked buff entries to preserve immutability boundaries.
-- Integration seeds only canonical supplemental `nativeVariables`; state/buff/harmony mirrors are re-derived on demand from `CraftingState` during native availability checks instead of being persisted into cache keys.
-- Actions: crafting techniques + mapped item actions (when provided by integration layer).
-- Search also exposes a local pseudo-action, `Finish Craft`, so bounded lookahead can compare exact craft-end EV against continuing lines.
-- Transition engine: `calculateSkillGains(...)` + `applySkill(...)` in `src/optimizer/skills.ts`.
+- Immutable `CraftingState` with a deterministic cache key; tracked buffs are cloned defensively at the boundary.
+- Buffs are a generic set of `TrackedBuff { key, stacks, duration, definition }`. The two legacy scalar `control/intensityBuffTurns` counters remain only as a fast path for simple turn-based buffs; **new effects must not use them**, or they double-apply against the definition-driven path.
+- Actions: crafting techniques plus item (pill/reagent) actions supplied by the integration layer. Item actions do not consume lookahead turn depth.
+- Integration seeds only canonical supplemental `nativeVariables`; state, buff and harmony mirrors are re-derived on demand instead of being persisted into cache keys.
+- When the native crafting auto-use loadout covers an item, that item is removed from the action space by the integration layer, so search never proposes a consumption the game is about to perform itself.
 
-## Search modes
+## Search
 
-- `greedySearch(...)`: fast one-step selection.
-- `lookaheadSearch(...)`: main mode for recommendations.
-- `findBestSkill(...)`: public entrypoint selecting search strategy.
+- `greedySearch(...)` — one-step selection.
+- `lookaheadSearch(...)` — the main recommendation mode.
+- `findBestSkill(...)` — public entry point choosing the strategy.
 
-## Search characteristics
+Characteristics:
 
-- Transposition table: `Map<string, { score, bestMove }>` on normalized state keys (with adaptive bucket sizing near targets)
-- Iterative deepening reuses one shared transposition table; the adaptive beam profile is keyed only by local remaining depth so cached subproblems stay valid across passes
-- `findOptimalPath()` reconstructs the tree search's actual chosen path by walking the transposition table's `bestMove` entries, with greedy evaluation fallback for cache misses
-- beam-limited exploration
-- adaptive beam width at deeper layers
-- iterative deepening option (only fully completed deeper passes replace shallower results)
-- conservative stable-recommendation early exit can stop iterative deepening only after several completed depths keep the same top move with a large score margin and no risky/terminal near-top line
-- node/time budget constraints
-- node budget counts cache-miss frontier expansions rather than cache probes
-- terminal-state shortcuts
-- optional Experimental Rust/WASM Monte Carlo Tree Search root policy prior for large/harmony searches. This is not a replacement scorer: the native engine produces root action visit policies from compact rollouts, and TypeScript lookahead still owns legality, post-action scoring, transposition cache entries, terminal handling, and returned recommendations. The persisted Legacy engine setting disables this path and remains the default.
+- transposition table `Map<string, { score, bestMove }>` on normalized state keys with adaptive bucket sizing near targets. The key stays a string: profiling put key construction at **1.0-1.4%** of the search budget, so a packed numeric key was dropped rather than accept its collision risk
+- iterative deepening over one shared table; only fully completed deeper passes replace shallower results
+- beam-limited exploration with adaptive width at depth, and cached `bestMove` promotion so a deeper pass continues from the validated principal variation
+- node budget counts cache-miss frontier expansions, not cache probes
+- conservative stable-recommendation early exit, reported as `searchMetrics.earlyExit`
+- `findOptimalPath()` reconstructs the displayed rotation from the table's `bestMove` chain, with greedy evaluation only on a cache miss
+- optional Rust/WASM MCTS **root policy prior** for large or sublime searches when the Experimental engine is selected (see below)
 
-## Probability handling
+### Probability handling
 
-- Success/crit modeled as expected value in gains.
-- Immediate survival is not flattened entirely into EV: `calculateActionSurvivabilityFloor(...)` computes a guaranteed post-action stability/max-stability floor, and search treats proc-dependent survival lines as unsafe when a guaranteed-safe alternative exists while base goals are still unsecured.
-- That low-floor unsafe classification is meant to keep risky live branches behind guaranteed-safe continuations such as stabilize lines; it does **not** auto-promote `Finish Craft` above a materially better continuation just because finish is safer.
-- The guaranteed floor also applies to exact `1`-stability unmet-goal runway traps where an EV stabilize line can leave only a token guaranteed floor. On sublime crafts, base-success overcraft lines are still allowed to stay probabilistic when they retain a non-terminal guaranteed floor, but immediate hard-stop branches (guaranteed floor `<= 0`) are collapsed so they cannot outrank a guaranteed-safe continuation while sublime goals remain unmet.
-- Craft-end resolution is modeled explicitly through the `Finish Craft` branch with the same nonlinear bonus ladder the runtime uses (`getBonusAndChance(...)`). Completion and perfection roll independently at craft end; success requires at least one completion band, perfect requires at least one perfection band, and sublime requires `2+` completion and perfection bands when the recipe has a distinct sublime outcome. Finished-outcome scoring evaluates the resulting fail/basic/perfect/sublime distribution directly, probability-weights the sublime finish bonus by resolved craft-end bands, ignores post-finish runway concerns, and applies a full unresolved-work penalty so shallow partial finishes do not outrank healthy live states with runway.
-- Condition queue is normalized to fixed length `3` (matches game UI/runtime visibility).
-- Beyond forecast queue, condition transitions are probability-weighted (`enableConditionBranchingAfterForecast`, `conditionBranchLimit`, `conditionBranchMinProbability`).
-- Non-turn item actions do not consume lookahead turn-depth/index.
-- Documented ModAPI transition provider wiring is active (`modAPI.utils.getNextCondition` primary with legacy fallback).
+- Success and crit are expected values inside gains.
+- Immediate survival is _not_ flattened into EV: `calculateActionSurvivabilityFloor(...)` computes a guaranteed post-action stability floor, and a proc-dependent line is treated as unsafe while a guaranteed-safe alternative exists and goals are unsecured. Hard-stop branches (guaranteed floor `<= 0`) are collapsed before ranking; sublime continuation lines may stay probabilistic while their floor is non-terminal. This is the Qi/stability juggling behaviour players praised and it has dedicated survivability regression coverage — do not weaken it.
+- The condition queue is normalized to the game's visible length `3`; beyond it, transitions are probability-weighted (`enableConditionBranchingAfterForecast`, `conditionBranchLimit`, `conditionBranchMinProbability`).
+- Condition transitions come from `modAPI.utils.getNextCondition` with a legacy fallback.
 
-## Scoring architecture
+### Scoring
 
-`scoreState()` uses a layered architecture where each layer handles one concern. It accepts an optional `ScoringContext` parameter carrying precomputed craft-specific estimates (`avgStabilityCostPerTurn`, `avgCompletionGainPerTurn`, `avgPerfectionGainPerTurn`, `avgGainPerTurn`) so that survivability and qi/runway calculations use representative live skill gains instead of bare base stats. `buildScoringContext()` samples the strongest currently-usable productive moves (with current state/condition effects when available) rather than averaging every low-output filler action; it now averages the top three productive samples so one or two outlier skills do not dominate large-skill-set runway estimates. All scoring weights are defined in the `SCORING` named constants block at the top of `search.ts`. Use `.agents/skills/craftbuddy-optimizer/SKILL.md` for the active design rules, anti-patterns, and validation workflow.
+`scoreState()` layers, in evaluation order:
 
-### Layers (in evaluation order)
+1. **Conjunctive goal score** — the whole point is `Math.min` on the two margins:
 
-1. **Progress** — weighted completion + perfection toward effective goals
-2. **Target-met bonus** — proportional to `totalTargetMagnitude × SCORING.TARGET_MET_MULTIPLIER` (never hardcoded)
-3. **Buff valuation** — expected future return from active buffs (only when targets not yet met)
-4. **Resource value** — qi and stability as future-progress enablers (only when targets not yet met)
-5. **Overshoot penalty** — penalise going beyond effective caps
-6. **Survivability** — stability risk penalties using grounded estimates from `ScoringContext` (skipped entirely when targets are met). Includes: quadratic threshold penalty, death penalty (`totalTargetMagnitude × SCORING.DEATH_PENALTY_MULTIPLIER`), near-death linear penalty, and proportional uncapped runway gap penalty (`gap × totalTargetMagnitude × SCORING.RUNWAY_GAP_FRACTION`)
-7. **Toxicity & harmony** — proportional toxicity penalty (`totalTargetMagnitude × SCORING.TOXICITY_PENALTY_FRACTION`) + sublime harmony signal + harmony sub-system quality term (`evaluateHarmonySubsystemQuality()` × remaining-work% × `totalTargetMagnitude × SCORING.HARMONY_SUBSYSTEM_QUALITY_WEIGHT`). That harmony-quality evaluator now uses subsystem-specific state where needed: normalized forge heat distance from the sweet spot, inscription stack and partial-block progress, partial alchemical charge progress, and resonance target/strength/pending-switch state can all influence frontier scoring instead of only raw intensity/control multipliers. For sublime crafts, these continuation terms stay active until sublime targets are met, not merely until base success is secured, so forge heat recovery and other harmony setup can still outrank shallow “play safe now” lines when overcraft EV is genuinely better.
+   ```text
+   totalTargetMagnitude * ( TIER_VALUE_SCALE * tierRank
+                          + GATE_WEIGHT      * min(completionMargin, perfectionMargin)
+                          + BALANCE_WEIGHT   * weightedMarginAverage
+                          + BONUS_ROLL_WEIGHT* bonusCreditWhenOneBandShort
+                          + IN_TIER_PROGRESS_WEIGHT * residualShortfall )
+   + EXTRA_BAND_WEIGHT * conjunctiveExtraBands * baseTargetMagnitude
+   ```
+
+2. **Buff valuation** — expected future return while the target tier is unmet.
+3. **Resource value** — qi and stability as future turns of progress; tiny tie-breakers only once goals are met.
+4. **Survivability** — guarded stability/runway penalties, skipped entirely once the active goal is met.
+5. **Overshoot / hard-cap and finished-shortfall penalties.**
+
+Commensurability is deliberate and documented next to the constants in `search.ts`: one tier step (`2x` magnitude) strictly exceeds the maximum within-tier stack (`<= ~1.6x`), and death (`3x`) exceeds a tier step, so banking a tier always beats margin polish and dying never beats progress.
+
+Harmony value is routed through its effect on the reachable tier plus a subsystem-quality term (forge heat distance, inscription stack/block progress, alchemical charge progress, resonance target/strength/pending-switch), not as a flat additive bonus.
+
+`buildScoringContext()` samples the top three productive currently-usable moves so runway estimates use representative live gains instead of base stats.
 
 ### Move ordering
 
-`buildOrderedMoveCandidates()` is the live beam-ordering path. It evaluates every currently legal move with `applySkill(...)`, scores the resulting state through `estimatePostMoveStateScore(...)`, and then uses `compareMoveCandidatesForTie(...)` plus immediate progress as tie-breakers. It also consults the guaranteed survivability floor so a move that only survives if a probabilistic stability proc lands does not outrank a guaranteed-safe alternative while goals are still unmet. Sublime continuation lines are still allowed to stay probabilistic after base success when their guaranteed floor remains non-terminal, but immediate hard-stop floor-death branches are collapsed before ranking. When iterative deepening has already solved a shallower version of the same normalized subproblem, the cached `bestMove` is promoted before beam truncation so deeper passes continue from the previously validated principal variation instead of re-guessing move order from scratch.
+`buildOrderedMoveCandidates()` is the only beam-ordering path. It applies every legal move, scores the resulting state with `estimatePostMoveStateScore(...)`, and tie-breaks with `compareMoveCandidatesForTie(...)`, immediate progress, and the guaranteed survivability floor.
 
-When the Experimental engine is selected and the bundled inline Rust/WASM engine is available, large or sublime searches can request a root MCTS policy from `src/optimizer/nativeMcts.ts` after cheap terminal/target checks. The request is budget-aware, capped to a small share of the remaining TypeScript search budget, and policy tie-breaking is only allowed when both near-tied candidates are represented in the native policy. It cannot hard-filter skills and cannot override a clear TypeScript score difference. This keeps the parity-heavy TypeScript scorer authoritative while giving late-game/harmony crafts a faster way to choose which near-equal root branches deserve the first deep budget.
+A **goal-unlock heuristic** promotes actions that unlock a gated high-value technique (for example rushing completion to `100%` to enable False Fusion), so completion-rush lines survive beam pruning at limited depth. When such an action is recommended, the result carries a `setupFor: { techniqueKey, reason }` hint so the panel can explain it instead of the turn looking wasted.
 
-No skills are hard-filtered out of the search tree before evaluation. If a move class is being mis-ordered, fix the post-move state evaluation or the underlying transition/scoring model instead of introducing a second heuristic ordering lane.
+No legal skill is hard-filtered before evaluation. If a move class is mis-ordered, fix the transition or post-move scoring inputs — never add a second heuristic lane that can disagree with recursive search.
 
-### Budget ownership
+### Result contract
 
-Recommendation budget is reserved for ranking first moves. Follow-up suggestions are generated only after a root frontier is accepted, using cached `bestMove` entries first and shallow ordering fallback only when needed. Follow-up display does not run an extra deep search after ranking, so auxiliary UI data does not consume the search budget that determines the actual recommendation.
+`SearchResult` carries an `OutcomeProjection` populated by one `withOutcomeProjection` wrapper around `greedySearch` / `lookaheadSearch`: guaranteed tier, target tier, per-bar `{ value, bands, requiredBands, nextThreshold, pointsToNextBand }`, the binding bar, and `willAutoFinish`. Presentation code consumes this; it must never recompute a threshold. The field is optional so pre-0.7.5 replay fixtures still load.
+
+## Rust/WASM engine
+
+The Rust engine models the **same searchable action space** as TypeScript — generic buffs, effect trees, mastery, Soulflame, toxicity, item actions — and shares the conjunctive outcome model via `crates/craftbuddy-engine/src/outcome.rs`. Parity is proven by a 129-scenario / 1,222-transition differential corpus (`docs/project/MECHANICS_PARITY.md`).
+
+Its role in a search is still a **root policy prior**, by design:
+
+- requested only after cheap terminal/target checks, for large or sublime crafts
+- capped to roughly `15-20%` of the remaining TypeScript budget (`500 ms` max)
+- may break a near-tie only when both candidates appear in the native policy
+- cannot hard-filter a skill or overturn a clear TypeScript score difference
+
+TypeScript remains the differential oracle and the fallback when WASM is unavailable. Measured engine performance and the optimizations that were rejected with data live in `docs/project/ENGINE_PERFORMANCE_075.md`.
 
 ## User goal-priority bias
 
-- `searchGoalPriorityBias` is a persisted search-policy setting, default `0`.
-- Range: `-100` = perfection priority, `0` = balanced, `100` = completion priority.
-- Balanced is the mathematically neutral default: completion/perfection weights still follow remaining-work need share.
-- Non-zero bias shifts both ongoing-state scoring and `Finish Craft` outcome scoring through the same weight function, so the preference affects real search evaluation rather than a separate UI-only heuristic.
+`searchGoalPriorityBias` is a persisted setting, default `0`.
+
+- `-100` perfection priority, `0` balanced, `100` completion priority.
+- Balanced is mathematically neutral: weights follow remaining-work need share.
+- The bias shifts the same weight function used by live scoring and craft-end scoring, so it steers real search rather than a UI-only heuristic. It cannot override a band gate — a tier still needs both bars.
 
 ## Determinism expectations
 
-Identical state + config inputs should produce stable recommendations within the deterministic EV model when the search reaches the same effective frontier under the configured limits. Because lookahead is bounded by wall-clock time, node caps, beam width, and iterative deepening, the same slider values can explore different depths on faster vs slower machines; `searchTimeBudgetMs`, `searchMaxNodes`, `searchBeamWidth`, and `lookaheadDepth` define a budget envelope, not a cross-machine determinism guarantee. Condition normalization lowercases unknown labels to avoid cache-key casing drift. When a deeper pass does not fully complete, the optimizer keeps the last fully completed frontier (or the fully-evaluated immediate root frontier if no recursive pass completed) instead of mixing partial deep scores into the final ranking.
+For a fixed state, config and budget the recommendation is deterministic; `differential_tests::mcts_search_is_deterministic` asserts that directly on the Rust side over all corpus scenarios.
+
+Because lookahead is bounded by wall clock, node cap, beam width and iterative deepening, the same slider values reach different depths on different machines. `searchTimeBudgetMs`, `searchMaxNodes`, `searchBeamWidth` and `lookaheadDepth` define a budget _envelope_, not a cross-machine guarantee. An incomplete deeper pass never mixes partial scores into the final ranking.
 
 ## Performance tuning
 
@@ -100,24 +168,18 @@ Identical state + config inputs should produce stable recommendations within the
 - `searchTimeBudgetMs` (`100-10,000`, default `2,000`)
 - `searchMaxNodes` (`1,000-5,000,000`, default `1,000,000`)
 - `searchBeamWidth` (`3-20`, default `5`)
-- `searchGoalPriorityBias` (`0` by default)
-- Settings sliders persist on commit (not every drag event) to reduce UI churn.
-- Preset tuning now keeps the beam narrower through mid-budget tiers; replay benchmarking showed widening too early can produce worse partial-frontier recommendations than a deeper narrow-beam search, including forge turns where a wider beam strands the search on a shallow terminal frontier and drifts into avoidable heat overshoot.
-- Manual tuning is coupled: over-raising one slider while starving the others can reduce effective frontier quality. Presets exist to keep the budget ratios in a safer range.
+- `searchGoalPriorityBias` (default `0`)
 
-### Internal search defaults
+Sliders persist on commit, not per drag. They are coupled: over-raising one while starving the others reduces effective frontier quality, which is why presets exist. Beam stays narrow through mid-budget tiers because replay benchmarking showed a wide beam can strand the search on a shallow frontier.
 
-- iterative deepening: enabled
-- adaptive beam width: enabled
-- condition branching beyond forecast: enabled
-- branch limit: `2`
-- branch min probability: `0.15`
-- engine mode: `legacy` by default; `experimental` enables the native MCTS root policy when bundled inline WASM is available and the search is large or sublime
-- conservative stable-recommendation early exit: enabled for non-MCTS iterative-deepening searches after multiple completed stable frontiers with a large margin and no unsafe/terminal near-top branch; reported in `searchMetrics.earlyExit`
-- legacy default preset: Fast (`48` depth, `2,000ms`, `1,000,000` nodes, beam `5`)
-- experimental preset ceiling: Max uses `4,000ms`, below the `4,500ms` responsiveness cap
-- MCTS defaults: up to `250` requested iterations, rollout depth `8-16` from preset depth, exploration `1.15`, node cap `5,000`; runtime dispatch scales the actual native request by craft complexity and caps it to roughly 15-20% of remaining budget (`500ms` maximum) before TypeScript search owns the final ranking.
-- Detailed Rust/WASM findings and follow-up work: `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
+### Internal defaults
+
+- iterative deepening, adaptive beam, condition branching beyond forecast: on
+- branch limit `2`, branch minimum probability `0.15`
+- engine mode `legacy` by default; `experimental` enables the native prior when inline WASM is available and the search is large or sublime
+- legacy default preset Fast (`48` depth, `2,000 ms`, `1M` nodes, beam `5`)
+- experimental preset ceiling `4,000 ms`, under the `4,500 ms` responsiveness cap
+- MCTS: up to `250` iterations, rollout depth `8-16` from preset depth, exploration `1.15`, node cap `5,000`
 
 ### Cost/quality tuning order
 
@@ -126,14 +188,12 @@ Identical state + config inputs should produce stable recommendations within the
 3. adjust `searchBeamWidth`
 4. raise `searchTimeBudgetMs` only as needed
 
-### Long-craft guidance (~90 turns)
-
-- increase depth gradually and validate responsiveness
-- avoid maxing depth + beam simultaneously on slower machines
-- prefer bounded multi-second time budgets; turn-based crafts can tolerate waiting, but exact frontier depth still varies by machine
+For ~90-turn crafts, increase depth gradually, avoid maxing depth and beam together on slow machines, and prefer bounded multi-second budgets.
 
 ## Key design decisions
 
-- **Pure optimizer core** — simulation and search in `src/optimizer/*` remain pure/testable with no game runtime dependencies.
-- **Expected-value modeling with guaranteed-survival guardrails** — EV for success/crit and future-condition branching provides stable quality with bounded runtime cost in the authoritative TypeScript search, while immediate survivability is guarded by a deterministic floor so the optimizer does not spend a craft on a recovery proc when a guaranteed stabilize exists.
-- **Native MCTS as a policy prior, not a mechanics source of truth** — the Rust engine intentionally uses a compact scalar model for fast rollouts. Its output improves root branch ordering under tight budgets, but TypeScript mechanics remain responsible for exact gains, buff effects, native availability prechecks, and final recommendation scores.
+- **One outcome authority.** Bands, tiers and the auto-finish predicate live only in `outcome.ts` (mirrored in Rust). Duplicating a threshold anywhere else is a defect, not an optimization.
+- **Conjunctive goals over tuned weights.** Gates, not weights, decide tiers; the weights only order candidates inside a tier.
+- **Pure optimizer core.** No game runtime, DOM, Redux or settings access in `src/optimizer/*`.
+- **EV with guaranteed-survival guardrails.** Expected value for gains and conditions, plus a deterministic survivability floor so a craft is never spent on a recovery proc when a guaranteed line exists.
+- **Rust as prior, TypeScript as authority.** Parity is proven mechanically, but ranking authority stays in one place.
