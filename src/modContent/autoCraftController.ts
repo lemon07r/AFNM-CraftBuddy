@@ -1,5 +1,9 @@
 import type { SearchResult, SkillDefinition } from '../optimizer';
 import {
+  INACTIVE_NATIVE_AUTO_USE,
+  type NativeAutoUseStatus,
+} from './nativeAutoUse';
+import {
   createDefaultAutoCraftUiState,
   type AutoCraftPhase,
   type AutoCraftPolicy,
@@ -75,12 +79,61 @@ export interface AutoCraftExecutionRequest {
   reason: string;
 }
 
+/**
+ * Result of re-reading the live craft state and comparing it against the state a
+ * recommendation was produced from.
+ *
+ * `stale` means the craft moved and the recommendation must be recomputed;
+ * `unverifiable` means the state could not be read at all, in which case
+ * automation must pause instead of guessing.
+ */
+export type AutoCraftStateVerification =
+  | { kind: 'match' }
+  | { kind: 'stale'; changed: readonly string[] }
+  | { kind: 'unverifiable'; reason: string };
+
+/** The verification used when a snapshot provides none. */
+export const MATCHED_STATE_VERIFICATION: AutoCraftStateVerification = {
+  kind: 'match',
+};
+
 export interface AutoCraftRuntimeSnapshot {
   craftSessionActive: boolean;
   craftActive: boolean;
   isCalculating: boolean;
   result: SearchResult | null;
   stateFingerprint: string;
+  /**
+   * Monotonic revision bumped whenever `stateFingerprint` changes.
+   *
+   * Lets the executor re-check at dispatch time that the craft has not moved
+   * since the recommendation was produced, which a fingerprint comparison made
+   * `READY_DELAY_MS` earlier cannot do.
+   */
+  craftStateRevision?: number;
+  /** What the native 0.7.5 crafting auto-use loadout will do before a technique. */
+  nativeAutoUse?: NativeAutoUseStatus;
+  /**
+   * Re-read the live craft state and compare it against this snapshot.
+   *
+   * Defaults to reporting `match`, which is the pre-guard behaviour: dispatch
+   * proceeds exactly as before until a real reader is wired in.
+   */
+  verifyRevision?: () => AutoCraftStateVerification;
+}
+
+/** Snapshot verification, falling back to the no-op default. */
+export function verifySnapshotState(
+  snapshot: AutoCraftRuntimeSnapshot,
+): AutoCraftStateVerification {
+  return snapshot.verifyRevision?.() ?? MATCHED_STATE_VERIFICATION;
+}
+
+/** Native auto-use status of a snapshot, falling back to "no loadout". */
+export function resolveSnapshotNativeAutoUse(
+  snapshot: AutoCraftRuntimeSnapshot,
+): NativeAutoUseStatus {
+  return snapshot.nativeAutoUse ?? INACTIVE_NATIVE_AUTO_USE;
 }
 
 export interface AutoCraftExecutor {
@@ -136,9 +189,7 @@ function isPolicyAllowed(
 ): boolean {
   if (actionKind === 'skill') return true;
   if (actionKind === 'finish') {
-    return (
-      policy === 'techniquesAndFinish' || policy === 'fullActionSpace'
-    );
+    return policy === 'techniquesAndFinish' || policy === 'fullActionSpace';
   }
   return policy === 'fullActionSpace';
 }
@@ -254,10 +305,7 @@ function resolveActionPlan(
       skill: recommendation.skill,
       reason: recommendation.reasoning,
     },
-    title:
-      actionKind === 'finish'
-        ? 'Finish Craft'
-        : recommendation.skill.name,
+    title: actionKind === 'finish' ? 'Finish Craft' : recommendation.skill.name,
     detail: recommendation.reasoning,
   };
 }
@@ -277,8 +325,7 @@ export function createAutoCraftController({
   let awaitingFingerprint: string | null = null;
   let awaitingRequest: AutoCraftExecutionRequest | null = null;
   let waitingTimeoutHandle: unknown = null;
-  let stopReason =
-    'Auto mode will stop after the current action resolves.';
+  let stopReason = 'Auto mode will stop after the current action resolves.';
 
   const emit = () => {
     onStateChange?.(uiState);
@@ -293,11 +340,7 @@ export function createAutoCraftController({
       ...patch,
       policy: nextPolicy,
       canArm: patch.canArm ?? !(patch.armed ?? uiState.armed),
-      canStop:
-        patch.canStop ??
-        Boolean(
-          patch.armed ?? uiState.armed,
-        ),
+      canStop: patch.canStop ?? Boolean(patch.armed ?? uiState.armed),
       isRunning:
         patch.isRunning ??
         ['ready', 'executing', 'waiting_for_state', 'stop_requested'].includes(
@@ -439,12 +482,7 @@ export function createAutoCraftController({
       awaitingFingerprint = null;
       const message =
         error instanceof Error ? error.message : String(error ?? 'Unknown');
-      finalizeStoppedState(
-        'error',
-        'error',
-        'Auto mode error',
-        message,
-      );
+      finalizeStoppedState('error', 'error', 'Auto mode error', message);
     }
   };
 

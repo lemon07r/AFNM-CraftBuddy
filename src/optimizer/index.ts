@@ -7,8 +7,17 @@
  * Now includes game-accurate mechanics based on CraftingStuff source code.
  */
 
-export { CraftingState, BuffType, createStateFromGame, buildScalingVariables } from './state';
-export type { CraftingStateData, TrackedBuff, CreateStateOptions } from './state';
+export {
+  CraftingState,
+  BuffType,
+  createStateFromGame,
+  buildScalingVariables,
+} from './state';
+export type {
+  CraftingStateData,
+  TrackedBuff,
+  CreateStateOptions,
+} from './state';
 
 export {
   DEFAULT_SKILLS,
@@ -48,7 +57,33 @@ export type {
   CraftingConditionType,
   SearchConfig,
   ConditionTransitionProvider,
+  OutcomeBarStatus,
+  OutcomeProjection,
+  SetupForHint,
 } from './search';
+
+// Conjunctive outcome evaluator (0.7.5): the single authority on band
+// thresholds, tier requirements and the auto-finish predicate. Presentation and
+// runtime code must consume these instead of recomputing any of them.
+export {
+  deriveOutcomeBands,
+  buildOutcomeBands,
+  classifyOutcome,
+  bandThreshold,
+  tierForBands,
+  tierRank,
+  willAutoFinish,
+  BAND_GROWTH_RATIO,
+  OUTCOME_TIER_ORDER,
+  TIER_REQUIREMENTS,
+} from './outcome';
+export type {
+  OutcomeTier,
+  OutcomeBands,
+  OutcomeBandParams,
+  OutcomeClassification,
+  TierRequirement,
+} from './outcome';
 
 // Harmony system exports
 export {

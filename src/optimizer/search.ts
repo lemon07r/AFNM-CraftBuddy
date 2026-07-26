@@ -101,6 +101,21 @@ export interface SkillRecommendation {
   endsCraft?: boolean;
   /** Whether the line depends on probabilistic survival rather than a guaranteed floor. */
   requiresProbabilisticSurvival?: boolean;
+  /**
+   * Present when the action's value comes from unlocking a currently-gated
+   * technique rather than from its own gains (for example rushing completion to
+   * open False Fusion). Lets the UI present a setup turn as deliberate instead
+   * of wasted.
+   */
+  setupFor?: SetupForHint;
+}
+
+/** Why an action is worth taking even though its own gains look weak. */
+export interface SetupForHint {
+  /** Stable key of the technique this action unlocks. */
+  readonly techniqueKey: string;
+  /** Human-readable explanation for the panel. */
+  readonly reason: string;
 }
 
 /** Diagnostic info for why skills are unavailable */
@@ -110,11 +125,60 @@ export interface SkillBlockedReason {
   details: string;
 }
 
+/**
+ * One progress bar measured against the band ladder of the target tier.
+ *
+ * Every field is derived by `./outcome`, so consumers (notably the UI) never
+ * recompute a threshold and can never drift from the scorer.
+ */
+export interface OutcomeBarStatus {
+  /** Current value on this bar. */
+  readonly value: number;
+  /** Bands guaranteed by `value`, ignoring the bonus roll. */
+  readonly bands: number;
+  /** Bands the target tier requires on this bar. */
+  readonly requiredBands: number;
+  /** Value at which the next band becomes guaranteed. */
+  readonly nextThreshold: number;
+  /** Points still needed to reach `nextThreshold`. */
+  readonly pointsToNextBand: number;
+  /** Probability the runtime's single bonus roll grants one extra band. */
+  readonly bonusChance: number;
+}
+
+/**
+ * Outcome the current state is on track for, in the shared evaluator's terms.
+ *
+ * Attached to `SearchResult` so presentation layers can explain a
+ * recommendation ("perfection is the binding bar, 42 points to the next band")
+ * without duplicating any band logic.
+ */
+export interface OutcomeProjection {
+  /** Tier guaranteed by the current bars. */
+  readonly tier: OutcomeTier;
+  /** Tier reachable if both bonus rolls land. */
+  readonly optimisticTier: OutcomeTier;
+  /** Best tier this craft can reach at all — what the search aims at. */
+  readonly targetTier: OutcomeTier;
+  readonly completion: OutcomeBarStatus;
+  readonly perfection: OutcomeBarStatus;
+  /** Bar that is short of the target tier, or `'none'` once both are met. */
+  readonly bindingBar: 'completion' | 'perfection' | 'none';
+  /** True when the game's auto-finish predicate already holds. */
+  readonly willAutoFinish: boolean;
+}
+
 export interface SearchResult {
   recommendation: SkillRecommendation | null;
   alternativeSkills: SkillRecommendation[];
   isTerminal: boolean;
   targetsMet: boolean;
+  /**
+   * Outcome the searched-from state is on track for. Optional so older replay
+   * snapshots and hand-built fixtures stay valid; consumers must degrade to a
+   * legacy layout when it is absent.
+   */
+  outcomeProjection?: OutcomeProjection;
   /** Diagnostic info for why no skills are available (when isTerminal is true) */
   blockedReasons?: SkillBlockedReason[];
   /** Full optimal rotation (sequence of skills) to reach targets */
@@ -1761,6 +1825,73 @@ function deriveBandGoals(
   };
 }
 
+/** Band status for one bar, entirely derived from `./outcome` + `getBonusAndChance`. */
+function buildOutcomeBarStatus(
+  value: number,
+  bandWidth: number,
+  bands: number,
+  bonusChance: number,
+  requiredBands: number,
+): OutcomeBarStatus {
+  const clampedValue = Math.max(0, value);
+  // A zero-width bar is not part of the craft (completion-only or
+  // perfection-only scenarios), so there is no ladder and nothing to require.
+  if (bandWidth <= 0) {
+    return {
+      value: clampedValue,
+      bands,
+      requiredBands: 0,
+      nextThreshold: clampedValue,
+      pointsToNextBand: 0,
+      bonusChance: 0,
+    };
+  }
+  const { nextThreshold } = getBonusAndChance(clampedValue, bandWidth);
+  return {
+    value: clampedValue,
+    bands,
+    requiredBands,
+    nextThreshold,
+    pointsToNextBand: Math.max(0, nextThreshold - clampedValue),
+    bonusChance,
+  };
+}
+
+/**
+ * Build the `OutcomeProjection` published on `SearchResult`.
+ *
+ * Everything here comes out of `classifyOutcome` and the runtime band helper, so
+ * presentation code never has to know the 1.3x ladder or the tier conjunction.
+ */
+function buildOutcomeProjection(
+  state: CraftingState,
+  bands: OutcomeBands,
+): OutcomeProjection {
+  const outcome = classifyOutcome(state, bands);
+  const requirement = TIER_REQUIREMENTS[bands.targetTier];
+  return {
+    tier: outcome.tier,
+    optimisticTier: outcome.optimisticTier,
+    targetTier: bands.targetTier,
+    completion: buildOutcomeBarStatus(
+      state.completion,
+      bands.completionTarget,
+      outcome.completionBands,
+      outcome.completionBonusChance,
+      requirement.completion,
+    ),
+    perfection: buildOutcomeBarStatus(
+      state.perfection,
+      bands.perfectionTarget,
+      outcome.perfectionBands,
+      outcome.perfectionBonusChance,
+      requirement.perfection,
+    ),
+    bindingBar: outcome.blockingRequirement,
+    willAutoFinish: outcome.willAutoFinish,
+  };
+}
+
 /** Joint bonus-roll credit when rolls could still raise the banked tier. */
 function bonusChanceCreditWhenOneBandShort(
   outcome: OutcomeClassification,
@@ -2855,6 +2986,10 @@ function collectExpressionGatesFromBuff(buff: BuffDefinition): string[] {
  * into scored values — beam/depth pruning is the only consumer.
  *
  * Detected generically from skill data (no hardcoded technique names).
+ *
+ * Pass `unlocks` to also collect a description of each unlock. It stays
+ * `undefined` on the search hot path so detection allocates nothing there, and
+ * the display pass reuses the exact same detection instead of duplicating it.
  */
 function estimateGoalUnlockOrderingBonus(
   before: CraftingState,
@@ -2862,6 +2997,7 @@ function estimateGoalUnlockOrderingBonus(
   config: OptimizerConfig,
   skills: readonly SkillDefinition[],
   totalTargetMagnitude: number,
+  unlocks?: SetupForHint[],
 ): number {
   if (before === after) {
     return 0;
@@ -2879,6 +3015,10 @@ function estimateGoalUnlockOrderingBonus(
         const afterGate = evaluateExpressionGate(eqn, afterVars);
         if (beforeGate === 0 && afterGate !== 0) {
           unlockCount += 1;
+          unlocks?.push({
+            techniqueKey: skill.key,
+            reason: `Unlocks ${skill.name}'s gated effect`,
+          });
         }
       }
     }
@@ -2893,6 +3033,10 @@ function estimateGoalUnlockOrderingBonus(
         afterStacks >= requirement.amount
       ) {
         unlockCount += 1;
+        unlocks?.push({
+          techniqueKey: skill.key,
+          reason: `Reaches ${requirement.amount} ${requirement.buffName} to enable ${skill.name}`,
+        });
       }
     }
   }
@@ -2909,6 +3053,95 @@ function estimateGoalUnlockOrderingBonus(
 }
 
 /**
+ * Top candidates that get a setup hint. Deriving one costs an `applySkill` plus
+ * a gate sweep, so it is bounded and runs once, after ranking is finished.
+ */
+const SETUP_HINT_CANDIDATE_LIMIT = 6;
+
+/**
+ * Annotate ranked candidates whose value comes from unlocking a gated technique.
+ *
+ * Uses the same generic detection as the ordering heuristic, so the panel can
+ * explain a completion-rush turn (for example opening False Fusion) rather than
+ * showing it as a low-gain action.
+ */
+function populateSetupHints(
+  recommendations: SkillRecommendation[],
+  state: CraftingState,
+  config: OptimizerConfig,
+  targetCompletion: number,
+  currentConditionType: CraftingConditionType | undefined,
+): void {
+  if (recommendations.length === 0 || config.skills.length === 0) {
+    return;
+  }
+
+  const conditionEffects = getConditionEffectsForConfig(
+    config,
+    currentConditionType,
+  );
+  const unlocks: SetupForHint[] = [];
+  const limit = Math.min(SETUP_HINT_CANDIDATE_LIMIT, recommendations.length);
+  for (let index = 0; index < limit; index++) {
+    const rec = recommendations[index];
+    if (isFinishAction(rec.skill)) {
+      continue;
+    }
+    const after = applySkill(
+      state,
+      rec.skill,
+      config,
+      conditionEffects,
+      targetCompletion,
+      currentConditionType,
+    );
+    if (after === null) {
+      continue;
+    }
+    unlocks.length = 0;
+    estimateGoalUnlockOrderingBonus(
+      state,
+      after,
+      config,
+      config.skills,
+      1,
+      unlocks,
+    );
+    // A technique unlocking itself is just its own precondition, not setup.
+    const hint = unlocks.find((entry) => entry.techniqueKey !== rec.skill.key);
+    if (hint) {
+      rec.setupFor = hint;
+    }
+  }
+}
+
+/**
+ * Attach the shared outcome projection to a finished search result.
+ *
+ * Kept in one place so every public entry point publishes the same evaluator
+ * output, and so no consumer has to re-derive band thresholds.
+ */
+function withOutcomeProjection(
+  result: SearchResult,
+  state: CraftingState,
+  config: OptimizerConfig,
+  targetCompletion: number,
+  targetPerfection: number,
+): SearchResult {
+  const { bands } = deriveBandGoals(
+    targetCompletion,
+    targetPerfection,
+    config.isSublimeCraft || false,
+    config.maxCompletion,
+    config.maxPerfection,
+  );
+  return {
+    ...result,
+    outcomeProjection: buildOutcomeProjection(state, bands),
+  };
+}
+
+/**
  * Greedy search - evaluates each skill's immediate impact.
  * Fast but may not find optimal solution.
  *
@@ -2921,6 +3154,30 @@ export function greedySearch(
   targetPerfection: number = 0,
   currentConditionType?: CraftingConditionType,
   searchConfig: Partial<SearchConfig> = {},
+): SearchResult {
+  return withOutcomeProjection(
+    runGreedySearch(
+      state,
+      config,
+      targetCompletion,
+      targetPerfection,
+      currentConditionType,
+      searchConfig,
+    ),
+    state,
+    config,
+    targetCompletion,
+    targetPerfection,
+  );
+}
+
+function runGreedySearch(
+  state: CraftingState,
+  config: OptimizerConfig,
+  targetCompletion: number,
+  targetPerfection: number,
+  currentConditionType: CraftingConditionType | undefined,
+  searchConfig: Partial<SearchConfig>,
 ): SearchResult {
   const cfg: SearchConfig = { ...DEFAULT_SEARCH_CONFIG, ...searchConfig };
   // Extract settings from config
@@ -3250,6 +3507,14 @@ export function greedySearch(
     };
   }
 
+  populateSetupHints(
+    rankedSkills,
+    state,
+    config,
+    targetCompletion,
+    normalizedCurrentCondition,
+  );
+
   return {
     recommendation: rankedSkills[0],
     alternativeSkills: rankedSkills.slice(1),
@@ -3286,6 +3551,34 @@ export function lookaheadSearch(
   currentConditionType?: CraftingConditionType,
   forecastedConditionTypes: CraftingConditionType[] = [],
   searchConfig: Partial<SearchConfig> = {},
+): SearchResult {
+  return withOutcomeProjection(
+    runLookaheadSearch(
+      state,
+      config,
+      targetCompletion,
+      targetPerfection,
+      depth,
+      currentConditionType,
+      forecastedConditionTypes,
+      searchConfig,
+    ),
+    state,
+    config,
+    targetCompletion,
+    targetPerfection,
+  );
+}
+
+function runLookaheadSearch(
+  state: CraftingState,
+  config: OptimizerConfig,
+  targetCompletion: number,
+  targetPerfection: number,
+  depth: number,
+  currentConditionType: CraftingConditionType | undefined,
+  forecastedConditionTypes: CraftingConditionType[],
+  searchConfig: Partial<SearchConfig>,
 ): SearchResult {
   // Merge with default search config
   const cfg: SearchConfig = { ...DEFAULT_SEARCH_CONFIG, ...searchConfig };
@@ -5246,6 +5539,13 @@ export function lookaheadSearch(
     },
   );
   populateFollowUpSkills(rankedSkills, usedDepth);
+  populateSetupHints(
+    rankedSkills,
+    state,
+    config,
+    targetCompletion,
+    normalizedCurrentCondition,
+  );
 
   // Find the optimal rotation starting from the best first move
   const bestFirstMove = rankedSkills[0].skill;
