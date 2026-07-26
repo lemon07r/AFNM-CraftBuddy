@@ -40,10 +40,10 @@ import {
   VISIBLE_CONDITION_QUEUE_LENGTH,
   setNativeCraftingUtils,
   setNativeCanUseActionProvider,
+  preloadNativeMctsPolicyEngine,
+  buildCanonicalNativeVariables,
   type HarmonyData,
 } from '../optimizer';
-import { preloadNativeMctsPolicyEngine } from '../optimizer/nativeMcts';
-import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 import { CraftBuddyThemeProvider } from '../ui/ThemeProvider';
 import {
