@@ -29,6 +29,14 @@ For the narrow HUD-overlap regression scene:
 agent-browser open "http://127.0.0.1:4173/?scene=gamehud&viewport=975x768"
 ```
 
+The `gamehud` scene is a simulated box, so it does **not** exercise `100vh` clamping. To check the panel's height budget on a short window, use the default scene with a real viewport:
+
+```bash
+agent-browser set viewport 975 768
+```
+
+Outcome-row fixtures are available through harness params, including a perfection-bound state, an auto-finish state, a `setupFor` hint, a legacy result with no outcome projection, the native-auto-use notice state, and `?harmony=`.
+
 ## What To Capture
 
 - Normal recommendation fixture.
@@ -36,9 +44,15 @@ agent-browser open "http://127.0.0.1:4173/?scene=gamehud&viewport=975x768"
 - Auto panel visible for auto-mode UI changes.
 - Loading/stop state when auto-mode status changes.
 - HUD constrained scene for overlap/safe-lane changes.
+- Outcome rows: projected vs target tier, per-bar bands, the binding-bar marker, the auto-finish badge, and the legacy fixture that must render without them.
 
 ## Runtime UI Rules
 
+- **No band logic in `src/ui`.** Tier, band counts, points-to-next-band, the binding bar and the auto-finish state all come from `SearchResult.outcomeProjection` via `src/utils/outcomeSummary.ts`. The panel maps tones to theme colours and nothing else.
+- Presentation logic that needs tests goes in a pure `src/utils/*` module: Jest runs in `node` and does not match `.tsx`.
+- A result without an `outcomeProjection` (a pre-6.0 replay fixture) must render the legacy layout instead of throwing.
+- 0.7.5 has no manual finish, so copy says "will auto-finish" — never "you can finish crafting now".
+- The panel clamps to the game window height and scrolls; any new panel section needs a re-measurement on a short viewport.
 - Keep `react` and `react-dom` versions aligned.
 - Standalone harness failure is meaningful even if webpack still builds.
 - For runtime-sensitive integration, use `runtime-oracle` before launching the installed app.
@@ -61,3 +75,4 @@ Only use live UI when explicitly requested or when harness/oracle cannot answer 
 - `scripts/ui/agent-browser-harness.tsx`
 - `src/ui/RecommendationPanel.tsx`
 - `src/ui/SettingsPanel.tsx`
+- `src/utils/outcomeSummary.ts`

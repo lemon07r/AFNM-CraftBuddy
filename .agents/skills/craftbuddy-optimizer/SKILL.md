@@ -16,8 +16,9 @@ Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN
 ## Architecture Boundaries
 
 1. `src/optimizer/*` is pure simulation/search. It must not read the game runtime, DOM, Redux, or settings storage directly.
-2. `src/modContent/*` converts live game objects into optimizer config/state/actions.
-3. Rust/WASM MCTS is a root-policy prior only. TypeScript owns exact legality, transition mechanics, terminal scoring, cache entries, and returned recommendations.
+2. `src/modContent/*` converts live game objects into optimizer config/state/actions, and reaches the optimizer only through `src/optimizer/index.ts`. Add to the barrel instead of importing a submodule.
+3. `src/optimizer/outcome.ts` is the **only** authority for band thresholds, tier requirements and the auto-finish predicate. Search, the Rust engine (`outcome.rs`) and the panel all consume it; recomputing a threshold anywhere else is a defect.
+4. The Rust engine models the same mechanics and the same action space as TypeScript (proven by the differential corpus), but its search output is a root **policy prior**. TypeScript owns final ranking, cache entries and the returned recommendation.
 
 ## Safe Change Workflow
 
@@ -31,11 +32,14 @@ Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN
 
 ## Scoring Rules
 
+- **Goals are conjunctive.** Tier value comes from `classifyOutcome`, gated by `Math.min(completionMargin, perfectionMargin)`. No weight may be able to raise the effective tier by piling points onto one bar — that failure mode is exactly what the 0.7.5 rework removed.
+- Keep the documented commensurability: a tier step (`TIER_VALUE_SCALE`, `2x` magnitude) strictly exceeds the whole within-tier stack, and death (`3x`) exceeds a tier step.
 - Scale bonuses and penalties with craft target magnitude; avoid hardcoded constants that only fit one craft size.
-- If base targets are met, survivability penalties must not apply.
+- If the active goal is met, survivability penalties must not apply.
 - Step efficiency matters: shorter paths beat longer equivalent-goal paths.
 - Resource tie-breakers after targets are met must stay tiny (`0.001` class), never large enough to justify extra turns.
 - Death must be worse than any progress path; runway gap penalties are proportional and uncapped.
+- Harmony and condition quality earn value through their effect on the reachable tier, not as flat additive bonuses.
 
 ## Move Ordering Rules
 
@@ -57,24 +61,32 @@ Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN
 | --- | --- |
 | Multi-turn recommendation behavior | `craftSimulation.test.ts` |
 | Search scoring/order/cache edge | `search.test.ts` |
+| Bands, tiers, auto-finish | `outcome.test.ts`, `outcomeProjection.test.ts` |
 | Transition, buffs, masteries, action costs | `skills.test.ts` |
-| Formula or runtime parity | `gameAccuracy.test.ts` |
-| Harmony subsystem | `harmony.test.ts` plus simulations |
+| Formula or runtime parity | `gameAccuracy.test.ts`, `runtimeParity.test.ts` |
+| Harmony subsystem | `harmony.test.ts`, `harmonyRegistry.test.ts`, plus simulations |
 | Replay export/import fidelity | replay snapshot fixtures/helpers |
-| Rust MCTS | `bun run wasm:test`; `bun run build` for inline WASM bundle |
+| Any mechanics change | regenerate with `bun run optimizer:differential-corpus`, then `engineDifferential.test.ts` **and** `bun run wasm:test` |
+| Rust engine | `bun run wasm:test`; `bun run build` for the inline WASM bundle |
 
 ## Gotchas
 
 1. **Heuristic soup compounds**: if a fix needs 3+ tuned constants or a heuristic to counter another heuristic, step back and fix the model.
 2. **Condition effects affect ordering**: order by actual condition-modified gains, not raw base gains.
-3. **Finish Craft is a modeled branch**: compare exact craft-end EV against continuing lines; do not special-case it outside search.
+3. **There is no manual finish in 0.7.5**: the craft resolves itself when `willAutoFinish` holds, which makes that state terminal. The internal `Finish Craft` pseudo-action exists only to price craft-end EV inside search; never treat it as an action a player or automation presses, and never let further stat spam "improve" an already-resolved state.
 4. **Wall-clock budget is not deterministic**: prefer node-budget or completed-frontier assertions for regressions.
 5. **Native MCTS cannot override clear TypeScript scores**: it may only help with near-tie root ordering inside the configured score window.
+6. **Never send an explicit `null` across the Rust bridge**: one `null` on a non-optional field fails the whole payload and silently disables the prior. `nativeMcts.test.ts` guards this.
+7. **Do not re-attempt measured dead ends**: compact Rust state with mutate/undo (clone is 4.7% of a transition) and the packed numeric cache key (1.0-1.4% of the budget) were both rejected with data. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
+8. **Never tune a constant to make a benchmark contract pass.** Contracts change only with recorded runtime-oracle evidence.
 
 ## References
 
 - `docs/project/OPTIMIZER_DESIGN.md`
-- `docs/project/TESTING.md`
 - `docs/project/MECHANICS_PARITY.md`
+- `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
+- `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md`
+- `docs/project/TESTING.md`
+- `src/optimizer/outcome.ts`
 - `src/__tests__/craftSimulation.test.ts`
 - `src/__tests__/search.test.ts`
