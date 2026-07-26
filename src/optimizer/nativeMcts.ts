@@ -135,12 +135,26 @@ interface NativeHarmonyData {
   alchemical_arts?: NativeAlchemicalArtsData;
   inscribed_patterns?: NativeInscribedPatternsData;
   resonance?: NativeResonanceData;
+  enhancing_echo?: NativeEnhancingEchoData;
+  eccentric_decree?: NativeEccentricDecreeData;
   recommended_technique_types: string[];
   alchemical_reaction_modifiers?: NativeHarmonyStatModifiers;
 }
 
 interface NativeForgeWorksData {
   heat: number;
+  last_buffed_heat?: number;
+}
+
+interface NativeEnhancingEchoData {
+  attuned_type?: TechniqueType;
+  last_outcome?: string;
+}
+
+interface NativeEccentricDecreeData {
+  focused_bar: string;
+  last_completion: number;
+  last_perfection: number;
 }
 
 interface NativeAlchemicalArtsData {
@@ -325,7 +339,10 @@ function convertHarmonyData(
     | undefined;
   return {
     forge_works: harmonyData?.forgeWorks
-      ? { heat: harmonyData.forgeWorks.heat }
+      ? {
+          heat: harmonyData.forgeWorks.heat,
+          last_buffed_heat: harmonyData.forgeWorks.lastBuffedHeat,
+        }
       : undefined,
     alchemical_arts: harmonyData?.alchemicalArts
       ? {
@@ -346,6 +363,19 @@ function convertHarmonyData(
           strength: harmonyData.resonance.strength,
           pending_resonance: harmonyData.resonance.pendingResonance,
           pending_count: harmonyData.resonance.pendingCount,
+        }
+      : undefined,
+    enhancing_echo: harmonyData?.enhancingEcho
+      ? {
+          attuned_type: harmonyData.enhancingEcho.attunedType,
+          last_outcome: harmonyData.enhancingEcho.lastOutcome,
+        }
+      : undefined,
+    eccentric_decree: harmonyData?.eccentricDecree
+      ? {
+          focused_bar: harmonyData.eccentricDecree.focusedBar,
+          last_completion: harmonyData.eccentricDecree.lastCompletion,
+          last_perfection: harmonyData.eccentricDecree.lastPerfection,
         }
       : undefined,
     recommended_technique_types: [

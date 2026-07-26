@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
+#[cfg(test)]
+mod differential_tests;
+
 const FINISH_CRAFT_KEY: &str = "__finish_craft__";
 const FINISH_CRAFT_NAME: &str = "Finish Craft";
 const EXPONENTIAL_SCALING_FACTOR: f64 = 1.3;
@@ -14,6 +17,19 @@ const DEATH_PENALTY_MULTIPLIER: f64 = 3.0;
 const RUNWAY_GAP_FRACTION: f64 = 0.1;
 const TOXICITY_PENALTY_FRACTION: f64 = 0.025;
 const HARMONY_BONUS_WEIGHT: f64 = 0.15;
+
+/// Harmony value Formless Way holds for the whole craft (runtime `dRa`).
+const FORMLESS_HARMONY: f64 = 33.0;
+/// Cost scaling when an action echoes the Enhancing Echo attunement.
+const ENHANCING_ECHO_MATCH_COST_PERCENTAGE: f64 = 50.0;
+/// Cost scaling when an action breaks the Enhancing Echo attunement.
+const ENHANCING_ECHO_DISCORD_COST_PERCENTAGE: f64 = 200.0;
+/// Harmony gained when Eccentric Decree's focused bar advances.
+const ECCENTRIC_DECREE_OBEY_HARMONY: f64 = 5.0;
+/// Harmony lost when Eccentric Decree's unfocused bar advances.
+const ECCENTRIC_DECREE_STRAY_HARMONY: f64 = -5.0;
+/// Qi Pool lost when Eccentric Decree's unfocused bar advances.
+const ECCENTRIC_DECREE_STRAY_POOL: f64 = -5.0;
 
 #[wasm_bindgen(js_name = runMcts)]
 pub fn run_mcts(input: JsValue) -> Result<JsValue, JsValue> {
@@ -79,7 +95,10 @@ struct EngineState {
     intensity_buff_multiplier: f64,
     #[serde(default)]
     toxicity: f64,
+    /// Kept for schema compatibility with the TypeScript bridge; toxicity is
+    /// gated on the config ceiling, matching `canApplySkill`.
     #[serde(default)]
+    #[allow(dead_code)]
     max_toxicity: f64,
     #[serde(default)]
     harmony: f64,
@@ -110,7 +129,10 @@ struct EngineConfig {
     base_intensity: f64,
     #[serde(default)]
     base_control: f64,
+    /// Kept for schema compatibility; the game has no post-cost stability gate,
+    /// so legality never consults it.
     #[serde(default)]
+    #[allow(dead_code)]
     min_stability: f64,
     #[serde(default = "default_buff_multiplier")]
     default_buff_multiplier: f64,
@@ -218,6 +240,10 @@ struct HarmonyData {
     #[serde(default)]
     resonance: Option<ResonanceData>,
     #[serde(default)]
+    enhancing_echo: Option<EnhancingEchoData>,
+    #[serde(default)]
+    eccentric_decree: Option<EccentricDecreeData>,
+    #[serde(default)]
     recommended_technique_types: Vec<String>,
     #[serde(default)]
     alchemical_reaction_modifiers: Option<HarmonyStatModifiers>,
@@ -227,6 +253,38 @@ struct HarmonyData {
 struct ForgeWorksData {
     #[serde(default)]
     heat: i32,
+    /// Heat whose Heat buff is actually applied. Heat 1 skips the runtime's
+    /// buff update, so the previous band's buff stays live.
+    #[serde(default)]
+    last_buffed_heat: Option<i32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct EnhancingEchoData {
+    #[serde(default)]
+    attuned_type: Option<String>,
+    #[serde(default)]
+    last_outcome: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct EccentricDecreeData {
+    #[serde(default = "default_focused_bar")]
+    focused_bar: String,
+    #[serde(default)]
+    last_completion: f64,
+    #[serde(default)]
+    last_perfection: f64,
+}
+
+impl Default for EccentricDecreeData {
+    fn default() -> Self {
+        Self {
+            focused_bar: default_focused_bar(),
+            last_completion: 0.0,
+            last_perfection: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -293,9 +351,38 @@ struct HarmonyEffectResult {
     #[allow(dead_code)]
     modifiers: HarmonyStatModifiers,
     harmony_delta: f64,
+    /// Formless Way pins harmony instead of accumulating deltas.
+    harmony_override: Option<f64>,
     stability_delta: f64,
     pool_delta: f64,
     stability_penalty_delta: f64,
+}
+
+/// Post-action craft figures the Eccentric Decree state machine needs.
+#[derive(Clone, Copy, Debug, Default)]
+struct HarmonyProcessContext {
+    completion: f64,
+    perfection: f64,
+    max_completion: f64,
+    max_perfection: f64,
+    target_completion: f64,
+    target_perfection: f64,
+}
+
+/// Qi Pool / Stability cost scaling a harmony applies to a single action.
+#[derive(Clone, Copy, Debug)]
+struct HarmonyCostMultipliers {
+    pool_cost_percentage: f64,
+    stability_cost_percentage: f64,
+}
+
+impl Default for HarmonyCostMultipliers {
+    fn default() -> Self {
+        Self {
+            pool_cost_percentage: 100.0,
+            stability_cost_percentage: 100.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -668,15 +755,15 @@ impl Engine {
         if state.qi + 1e-9 < costs.qi {
             return false;
         }
-        if state.stability - costs.stability + 1e-9 < self.input.config.min_stability {
-            return false;
-        }
-        let max_toxicity = self
-            .input
-            .config
-            .max_toxicity
-            .max(state.max_toxicity)
-            .max(0.0);
+        // No post-cost stability gate: the game lets you spend into a failed
+        // craft, and `canApplySkill` in `src/optimizer/skills.ts` matches that.
+        // Gating here would hide survivable lines from the native prior that
+        // the TypeScript search still explores, and scoring already prices
+        // death far below any progress path.
+        //
+        // The TypeScript simulator gates toxicity on the *config* ceiling only;
+        // using the state's own max here would reject actions the game allows.
+        let max_toxicity = self.input.config.max_toxicity.max(0.0);
         if max_toxicity > 0.0 && state.toxicity + skill.toxicity_cost > max_toxicity {
             return false;
         }
@@ -823,12 +910,29 @@ impl Engine {
             && self.input.config.is_sublime_craft
             && self.input.config.crafting_type.is_some()
         {
+            // Eccentric Decree reads the *post-action* bars, so this must run
+            // after completion/perfection have been updated.
+            let harmony_context = HarmonyProcessContext {
+                completion: next.completion,
+                perfection: next.perfection,
+                max_completion: self.input.config.max_completion.unwrap_or(next.completion),
+                max_perfection: self.input.config.max_perfection.unwrap_or(next.perfection),
+                target_completion: self.input.target_completion,
+                target_perfection: self.input.target_perfection,
+            };
             let harmony_result = process_harmony_effect(
                 &mut next.harmony_data,
                 self.input.config.crafting_type.as_deref().unwrap_or(""),
                 &skill.technique_type,
+                harmony_context,
             );
-            next.harmony = clamp(next.harmony + harmony_result.harmony_delta, -100.0, 100.0);
+            next.harmony = clamp(
+                harmony_result
+                    .harmony_override
+                    .unwrap_or(next.harmony + harmony_result.harmony_delta),
+                -100.0,
+                100.0,
+            );
             next.qi = clamp(
                 next.qi + harmony_result.pool_delta,
                 0.0,
@@ -858,42 +962,54 @@ impl Engine {
         Some((next, next_condition, next_queue))
     }
 
+    /// Action costs, in the runtime's own order and rounding.
+    ///
+    /// Mirrors `calculateEffectiveActionCosts` in `src/optimizer/skills.ts`:
+    /// - condition `pool`/`stability` effects scale the cost *percentages*,
+    ///   unrounded, rather than the raw costs;
+    /// - pool adds the flat surcharge first, then a single floor;
+    /// - stability applies a single ceil to the negative delta;
+    /// - the harmony multiplier is a *separate outer* floor, not folded into
+    ///   the percentage - folding it drifts by 1 on fractional cases.
     fn effective_costs(
         &self,
         state: &EngineState,
         skill: &EngineSkill,
         effects: ConditionEffectSummary,
     ) -> ActionCosts {
-        let harmony_mods = get_harmony_stat_modifiers(
-            &state.harmony_data,
-            self.input.config.crafting_type.as_deref(),
-        );
-        let mut qi_cost = skill.qi_cost.max(0.0).floor();
-        qi_cost = (qi_cost * effects.pool_cost_multiplier).floor();
-        let mut pool_cost_percentage = normalize_cost_percentage(state.pool_cost_percentage);
-        if harmony_mods.pool_cost_percentage != 100.0 {
-            pool_cost_percentage =
-                (pool_cost_percentage * harmony_mods.pool_cost_percentage / 100.0).floor();
+        let crafting_type = self.input.config.crafting_type.as_deref();
+        let harmony_mods = get_harmony_stat_modifiers(&state.harmony_data, crafting_type);
+        let harmony_cost =
+            get_harmony_cost_multipliers(&state.harmony_data, crafting_type, &skill.technique_type);
+        let harmony_pool_multiplier = (harmony_mods.pool_cost_percentage / 100.0)
+            * (harmony_cost.pool_cost_percentage / 100.0);
+        let harmony_stability_multiplier = (harmony_mods.stability_cost_percentage / 100.0)
+            * (harmony_cost.stability_cost_percentage / 100.0);
+
+        let pool_cost_flat = state.pool_cost_flat.floor().max(0.0);
+        let pool_cost_percentage =
+            normalize_cost_percentage(state.pool_cost_percentage) * effects.pool_cost_multiplier;
+        let stability_cost_percentage = normalize_cost_percentage(state.stability_cost_percentage)
+            * effects.stability_cost_multiplier;
+
+        let mut qi_cost = skill.qi_cost.max(0.0).ceil();
+        if pool_cost_flat > 0.0 {
+            qi_cost = (qi_cost + pool_cost_flat).max(0.0);
         }
         if pool_cost_percentage != 100.0 {
             qi_cost = (qi_cost * pool_cost_percentage / 100.0).floor();
         }
-        if state.pool_cost_flat > 0.0 {
-            qi_cost += state.pool_cost_flat.floor();
+        if harmony_pool_multiplier != 1.0 {
+            qi_cost = (qi_cost.max(0.0) * harmony_pool_multiplier).floor();
         }
 
-        let mut stability_delta = -skill.stability_cost.max(0.0).floor();
-        let mut stability_cost_percentage =
-            normalize_cost_percentage(state.stability_cost_percentage);
-        if harmony_mods.stability_cost_percentage != 100.0 {
-            stability_cost_percentage =
-                (stability_cost_percentage * harmony_mods.stability_cost_percentage / 100.0)
-                    .floor();
-        }
+        let mut stability_delta = -skill.stability_cost.max(0.0).ceil();
         if stability_delta < 0.0 && stability_cost_percentage != 100.0 {
             stability_delta = (stability_delta * stability_cost_percentage / 100.0).ceil();
         }
-        stability_delta = (stability_delta * effects.stability_cost_multiplier).floor();
+        if stability_delta < 0.0 && harmony_stability_multiplier != 1.0 {
+            stability_delta = (stability_delta * harmony_stability_multiplier).floor();
+        }
 
         ActionCosts {
             qi: qi_cost.max(0.0),
@@ -911,22 +1027,22 @@ impl Engine {
             &state.harmony_data,
             self.input.config.crafting_type.as_deref(),
         );
+        // No rounding between steps: the TypeScript simulator (and the game)
+        // keep control/intensity fractional until the gain itself is floored.
         let mut control =
             self.input.config.base_control * (1.0 + state.completion_bonus as f64 * 0.1);
         if state.control_buff_turns > 0 {
-            control = (control * state.control_buff_multiplier).floor();
+            control *= state.control_buff_multiplier;
         }
-        control *= harmony_mods.control_multiplier;
         control *= effects.control_multiplier;
-        control = control.max(0.0);
+        control *= harmony_mods.control_multiplier;
 
         let mut intensity = self.input.config.base_intensity;
         if state.intensity_buff_turns > 0 {
-            intensity = (intensity * state.intensity_buff_multiplier).floor();
+            intensity *= state.intensity_buff_multiplier;
         }
-        intensity *= harmony_mods.intensity_multiplier;
         intensity *= effects.intensity_multiplier;
-        intensity = intensity.max(0.0);
+        intensity *= harmony_mods.intensity_multiplier;
 
         let crit_chance = state.crit_chance + harmony_mods.crit_chance_bonus;
         let crit_multiplier = state.crit_multiplier;
@@ -944,16 +1060,18 @@ impl Engine {
         let mut perfection = skill.base_perfection_gain;
         if skill.scales_with_control {
             perfection = (skill.base_perfection_gain * control).floor();
-            if skill.base_completion_gain > 0.0 {
-                completion = (skill.base_completion_gain * control).floor();
-            }
+            completion = if skill.base_completion_gain > 0.0 {
+                (skill.base_completion_gain * control).floor()
+            } else {
+                0.0
+            };
         }
         if skill.scales_with_intensity && skill.technique_type == "fusion" {
             completion = (skill.base_completion_gain * intensity).floor();
         }
 
-        completion = (completion.max(0.0) * crit_factor * success_chance).floor();
-        perfection = (perfection.max(0.0) * crit_factor * success_chance).floor();
+        completion = (completion * crit_factor * success_chance).floor();
+        perfection = (perfection * crit_factor * success_chance).floor();
 
         if let Some(cap) = self.input.config.max_completion {
             if cap.is_finite() {
@@ -1494,19 +1612,69 @@ fn expected_crit_multiplier(crit_chance: f64, crit_multiplier: f64) -> f64 {
     1.0 - actual_chance + actual_chance * multiplier_ratio
 }
 
+/// Heat whose buff is actually active.
+///
+/// Heat 1 skips the runtime's buff update, so the previous band's Heat buff
+/// stays in place instead of clearing.
+fn effective_forge_heat(data: Option<&ForgeWorksData>) -> i32 {
+    let heat = clamp_i32(data.map(|fw| fw.heat).unwrap_or(0), 0, 10);
+    if heat != 1 {
+        return heat;
+    }
+    clamp_i32(data.and_then(|fw| fw.last_buffed_heat).unwrap_or(heat), 0, 10)
+}
+
+fn eccentric_decree_modifiers(focused_bar: &str) -> HarmonyStatModifiers {
+    if focused_bar == "perfection" {
+        HarmonyStatModifiers {
+            control_multiplier: 1.5,
+            ..HarmonyStatModifiers::default()
+        }
+    } else {
+        HarmonyStatModifiers {
+            intensity_multiplier: 1.5,
+            ..HarmonyStatModifiers::default()
+        }
+    }
+}
+
+/// Qi Pool / Stability cost scaling the active harmony applies to one action.
+///
+/// Only Enhancing Echo defines these in 0.7.5: echoing the attuned type halves
+/// both costs, breaking the attunement doubles them. Resolved from the harmony
+/// state *before* the action is processed.
+fn get_harmony_cost_multipliers(
+    harmony_data: &HarmonyData,
+    harmony_type: Option<&str>,
+    technique_type: &str,
+) -> HarmonyCostMultipliers {
+    if harmony_type != Some("enhancingEcho") {
+        return HarmonyCostMultipliers::default();
+    }
+    let attuned = harmony_data
+        .enhancing_echo
+        .as_ref()
+        .and_then(|echo| echo.attuned_type.clone());
+    let Some(attuned) = attuned else {
+        return HarmonyCostMultipliers::default();
+    };
+    let percentage = if attuned == normalize_technique_type(technique_type) {
+        ENHANCING_ECHO_MATCH_COST_PERCENTAGE
+    } else {
+        ENHANCING_ECHO_DISCORD_COST_PERCENTAGE
+    };
+    HarmonyCostMultipliers {
+        pool_cost_percentage: percentage,
+        stability_cost_percentage: percentage,
+    }
+}
+
 fn get_harmony_stat_modifiers(
     harmony_data: &HarmonyData,
     harmony_type: Option<&str>,
 ) -> HarmonyStatModifiers {
     match harmony_type.unwrap_or("") {
-        "forge" => {
-            let heat = harmony_data
-                .forge_works
-                .as_ref()
-                .map(|fw| fw.heat)
-                .unwrap_or(0);
-            forge_modifiers(heat)
-        }
+        "forge" => forge_modifiers(effective_forge_heat(harmony_data.forge_works.as_ref())),
         "alchemical" => harmony_data
             .alchemical_reaction_modifiers
             .unwrap_or_default(),
@@ -1535,6 +1703,15 @@ fn get_harmony_stat_modifiers(
                 ..HarmonyStatModifiers::default()
             }
         }
+        "eccentricDecree" => eccentric_decree_modifiers(
+            harmony_data
+                .eccentric_decree
+                .as_ref()
+                .map(|decree| decree.focused_bar.as_str())
+                .unwrap_or("completion"),
+        ),
+        // Formless Way grants no stat modifiers; Enhancing Echo only scales
+        // action costs, resolved by `get_harmony_cost_multipliers`.
         _ => HarmonyStatModifiers::default(),
     }
 }
@@ -1543,19 +1720,161 @@ fn process_harmony_effect(
     harmony_data: &mut HarmonyData,
     harmony_type: &str,
     technique_type: &str,
+    context: HarmonyProcessContext,
 ) -> HarmonyEffectResult {
     match harmony_type {
         "forge" => process_forge(harmony_data, technique_type),
         "alchemical" => process_alchemical(harmony_data, technique_type),
         "inscription" => process_inscription(harmony_data, technique_type),
         "resonance" => process_resonance(harmony_data, technique_type),
+        "formless" => process_formless(harmony_data),
+        "enhancingEcho" => process_enhancing_echo(harmony_data, technique_type),
+        "eccentricDecree" => process_eccentric_decree(harmony_data, context),
         _ => HarmonyEffectResult {
             modifiers: HarmonyStatModifiers::default(),
             harmony_delta: 0.0,
+            harmony_override: None,
             stability_delta: 0.0,
             pool_delta: 0.0,
             stability_penalty_delta: 0.0,
         },
+    }
+}
+
+/// Formless Way has no sub-system state: it pins harmony at its peak every
+/// action and pays for it with a 1.5x complexity multiplier on the targets.
+fn process_formless(harmony_data: &mut HarmonyData) -> HarmonyEffectResult {
+    harmony_data.recommended_technique_types.clear();
+    HarmonyEffectResult {
+        modifiers: HarmonyStatModifiers::default(),
+        harmony_delta: 0.0,
+        harmony_override: Some(FORMLESS_HARMONY),
+        stability_delta: 0.0,
+        pool_delta: 0.0,
+        stability_penalty_delta: 0.0,
+    }
+}
+
+/// Enhancing Echo alternates attune -> echo/discord. The cost scaling itself is
+/// resolved before the action by `get_harmony_cost_multipliers`.
+fn process_enhancing_echo(
+    harmony_data: &mut HarmonyData,
+    technique_type: &str,
+) -> HarmonyEffectResult {
+    let mut echo = harmony_data.enhancing_echo.clone().unwrap_or_default();
+    let technique = normalize_technique_type(technique_type);
+    let mut harmony_delta = 0.0;
+
+    match echo.attuned_type.clone() {
+        Some(attuned) => {
+            if attuned == technique {
+                harmony_delta = 10.0;
+                echo.last_outcome = Some("echo".to_string());
+            } else {
+                harmony_delta = -10.0;
+                echo.last_outcome = Some("discord".to_string());
+            }
+            echo.attuned_type = None;
+        }
+        None => {
+            echo.attuned_type = Some(technique);
+            echo.last_outcome = Some("attune".to_string());
+        }
+    }
+
+    harmony_data.recommended_technique_types = echo
+        .attuned_type
+        .as_ref()
+        .map(|entry| vec![entry.clone()])
+        .unwrap_or_default();
+    harmony_data.enhancing_echo = Some(echo);
+    HarmonyEffectResult {
+        modifiers: HarmonyStatModifiers::default(),
+        harmony_delta,
+        harmony_override: None,
+        stability_delta: 0.0,
+        pool_delta: 0.0,
+        stability_penalty_delta: 0.0,
+    }
+}
+
+/// Eccentric Decree rewards advancing the focused bar and punishes the other,
+/// then swaps focus whenever the focused bar clears a band.
+fn process_eccentric_decree(
+    harmony_data: &mut HarmonyData,
+    context: HarmonyProcessContext,
+) -> HarmonyEffectResult {
+    let mut decree = harmony_data.eccentric_decree.clone().unwrap_or_default();
+
+    let completion = clamp(context.completion.floor(), 0.0, context.max_completion);
+    let perfection = clamp(context.perfection.floor(), 0.0, context.max_perfection);
+    let completion_delta = completion - decree.last_completion;
+    let perfection_delta = perfection - decree.last_perfection;
+    let focused_completion = decree.focused_bar != "perfection";
+    let focused_delta = if focused_completion {
+        completion_delta
+    } else {
+        perfection_delta
+    };
+    let stray_delta = if focused_completion {
+        perfection_delta
+    } else {
+        completion_delta
+    };
+
+    let mut harmony_delta = 0.0;
+    let mut pool_delta = 0.0;
+    if focused_delta > 0.0 {
+        harmony_delta += ECCENTRIC_DECREE_OBEY_HARMONY;
+    }
+    if stray_delta > 0.0 {
+        harmony_delta += ECCENTRIC_DECREE_STRAY_HARMONY;
+        pool_delta += ECCENTRIC_DECREE_STRAY_POOL;
+    }
+
+    let band_target = if focused_completion {
+        context.target_completion
+    } else {
+        context.target_perfection
+    };
+    let previous_focused = if focused_completion {
+        decree.last_completion
+    } else {
+        decree.last_perfection
+    };
+    let next_focused = if focused_completion {
+        completion
+    } else {
+        perfection
+    };
+
+    decree.last_completion = completion;
+    decree.last_perfection = perfection;
+
+    let cleared_band = get_bonus_and_chance(next_focused, band_target).guaranteed
+        > get_bonus_and_chance(previous_focused, band_target).guaranteed;
+    if cleared_band {
+        decree.focused_bar = if focused_completion {
+            "perfection".to_string()
+        } else {
+            "completion".to_string()
+        };
+    }
+
+    let modifiers = eccentric_decree_modifiers(&decree.focused_bar);
+    harmony_data.recommended_technique_types = if decree.focused_bar == "perfection" {
+        vec!["refine".to_string()]
+    } else {
+        vec!["fusion".to_string()]
+    };
+    harmony_data.eccentric_decree = Some(decree);
+    HarmonyEffectResult {
+        modifiers,
+        harmony_delta,
+        harmony_override: None,
+        stability_delta: 0.0,
+        pool_delta,
+        stability_penalty_delta: 0.0,
     }
 }
 
@@ -1571,7 +1890,21 @@ fn process_forge(harmony_data: &mut HarmonyData, technique_type: &str) -> Harmon
         heat -= 1;
     }
     heat = clamp_i32(heat, 0, 10);
-    harmony_data.forge_works = Some(ForgeWorksData { heat });
+    let previous_buffed_heat = harmony_data
+        .forge_works
+        .as_ref()
+        .and_then(|fw| fw.last_buffed_heat);
+    // The runtime skips its Heat buff update at heat 1, so the previous band's
+    // buff stays live instead of clearing.
+    let last_buffed_heat = if heat != 1 {
+        Some(heat)
+    } else {
+        previous_buffed_heat
+    };
+    harmony_data.forge_works = Some(ForgeWorksData {
+        heat,
+        last_buffed_heat,
+    });
     harmony_data.recommended_technique_types = if heat <= 4 {
         vec!["fusion".to_string()]
     } else {
@@ -1588,8 +1921,9 @@ fn process_forge(harmony_data: &mut HarmonyData, technique_type: &str) -> Harmon
         ForgeHeatBand::Neutral => 0.0,
     };
     HarmonyEffectResult {
-        modifiers: forge_modifiers(heat),
+        modifiers: forge_modifiers(effective_forge_heat(harmony_data.forge_works.as_ref())),
         harmony_delta,
+        harmony_override: None,
         stability_delta: 0.0,
         pool_delta: 0.0,
         stability_penalty_delta: 0.0,
@@ -1611,6 +1945,7 @@ fn process_alchemical(harmony_data: &mut HarmonyData, technique_type: &str) -> H
         return HarmonyEffectResult {
             modifiers,
             harmony_delta,
+            harmony_override: None,
             stability_delta: 0.0,
             pool_delta: 0.0,
             stability_penalty_delta: 0.0,
@@ -1637,6 +1972,7 @@ fn process_alchemical(harmony_data: &mut HarmonyData, technique_type: &str) -> H
     HarmonyEffectResult {
         modifiers,
         harmony_delta,
+        harmony_override: None,
         stability_delta: 0.0,
         pool_delta: 0.0,
         stability_penalty_delta: 0.0,
@@ -1685,6 +2021,7 @@ fn process_inscription(
     HarmonyEffectResult {
         modifiers,
         harmony_delta,
+        harmony_override: None,
         stability_delta: 0.0,
         pool_delta,
         stability_penalty_delta,
@@ -1750,6 +2087,7 @@ fn process_resonance(harmony_data: &mut HarmonyData, technique_type: &str) -> Ha
     HarmonyEffectResult {
         modifiers,
         harmony_delta,
+        harmony_override: None,
         stability_delta,
         pool_delta: 0.0,
         stability_penalty_delta: 0.0,
@@ -2160,6 +2498,10 @@ fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
     value.max(min).min(max)
 }
 
+fn default_focused_bar() -> String {
+    "completion".to_string()
+}
+
 fn default_condition() -> String {
     "neutral".to_string()
 }
@@ -2371,12 +2713,107 @@ mod tests {
     #[test]
     fn forge_heat_tracks_harmony_state() {
         let mut data = HarmonyData {
-            forge_works: Some(ForgeWorksData { heat: 2 }),
+            forge_works: Some(ForgeWorksData {
+                heat: 2,
+                last_buffed_heat: Some(2),
+            }),
             ..HarmonyData::default()
         };
-        let result = process_harmony_effect(&mut data, "forge", "fusion");
+        let result = process_harmony_effect(
+            &mut data,
+            "forge",
+            "fusion",
+            HarmonyProcessContext::default(),
+        );
         assert_eq!(data.forge_works.unwrap().heat, 4);
         assert_eq!(result.harmony_delta, 10.0);
+    }
+
+    /// Heat 1 skips the runtime's Heat buff update, so the heat-2 control
+    /// penalty must persist rather than clearing to neutral.
+    #[test]
+    fn forge_heat_one_keeps_the_previous_heat_buff() {
+        let mut data = HarmonyData {
+            forge_works: Some(ForgeWorksData {
+                heat: 2,
+                last_buffed_heat: Some(2),
+            }),
+            ..HarmonyData::default()
+        };
+        process_harmony_effect(
+            &mut data,
+            "forge",
+            "refine",
+            HarmonyProcessContext::default(),
+        );
+        let forge = data.forge_works.clone().unwrap();
+        assert_eq!(forge.heat, 1);
+        assert_eq!(forge.last_buffed_heat, Some(2));
+        assert_eq!(
+            get_harmony_stat_modifiers(&data, Some("forge")).control_multiplier,
+            0.5
+        );
+    }
+
+    #[test]
+    fn formless_pins_harmony_at_its_peak() {
+        let mut data = HarmonyData::default();
+        let result = process_harmony_effect(
+            &mut data,
+            "formless",
+            "fusion",
+            HarmonyProcessContext::default(),
+        );
+        assert_eq!(result.harmony_override, Some(FORMLESS_HARMONY));
+    }
+
+    #[test]
+    fn enhancing_echo_halves_costs_on_an_echo_and_doubles_on_discord() {
+        let data = HarmonyData {
+            enhancing_echo: Some(EnhancingEchoData {
+                attuned_type: Some("fusion".to_string()),
+                last_outcome: Some("attune".to_string()),
+            }),
+            ..HarmonyData::default()
+        };
+        assert_eq!(
+            get_harmony_cost_multipliers(&data, Some("enhancingEcho"), "fusion").pool_cost_percentage,
+            ENHANCING_ECHO_MATCH_COST_PERCENTAGE
+        );
+        assert_eq!(
+            get_harmony_cost_multipliers(&data, Some("enhancingEcho"), "refine").pool_cost_percentage,
+            ENHANCING_ECHO_DISCORD_COST_PERCENTAGE
+        );
+    }
+
+    #[test]
+    fn eccentric_decree_swaps_focus_once_the_focused_bar_clears_a_band() {
+        let mut data = HarmonyData {
+            eccentric_decree: Some(EccentricDecreeData {
+                focused_bar: "completion".to_string(),
+                last_completion: 90.0,
+                last_perfection: 0.0,
+            }),
+            ..HarmonyData::default()
+        };
+        let result = process_harmony_effect(
+            &mut data,
+            "eccentricDecree",
+            "fusion",
+            HarmonyProcessContext {
+                completion: 120.0,
+                perfection: 0.0,
+                max_completion: 1000.0,
+                max_perfection: 1000.0,
+                target_completion: 100.0,
+                target_perfection: 80.0,
+            },
+        );
+        assert_eq!(result.harmony_delta, ECCENTRIC_DECREE_OBEY_HARMONY);
+        assert_eq!(
+            data.eccentric_decree.unwrap().focused_bar,
+            "perfection".to_string()
+        );
     }
 
     #[test]
