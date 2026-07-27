@@ -1,11 +1,11 @@
 /**
- * CraftBuddy - Craft Outcome Evaluation (AFNM 0.7.5)
+ * CraftBuddy - Craft Outcome Evaluation (AFNM 0.7.6)
  *
  * The game decides a craft's outcome tier *conjunctively*: completion and
  * perfection each have to clear their own band count, and failing either one
  * caps the result regardless of how far the other overshoots.
  *
- * Ground truth: installed runtime 0.7.5-d764178.
+ * Ground truth: installed runtime 0.7.6-7c586da.
  *
  * Band counting (`hH`, mirrored by `getBonusAndChance` in `./gameTypes`):
  *
@@ -18,7 +18,7 @@
  *
  * Each band costs 1.3x the previous, so bands get progressively more expensive.
  *
- * Auto-finish predicate (there is no manual "finish craft" technique in 0.7.5 -
+ * Auto-finish predicate (there is no manual "finish craft" technique -
  * the craft ends by itself the moment this becomes true):
  *
  *   shouldFinish =

@@ -131,7 +131,7 @@ export interface AutoCraftRuntimeSnapshot {
    * `READY_DELAY_MS` earlier cannot do.
    */
   craftStateRevision?: number;
-  /** What the native 0.7.5 crafting auto-use loadout will do before a technique. */
+  /** What the native crafting auto-use loadout will do before a technique. */
   nativeAutoUse?: NativeAutoUseStatus;
   /**
    * Re-read the live craft state and compare it against this snapshot.
@@ -234,7 +234,7 @@ function resolveActionPlan(
   }
 
   if (snapshot.result.outcomeProjection?.willAutoFinish) {
-    // 0.7.5 has no finish action: once this predicate holds the game resolves the
+    // There is no finish action: once this predicate holds the game resolves the
     // craft by itself. Sending anything else here would only spend stability the
     // craft no longer needs.
     return {

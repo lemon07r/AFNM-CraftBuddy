@@ -3,7 +3,8 @@ title: Docs Governance
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-06
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: package.json, scripts/docs/*
 review_cycle_days: 30
 related_files:
@@ -31,6 +32,8 @@ For `docs/project/*` and `docs/dev-requests/*`:
 
 `title`, `status`, `authoritative`, `owner`, `last_verified`, `source_of_truth`, `review_cycle_days`, `related_files`
 
+`scripts/docs/check-freshness.js` checks only that those eight are **present**, and `check-authority.js` reads only `status` and `authoritative`, so additional fields are accepted. One is conventional: `game_version`, naming the exact installed build a doc was verified against (currently `0.7.6-7c586da`). Add it to any doc making claims about game mechanics.
+
 ## Required checks
 
 - `bun run docs:check` (runs link, freshness, and authority checks)
@@ -45,3 +48,5 @@ For `docs/project/*` and `docs/dev-requests/*`:
 
 - Mechanics behavior change → update corresponding `docs/project/*` in same PR.
 - Unresolved assumptions → mark explicitly as unresolved, do not assert as fact.
+- Game-version retarget → edit the runtime and performance evidence docs **in place**. `RUNTIME_EVIDENCE.md` and `ENGINE_PERFORMANCE.md` carry no version in their filenames on purpose, so a new game build never needs a rename and never breaks inbound links.
+- A superseded release's narrative is history — correct a broken link inside it, but do not rewrite what was true at the time. Time-scope a measurement rather than restating it in the present tense.

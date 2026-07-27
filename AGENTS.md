@@ -28,7 +28,9 @@ Use Vera before opening many files: `vera search "goal"`, `vera grep "pattern"`,
 
 - Keep optimizer/search logic pure in `src/optimizer/*`; game access belongs in `src/modContent/*`. Outside the optimizer, import only `src/optimizer/index.ts`.
 - `src/optimizer/outcome.ts` is the single authority for band thresholds, outcome tiers, and the auto-finish predicate. Never recompute one elsewhere, including in the UI.
-- Target game version is **0.7.5**: harmony is player-selected across seven types, outcome tiers are conjunctive band gates, there is no manual Finish Craft, and the game applies its own crafting auto-use loadout before every technique.
+- Target game version is **0.7.6**: harmony is player-selected across seven types, outcome tiers are conjunctive band gates, there is no manual Finish Craft, and the game applies its own crafting auto-use loadout before every technique.
+- Eccentric Decree scores per individual bar change (`onBarChange`), not once per turn, so one turn can award several harmony steps and flip the focused bar mid-turn; keep the `needsBarContributions()` / `needs_bar_contributions()` gate and keep the TypeScript and Rust folds identical.
+- Technique display names differ from internal names (`false_fusion` / `False Fusion` shows as "Strive for Completion"): user-facing strings use `techniqueDisplayName()`, keys and lookups stay on `name`.
 - Never tune a scoring constant to make a benchmark contract pass; contracts change only with recorded runtime evidence.
 - Use strict TypeScript, optional chaining for ModAPI access, and `unknown` + narrowing instead of `any`.
 - Formatting follows `.prettierrc`: 2 spaces, single quotes, trailing commas, LF endings.

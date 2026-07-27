@@ -1,7 +1,7 @@
 /**
- * Harmony registry parity tests (AFNM 0.7.5).
+ * Harmony registry parity tests (AFNM 0.7.6).
  *
- * Values verified against the installed runtime 0.7.5-d764178 harmony config
+ * Values verified against the installed runtime 0.7.6-7c586da harmony config
  * registry (`GH` in `dist-electron/_rolldown_dynamic_import_helper.js`).
  */
 
@@ -31,7 +31,7 @@ const EXPECTED_COMPLEXITY: Record<HarmonyType, number> = {
 };
 
 describe('harmony registry', () => {
-  it('exposes all seven 0.7.5 harmony types', () => {
+  it('exposes all seven harmony types', () => {
     expect(HARMONY_TYPES).toEqual([
       'forge',
       'alchemical',

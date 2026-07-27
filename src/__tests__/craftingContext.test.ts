@@ -8,7 +8,7 @@ import {
 } from '../modContent/craftingContext';
 
 describe('crafting context resolution', () => {
-  it('normalizes all seven 0.7.5 harmony types', () => {
+  it('normalizes all seven harmony types', () => {
     expect(normalizeCraftingType(' Forge ')).toBe('forge');
     expect(normalizeCraftingType('ALCHEMICAL')).toBe('alchemical');
     expect(normalizeCraftingType('formless')).toBe('formless');

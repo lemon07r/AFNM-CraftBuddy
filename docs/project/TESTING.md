@@ -3,7 +3,8 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: src/__tests__/*, crates/craftbuddy-engine/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
 review_cycle_days: 30
 related_files:
@@ -19,7 +20,7 @@ related_files:
 
 See `AGENTS.md` for the compact command list. Key commands:
 
-- `bun run test` — full suite (slow: `craftSimulation.test.ts` alone is ~290 s)
+- `bun run test` — full suite, currently **828 tests across 31 suites** (slow: `craftSimulation.test.ts` alone is ~290 s)
 - `bun run wasm:test` — Rust unit, effect-parity, and differential-corpus tests
 - `bun run wasm:build` — compile the Rust engine and generate the inline WASM module
 - `bun run optimizer:differential-corpus` — regenerate the cross-engine corpus
@@ -97,12 +98,13 @@ Because search is wall-clock-budgeted, CI/browser/live runs can reach different 
 
 ## Cross-engine differential testing
 
-The corpus (`src/__tests__/fixtures/differentialCorpus.ts` → `crates/craftbuddy-engine/tests/differential_corpus.json`) is the parity contract between the TypeScript simulator and the Rust engine: schema v2, **129 scenarios / 1,417 transitions**, asserting scalar state plus the active-buff set, `items`, `consumedPillsThisTurn`, and a `harmonyData` digest.
+The corpus (`src/__tests__/fixtures/differentialCorpus.ts` → `crates/craftbuddy-engine/tests/differential_corpus.json`) is the parity contract between the TypeScript simulator and the Rust engine: schema v2, **134 scenarios / 1,432 transitions**, asserting scalar state plus the active-buff set, `items`, `consumedPillsThisTurn`, and a `harmonyData` digest.
 
 Rules:
 
 - Any mechanics change means regenerating with `bun run optimizer:differential-corpus` and running **both** sides (`bun run jest src/__tests__/engineDifferential.test.ts` and `bun run wasm:test`).
 - Never hand-edit the JSON; it is generated.
+- The Rust crate reports **64 passing tests**; the 3 profiling tests are `#[ignore]`d and run explicitly (see `docs/project/ENGINE_PERFORMANCE.md`).
 - Add a scenario per newly modelled mechanic before porting it, not after.
 - Parity is only claimed when the whole corpus passes on both sides.
 

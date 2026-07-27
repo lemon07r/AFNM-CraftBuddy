@@ -3,7 +3,8 @@ title: Optimizer Engine Findings
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: crates/craftbuddy-engine/*, src/optimizer/nativeMcts.ts, src/optimizer/search.ts, src/settings/index.ts, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 30
 related_files:
@@ -15,9 +16,9 @@ related_files:
 
 # Optimizer Engine Findings
 
-What is actually true about the Rust/WASM engine after the 0.7.5 rework, and which candidate improvements have already been measured and rejected. Read this before proposing engine work.
+What is actually true about the Rust/WASM engine, current target AFNM **0.7.6**, and which candidate improvements have already been measured and rejected. Read this before proposing engine work.
 
-Raw measurements, reproduction commands and the profiling harness live in `docs/project/ENGINE_PERFORMANCE_075.md`. This file is the decision record.
+Raw measurements, reproduction commands and the profiling harness live in `docs/project/ENGINE_PERFORMANCE.md`. This file is the decision record.
 
 ## Current state
 
@@ -25,7 +26,7 @@ Raw measurements, reproduction commands and the profiling harness live in `docs/
 | --- | --- |
 | Does Rust model the same mechanics as TypeScript? | **Yes.** Effect trees, generic active buffs, mastery, Soulflame triggers and stack consumption, toxicity, and pill/reagent actions all live in `crates/craftbuddy-engine/src/effects.rs`; `outcome.rs` mirrors the conjunctive outcome model. |
 | Does Rust see the same action space? | **Yes.** `buildNativeMctsInput` no longer filters `actionKind !== 'item'`, and serialises effects, mastery, granted buffs, buff gates, `items`, `consumedPillsThisTurn` and buffs. |
-| Is that parity proven? | **Yes** — 129 scenarios / 1,417 transitions in the differential corpus, asserted on both sides, plus the Rust unit suite (58 passing tests, 3 ignored long-running profiles) covering the ported mechanics. |
+| Is that parity proven? | **Yes** — 134 scenarios / 1,432 transitions in the differential corpus, asserted on both sides, plus the Rust unit suite (64 passing tests, 3 `#[ignore]`d long-running profiles) covering the ported mechanics. |
 | Is Rust the authority for recommendations? | **No, deliberately.** It supplies a root MCTS policy prior for near-tie ordering. TypeScript owns final ranking and stays the differential oracle and the no-WASM fallback. |
 | Is the recommendation deterministic? | **Yes**, and now directly tested (`differential_tests::mcts_search_is_deterministic`). It was not before 0.7.5. |
 
@@ -35,7 +36,7 @@ Both were invisible to unit tests and were only exposed by feeding real producti
 
 ### The native prior was dead on every real craft
 
-`serde` treats an explicit `null` as a _present_ value, so one `null` on a non-optional engine field fails the **entire** `MctsInput` deserialization. Real 0.7.5 technique data spells "no value" as `null`, and **188 of the game's 226** crafting skills carry `mastery: null`. Every real craft therefore lost its native prior and silently fell back to plain heuristic ordering, with no error anywhere.
+`serde` treats an explicit `null` as a _present_ value, so one `null` on a non-optional engine field fails the **entire** `MctsInput` deserialization. Real technique data spells "no value" as `null` — measured on 0.7.5, where **188 of the game's 226** crafting skills carried `mastery: null`. Every real craft therefore lost its native prior and silently fell back to plain heuristic ordering, with no error anywhere.
 
 Fixed with a deep `stripNullish` at the single bridge boundary in `src/optimizer/nativeMcts.ts`, plus a `null_default` serde helper in Rust as defence in depth. Guarded by `nativeMcts.test.ts` asserting that no `null` survives into the serialized payload at all.
 
@@ -117,11 +118,13 @@ Rules for using it:
 
 ## Settled finding: `user-report-resonance-regression`
 
-Status: **closed in 6.0.0.** The whole benchmark is green — 98 of 98 contracts pass. Nothing about it turned out to be resonance-specific, and no scoring constant was tuned.
+Status: **closed in 6.0.0** — the reported bad recommendation was diagnosed and fixed, the whole benchmark was green at that gate (98 of 98 contract checks), nothing about it turned out to be resonance-specific, and no scoring constant was tuned.
+
+What remains is not the original report: this fixture's `mustRankBefore` clause is a **near-tie whose direction depends on the search depth actually reached**, and depth is machine-dependent. On an idle machine the 6.1.0 tree passes the whole benchmark (98 of 98 contracts). The same tree reported this clause failing on the deepest config when the benchmark was run while the Jest suite was saturating the CPU: less wall clock means less depth, which flips the tie. That is the documented depth sensitivity below, not a re-opening of the user report — and it is still not a licence to tune a constant.
 
 What the investigation ruled out first:
 
-- The resonance model is byte-for-byte faithful to the 0.7.5 runtime, including the `-9` harmony / `-3` stability mismatch penalty and the pending-switch exemption (`docs/project/RUNTIME_EVIDENCE_075.md` section 3). A wrong resonance formula could not explain it.
+- The resonance model is byte-for-byte faithful to the runtime, including the `-9` harmony / `-3` stability mismatch penalty and the pending-switch exemption, re-verified unchanged in 0.7.6 (`docs/project/RUNTIME_EVIDENCE.md` section 3). A wrong resonance formula could not explain it.
 - The fixture's snapshot carries **no `harmonyData` at all**, so the harmony block never ran for it either way. The "harmony is wrongly gated behind `isSublimeCraft`" hypothesis is ruled out _for this fixture_.
 
 What it actually was — a real mechanics bug in **both** engines:

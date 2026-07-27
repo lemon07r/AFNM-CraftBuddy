@@ -636,7 +636,7 @@ function dispatchClickSequence(element: HTMLElement): void {
 /**
  * Find the control that executes a finish/`Wait` request.
  *
- * 0.7.5 has no Finish Craft action; the craft resolves on its own. CraftBuddy's
+ * The game has no Finish Craft action; the craft resolves on its own. CraftBuddy's
  * synthesized finish therefore maps to the native `Wait` technique, which does
  * advance the craft but costs 10 stability, so it is a real technique dispatch
  * and goes through the same native-auto-use-preserving path as any other.
@@ -700,7 +700,7 @@ function assertFreshCraftState(snapshot: AutoCraftRuntimeSnapshot): void {
  *
  * The path matters for correctness, not just reliability. The native crafting
  * auto-use loadout is applied by the React technique handler *immediately before*
- * it dispatches the technique (see `docs/project/RUNTIME_EVIDENCE_075.md` 1.1),
+ * it dispatches the technique (see `docs/project/RUNTIME_EVIDENCE.md` 1.1),
  * so:
  *
  * - With a loadout active, only a real click reproduces the player's gesture.

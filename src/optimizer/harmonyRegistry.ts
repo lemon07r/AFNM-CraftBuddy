@@ -1,9 +1,9 @@
 /**
- * CraftBuddy - Harmony Registry (AFNM 0.7.5)
+ * CraftBuddy - Harmony Registry (AFNM 0.7.6)
  *
  * Static, data-only description of every harmony type the game supports.
  *
- * Ground truth: installed runtime 0.7.5-d764178, harmony config registry
+ * Ground truth: installed runtime 0.7.6-7c586da, harmony config registry
  * (`GH` in `dist-electron/_rolldown_dynamic_import_helper.js`). Verified via
  * `bun run runtime:oracle` / `bun run runtime:extract`.
  *
@@ -30,7 +30,7 @@
 
 import { HarmonyType } from './gameTypes';
 
-/** Every harmony type available in 0.7.5, in the game's own registry order. */
+/** Every harmony type available in 0.7.6, in the game's own registry order. */
 export const HARMONY_TYPES: readonly HarmonyType[] = [
   'forge',
   'alchemical',
@@ -54,7 +54,7 @@ export const BODY_FORGING_STARTING_HARMONY = 50;
  * Static definition of a harmony type.
  *
  * `qiCostMultiplier` / `stabilityCostMultiplier` are intentionally absent here:
- * in 0.7.5 they are functions of `(technique, harmonyData)` rather than
+ * since 0.7.5 they are functions of `(technique, harmonyData)` rather than
  * constants, so they are resolved by `getHarmonyCostMultipliers` in
  * `./harmony.ts`. `modifiesActionCosts` flags the harmonies that define them.
  */

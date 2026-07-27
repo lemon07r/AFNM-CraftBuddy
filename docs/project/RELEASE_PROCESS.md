@@ -3,7 +3,8 @@ title: Release Process
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: package.json, scripts/workshop-upload.ts, scripts/installed-game-runtime.js, .github/workflows/release.yml, ../ModUploader-AFNM/package.json, ../ModUploader-AFNM/electron/main/cli.ts
 review_cycle_days: 30
 related_files:
@@ -11,6 +12,7 @@ related_files:
   - docs/project/TESTING.md
   - scripts/workshop-upload.ts
   - docs/project/WORKSHOP_DESCRIPTION.md
+  - docs/project/RELEASE_NOTES_6.1.0.md
   - docs/project/RELEASE_NOTES_6.0.0.md
   - .github/workflows/release.yml
 ---
@@ -30,9 +32,15 @@ Use the same semantic version in both places, for example `3.5.22`.
 
 Bump the **major** version when the mechanics model, scoring architecture or terminal-state semantics change incompatibly (`v5.0.0` for ModAPI adoption, `v6.0.0` for the 0.7.5 rework).
 
+Bump the **minor** version for a game-version retarget that keeps the scoring architecture intact, even when it changes how a mechanic is modelled (`v6.1.0` for 0.7.6, whose one mechanics change was Eccentric Decree moving to a per-bar-change hook).
+
 ## 1b. Write the release notes
 
-A major or feature release gets `docs/project/RELEASE_NOTES_<version>.md` covering what changed, what was measured and rejected, and the limitations that genuinely remain. Mirror the player-facing subset into [`WORKSHOP_DESCRIPTION.md`](./WORKSHOP_DESCRIPTION.md)'s "Latest update" block so the Workshop page and the repository agree.
+A major or feature release gets `docs/project/RELEASE_NOTES_<version>.md` covering what changed, what was measured and rejected, and the limitations that genuinely remain. Follow the structure of the newest existing notes: frontmatter, a short framing intro, `## Changed` with `###` subsections, `## Known limitations`, `## Upgrading`.
+
+Mirror the player-facing subset into [`WORKSHOP_DESCRIPTION.md`](./WORKSHOP_DESCRIPTION.md) as a new `[h1]What's New in vX.Y.Z[/h1]` section placed **above** the previous one, so the Workshop page and the repository agree and the newest release reads first. Also refresh the "Updated for game version" line near the top when the release retargets the game.
+
+When a release retargets the game version, `docs/project/RUNTIME_EVIDENCE.md` and `docs/project/ENGINE_PERFORMANCE.md` are updated **in place** — their filenames deliberately carry no version, so a new game build is a content edit rather than a rename.
 
 ## 2. Run validation
 

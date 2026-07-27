@@ -3,11 +3,13 @@ title: Workshop Description
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: Steam Workshop item 3661729323, package.json, src/settings/index.ts, src/optimizer/search.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
   - docs/project/RELEASE_PROCESS.md
+  - docs/project/RELEASE_NOTES_6.1.0.md
   - docs/project/RELEASE_NOTES_6.0.0.md
   - docs/project/OPTIMIZER_DESIGN.md
   - scripts/workshop-upload.ts
@@ -18,7 +20,20 @@ related_files:
 
 CraftBuddy reads your live craft, simulates thousands of possible continuations, and tells you the best next action — and [i]why[/i]. No spreadsheets, no memorised rotations, no wasted materials.
 
-[b]Now fully reworked for game version 0.7.5.[/b]
+[b]Updated for game version 0.7.6.[/b]
+
+[hr][/hr]
+
+[h1]What's New in v6.1.0[/h1]
+A game-version update with one real mechanics change.
+
+[list]
+[*] [b]Updated for 0.7.6[/b] — verified against the live game, so every recommendation is scored with the current rules.
+[*] [b]Eccentric Decree now matches the game[/b] — the game rewards this harmony on [i]each[/i] burst of completion or perfection, and the focused bar can switch mid-technique. CraftBuddy scores it the same way instead of settling up once at the end of your turn.
+[*] [b]The Fallen Soulflame nerf is accounted for[/b] — the weaker souls are picked up straight from the game, so CraftBuddy no longer over-values a Soulflame line.
+[*] [b]Techniques are labelled the way the game labels them[/b] — the renamed "Strive for Completion" now reads as "Strive for Completion" in the panel instead of its older name.
+[*] [b]Fixed: harmony progress was being forgotten[/b] — Enhancing Echo attunement and Eccentric Decree's focused bar were being reset every time CraftBuddy re-read your craft. They are kept now, so advice for those two harmonies builds on your real harmony state.
+[/list]
 
 [hr][/hr]
 
@@ -47,7 +62,7 @@ A ground-up accuracy rework built around one goal: play the craft the way the ga
 [*] Lookahead search with presets and manual performance controls
 [*] Condition forecast awareness, plus probabilistic branching beyond the forecast queue
 [*] Projected outcome tier, per-bar band progress, and the bar blocking your next tier
-[*] Harmony-aware simulation for all seven 0.7.5 harmonies
+[*] Harmony-aware simulation for all seven harmonies
 [*] Buff, mastery, Soulflame and toxicity-aware simulation
 [*] Coexists with the game's crafting auto-use loadout
 [*] Large-number-safe parsing and formatting for late-game values
@@ -65,7 +80,7 @@ Open any crafting activity and CraftBuddy appears automatically. The panel shows
 [*] [b]Reasoning[/b] — why this action was chosen, including when it is setting up a gated technique
 [*] [b]Alternatives[/b] — other viable actions, ranked
 [/list]
-Crafts in 0.7.5 finish on their own once both bars are far enough along, so CraftBuddy tells you when the craft will auto-finish rather than asking you to press anything.
+Crafts finish on their own once both bars are far enough along, so CraftBuddy tells you when the craft will auto-finish rather than asking you to press anything.
 
 [h2]Keyboard Shortcuts[/h2]
 [list]

@@ -3,7 +3,8 @@ title: Start Here For Agents
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: src/modContent/index.ts, src/optimizer/*, src/__tests__/*
 review_cycle_days: 30
 related_files:
@@ -12,12 +13,14 @@ related_files:
   - docs/project/ARCHITECTURE.md
   - docs/project/OPTIMIZER_DESIGN.md
   - docs/project/MECHANICS_PARITY.md
-  - docs/project/RUNTIME_EVIDENCE_075.md
+  - docs/project/RUNTIME_EVIDENCE.md
 ---
 
 # Start Here For Agents
 
-CraftBuddy targets AFNM **0.7.5**. If you read a claim about four harmony types, item-kind harmony inference, a manual `Finish Craft` action, or a Rust engine that cannot see item actions, it is pre-0.7.5 and wrong.
+CraftBuddy targets AFNM **0.7.6** (build `0.7.6-7c586da`). If you read a claim about four harmony types, item-kind harmony inference, a manual `Finish Craft` action, or a Rust engine that cannot see item actions, it is pre-0.7.5 and wrong.
+
+What 0.7.6 changed, in one line: Eccentric Decree now scores **per bar application** instead of once per turn. Everything else in the patch was data or display. Anything saying Eccentric Decree awards harmony once at end of turn predates 0.7.6.
 
 ## Critical first read
 
@@ -53,13 +56,15 @@ CraftBuddy targets AFNM **0.7.5**. If you read a claim about four harmony types,
 - Rust engine: `crates/craftbuddy-engine/` (`effects.rs` is the parity layer)
 - outcome presentation: `src/utils/outcomeSummary.ts`
 
-## 0.7.5 reference docs
+## Runtime and engine reference docs
 
-- `docs/project/RUNTIME_EVIDENCE_075.md` — extracted runtime source for the auto-use hook, the absence of a manual finish, and the resonance formulas. Authoritative; do not re-derive these from tooltips.
-- `docs/project/ENGINE_PERFORMANCE_075.md` — engine measurements, the profiling harness, and the optimizations rejected with data.
+These filenames are intentionally version-free: each carries its targeted build in a `game_version` frontmatter field, so a game patch is a content edit rather than a rename.
+
+- `docs/project/RUNTIME_EVIDENCE.md` — extracted runtime source for the 0.7.6 Eccentric Decree hook, the auto-use hook, the absence of a manual finish, and the resonance formulas. Authoritative; do not re-derive these from tooltips.
+- `docs/project/ENGINE_PERFORMANCE.md` — engine measurements, the profiling harness, and the optimizations rejected with data.
 - `docs/project/OPTIMIZER_ENGINE_FINDINGS.md` — engine decision record.
 - `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md` — what is settled vs open.
-- `docs/project/RELEASE_NOTES_6.0.0.md` — what the 0.7.5 rework changed.
+- `docs/project/RELEASE_NOTES_6.1.0.md` — the 0.7.6 retarget; `RELEASE_NOTES_6.0.0.md` — what the 0.7.5 rework changed (historical).
 
 ## Context rules
 

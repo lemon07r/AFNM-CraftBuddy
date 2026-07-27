@@ -1,5 +1,5 @@
 /**
- * Conjunctive outcome evaluation tests (AFNM 0.7.5).
+ * Conjunctive outcome evaluation tests (AFNM 0.7.6).
  *
  * Numbers are derived from the runtime band helpers:
  *   qIa = 1.3

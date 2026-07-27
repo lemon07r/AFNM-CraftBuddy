@@ -3,7 +3,8 @@ title: Optimizer Next Steps Handoff
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: src/optimizer/*, crates/craftbuddy-engine/*, src/__tests__/*, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 30
 related_files:
@@ -15,7 +16,7 @@ related_files:
 
 # Optimizer Next Steps Handoff
 
-Baseline for the next agent working on recommendation accuracy or speed. It records what the 0.7.5 rework settled, so no one re-derives it, and what is genuinely still open.
+Baseline for the next agent working on recommendation accuracy or speed, current target AFNM **0.7.6**. It records what the 0.7.5 rework settled, so no one re-derives it, and what is genuinely still open.
 
 ## Start here
 
@@ -28,7 +29,7 @@ Baseline for the next agent working on recommendation accuracy or speed. It reco
 | Decision | Why |
 | --- | --- |
 | Outcome tiers are conjunctive; `outcome.ts` owns every threshold | The additive weighted scorer is what mis-played sublime crafts. Re-introducing a weight that can raise a tier is a regression, not a tuning choice. |
-| There is no manual finish action in 0.7.5 | Runtime-verified. `Wait` is a normal technique costing 10 stability. |
+| There is no manual finish action | Runtime-verified in 0.7.5 and again in 0.7.6. `Wait` is a normal technique costing 10 stability. |
 | Harmony is player-selected, seven types, each with a complexity multiplier | Runtime-verified; item-kind inference no longer exists in the game. |
 | Rust models the same action space, but TypeScript owns final ranking | Parity is proven by the corpus; split authority over ranking is not worth the divergence risk. |
 | Compact Rust state with mutate/undo | Measured: clone is 4.70% of a transition, so the ceiling was under 5%. Rejected. |
@@ -41,8 +42,9 @@ Baseline for the next agent working on recommendation accuracy or speed. It reco
 1. **Replay corpus size.** 14 curated fixtures is enough for regression, not enough to prove broad high-realm accuracy. This is the highest-value work available and it needs player snapshots, not more constants.
 2. **Per-harmony item effects (`harmonyAugment`).** Unmodelled by choice: they change what the finished item does, not which action is best. If the game ever makes them affect in-craft state, this becomes real work.
 3. **Native cost-preview helpers.** Still internally modelled; see `docs/dev-requests/STATUS.md` Q3.
+4. **Eccentric Decree per-bar-change fidelity.** 0.7.6 scores it per bar application; CraftBuddy folds expected values instead of discrete applications, and a mid-technique focus flip does not retune that same turn's remaining effect magnitudes. Both limits are stated in `docs/project/MECHANICS_PARITY.md`. Closing either needs real snapshots first.
 
-`user-report-resonance-regression` used to head this list. It is closed: the cause was the success-weighted-progress bug in the table above, not the contract and not resonance. `bun run optimizer:bench` reports 98 of 98 contracts passing. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
+`user-report-resonance-regression` used to head this list. It is closed: the cause was the success-weighted-progress bug in the table above, not the contract and not resonance. Its `mustRankBefore` clause is still a depth-sensitive near-tie that can fail on the deepest config depending on the depth a machine reaches — read `docs/project/OPTIMIZER_ENGINE_FINDINGS.md` before treating that as a regression, and do not tune a constant for it.
 
 ## Where new fixtures come from
 
@@ -54,7 +56,7 @@ Store curated exports in `src/__tests__/__fixtures__/replay-snapshots/`, add a f
 
 - late high-realm crafts with 50+ available techniques
 - sublime crafts after base success but before both bars hold two bands
-- the three 0.7.5 harmonies (`formless`, `enhancingEcho`, `eccentricDecree`)
+- the three harmonies added in 0.7.5 (`formless`, `enhancingEcho`, `eccentricDecree`) — `eccentricDecree` most of all, now that 0.7.6 scores it per bar application
 - alchemical charge sequences and inscription partial blocks
 - low-stability crafts with a proc-dependent recovery temptation
 - states where auto-finish is one action away

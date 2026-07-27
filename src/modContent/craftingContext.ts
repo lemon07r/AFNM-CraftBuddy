@@ -10,7 +10,7 @@ import type { HarmonyType } from '../optimizer';
 /**
  * The active harmony system for a craft.
  *
- * In 0.7.5 harmony is no longer derived from the item being crafted: the player
+ * Since 0.7.5 harmony is no longer derived from the item being crafted: the player
  * selects any unlocked harmony before a sublime craft, and the game records that
  * selection on `recipeStats.harmonyType` (via `recipe.harmonyTypeOverride`).
  * The ModAPI's `itemTypeToHarmonyType` utility was removed in the same patch.

@@ -5,7 +5,7 @@ description: CraftBuddy orientation for Ascend From Nine Mountains mod work. Act
 
 # AFNM-CraftBuddy Orientation
 
-Use this as the entry skill for CraftBuddy work. It routes to narrower skills and keeps always-loaded context small. Target game version: AFNM **0.7.5**.
+Use this as the entry skill for CraftBuddy work. It routes to narrower skills and keeps always-loaded context small. Target game version: AFNM **0.7.6**.
 
 ## Activate When
 
@@ -56,13 +56,16 @@ Use this as the entry skill for CraftBuddy work. It routes to narrower skills an
 2. **`disable_steam` breaks Workshop mods if left behind**: live testing must delete the sentinel after launch testing.
 3. **Search fixes need regression proof**: recommendation changes should have simulation/replay tests, not just tuned constants.
 4. **Wall-clock budgets are machine-dependent**: assert completed depth/frontier or node-budget behavior, not one machine's partial frontier.
-5. **0.7.5 changed the fundamentals**: harmony is player-selected across seven types with complexity multipliers, outcome tiers are conjunctive band gates, there is no manual Finish Craft, and the game applies its own crafting auto-use loadout before every technique. Any note saying otherwise predates 0.7.5.
+5. **The 0.7.5 rework set the fundamentals, still true in 0.7.6**: harmony is player-selected across seven types with complexity multipliers, outcome tiers are conjunctive band gates, there is no manual Finish Craft, and the game applies its own crafting auto-use loadout before every technique. Any note saying otherwise predates 0.7.5.
 6. **Thresholds live in one place**: never recompute a band, tier or auto-finish check outside `src/optimizer/outcome.ts`.
+7. **Harmony no longer always resolves once per turn**: since 0.7.6, Eccentric Decree scores per individual bar change (`onBarChange`), so one turn can award several `+5`/`-5` steps and switch its focused bar mid-turn. Model it as an ordered fold over bar-change events, and leave the `needsBarContributions()` / `needs_bar_contributions()` gate alone — it is a live allocation guard, not dead code.
+8. **Display names diverge from internal names**: key `false_fusion`, internal `name` `False Fusion`, shown to players as "Strive for Completion". User-facing strings must go through `techniqueDisplayName()` (from `src/optimizer/index.ts`); keys, lookups and tests keep using `name`.
 
 ## References
 
 - `AGENTS.md` — commands and hard rules
 - `docs/project/START_HERE_FOR_AGENTS.md` — doc load order and code entrypoints
 - `docs/project/ARCHITECTURE.md` — module map
-- `docs/project/RUNTIME_EVIDENCE_075.md` — verified 0.7.5 runtime behaviour
-- `docs/project/RELEASE_NOTES_6.0.0.md` — what the 0.7.5 rework changed
+- `docs/project/RUNTIME_EVIDENCE.md` — verified runtime behaviour
+- `docs/project/RELEASE_NOTES_6.1.0.md` — the 0.7.6 retarget
+- `docs/project/RELEASE_NOTES_6.0.0.md` — what the 0.7.5 rework changed (historical)

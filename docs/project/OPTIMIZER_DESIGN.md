@@ -3,8 +3,9 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
-source_of_truth: src/optimizer/outcome.ts, src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/index.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*, src/settings/index.ts
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
+source_of_truth: src/optimizer/outcome.ts, src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/index.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*, src/settings/index.ts
 review_cycle_days: 30
 related_files:
   - AGENTS.md
@@ -16,7 +17,7 @@ related_files:
 
 # Optimizer Design
 
-How CraftBuddy decides what to do next in AFNM **0.7.5**. Use `.agents/skills/craftbuddy-optimizer/SKILL.md` for the action checklist; this is the reference.
+How CraftBuddy decides what to do next in AFNM **0.7.6**. Use `.agents/skills/craftbuddy-optimizer/SKILL.md` for the action checklist; this is the reference.
 
 ## Module boundary
 
@@ -28,13 +29,13 @@ How CraftBuddy decides what to do next in AFNM **0.7.5**. Use `.agents/skills/cr
 | `state.ts` | immutable `CraftingState`, generic `TrackedBuff` set, cache-key generation |
 | `gameTypes.ts` | game-aligned types and shared formulas (`evaluateScaling`, expression evaluator, condition parsing, crit EV, `getBonusAndChance`) |
 | `skills.ts` | transition engine (`calculateSkillGains`, `applySkill`, `canApplySkill`), masteries, buffs, harmony application |
-| `harmony.ts` + `harmonyRegistry.ts` | the seven harmony subsystems and their static data |
+| `harmony.ts` + `harmonyRegistry.ts` | the seven harmony subsystems and their static data, including the 0.7.6 per-bar-change Eccentric Decree fold |
 | `search.ts` | move ordering, bounded lookahead, scoring, `OutcomeProjection` |
 | `nativeMcts.ts` | the bridge to the Rust engine |
 
 ## The conjunctive outcome model
 
-This is the core of the 0.7.5 rework and the reason the old additive scorer was deleted.
+This is the core of the 0.7.5 rework, unchanged in 0.7.6, and the reason the old additive scorer was deleted.
 
 The game resolves a craft by counting **bands** on each bar independently, then requiring a conjunction:
 
@@ -54,7 +55,7 @@ Consequences that must not be re-litigated with weights:
 
 ## Terminal states: there is no manual finish
 
-0.7.5 has no `Finish Craft` action. The craft resolves itself the moment `willAutoFinish(state, bands)` holds — see `docs/project/RUNTIME_EVIDENCE_075.md` section 2 for the extracted predicate and the proof that `Wait` is a normal technique costing 10 stability, not a finish button.
+AFNM has no `Finish Craft` action, re-verified in 0.7.6. The craft resolves itself the moment `willAutoFinish(state, bands)` holds — see `docs/project/RUNTIME_EVIDENCE.md` section 2 for the extracted predicate and the proof that `Wait` is a normal technique costing 10 stability, not a finish button.
 
 Search therefore:
 
@@ -71,6 +72,7 @@ UI wording is "will auto-finish", never "you can finish crafting now".
 - Actions: crafting techniques plus item (pill/reagent) actions supplied by the integration layer. Item actions do not consume lookahead turn depth.
 - Integration seeds only canonical supplemental `nativeVariables`; state, buff and harmony mirrors are re-derived on demand instead of being persisted into cache keys.
 - When the native crafting auto-use loadout covers an item, that item is removed from the action space by the integration layer, so search never proposes a consumption the game is about to perform itself.
+- For a **sublime Eccentric Decree** craft only, a turn's transition also carries the ordered per-application bar changes that harmony's 0.7.6 `onBarChange` hook scores. `needsBarContributions()` gates this, so no event list is allocated for the other six harmonies (`docs/project/MECHANICS_PARITY.md` for the model and its known limits).
 
 ## Search
 
@@ -135,7 +137,7 @@ No legal skill is hard-filtered before evaluation. If a move class is mis-ordere
 
 ## Rust/WASM engine
 
-The Rust engine models the **same searchable action space** as TypeScript — generic buffs, effect trees, mastery, Soulflame, toxicity, item actions — and shares the conjunctive outcome model via `crates/craftbuddy-engine/src/outcome.rs`. Parity is proven by a 129-scenario / 1,417-transition differential corpus (`docs/project/MECHANICS_PARITY.md`).
+The Rust engine models the **same searchable action space** as TypeScript — generic buffs, effect trees, mastery, Soulflame, toxicity, item actions — and shares the conjunctive outcome model via `crates/craftbuddy-engine/src/outcome.rs`. Parity is proven by a 134-scenario / 1,432-transition differential corpus (`docs/project/MECHANICS_PARITY.md`).
 
 Its role in a search is still a **root policy prior**, by design:
 
@@ -144,7 +146,7 @@ Its role in a search is still a **root policy prior**, by design:
 - may break a near-tie only when both candidates appear in the native policy
 - cannot hard-filter a skill or overturn a clear TypeScript score difference
 
-TypeScript remains the differential oracle and the fallback when WASM is unavailable. Measured engine performance and the optimizations that were rejected with data live in `docs/project/ENGINE_PERFORMANCE_075.md`.
+TypeScript remains the differential oracle and the fallback when WASM is unavailable. Measured engine performance and the optimizations that were rejected with data live in `docs/project/ENGINE_PERFORMANCE.md`.
 
 ## User goal-priority bias
 

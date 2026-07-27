@@ -1,7 +1,7 @@
 /**
  * CraftBuddy - ModAPI provider resolution.
  *
- * Locates the optional helpers the 0.7.5 ModAPI exposes (next-condition
+ * Locates the optional helpers the ModAPI exposes (next-condition
  * resolver, completion-bonus buff name, technique-from-known resolver, action
  * cost getter) and records in `craftSession` which of them the current runtime
  * actually offered. Every lookup is defensive: a missing helper is normal and

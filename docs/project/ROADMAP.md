@@ -3,7 +3,8 @@ title: Roadmap
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: src/optimizer/*, src/modContent/*, docs/dev-requests/STATUS.md, docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md
 review_cycle_days: 30
 related_files:
@@ -14,13 +15,13 @@ related_files:
 
 # Roadmap
 
-Post-0.7.5 priorities. Anything the 0.7.5 rework settled is recorded in `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md` and is not a roadmap item.
+Priorities against the current target, AFNM **0.7.6**. Anything the 0.7.5 rework settled is recorded in `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md` and is not a roadmap item.
 
 ## Active priorities
 
 ### P1: Accuracy evidence, not accuracy guesses
 
-- grow the replay corpus with real high-realm and sublime snapshots, especially for `formless`, `enhancingEcho` and `eccentricDecree`
+- grow the replay corpus with real high-realm and sublime snapshots, especially for `formless`, `enhancingEcho` and `eccentricDecree` — the last of these is now the most valuable, since 0.7.6 made its scoring per bar application and no exported fixture exercises that yet
 - add a benchmark contract per new fixture, then compare against the player's stated rationale before touching search
 - keep `bun run optimizer:bench` and the differential corpus green; a contract change needs recorded runtime evidence
 - acceptance: a reported bad recommendation can be reproduced from a checked-in fixture rather than argued about
@@ -41,7 +42,7 @@ Post-0.7.5 priorities. Anything the 0.7.5 rework settled is recorded in `docs/pr
 
 ### P4: Auto-mode confidence
 
-- extend coexistence coverage as the game's auto-use system evolves (loadout switching mid-craft, new slot condition forms)
+- extend coexistence coverage as the game's auto-use system evolves (loadout switching mid-craft, new slot condition forms such as 0.7.6's `(This Effect)` self-reference)
 - surface why automation paused or recalculated in the panel, so a pause reads as a decision rather than a stall
 - acceptance: no automated dispatch can be traced to state the executor did not verify
 

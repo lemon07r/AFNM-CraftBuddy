@@ -231,7 +231,7 @@ const FIXTURE_CONTRACTS: FixtureContract[] = [
         before: 'focused_refine',
         after: 'explosive_fusion',
         // Runner-up ordering only, tolerated up to a 5% score gap. See
-        // docs/project/RUNTIME_EVIDENCE_075.md for the measurements: this
+        // docs/project/RUNTIME_EVIDENCE.md for the measurements: this
         // fixture carries no harmonyData at all, so nothing about it is
         // resonance-specific, and the inversion tracks the search depth the
         // wall-clock budget completes (passes at depth 4, inverts at depth 5,

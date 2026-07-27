@@ -5,7 +5,7 @@ description: CraftBuddy optimizer/search/MCTS workflow. Activate for changes to 
 
 # CraftBuddy Optimizer
 
-Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN.md` remains the detailed source of truth; this skill is the action checklist.
+Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN.md` remains the detailed source of truth; this skill is the action checklist. Modelled game version: AFNM **0.7.6**.
 
 ## Activate When
 
@@ -65,6 +65,7 @@ Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN
 | Transition, buffs, masteries, action costs | `skills.test.ts` |
 | Formula or runtime parity | `gameAccuracy.test.ts`, `runtimeParity.test.ts` |
 | Harmony subsystem | `harmony.test.ts`, `harmonyRegistry.test.ts`, plus simulations |
+| Eccentric Decree / bar-change ordering | `harmony.test.ts`, plus the Rust fold in `crates/craftbuddy-engine/src/lib.rs` via `bun run wasm:test` |
 | Replay export/import fidelity | replay snapshot fixtures/helpers |
 | Any mechanics change | regenerate with `bun run optimizer:differential-corpus`, then `engineDifferential.test.ts` **and** `bun run wasm:test` |
 | Rust engine | `bun run wasm:test`; `bun run build` for the inline WASM bundle |
@@ -73,12 +74,15 @@ Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN
 
 1. **Heuristic soup compounds**: if a fix needs 3+ tuned constants or a heuristic to counter another heuristic, step back and fix the model.
 2. **Condition effects affect ordering**: order by actual condition-modified gains, not raw base gains.
-3. **There is no manual finish in 0.7.5**: the craft resolves itself when `willAutoFinish` holds, which makes that state terminal. The internal `Finish Craft` pseudo-action exists only to price craft-end EV inside search; never treat it as an action a player or automation presses, and never let further stat spam "improve" an already-resolved state.
+3. **There is no manual finish**: since 0.7.5 the craft resolves itself when `willAutoFinish` holds, which makes that state terminal. The internal `Finish Craft` pseudo-action exists only to price craft-end EV inside search; never treat it as an action a player or automation presses, and never let further stat spam "improve" an already-resolved state.
 4. **Wall-clock budget is not deterministic**: prefer node-budget or completed-frontier assertions for regressions.
 5. **Native MCTS cannot override clear TypeScript scores**: it may only help with near-tie root ordering inside the configured score window.
 6. **Never send an explicit `null` across the Rust bridge**: one `null` on a non-optional field fails the whole payload and silently disables the prior. `nativeMcts.test.ts` guards this.
 7. **Do not re-attempt measured dead ends**: compact Rust state with mutate/undo (clone is 4.7% of a transition) and the packed numeric cache key (1.0-1.4% of the budget) were both rejected with data. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
 8. **Never tune a constant to make a benchmark contract pass.** Contracts change only with recorded runtime-oracle evidence.
+9. **Eccentric Decree scores per bar change, not once per turn**: 0.7.6 moved its state machine out of end-of-turn `processEffect` into an `onBarChange` hook fired inside every `applyCompletion`/`applyPerfection`, so one turn can award several `+5`/`-5` harmony steps and flip the focused bar part-way through. `processEccentricDecree` in `src/optimizer/harmony.ts` is an ordered fold over `BarChangeEvent[]`, mirrored over `BarChange` in the Rust engine; event order is part of the mechanic, so keep both folds identical and regenerate the differential corpus after any change.
+10. **`needsBarContributions()` is a live gate, not dead code**: bar-change events are collected only when the craft's harmony is `eccentricDecree`. Leave the gate in `src/optimizer/skills.ts` and `needs_bar_contributions()` in `crates/craftbuddy-engine/src/effects.rs` alone; it keeps every other harmony allocation-free.
+11. **Internal names and display names differ**: key `false_fusion` / internal `name` `False Fusion` displays as "Strive for Completion". Search, caches, tests and fixtures key on `name`; only user-facing strings go through `techniqueDisplayName()` (exported from `src/optimizer/index.ts`).
 
 ## References
 

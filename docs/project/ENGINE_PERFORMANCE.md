@@ -1,10 +1,11 @@
 ---
-title: Rust Engine Performance and Neutrality Evidence (0.7.5)
+title: Rust Engine Performance and Neutrality Evidence
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
-source_of_truth: crates/craftbuddy-engine/src/profile_tests.rs, crates/craftbuddy-engine/src/profiling.rs, scripts/optimizer/benchmark-engines.ts
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
+source_of_truth: crates/craftbuddy-engine/src/profile_tests.rs, crates/craftbuddy-engine/src/profiling.rs, crates/craftbuddy-engine/src/effects.rs, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 90
 related_files:
   - docs/project/OPTIMIZER_ENGINE_FINDINGS.md
@@ -14,9 +15,13 @@ related_files:
   - src/optimizer/nativeMcts.ts
 ---
 
-# Rust Engine Performance and Neutrality Evidence (0.7.5)
+# Rust Engine Performance and Neutrality Evidence
 
-Measurements behind the 0.7.5 engine performance work. Every number here was produced on this repository; nothing is estimated. Read this before proposing another engine optimization — two of the obvious candidates have already been measured and rejected with data.
+Measurements behind the Rust engine's performance work, current target AFNM **0.7.6-7c586da**. Every number here was produced on this repository; nothing is estimated. Read this before proposing another engine optimization — two of the obvious candidates have already been measured and rejected with data.
+
+**The filename carries no version on purpose.** This file used to be `ENGINE_PERFORMANCE_075.md`. The targeted build now lives in the `game_version` frontmatter field, so a future game patch means editing this file's numbers, not renaming it and leaving a stale copy behind.
+
+The measurement baseline is the **6.0.0** run below. It is deliberately kept rather than overwritten: it is the comparison point every later change is judged against.
 
 ## How to reproduce
 
@@ -94,6 +99,21 @@ The three changes above were taken instead and delivered 47.4% for no behavioura
 
 **Dropped deliberately** (recorded in the 0.7.5 plan). Profiling put stringified cache keys at 1.0-1.4% of the search budget, so the collision risk is unjustified.
 
+## 6.1.0: the cost of per-bar-change Eccentric Decree
+
+AFNM 0.7.6 moved Eccentric Decree scoring into a per-bar-application hook (`docs/project/RUNTIME_EVIDENCE.md` section 4), so both engines now build an ordered list of bar changes for a turn and fold over it. Two properties bound the cost:
+
+1. **The work is bounded by the number of bar-moving effects in a turn**, not by search depth or branching. A turn has a handful of completion/perfection applications at most, and the fold is a single pass of integer comparisons over them — no allocation per node beyond the event vector for the turn being evaluated.
+2. **Nothing is built unless the craft actually uses Eccentric Decree.** `needsBarContributions()` in `src/optimizer/skills.ts` and `needs_bar_contributions()` in `crates/craftbuddy-engine/src/effects.rs` both gate on `isSublimeCraft && craftingType === 'eccentricDecree'`. For the other six harmonies — and for every non-sublime craft, where complexity multipliers and the harmony subsystems do not apply — the contribution list is never populated, so the change adds **zero allocation** to those searches.
+
+Both engines fall back to the pre-0.7.6 single end-of-turn delta when no events are supplied, so replay fixtures recorded without event data degrade instead of mis-scoring.
+
+Benchmark after the change (`bun run optimizer:bench`): **98 of 98 contracts passed, 0 failed**, recommendation trends unchanged, timings within noise of the 6.0.0 baseline above. **No scoring constant was tuned.**
+
+A caution for anyone reproducing this. An earlier 6.1.0 run of the same tree reported the `user-report-resonance-regression` `mustRankBefore` clause failing on the deepest config. That run happened while the Jest suite was saturating the machine. Search is wall-clock budgeted, so contention reduces the depth actually reached, and this fixture's ordering is a near-tie whose direction depends on depth — see `OPTIMIZER_ENGINE_FINDINGS.md`. **Run the benchmark on an otherwise idle machine**; a failure here under load is a measurement artefact, not a regression, and never a reason to tune a constant.
+
+The clause in question is the long-documented `user-report-resonance-regression` `mustRankBefore` check. Measured on that fixture, refine leads at depth 4, inverts at 5, and leads again from 6 (`docs/project/RUNTIME_EVIDENCE.md` section 3.3) — which is why the reachable depth decides it. It is not caused by the bar-change work and must not be "fixed" by tuning a constant.
+
 ## Two correctness bugs found by the profiling work
 
 Both were found because production-shaped payloads were finally being fed to the engine in a loop, which is worth noting: neither was visible from the unit tests.
@@ -112,7 +132,7 @@ Evidence from `bun run optimizer:bench` (98 runs, before/after, WASM rebuilt for
 | Contracts passed                   | 96          | **97**       |
 | Contracts failed                   | 2           | **1**        |
 
-The one failure left at that point was `user-report-resonance-regression` on `legacy_balanced`; the `experimental_balanced` half was gone. That last one was closed separately during integration and for a different reason again — expected progress had to be weighted by success chance _under_ the headroom clamp, not over it (`docs/project/OPTIMIZER_ENGINE_FINDINGS.md`). The benchmark now reports **98 of 98 contracts passing**.
+The one failure left at that point was `user-report-resonance-regression` on `legacy_balanced`; the `experimental_balanced` half was gone. That last one was closed separately during integration and for a different reason again — expected progress had to be weighted by success chance _under_ the headroom clamp, not over it (`docs/project/OPTIMIZER_ENGINE_FINDINGS.md`). At the 6.0.0 gate the benchmark reported **98 of 98 contract checks passing**; see the 6.1.0 section above for the current run and for why that fixture's ordering clause is depth-sensitive.
 
 Node counts move slightly _down_ end to end, which is expected and not a regression: the native pre-pass now genuinely runs and consumes part of the time budget, where before it aborted almost immediately.
 
@@ -133,4 +153,6 @@ The MCTS-enabled configs pay 6-8% of their nodes for a prior they were not getti
 
 `normalize_distribution` merged the generated condition distribution through a `HashMap`, so the probability total was summed in hash order _and_ exact ties (`positive` vs `negative` at harmony 0) were broken by hash order. Two of eight identical runs of `forge-heat-runway-step-3` produced a different policy.
 
-Rewritten as an insertion-ordered merge mirroring `normalizeConditionDistribution` in `src/optimizer/search.ts`. A non-deterministic recommender cannot be regression-tested at all, so the property is now guarded directly by `differential_tests::mcts_search_is_deterministic`, which re-runs all 129 corpus scenarios twice and compares the serialized results (~15 s debug).
+Rewritten as an insertion-ordered merge mirroring `normalizeConditionDistribution` in `src/optimizer/search.ts`. A non-deterministic recommender cannot be regression-tested at all, so the property is now guarded directly by `differential_tests::mcts_search_is_deterministic`, which re-runs all corpus scenarios twice and compares the serialized results (~15 s debug). The corpus is currently 134 scenarios / 1,432 transitions.
+
+The crate's own suite reports **64 passing tests**, plus the 3 `#[ignore]`d profiling tests listed under "How to reproduce" (67 defined in total).

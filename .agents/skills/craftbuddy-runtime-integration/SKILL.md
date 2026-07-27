@@ -5,7 +5,7 @@ description: CraftBuddy runtime integration workflow. Activate for src/modConten
 
 # CraftBuddy Runtime Integration
 
-`src/modContent/index.ts` and neighboring modules are the only boundary between AFNM runtime objects and the optimizer/UI. Target runtime: AFNM **0.7.5**.
+`src/modContent/index.ts` and neighboring modules are the only boundary between AFNM runtime objects and the optimizer/UI. Target runtime: AFNM **0.7.6**.
 
 Reach the optimizer only through `src/optimizer/index.ts`. If something is missing from the barrel, add it there rather than importing a submodule.
 
@@ -27,15 +27,16 @@ Reach the optimizer only through `src/optimizer/index.ts`. If something is missi
 
 Do not scatter fallback logic into optimizer/UI modules. Centralize drift-prone assumptions in `src/modContent/*`.
 
-## 0.7.5 Essentials
+## Runtime Essentials
 
-1. **Harmony is player-selected.** Read it from live craft state in `craftingContext.ts`; `recipe.harmonyTypeOverride` is the forced case. The `itemTypeToHarmonyType` ModAPI utility was removed by the game — do not reintroduce item-kind inference. When the selection cannot be read, treat harmony data as missing (forge heat is the one verified-mirror exception). Sublime targets are scaled by the harmony's complexity multiplier.
-2. **Native crafting auto-use is a pre-technique hook.** The game applies `player.player.currentCraftingAutoUseLoadout.slots` immediately before every technique dispatch. `nativeAutoUse.ts` mirrors the selector; covered items leave the action space and `fullActionSpace` degrades to techniques + finish with a visible reason. Never let CraftBuddy consume an item the loadout covers.
+1. **Harmony is player-selected.** Read it from live craft state in `craftingContext.ts`; `recipe.harmonyTypeOverride` is the forced case. The `itemTypeToHarmonyType` ModAPI utility was removed by the game and is still absent in 0.7.6 (`hasItemTypeToHarmonyType` is false) — do not reintroduce item-kind inference. When the selection cannot be read, treat harmony data as missing (forge heat is the one verified-mirror exception). Sublime targets are scaled by the harmony's complexity multiplier (forge 1.2, alchemical 1.2, inscription 0.9, resonance 1.3, formless 1.5, enhancingEcho 1.3, eccentricDecree 1).
+2. **Native crafting auto-use is a pre-technique hook.** The game applies `player.player.currentCraftingAutoUseLoadout.slots` immediately before every technique dispatch. That read path is unchanged in 0.7.6, which only pairs a crafting loadout with its auto-use loadout through `craftingLoadout.craftingAutoUseLoadoutId` and resolves it before CraftBuddy reads state. `nativeAutoUse.ts` mirrors the selector; covered items leave the action space and `fullActionSpace` degrades to techniques + finish with a visible reason. Never let CraftBuddy consume an item the loadout covers.
 3. **Execution path is a correctness decision.** With a loadout active, execute the technique through the in-game control so the hook runs, and stop (`NativeAutoUseUnreachableError`) rather than dispatching around it. With no loadout, the direct `crafting/executeTechnique` dispatch is preferred: equivalent for the craft and more precise than DOM matching.
 4. **There is no manual finish.** The craft resolves itself when `willAutoFinish` holds. `Wait` is a real technique costing 10 stability, so it is never a stand-in for "finish now". Say "will auto-finish" in any copy.
 5. **Verify at dispatch time.** `craftStateSignature.ts` covers step, resources, condition + forecast, buffs, cooldowns, quick-access inventory, harmony value, a canonical `harmonyData` digest and the available-technique roster. `stale` → recalculate, `unverifiable` → pause. Never dispatch against unverified state.
+6. **Harmony can score several times per turn.** 0.7.6 fires Eccentric Decree's scoring from an `onBarChange` hook inside every completion/perfection application, so one technique can award several `+5`/`-5` harmony steps and switch its focused bar mid-turn. Snapshots must preserve enough bar-change ordering for the optimizer to reproduce it.
 
-Ground truth for all five: `docs/project/RUNTIME_EVIDENCE_075.md`. Do not re-derive them from tooltips or patch notes.
+Ground truth for all six: `docs/project/RUNTIME_EVIDENCE.md`. Do not re-derive them from tooltips or patch notes.
 
 ## Preferred Runtime Helpers
 
@@ -45,6 +46,8 @@ Ground truth for all five: `docs/project/RUNTIME_EVIDENCE_075.md`. Do not re-der
 - `modAPI.utils.getActionCost`, `evaluateCraftingCondition`, and `getActualCraftingStat` when runtime parity requires native previews.
 
 If a helper is missing or throws, keep the existing guarded fallback and verify with `runtime-oracle`.
+
+Exposed by 0.7.6 but deliberately **not adopted**: the `gameData.buffs` registry, `getCoreFormationAltarStats`, and buff-interceptor stat filters. Confirm with `runtime-oracle` before building on any of them.
 
 ## DOM Fallback Rules
 
@@ -82,11 +85,15 @@ Add focused tests for controller state, replay parity, or integration regression
 4. **Replay snapshots are bug reports**: preserve runtime-shaped skill fields, active buff definitions, `harmonyData` and its provenance, craft-context fields, current turn, and recent history.
 5. **`trainingMode !== undefined` suppresses inventory removal**: the game applies items without consuming them, so inventory-diff verification must not read that as a mismatch. The check is definedness, not truthiness.
 6. **`CRAFTING_AUTO_USE_PILL` / `CRAFTING_AUTO_USE_REAGENT` are react-dnd drag types** for the loadout editor, not the auto-use system.
+7. **Unmodelled auto-use conditions default to "will fire"**: 0.7.6's `(This Effect)` self-reference condition is not modelled, so `nativeAutoUse.ts` takes the conservative branch and assumes the game will consume the item. Keep that default — the safe failure is CraftBuddy skipping an item, never double-spending one.
+8. **Never hardcode buff magnitudes**: 0.7.6 nerfed Fallen Soulflame (0.5 → 0.2 intensity/control per stack, pool 3 → 2, stability 2 → 1) and neither engine needed a change, because both read live buff definitions. Copying a number into code re-breaks that.
+9. **Harmony clones must cover every harmony's state**: `cloneHarmonyData` in `harmonyState.ts` was silently dropping `enhancingEcho` and `eccentricDecree` during hydration. When adding harmony state, extend the clone and its test in the same change.
+10. **User-facing technique names are not internal names**: key `false_fusion` / internal `name` `False Fusion` displays as "Strive for Completion". Format labels with `techniqueDisplayName()` from `src/optimizer/index.ts`; keep matching, dispatch and `craftingTechniqueFromKnown` on `name`.
 
 ## References
 
 - `docs/project/INTEGRATION_MODAPI.md`
-- `docs/project/RUNTIME_EVIDENCE_075.md`
+- `docs/project/RUNTIME_EVIDENCE.md`
 - `docs/project/ARCHITECTURE.md`
 - `docs/project/TESTING.md`
 - `src/modContent/index.ts`

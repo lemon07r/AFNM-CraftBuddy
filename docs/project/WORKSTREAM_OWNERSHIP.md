@@ -1,21 +1,22 @@
 ---
-title: Workstream Ownership (0.7.5 rework, final phase)
+title: Workstream Ownership (parallel delivery pattern)
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: git worktree layout, this document
 review_cycle_days: 30
 related_files:
-  - docs/project/RUNTIME_EVIDENCE_075.md
+  - docs/project/RUNTIME_EVIDENCE.md
   - docs/project/ARCHITECTURE.md
   - src/optimizer/index.ts
   - src/modContent/autoCraftController.ts
 ---
 
-# Workstream Ownership (0.7.5 rework, final phase)
+# Workstream Ownership (parallel delivery pattern)
 
-Working agreement for the parallel delivery of the final 0.7.5 phase. Parallel agent sessions share one filesystem, so **isolated worktrees are mandatory, not optional**, and file ownership is exclusive.
+The working agreement for running several delivery sessions in parallel. It was first recorded for the final phase of the 0.7.5 rework, and the branch names and gate numbers below are that phase's history — the **pattern** is what carries forward, and it was reused for the 0.7.6 / 6.1.0 retarget. Parallel agent sessions share one filesystem, so **isolated worktrees are mandatory, not optional**, and file ownership is exclusive.
 
 ## Shared contracts (landed first, on `main`)
 
@@ -114,7 +115,7 @@ Recorded from the docs workstream's vantage point, which merges last. "Delivered
 | --- | --- |
 | Shared contracts | landed on `main` |
 | Runtime — auto-use coexistence + dispatch-time guard | delivered on `feat/native-auto-use-coexistence` |
-| Engine — Rust mechanics parity + expanded corpus | delivered on `feat/rust-effect-parity`; corpus at 129 scenarios / 1,417 transitions |
+| Engine — Rust mechanics parity + expanded corpus | delivered on `feat/rust-effect-parity`; corpus now at 134 scenarios / 1,432 transitions (129 / 1,417 as delivered for 6.0.0; the 6.1.0 Eccentric Decree work added five scenarios) |
 | Engine — performance | delivered: 1.90x at identical search shape. Compact state + mutate/undo **rejected with measurements**, not deferred |
 | UI — outcome/band/harmony surfacing | delivered on `feat/outcome-surfacing` |
 | Docs — architecture refresh | delivered on `docs/075-architecture-refresh` |
@@ -125,33 +126,33 @@ Two things the docs deliberately describe as _decided_, not open:
 - the packed numeric transposition-cache key (measured at 1.0-1.4% of the search budget, dropped)
 - compact Rust state with mutate/undo (clone is 4.70% of a transition, rejected)
 
-The `user-report-resonance-regression` finding the docs described as open was closed during integration, and not in the way anyone expected: it was a real success-weighting bug in both engines (`p * min(gain, headroom)`, not `min(p * gain, headroom)`), not a contract-materiality question. `bun run optimizer:bench` reports 98 of 98 contracts passing. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
+The `user-report-resonance-regression` finding the docs described as open was closed during integration, and not in the way anyone expected: it was a real success-weighting bug in both engines (`p * min(gain, headroom)`, not `min(p * gain, headroom)`), not a contract-materiality question. `bun run optimizer:bench` reported 98 of 98 contracts passing **at the 6.0.0 gate**; that fixture's `mustRankBefore` ordering is a depth-sensitive near-tie and inverts again at the deepest configuration, so treat the 98-of-98 figure as a record of one run rather than a standing property. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
 
 ## Final integration state
 
 All four branches are merged into `main`, each verified as an ancestor of it, and the four `../cb-ws-*` worktrees are removed. The branch refs are kept locally; nothing depends on them any more.
 
-Gates on the merged 6.0.0 tree:
+Gates on the merged tree, as recorded at the 6.0.0 integration and refreshed for the 6.1.0 / 0.7.6 retarget:
 
 | Gate | Result |
 | --- | --- |
 | `bun run typecheck` | pass |
-| `bun run test` | pass — 31 suites, **800 tests**, ~283 s |
-| `bun run wasm:test` | pass — 58 Rust tests |
+| `bun run test` | pass — **828 tests across 31 suites** (800 at the 6.0.0 gate), ~304 s |
+| `bun run wasm:test` | pass — **64 Rust tests** plus 3 `#[ignore]`d profiling tests (58 at the 6.0.0 gate) |
 | `bun run wasm:build` | pass |
-| `bun run build` | pass — `builds/afnm-craftbuddy.zip`, 5 entries, version `6.0.0` in both the manifest and the bundle |
-| `bun run optimizer:bench` | pass — **98 of 98** contracts |
-| `bun run optimizer:differential-corpus` | regenerates byte-identically at 129 scenarios / **1,417** transitions |
-| `bun run docs:inventory` / `docs:check` | pass — 53 files, links, freshness and authority |
+| `bun run build` | pass — `builds/afnm-craftbuddy.zip`, 5 entries, the version matching `package.json` in both the manifest and the bundle |
+| `bun run optimizer:bench` | 98 of 98 contracts at the 6.0.0 gate, and again on the 6.1.0 tree. Run it on an idle machine: the resonance fixture's ordering is a depth-sensitive near-tie, so CPU contention can flip it |
+| `bun run optimizer:differential-corpus` | regenerates byte-identically at **134 scenarios / 1,432 transitions** (129 / 1,417 at the 6.0.0 gate) |
+| `bun run docs:inventory` / `docs:check` | pass — links, freshness and authority |
 | `bun run release:validate` | pass |
-| `ui:harness:build` + `ui:harness:serve` | pass — the panel renders the tier, band counts, binding-bar marker and `v6.0.0` in a real browser |
+| `ui:harness:build` + `ui:harness:serve` | pass — the panel renders the tier, band counts and binding-bar marker in a real browser |
 
-**Not pushed.** `git push origin main` fails on this machine for lack of credentials: no `credential.helper`, no `GH_TOKEN` / `GITHUB_TOKEN`, `gh auth status` reports the stored token invalid, and `ssh -T git@github.com` answers `Permission denied (publickey)`. Re-authenticating is interactive, so the release commits sit on local `main`. Push, tag `v6.0.0`, and the Workshop upload are the remaining human steps — in that order, per `docs/project/RELEASE_PROCESS.md`.
+**Not pushed, as recorded at the 6.0.0 integration.** `git push origin main` failed on this machine for lack of credentials: no `credential.helper`, no `GH_TOKEN` / `GITHUB_TOKEN`, `gh auth status` reported the stored token invalid, and `ssh -T git@github.com` answered `Permission denied (publickey)`. Re-authenticating is interactive, so those release commits sat on local `main`. Push, tag, and the Workshop upload are human steps — in that order, per `docs/project/RELEASE_PROCESS.md`.
 
 ## When this document expires
 
-This is a delivery-coordination record for one phase, and it has already stopped being a working agreement: the worktrees are gone and the only step left is the push. Read it as history — keep the ownership and ordering pattern, but do not treat its branch names as live or its fork-time gate numbers as current.
+The 0.7.5-phase worktrees are gone and its branches are merged, so the specifics here are a delivery record rather than a live agreement. What survives is the ownership and ordering pattern, which was applied again for the 0.7.6 / 6.1.0 retarget with `docs/**` held as one exclusive workstream. Read the branch names and the fork-time gate numbers as history; the refreshed figures in the integration table above are the current ones.
 
 ## Runtime authority
 
-`docs/project/RUNTIME_EVIDENCE_075.md` is the authority for the native auto-use hook, the absence of a manual finish action, and the resonance formulas. Do not re-derive those from tooltips, patch notes, or earlier CraftBuddy notes.
+`docs/project/RUNTIME_EVIDENCE.md` is the authority for the native auto-use hook, the absence of a manual finish action, and the resonance formulas. Its filename deliberately carries no game version: a new game build is a content edit there, not a rename. Do not re-derive those mechanics from tooltips, patch notes, or earlier CraftBuddy notes.

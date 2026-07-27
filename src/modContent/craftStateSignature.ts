@@ -111,7 +111,7 @@ export function serializeCanonicalValue(value: unknown): string {
 /**
  * Digest of the harmony subsystem payload (`progressState.harmonyTypeData`).
  *
- * Harmony mini-game state is what several 0.7.5 harmonies actually score on, so
+ * Harmony mini-game state is what several harmonies actually score on, so
  * a recommendation computed against one heat/resonance/echo state must never be
  * dispatched against another.
  */

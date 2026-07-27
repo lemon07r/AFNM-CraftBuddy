@@ -3,7 +3,8 @@ title: Architecture
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: src/mod.ts, src/modContent/*, src/optimizer/*, crates/craftbuddy-engine/*, src/ui/*, src/settings/*, src/utils/*
 review_cycle_days: 30
 related_files:
@@ -17,7 +18,7 @@ related_files:
 ## Layers
 
 ```text
-AFNM 0.7.5 runtime  ──►  src/modContent/*  ──►  src/optimizer (facade)  ──►  search + Rust engine
+AFNM 0.7.6 runtime  ──►  src/modContent/*  ──►  src/optimizer (facade)  ──►  search + Rust engine
                                 │                        │
                                 └──►  src/ui/*  ◄─────────┘  (via SearchResult.outcomeProjection)
 ```

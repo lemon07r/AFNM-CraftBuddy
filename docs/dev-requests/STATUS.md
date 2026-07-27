@@ -3,29 +3,42 @@ title: API Request Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
 source_of_truth: docs/dev-requests/API_EXPOSURE_REQUESTS.md
 review_cycle_days: 30
 related_files:
   - docs/dev-requests/API_EXPOSURE_REQUESTS.md
   - docs/project/ROADMAP.md
   - docs/project/INTEGRATION_MODAPI.md
-  - docs/project/RUNTIME_EVIDENCE_075.md
+  - docs/project/RUNTIME_EVIDENCE.md
 ---
 
 # API Request Status
 
-Verified against the installed AFNM **0.7.5** runtime.
+Verified against the installed AFNM **0.7.6** runtime (`0.7.6-7c586da`). Extraction details are in `docs/project/RUNTIME_EVIDENCE.md`.
 
-## 0.7.5 API changes
+## 0.7.6 API changes
 
 | Change | Effect on CraftBuddy |
 | --- | --- |
-| `modAPI.gameData.itemTypeToHarmonyType` **removed** | No longer needed: harmony is a player selection read from live craft state. All references were deleted; no replacement heuristic is allowed. |
-| Harmony types extended to seven, each with a complexity multiplier | Modelled in `src/optimizer/harmonyRegistry.ts`. |
-| Native crafting auto-use loadout (`player.player.currentCraftingAutoUseLoadout`, `storedCraftingAutoUseLoadouts`) | Read-only consumer. CraftBuddy detects it and steps back from item consumption; no API request needed. |
+| `gameData.buffs` buff registry | **Available, not adopted.** CraftBuddy hydrates buff definitions from the live skill and craft payloads, which already covers every buff it simulates. |
+| `getCoreFormationAltarStats` | **Available, not adopted.** Present in the 0.7.6 bundle and absent from 0.7.5; unrelated to crafting. |
+| Buff-interceptor stat filters | **Available, not adopted.** CraftBuddy observes state rather than intercepting it. |
+| Crafting loadouts now name their paired auto-use loadout (`craftingLoadout.craftingAutoUseLoadoutId`) | No change needed: the game resolves the pairing before CraftBuddy reads `currentCraftingAutoUseLoadout`. |
+| New `(This Effect)` self-reference auto-use slot condition | Unmodelled; falls to the conservative "will fire" default in `src/modContent/nativeAutoUse.ts`, which withholds a duplicate rather than causing one. Strengthens follow-up request 3 at the end of this document. |
+| `afnm-types` `0.7.6` | Pinned in `package.json`. |
+
+The Eccentric Decree per-bar-change hook and the Fallen Soulflame re-balance are mechanics changes, not API changes; see `docs/project/MECHANICS_PARITY.md`.
+
+## 0.7.5 API changes (still in force)
+
+| Change | Effect on CraftBuddy |
+| --- | --- |
+| `modAPI.gameData.itemTypeToHarmonyType` **removed** | No longer needed: harmony is a player selection read from live craft state. All references were deleted; no replacement heuristic is allowed. The runtime oracle still reports `hasItemTypeToHarmonyType: false` on 0.7.6. |
+| Harmony types extended to seven, each with a complexity multiplier | Modelled in `src/optimizer/harmonyRegistry.ts`. Multipliers re-verified as unchanged in 0.7.6. |
+| Native crafting auto-use loadout (`player.player.currentCraftingAutoUseLoadout`, `storedCraftingAutoUseLoadouts`) | Read-only consumer. CraftBuddy detects it and steps back from item consumption; no API request needed. The read path is structurally unchanged in 0.7.6. |
 | No manual finish action; craft auto-resolves | Terminal handling moved to `willAutoFinish`. |
-| `afnm-types` `0.7.5` | Pinned in `package.json`. |
 
 ## Status snapshot
 

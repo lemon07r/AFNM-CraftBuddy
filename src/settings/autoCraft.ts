@@ -64,7 +64,7 @@ export interface AutoCraftUiState {
   /**
    * The policy actually in force.
    *
-   * Differs from `policy` when the native 0.7.5 crafting auto-use loadout owns
+   * Differs from `policy` when the native crafting auto-use loadout owns
    * item consumption, in which case CraftBuddy steps back rather than competing.
    */
   effectivePolicy: AutoCraftPolicy;
@@ -104,7 +104,7 @@ export interface AutoCraftPolicyResolution {
 /**
  * Resolve the policy that may actually run.
  *
- * 0.7.5 applies the player's crafting auto-use loadout immediately before every
+ * The game applies the player's crafting auto-use loadout immediately before every
  * technique. If CraftBuddy also spent quick-access items it would double-consume
  * them, so `fullActionSpace` steps down to techniques + finish while a loadout is
  * active. Deciding *who consumes* once, at policy level, is what keeps the two

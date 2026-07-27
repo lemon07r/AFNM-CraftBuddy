@@ -3,12 +3,13 @@ title: Mod API Integration
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
-source_of_truth: src/modContent/index.ts, src/modContent/craftingStoreState.ts, src/modContent/craftingContext.ts, src/modContent/nativeAutoUse.ts, src/modContent/craftStateSignature.ts, src/modContent/autoCraftExecutor.ts
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
+source_of_truth: src/modContent/index.ts, src/modContent/craftingStoreState.ts, src/modContent/craftingContext.ts, src/modContent/harmonyState.ts, src/modContent/nativeAutoUse.ts, src/modContent/craftStateSignature.ts, src/modContent/autoCraftExecutor.ts
 review_cycle_days: 30
 related_files:
   - docs/project/ARCHITECTURE.md
-  - docs/project/RUNTIME_EVIDENCE_075.md
+  - docs/project/RUNTIME_EVIDENCE.md
   - docs/dev-requests/API_EXPOSURE_REQUESTS.md
   - docs/dev-requests/STATUS.md
 ---
@@ -38,19 +39,25 @@ Deep reference for the runtime boundary. For the working checklist load the `cra
 
 `modAPI.utils.evaluateScaling` is deliberately **not** used inside optimizer simulation: the live provider can diverge on hypothetical future-state variables.
 
-## 0.7.5 changes that affect integration
+## Game-version behaviour that affects integration
+
+Target build **0.7.6-7c586da**. The semantics below arrived with the 0.7.5 harmony rework and were re-verified against the 0.7.6 bundle; `docs/project/RUNTIME_EVIDENCE.md` is the authority for all of them.
 
 ### Harmony resolution
 
-Harmony is a **player choice** in 0.7.5 and is no longer a function of the item type. `craftingContext.ts` reads the selection from live craft state and keeps `recipe.harmonyTypeOverride` as the forced case.
+Harmony is a **player choice** and is no longer a function of the item type. `craftingContext.ts` reads the selection from live craft state and keeps `recipe.harmonyTypeOverride` as the forced case.
 
 The ModAPI utility `gameData.itemTypeToHarmonyType` was **removed by the game**. CraftBuddy does not reference it and must not grow a replacement heuristic: when the selection cannot be read, harmony data is treated as _missing_ rather than guessed (forge heat is the single exception, recovered from verified runtime mirrors).
 
-Sublime recipe targets are scaled by the selected harmony's complexity multiplier (`applyComplexityMultiplier`), so effective targets must be derived through the optimizer facade rather than read raw off the recipe.
+Sublime recipe targets are scaled by the selected harmony's complexity multiplier (`applyComplexityMultiplier`), so effective targets must be derived through the optimizer facade rather than read raw off the recipe. The seven multipliers are unchanged in 0.7.6.
+
+`harmonyState.ts` hydrates the subsystem state. Two properties matter at this boundary: **every** subsystem it knows about must survive cloning (a missed one silently restarts that state machine on every poll, which is exactly the `cloneHarmonyData` bug fixed in 6.1.0), and absent Eccentric Decree state is seeded from the **current** bars, mirroring the runtime's own lazy seeding so attaching mid-craft cannot retro-charge harmony.
 
 ### Native crafting auto-use
 
-0.7.5 applies the player's crafting auto-use loadout (`player.player.currentCraftingAutoUseLoadout.slots`) **immediately before every technique dispatch**. It is a pre-technique hook inside the same user gesture, not a background timer. The extracted runtime source and the 10-rule selection order are in `docs/project/RUNTIME_EVIDENCE_075.md` section 1; `nativeAutoUse.ts` mirrors them.
+The game applies the player's crafting auto-use loadout (`player.player.currentCraftingAutoUseLoadout.slots`) **immediately before every technique dispatch**. It is a pre-technique hook inside the same user gesture, not a background timer. The extracted runtime source and the 10-rule selection order are in `docs/project/RUNTIME_EVIDENCE.md` section 1; `nativeAutoUse.ts` mirrors them.
+
+0.7.6 changed nothing on this read path. It added `craftingLoadout.craftingAutoUseLoadoutId`, which pairs a crafting loadout with an auto-use loadout; the game resolves the pairing into `currentCraftingAutoUseLoadout` before CraftBuddy reads state, so integration needs no change. The new `(This Effect)` self-reference slot condition is unevaluable here like every other inline condition, so it falls to the conservative "will fire" default.
 
 Integration consequences:
 
@@ -62,7 +69,7 @@ Integration consequences:
 
 ### No manual finish
 
-There is no `Finish Craft` action in 0.7.5; the craft resolves itself when `willAutoFinish` holds. `Wait` is a real technique costing 10 stability, so it is never a free "finish now". UI and status copy say "will auto-finish".
+There is no `Finish Craft` action, re-verified absent in 0.7.6; the craft resolves itself when `willAutoFinish` holds. `Wait` is a real technique costing 10 stability, so it is never a free "finish now". UI and status copy say "will auto-finish".
 
 ### Dispatch-time state verification
 
@@ -92,6 +99,18 @@ The executor re-verifies immediately before dispatch — the controller's own fi
 - Progress state: `harmonyTypeData`, `consumedPills`, `pillTracking`, `trainingMode`
 
 Not part of the auto-use system: `CRAFTING_AUTO_USE_PILL` / `CRAFTING_AUTO_USE_REAGENT` are react-dnd drag types for the loadout editor rows.
+
+### 0.7.6 surfaces that exist but are not adopted
+
+Available in `afnm-types@0.7.6` and deliberately unused, recorded so they are not rediscovered as new:
+
+| Surface | Why not adopted |
+| --- | --- |
+| `gameData.buffs` (`Record<string, Buff>`) | CraftBuddy hydrates buff definitions from the live craft payload, which is authoritative for the craft in progress. A global registry would be a second source for the same data. |
+| `getCoreFormationAltarStats(breakthrough)` | Altar stats feed a character's derived stats; CraftBuddy reads effective crafting stats from the live entity instead. |
+| Buff-interceptor stat filters | No current need; the interceptor hooks CraftBuddy uses are unaffected. |
+
+Adopting any of them is a future decision, not an oversight.
 
 ## Migration targets
 

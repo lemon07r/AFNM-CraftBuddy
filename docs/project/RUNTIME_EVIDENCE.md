@@ -1,10 +1,11 @@
 ---
-title: Runtime Evidence 0.7.5
+title: Runtime Evidence
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
-source_of_truth: installed AFNM 0.7.5 runtime bundle (scripts/installed-game-runtime.js)
+game_version: 0.7.6-7c586da
+last_verified: 2026-07-27
+source_of_truth: installed AFNM 0.7.6 runtime bundle (scripts/installed-game-runtime.js)
 review_cycle_days: 90
 related_files:
   - docs/project/MECHANICS_PARITY.md
@@ -22,11 +23,18 @@ related_files:
   silently destroy the evidence this document exists to preserve.
 -->
 
-# Runtime Evidence 0.7.5
+# Runtime Evidence
 
-Verbatim findings extracted from the **installed** AFNM 0.7.5 runtime. The
-runtime is the sole authority here: where a tooltip, a patch note, or an earlier
-CraftBuddy note disagrees with the code below, the code below wins.
+Verbatim findings extracted from the **installed** AFNM runtime, currently
+**0.7.6-7c586da**. The runtime is the sole authority here: where a tooltip, a
+patch note, or an earlier CraftBuddy note disagrees with the code below, the code
+below wins.
+
+**The filename carries no version on purpose.** This file used to be
+`RUNTIME_EVIDENCE_075.md`, which meant every game patch produced a rename plus a
+fan-out of link edits, and left stale per-version copies behind. The targeted
+build now lives in the `game_version` frontmatter field and in each finding's
+citation, so a future patch is a **content edit to this file**, not a new file.
 
 ## How to reproduce
 
@@ -36,16 +44,38 @@ bun run runtime:extract                     # unpacks app.asar into tmp/installe
 bun run runtime:grep -- "<pattern>"         # searches the extracted bundle
 ```
 
-`runtime:oracle` reported AFNM **0.7.5**, Electron 40.4.0, build
-`1170135731-1784964316349`, extracted to
-`tmp/installed-game-runtime/1170135731-1784964316349/`. The two crafting-relevant
-chunks are `dist-electron/Game.js` (~4.5 MB) and
-`dist-electron/_rolldown_dynamic_import_helper.js` (~10.9 MB). `tmp/` is not
-committed, so the snippets are reproduced here verbatim.
+`runtime:oracle` reports `gameVersion: 0.7.6-7c586da`, extracted to
+`tmp/installed-game-runtime/1172405719-1785155522026/`. The 0.7.6 findings below
+were produced by diffing that against the previous build, `0.7.5-d764178`,
+extracted to `tmp/installed-game-runtime/1170135731-1784964316349/`.
+
+The two crafting-relevant chunks are `dist-electron/Game.js` (~4.5 MB) and
+`dist-electron/_rolldown_dynamic_import_helper.js`, which grew from ~12.8 MB in
+0.7.5 to ~14.1 MB in 0.7.6. All crafting mechanics live in the helper chunk;
+`Game.js` holds the React layer. `tmp/` is not committed, so the snippets are
+reproduced here verbatim.
 
 Symbol names are minified and **not stable across builds**. Resolve them by
 following the re-export aliases (`rg -o "[A-Za-z_$]{1,10} as <alias>"`) rather
-than reusing the identifiers below.
+than reusing the identifiers below. Byte offsets are quoted only to make a
+finding re-checkable in *this* extraction; they move with every build.
+
+## What 0.7.6 changed
+
+The whole diff, as it bears on crafting:
+
+| Finding | Kind | Section |
+| --- | --- | --- |
+| Eccentric Decree scores per bar application through a new `onBarChange` hook | **real mechanics change** | 4 |
+| Fallen Soulflame per-stack values nerfed | data only, no code change | 5 |
+| Harmony complexity multipliers | unchanged | 6 |
+| Native crafting auto-use read path; crafting loadouts now name a paired auto-use loadout | read path unchanged | 7 |
+| False Fusion renamed to "Strive for Completion" | display only | 8 |
+| "Toxicity cleansing can no longer crit" | combat only; crafting never critted | 9 |
+| New ModAPI surfaces, non-crafting systems | available, not adopted | 10 |
+
+Sections 1-3 predate 0.7.6 and were **re-verified against the 0.7.6 bundle**
+rather than assumed; each says what was re-checked.
 
 ---
 
@@ -108,6 +138,16 @@ const onTechnique = useCallback((technique) => {
 }, [dispatch, runNativeAutoUse]);
 ```
 
+**Re-verified in 0.7.6.** The same callback body is present in the 0.7.6
+`Game.js` with only the minified helper names changed (`Ly` → `lw`, `vY` → `VPe`):
+
+```js
+// verbatim from the 0.7.6 Game.js
+=t.progressState;if(!i||!a||!o)return;let s=e.player.player.currentCraftingAutoUseLoadout?.slots;
+if(!s||s.length===0)return;let c=lw(i,a,o),l=c.pillsPerRound??1,u=1-(c.resistance??0)/100,
+d=(i.stats.maxtoxicity??0)-(i
+```
+
 Details that matter:
 
 - `pillsPerRound` defaults to **1**, not 0, when the stat is absent.
@@ -126,7 +166,7 @@ Details that matter:
   `store.dispatch({ type: 'crafting/executeTechnique' })`, which **bypasses the
   React handler and therefore skips this hook entirely**. The DOM-click path
   (`dispatchClickSequence`) goes through the handler and does trigger it. That
-  divergence was the bug; see section 4 for how it was resolved.
+  divergence was the bug; see section 11 for how it was resolved.
 - `CRAFTING_AUTO_USE_PILL` / `CRAFTING_AUTO_USE_REAGENT` are **react-dnd drag
   type strings for the loadout editor rows**, not part of this system. The
   earlier identification in the Phase 5 notes was wrong.
@@ -165,6 +205,8 @@ Decoded selection rules, in evaluation order — this is the contract
 `trainingMode` applies the item but does **not** remove it from the inventory,
 so inventory-diff-based verification must not treat that as a mismatch.
 
+Section 7 records what 0.7.6 added around this selector.
+
 ---
 
 ## 2. There is no Finish Craft technique — the craft auto-finishes
@@ -177,9 +219,10 @@ tooltip:`Let the crafting process advance. Has no other effects.`,effects:[],typ
 realm:`mundane`,currentCooldown:0,masteryKindPools:[`stability`]}
 ```
 
-There is **no** `Finish Craft` action anywhere in the 0.7.5 bundle. The craft
-resolves on its own once the terminal predicate holds; the player never
-confirms it.
+**Re-verified in 0.7.6:** the definition is unchanged (`poolCost: 0`,
+`noQiCost`, `stabilityCost: 10`, same tooltip), and the string `Finish Craft`
+does not occur in either the 0.7.6 helper chunk or `Game.js`. The craft resolves
+on its own once the terminal predicate holds; the player never confirms it.
 
 ### 2.2 `Wait` is not a free no-op
 
@@ -188,12 +231,12 @@ for "finish now".
 
 **Consequences for CraftBuddy**
 
-- `outcome.ts` is correct that 0.7.5 has no manual finish, and `willAutoFinish`
+- `outcome.ts` is correct that there is no manual finish, and `willAutoFinish`
   is the right terminal predicate.
 - Synthesising a `Finish Craft` action and mapping it to native `Wait` is wrong
   twice over: if the auto-finish predicate already holds the craft has *already*
   resolved and no dispatch is needed, and if it does not hold then dispatching
-  `Wait` silently spends 10 stability. See section 4.
+  `Wait` silently spends 10 stability. See section 11.
 
 ---
 
@@ -237,6 +280,10 @@ e.resonance.resonance?e.recommendedTechniqueTypes=[e.resonance.resonance]:e.reco
 reads "-15 harmony"; the value actually subtracted from `progressState.harmony`
 is `9`. CraftBuddy is right and the log text is stale.
 
+**Re-verified in 0.7.6:** the mismatch branch is still
+`harmony-=9,n.stability-=3,e.resonance.strength=Math.max(0,...)`. Resonance was
+not touched by the patch.
+
 ### 3.3 Bearing on `user-report-resonance-regression` — closed
 
 The resonance model is byte-for-byte faithful to the runtime, so the benchmark's
@@ -257,8 +304,9 @@ recommendation past depth 6 — exactly the reported behaviour.
 
 Fixed identically in `calculateSkillGains` and `effects.rs::calculate_skill_gains`;
 11 of 585 corpus transitions shifted by one point and both engines still agree on
-every transition. `bun run optimizer:bench` now reports **98 of 98 contracts
-passing**. No scoring constant was tuned.
+every transition. No scoring constant was tuned. That fix landed in 6.0.0, when
+`bun run optimizer:bench` reported **98 of 98 contracts passing**; the current
+benchmark shape is recorded in `ENGINE_PERFORMANCE.md`.
 
 One contract change came with the fix. The runner-up ordering clause is now
 materiality-aware: it always fails when the losing candidate is actually
@@ -270,7 +318,285 @@ inverts at 5, and leads again from 6.
 
 ---
 
-## 4. What was done about each finding
+## 4. Eccentric Decree moved to a per-bar-change hook (0.7.6)
+
+This is the one real crafting mechanics change in the patch.
+
+### 4.1 In 0.7.5, the whole state machine was `processEffect`
+
+`processEffect` for Eccentric Decree (`ERa`, offset 7733349 in the 0.7.5 helper
+chunk) ran **once**, after the action had resolved, and did everything: seed,
+diff both bars, award harmony, flip focus:
+
+```js
+// verbatim 0.7.5
+ERa=(e,t,n,r,i)=>{e.eccentricDecree=e.eccentricDecree||{focusedBar:`completion`,lastCompletion:n.completion,lastPerfection:n.perfection};
+let a=e.eccentricDecree,o=i.recipeStats,s=nLa(i.recipe,o,r.realm).flat,c=rLa(i.recipe,o,r.realm).flat,
+l=Math.min(s,Math.max(0,Math.floor(n.completion))),u=Math.min(c,Math.max(0,Math.floor(n.perfection))),
+d=a.lastCompletion,f=a.lastPerfection,p=l-d,m=u-f,h=a.focusedBar===`completion`?p:m,g=a.focusedBar===`completion`?m:p,
+_=a.focusedBar===`completion`?`perfection`:`completion`;
+a.pulseKey=(a.pulseKey??0)+1,a.pulseBar=h>0?a.focusedBar:void 0,a.crackBar=g>0?_:void 0,
+h>0&&(n.harmony+=5,i.craftingLog.push(...
+```
+
+One action, one harmony award. A turn that moved both bars twice could still only
+score once.
+
+### 4.2 In 0.7.6, `processEffect` only seeds and re-applies the stat modifier
+
+`processEffect` is now `ORa` (offset 7742155) and has been reduced to two jobs:
+
+```js
+// verbatim 0.7.6
+ORa=(e,t,n,r,i)=>{e.eccentricDecree=e.eccentricDecree||{focusedBar:`completion`,lastCompletion:n.completion,lastPerfection:n.perfection};
+let a=e.eccentricDecree;ERa(a.focusedBar,r),e.recommendedTechniqueTypes=a.focusedBar===`completion`?[`fusion`]:[`refine`]}
+```
+
+`ERa` in 0.7.6 (offset 7740504) is no longer the state machine — it is just the
+focused-bar stat modifier, re-applied as a single-stack hidden buff:
+
+```js
+// verbatim 0.7.6
+ERa=(e,t)=>{t.buffs=[{name:TRa,icon:AO.icon,canStack:!1,
+stats:e===`completion`?{intensity:{value:.5,stat:`intensity`}}:{control:{value:.5,stat:`control`}},
+effects:[],onFusion:[],onRefine:[],stacks:1,displayLocation:`none`},...t.buffs.filter(e=>e.name!==TRa)]}
+```
+
+`+0.5` of the stat itself, i.e. the `1.5x` multiplier
+`getEccentricDecreeStatModifiers` applies: intensity while completion is
+focused, control while perfection is focused.
+
+### 4.3 The scoring moved into a new `onBarChange` hook
+
+The harmony registry gained an `onBarChange` slot, dispatched by `ths`
+(offset 13336022):
+
+```js
+// verbatim 0.7.6
+ths=(e,t,n,r)=>{let i=r.recipeStats?.harmonyType;!i||!t.harmonyTypeData||nU[i].onBarChange?.(e,t.harmonyTypeData,t,n,r)}
+```
+
+`ths(bar, progressState, playerState, ctx)` is called from **inside** the two bar
+appliers — `applyPerfection` (`ihs`, offset 13337548, call at 13338049) and
+`applyCompletion` (`ahs`, offset 13338496, call at 13338997). The call sits at
+the **tail of the applier, outside the negative/positive branch**:
+
+```js
+// verbatim 0.7.6, applyPerfection
+ihs=(e,t,n,r,i,a,o,s)=>{let c=0,l=!1;
+if(e<0)r.perfection+=e,n.messages.push({...bindPoint:`perfection`...});
+else{let o=YIa(t.critchance,t.critmultiplier,t.overcrit);e=Math.floor(e*o.multiplier),c=o.critCount,l=o.didCrit,
+a.perfection+=e,r.perfection+=e,n.messages.push({...}),i.push(`perfection`)}
+ths(`perfection`,r,n,s);let u=EH(r.perfection,o.perfection),...
+```
+
+So a **negative** application (a bar-draining effect) still fires the hook. It
+awards nothing, because the hook only reacts to a bar that went *up*, but it does
+re-anchor `lastCompletion` / `lastPerfection` — a drain is absorbed rather than
+paid back later.
+
+### 4.4 The hook body, verbatim
+
+```js
+// verbatim 0.7.6, offset 7740764
+DRa=(e,t,n,r,i)=>{t.eccentricDecree=t.eccentricDecree||{focusedBar:`completion`,lastCompletion:n.completion,lastPerfection:n.perfection};
+let a=t.eccentricDecree,o=i.recipeStats,s=rLa(i.recipe,o,r.realm).flat,c=iLa(i.recipe,o,r.realm).flat,
+l=Math.min(s,Math.max(0,Math.floor(n.completion))),u=Math.min(c,Math.max(0,Math.floor(n.perfection))),
+d=a.lastCompletion,f=a.lastPerfection,p=l-d,m=u-f,
+h=a.focusedBar===`completion`?p:m,g=a.focusedBar===`completion`?m:p,
+_=a.focusedBar===`completion`?`perfection`:`completion`,v=h>0,y=g>0;
+(v||y)&&(a.lastVisualStep!==n.step&&(a.pulseBar=void 0,a.crackBar=void 0),a.pulseKey=(a.pulseKey??0)+1,
+  v&&(a.pulseBar=a.focusedBar),y&&(a.crackBar=_),a.lastVisualStep=n.step),
+v&&(n.harmony+=5,i.craftingLog.push(N(`Eccentric Decree: <info>{bar}</info> advanced. <gold>+5</gold> harmony`,{bar:N(wRa[a.focusedBar])}))),
+y&&(n.harmony-=5,r.stats.pool-=5,i.craftingLog.push(N(`Eccentric Decree: strayed to <red>{bar}</red>. <red>-5</red> harmony, <red>-5</red> Qi Pool`,{bar:N(wRa[_])}))),
+a.lastCompletion=l,a.lastPerfection=u;
+let b=a.focusedBar===`completion`?o.completion:o.perfection,
+x=a.focusedBar===`completion`?d:f,S=a.focusedBar===`completion`?l:u,C=EH(x,b).guaranteed;
+EH(S,b).guaranteed>C&&(a.focusedBar=_,i.craftingLog.push(N(`Eccentric Decree: bar filled! Focus flips to <info>{bar}</info>`,{bar:N(wRa[a.focusedBar])}))),
+ERa(a.focusedBar,r),t.recommendedTechniqueTypes=a.focusedBar===`completion`?[`fus...
+```
+
+Per event, in order:
+
+| Step | Runtime |
+| --- | --- |
+| 1 | Seed `eccentricDecree` if absent, anchored on the **current** bars. |
+| 2 | Clamp both bars: `min(flatCap, max(0, floor(value)))`, where the caps are the recipe's flat overcraft caps (`rLa(...).flat` / `iLa(...).flat`). |
+| 3 | Diff both clamped bars against `lastCompletion` / `lastPerfection`. |
+| 4 | Focused bar advanced (`> 0`) → `+5` harmony. |
+| 5 | Other bar advanced (`> 0`) → `-5` harmony **and** `-5` Qi Pool (`r.stats.pool -= 5`). |
+| 6 | Store the clamped values as the new anchors. |
+| 7 | Flip focus if `getBonusAndChance(focusedValue, target).guaranteed` (`EH`) increased across **this event**, comparing the focused bar's pre- and post-event values against `recipeStats` — one band's width, not the cap. |
+| 8 | Re-apply the focused-bar stat modifier and refresh `recommendedTechniqueTypes`. |
+
+Two details worth stating explicitly:
+
+- **`DRa` receives the bar name (`e`) and never reads it.** It derives focused
+  and stray purely by diffing both clamped bars. Passing `'completion'` when the
+  perfection bar moved would change nothing.
+- **`pulseKey` / `pulseBar` / `crackBar` / `lastVisualStep` are presentation
+  state only** — the bar-shake animation, now debounced per `step`. CraftBuddy
+  does not model them and does not need to.
+
+### 4.5 Lazy seeding anchors on the current bars, not zero
+
+Both `ORa` and `DRa` seed with `lastCompletion: n.completion`, i.e. wherever the
+craft stands right now. The game's own `initEffect` (`kRa`, offset 7742475) is
+the only path that seeds at zero, and it runs at craft start:
+
+```js
+// verbatim 0.7.6
+kRa=(e,t)=>{e.eccentricDecree={focusedBar:`completion`,lastCompletion:0,lastPerfection:0},ERa(`completion`,t),e.recommendedTechniqueTypes=[`fusion`]}
+```
+
+The consequence is deliberate on the game's side and important for CraftBuddy:
+**attaching to a craft mid-flight cannot retro-charge harmony** for progress made
+before the state machine existed. `seedEccentricDecreeData` in
+`src/modContent/harmonyState.ts` mirrors the lazy form, so a synthesized snapshot
+of an in-progress craft does not credit the first observed turn with every point
+banked before CraftBuddy saw it.
+
+### 4.6 What CraftBuddy does with it
+
+`processEccentricDecree` in `src/optimizer/harmony.ts` folds over an ordered
+`BarChangeEvent[]`, and the Rust engine mirrors it over `BarChange`. The
+modelling limits of applying expected values to a per-application hook are
+recorded plainly in `MECHANICS_PARITY.md`; they are not restated here.
+
+---
+
+## 5. Fallen Soulflame was nerfed in data, not code
+
+Every Soulflame buff is a plain definition with `scaling: 'stacks'`. The 0.7.6
+patch changed four numbers and nothing else:
+
+| Buff | Effect | 0.7.5 | 0.7.6 |
+| --- | --- | --: | --: |
+| Soul of Fusion | `completion` x `intensity` per stack | `0.5` | `0.2` |
+| Soul of Refinement | `perfection` x `control` per stack | `0.5` | `0.2` |
+| Soul of Qi | `pool` per stack (`maxStacks: 3`) | `3` | `2` |
+| Soul of Stability | `stability` per stack (`maxStacks: 3`) | `2` | `1` |
+
+```js
+// verbatim 0.7.5 / 0.7.6, Soul of Fusion
+effects:[{kind:`completion`,amount:{value:.5,stat:`intensity`,scaling:`stacks`}}]
+effects:[{kind:`completion`,amount:{value:.2,stat:`intensity`,scaling:`stacks`}}]
+```
+
+The **fragment threshold is unchanged**: the `Soul Fragment (V)` tooltip is
+byte-identical in both builds — at `9` stacks the next action consumes `9`
+fragments and `5` stability to summon the soul for that action type.
+
+**No CraftBuddy change was required.** Both engines model Soulflame through the
+generic definition-driven buff path with no hardcoded Soulflame constants, so the
+new values flow through from the live buff definitions the game hands over.
+`src/__tests__/runtimeParity.test.ts` pins the 0.7.6 numbers so a future silent
+re-balance shows up as a test failure rather than as quietly wrong advice.
+
+---
+
+## 6. Harmony complexity multipliers are unchanged
+
+All seven are identical across the two builds:
+
+| Harmony | Complexity multiplier |
+| --- | --: |
+| forge | 1.2 |
+| alchemical | 1.2 |
+| inscription | 0.9 |
+| resonance | 1.3 |
+| formless | 1.5 |
+| enhancingEcho | 1.3 |
+| eccentricDecree | 1 |
+
+The patch note "balanced a LOT of harmony effects" is **equipment-side**: the
+changes are in `upgradeHarmonies` / `statTable`, which decide what the *crafted
+item* ends up with. CraftBuddy optimises the reachable outcome tier during the
+craft and does not model the finished item's stats, so none of it applies. This is
+the same boundary as the unmodelled `harmonyAugment` item effects.
+
+---
+
+## 7. Auto-use: read path unchanged, loadout pairing added
+
+Re-verified for 0.7.6:
+
+- `player.player.currentCraftingAutoUseLoadout` and the `storedAutoUseLoadouts`
+  reducers are structurally identical, and `currentCraftingAutoUseLoadout` occurs
+  **8 times in both** builds — same read path, same shape.
+- 0.7.6 adds `craftingLoadout.craftingAutoUseLoadoutId` (5 occurrences), which
+  ties a crafting loadout to a paired auto-use loadout. The game resolves that
+  pairing into `currentCraftingAutoUseLoadout` **before** CraftBuddy reads state,
+  so `nativeAutoUse.ts` needs no change: it still reads the resolved current
+  loadout.
+- Auto-use slots gained a `(This Effect)` self-reference condition. CraftBuddy
+  cannot evaluate the game's inline condition expressions at all, so this hits
+  the pre-existing conservative default in `src/modContent/nativeAutoUse.ts` —
+  a configured slot is assumed to fire. **Over-estimating native consumption is
+  the safe direction**: it makes CraftBuddy withhold an item action rather than
+  duplicate one the game is about to apply.
+
+---
+
+## 8. The False Fusion rename is display-only
+
+```js
+// verbatim, identical field in both 0.7.5 and 0.7.6
+name:`False Fusion`,icon:...,displayName:`Strive for Completion`,poolCost:50,stabilityCost:10,...
+```
+
+The internal `name` is still `` `False Fusion` ``, and `displayName` already
+existed in 0.7.5 — 0.7.6 only made the game surface it. Internal keys such as
+`false_fusion` therefore remain correct and must **not** be renamed. Only
+user-facing labels change, and every CraftBuddy surface resolves them through
+`techniqueDisplayName()` in `src/optimizer/skills.ts`, which falls back to `name`
+when `displayName` is absent.
+
+---
+
+## 9. Crafting toxicity cleansing never critted
+
+The patch note "removed the ability for toxicity cleansing effects to critically
+strike" is **combat-only**. The crafting applier (`hms` in 0.7.5, `shs` in
+0.7.6) is unchanged apart from renamed minified helpers, and neither version ever
+multiplied the cleanse amount by a crit factor:
+
+```js
+// verbatim 0.7.5
+hms=(e,t,n,r)=>{e<0?(t.stats.toxicity-=e,t.stats.toxicity>n&&(t.stats.toxicity=n),t.messages.push({id:c3(),...
+// verbatim 0.7.6
+shs=(e,t,n,r)=>{e<0?(t.stats.toxicity-=e,t.stats.toxicity>n&&(t.stats.toxicity=n),t.messages.push({id:x3(),...
+```
+
+Both CraftBuddy engines likewise apply `toxicityCleanse` without a crit factor,
+so there was nothing to change and nothing to fix.
+
+---
+
+## 10. Available but not adopted
+
+Recorded so the next agent does not rediscover them as if they were new.
+
+0.7.6 ModAPI surfaces that exist and are **not** used by CraftBuddy:
+
+- `gameData.buffs` — a registry of buff definitions. CraftBuddy hydrates buff
+  definitions from the live craft payload instead, which is authoritative for the
+  craft in progress.
+- `getCoreFormationAltarStats`.
+- Buff-interceptor stat filters.
+
+Adopting any of them is a deliberate future decision, not an oversight.
+
+Out of scope entirely, as non-crafting systems: the research queue, market
+favourites, the Unstable Rift, the herb garden, and the combat nerfs (Seal
+Meridian, Disrupt Dantian, Expose Meridian, and the Pill Replication condition).
+
+`hasItemTypeToHarmonyType` is still `false` in `runtime:oracle` output — the
+utility removed in 0.7.5 has not returned, and harmony remains player-selected.
+
+---
+
+## 11. What was done about each finding
 
 Recorded here so the evidence and its resolution stay together.
 
@@ -283,5 +609,12 @@ Recorded here so the evidence and its resolution stay together.
 | There is no manual finish (2) | Auto mode no longer synthesises a finish once `willAutoFinish` holds, and all player-facing copy says "will auto-finish". |
 | `Wait` costs 10 stability (2.2) | Treated as a normal technique everywhere; it is never used as a stand-in for "finish now". |
 | Resonance matches the runtime (3) | No model change. The benchmark contract carries the open question instead. |
+| Eccentric Decree scores per bar application (4) | `processEccentricDecree` folds over `BarChangeEvent[]` in `src/optimizer/harmony.ts`, mirrored over `BarChange` in the Rust engine; the event list is only built for Eccentric Decree crafts. Known second-order gaps are stated in `MECHANICS_PARITY.md`. |
+| Lazy seeding anchors on current bars (4.5) | `seedEccentricDecreeData` mirrors it, so attaching mid-craft cannot retro-charge harmony. |
+| Soulflame values are data (5) | No code change; the definition-driven buff path carries them. New values pinned in `runtimeParity.test.ts`. |
+| Complexity multipliers unchanged (6) | No change. The equipment-side harmony rebalance is outside CraftBuddy's model. |
+| Auto-use loadout pairing (7) | No change: the game resolves the pairing before CraftBuddy reads state. The `(This Effect)` condition falls to the conservative "will fire" default. |
+| False Fusion rename (8) | Display-only; labels resolve through `techniqueDisplayName()` while internal keys keep using `name`. |
+| Cleanse never critted in crafting (9) | No change in either engine. |
 
 <!-- prettier-ignore-end -->
