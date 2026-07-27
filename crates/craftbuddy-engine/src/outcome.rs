@@ -1,4 +1,4 @@
-//! Craft outcome evaluation (AFNM 0.7.5).
+//! Craft outcome evaluation (AFNM 0.7.6).
 //!
 //! Rust mirror of `src/optimizer/outcome.ts`. The game decides a craft's tier
 //! *conjunctively*: completion and perfection each have to clear their own band

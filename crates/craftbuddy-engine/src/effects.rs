@@ -2,7 +2,7 @@
 //!
 //! Until this module existed the Rust engine only understood a *flattened
 //! scalar summary* of each technique (`base_completion_gain`,
-//! `scales_with_control`, ...). Every real 0.7.5 technique is described by an
+//! `scales_with_control`, ...). Every real technique is described by an
 //! effect tree instead, so the fast path was also the less accurate path: any
 //! game technique whose gains come from `effects`, from a mastery upgrade, from
 //! a Soulflame-style buff or from a pill was invisible to it.
@@ -1815,11 +1815,33 @@ pub fn effective_stability_cost(skill: &EngineSkill) -> f64 {
     }
 }
 
+/// One completion/perfection effect, in the order the runtime applies it.
+///
+/// `amount` is the raw pre-crit, pre-expected-value contribution; see
+/// `BarContribution` in `src/optimizer/skills.ts` for the rationale.
+#[derive(Clone, Copy, Debug)]
+pub struct BarContribution {
+    pub completion_bar: bool,
+    pub amount: f64,
+}
+
 pub struct SkillGains {
     pub completion: f64,
     pub perfection: f64,
     pub stability: f64,
     pub toxicity_cleanse: f64,
+    /// Ordered per-effect bar contributions, populated only on the effect path
+    /// and only when the active harmony actually consumes them.
+    pub bar_contributions: Vec<BarContribution>,
+}
+
+/// Whether per-application bar ordering needs to be recorded at all.
+///
+/// Eccentric Decree is the only harmony that scores per bar change, so recording
+/// the ordering for anything else would allocate on every node of the search for
+/// data nobody reads. Mirrors `needsBarContributions` in `src/optimizer/skills.ts`.
+pub fn needs_bar_contributions(config: &crate::EngineConfig) -> bool {
+    config.is_sublime_craft && config.crafting_type.as_deref() == Some("eccentricDecree")
 }
 
 fn clamp_predicted_progress_gain(gain: f64, current: f64, cap: Option<f64>) -> f64 {
@@ -2037,7 +2059,7 @@ pub fn calculate_effective_action_costs(
 }
 
 /// Mirrors `calculateDisciplinedTouchGains`: both halves scale off Qi Intensity
-/// in 0.7.5, not control.
+/// against intensity, not control.
 fn calculate_disciplined_touch_gains(
     state: &EngineState,
     skill: &EngineSkill,
@@ -2057,6 +2079,11 @@ fn calculate_disciplined_touch_gains(
         perfection: safe_floor(perfection_gain * crit),
         stability: 0.0,
         toxicity_cleanse: 0.0,
+        // Disciplined Touch bypasses the effect tree in both engines, so it cannot
+        // report per-application ordering. `processEccentricDecree` then uses its
+        // single-delta fallback, which matches a two-event fold except when the
+        // focused bar clears a band between the two applications.
+        bar_contributions: Vec::new(),
     }
 }
 
@@ -2085,6 +2112,7 @@ pub fn calculate_skill_gains(
             )),
             stability: gains.stability,
             toxicity_cleanse: gains.toxicity_cleanse,
+            bar_contributions: gains.bar_contributions,
         };
     }
 
@@ -2107,6 +2135,8 @@ pub fn calculate_skill_gains(
         let mut perfection_gain = 0.0;
         let mut stability_gain = 0.0;
         let mut toxicity_cleanse = 0.0;
+        let record_bars = needs_bar_contributions(config);
+        let mut bar_contributions: Vec<BarContribution> = Vec::new();
 
         for effect in &skill.effects {
             let evaluation =
@@ -2125,19 +2155,33 @@ pub fn calculate_skill_gains(
             match effect.kind.as_str() {
                 "completion" => {
                     let base = effect.amount.as_ref().map(|a| a.value).unwrap_or(0.0);
-                    completion_gain += if amount < 0.0 && base > 0.0 {
+                    let applied = if amount < 0.0 && base > 0.0 {
                         0.0
                     } else {
                         amount
                     };
+                    completion_gain += applied;
+                    if record_bars && applied != 0.0 {
+                        bar_contributions.push(BarContribution {
+                            completion_bar: true,
+                            amount: applied,
+                        });
+                    }
                 }
                 "perfection" => {
                     let base = effect.amount.as_ref().map(|a| a.value).unwrap_or(0.0);
-                    perfection_gain += if amount < 0.0 && base > 0.0 {
+                    let applied = if amount < 0.0 && base > 0.0 {
                         0.0
                     } else {
                         amount
                     };
+                    perfection_gain += applied;
+                    if record_bars && applied != 0.0 {
+                        bar_contributions.push(BarContribution {
+                            completion_bar: false,
+                            amount: applied,
+                        });
+                    }
                 }
                 "stability" => stability_gain += amount,
                 "cleanseToxicity" => toxicity_cleanse += amount,
@@ -2171,6 +2215,7 @@ pub fn calculate_skill_gains(
             ),
             stability: safe_floor(stability_gain * expected_factor),
             toxicity_cleanse: safe_floor(toxicity_cleanse * expected_factor),
+            bar_contributions,
         };
     }
 
@@ -2227,6 +2272,9 @@ pub fn calculate_skill_gains(
         ),
         stability: safe_floor(stability_gain * expected_factor),
         toxicity_cleanse: safe_floor(toxicity_cleanse * expected_factor),
+        // The scalar summary has no per-effect ordering, matching the TypeScript
+        // legacy path, so Eccentric Decree falls back to a single end-of-turn delta.
+        bar_contributions: Vec::new(),
     }
 }
 
@@ -2601,6 +2649,11 @@ pub fn apply_skill_with_buffs(
 
     let mut buff_completion = 0.0;
     let mut buff_perfection = 0.0;
+    // Ordered buff bar contributions, appended after the technique's own effects:
+    // the reducer executes buffs once the technique has resolved, and each of
+    // their bar applications fires the Eccentric Decree `onBarChange` hook too.
+    let record_bar_changes = needs_bar_contributions(config);
+    let mut buff_bar_contributions: Vec<BarContribution> = Vec::new();
     let mut buff_stability_delta = 0.0;
     let mut buff_pool_delta = 0.0;
     let mut buff_toxicity_delta = 0.0;
@@ -2646,8 +2699,24 @@ pub fn apply_skill_with_buffs(
                         0.0,
                     ) * condition_factor;
                     match effect.kind.as_str() {
-                        "completion" => buff_completion += amount,
-                        "perfection" => buff_perfection += amount,
+                        "completion" => {
+                            buff_completion += amount;
+                            if record_bar_changes && amount != 0.0 {
+                                buff_bar_contributions.push(BarContribution {
+                                    completion_bar: true,
+                                    amount,
+                                });
+                            }
+                        }
+                        "perfection" => {
+                            buff_perfection += amount;
+                            if record_bar_changes && amount != 0.0 {
+                                buff_bar_contributions.push(BarContribution {
+                                    completion_bar: false,
+                                    amount,
+                                });
+                            }
+                        }
                         "stability" => buff_stability_delta += amount,
                         "pool" => buff_pool_delta += amount,
                         "maxStability" => buff_max_stability_delta += amount,
@@ -2776,6 +2845,29 @@ pub fn apply_skill_with_buffs(
     if consumes_turn && !is_item && config.is_sublime_craft && config.crafting_type.is_some() {
         // Eccentric Decree reads the *post-action* bars, so this must run after
         // completion/perfection have been updated.
+        // 0.7.6 scores Eccentric Decree from inside every completion/perfection
+        // application, so replay this turn's applications in the runtime's order:
+        // the technique's own effects first, then the per-turn buff effects the
+        // reducer executes afterwards. Every other harmony ignores the list.
+        let bar_changes = if record_bar_changes {
+            let technique_bar_contributions = if gains.bar_contributions.is_empty() {
+                crate::synthesize_bar_contributions(gains.completion, gains.perfection)
+            } else {
+                crate::scale_bar_contributions(
+                    &gains.bar_contributions,
+                    gains.completion,
+                    gains.perfection,
+                )
+            };
+            crate::build_bar_change_events(
+                state.completion,
+                state.perfection,
+                &technique_bar_contributions,
+                &buff_bar_contributions,
+            )
+        } else {
+            Vec::new()
+        };
         let context = crate::HarmonyProcessContext {
             completion: next.completion,
             perfection: next.perfection,
@@ -2783,6 +2875,7 @@ pub fn apply_skill_with_buffs(
             max_perfection: config.max_perfection.unwrap_or(next.perfection),
             target_completion: config.target_completion,
             target_perfection: config.target_perfection,
+            bar_changes: &bar_changes,
         };
         let result = crate::process_harmony_effect(
             &mut next.harmony_data,

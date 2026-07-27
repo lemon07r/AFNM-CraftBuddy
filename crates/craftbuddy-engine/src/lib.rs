@@ -439,15 +439,142 @@ struct HarmonyEffectResult {
     stability_penalty_delta: f64,
 }
 
-/// Post-action craft figures the Eccentric Decree state machine needs.
+/// One completion/perfection application, in the runtime's own order.
+///
+/// AFNM 0.7.6 moved Eccentric Decree scoring out of the end-of-turn
+/// `processEffect` hook into a new per-application `onBarChange` hook, dispatched
+/// from inside `applyCompletion` and `applyPerfection`. A single turn can
+/// therefore award harmony several times and flip its focused bar part-way
+/// through. Mirrors `BarChangeEvent` in `src/optimizer/harmony.ts`.
 #[derive(Clone, Copy, Debug, Default)]
-struct HarmonyProcessContext {
+struct BarChange {
+    /// True when this application advanced completion rather than perfection.
+    ///
+    /// Recorded to mirror the hook's signature and to keep fixtures readable, but
+    /// deliberately unread: the runtime's `onBarChange` also ignores its `bar`
+    /// argument and derives focused/stray purely by diffing both clamped bars.
+    #[allow(dead_code)]
+    completion_bar: bool,
+    /// Running completion *after* this application, before clamping.
+    completion: f64,
+    /// Running perfection *after* this application, before clamping.
+    perfection: f64,
+}
+
+/// Post-action craft figures the Eccentric Decree state machine needs.
+///
+/// Borrows the bar-change list rather than owning it so the context stays `Copy`
+/// and the search hot path does not allocate per node.
+#[derive(Clone, Copy, Debug, Default)]
+struct HarmonyProcessContext<'a> {
     completion: f64,
     perfection: f64,
     max_completion: f64,
     max_perfection: f64,
     target_completion: f64,
     target_perfection: f64,
+    /// Empty for every harmony except Eccentric Decree.
+    bar_changes: &'a [BarChange],
+}
+
+/// Rescale raw per-effect contributions onto the aggregate expected-value gains.
+///
+/// Mirrors `scaleBarContributions` in `src/optimizer/skills.ts`: the raw amounts
+/// are recorded pre-crit and pre-success-weighting, so each bar's contributions
+/// are scaled by `actual / rawSum`. That preserves both the ordering and the exact
+/// total. A zero raw sum implies a zero total, so the scale collapses to 0.
+fn scale_bar_contributions(
+    contributions: &[effects::BarContribution],
+    actual_completion: f64,
+    actual_perfection: f64,
+) -> Vec<effects::BarContribution> {
+    let mut raw_completion = 0.0;
+    let mut raw_perfection = 0.0;
+    for contribution in contributions {
+        if contribution.completion_bar {
+            raw_completion += contribution.amount;
+        } else {
+            raw_perfection += contribution.amount;
+        }
+    }
+    let completion_scale = if raw_completion != 0.0 {
+        actual_completion / raw_completion
+    } else {
+        0.0
+    };
+    let perfection_scale = if raw_perfection != 0.0 {
+        actual_perfection / raw_perfection
+    } else {
+        0.0
+    };
+    contributions
+        .iter()
+        .map(|contribution| effects::BarContribution {
+            completion_bar: contribution.completion_bar,
+            amount: contribution.amount
+                * if contribution.completion_bar {
+                    completion_scale
+                } else {
+                    perfection_scale
+                },
+        })
+        .collect()
+}
+
+/// Stand-in contributions for gain paths that expose no per-effect breakdown.
+///
+/// Mirrors `synthesizeBarContributions` in `src/optimizer/skills.ts`. Disciplined
+/// Touch and the legacy scalar summary both bypass the effect tree, so they report
+/// only aggregate gains; emitting one synthetic application per moved bar keeps the
+/// event list complete rather than hiding the technique's own movement whenever a
+/// buff contributed events.
+fn synthesize_bar_contributions(
+    completion: f64,
+    perfection: f64,
+) -> Vec<effects::BarContribution> {
+    let mut synthesized = Vec::new();
+    if completion != 0.0 {
+        synthesized.push(effects::BarContribution {
+            completion_bar: true,
+            amount: completion,
+        });
+    }
+    if perfection != 0.0 {
+        synthesized.push(effects::BarContribution {
+            completion_bar: false,
+            amount: perfection,
+        });
+    }
+    synthesized
+}
+
+/// Replay ordered bar contributions into the running values after each one.
+///
+/// Mirrors `buildBarChangeEvents` in `src/optimizer/skills.ts`. The technique's
+/// own effects come first, then the per-turn buff effects, matching the order the
+/// runtime reducer applies them in.
+fn build_bar_change_events(
+    start_completion: f64,
+    start_perfection: f64,
+    technique: &[effects::BarContribution],
+    buffs: &[effects::BarContribution],
+) -> Vec<BarChange> {
+    let mut completion = start_completion;
+    let mut perfection = start_perfection;
+    let mut events = Vec::with_capacity(technique.len() + buffs.len());
+    for contribution in technique.iter().chain(buffs.iter()) {
+        if contribution.completion_bar {
+            completion += contribution.amount;
+        } else {
+            perfection += contribution.amount;
+        }
+        events.push(BarChange {
+            completion_bar: contribution.completion_bar,
+            completion,
+            perfection,
+        });
+    }
+    events
 }
 
 /// Qi Pool / Stability cost scaling a harmony applies to a single action.
@@ -925,7 +1052,7 @@ impl Engine {
         };
 
         // The game ends the craft itself the moment its auto-finish predicate
-        // holds - there is no manual finish technique in 0.7.5. Modelling that
+        // holds - there is no manual finish technique. Modelling that
         // here is what stops the search from planning actions past the point
         // where the craft is already over, which is the reported "leftover qi
         // spent on perfection it never banks" behaviour.
@@ -1521,7 +1648,7 @@ fn eccentric_decree_modifiers(focused_bar: &str) -> HarmonyStatModifiers {
 
 /// Qi Pool / Stability cost scaling the active harmony applies to one action.
 ///
-/// Only Enhancing Echo defines these in 0.7.5: echoing the attuned type halves
+/// Only Enhancing Echo defines these: echoing the attuned type halves
 /// both costs, breaking the attunement doubles them. Resolved from the harmony
 /// state *before* the action is processed.
 fn get_harmony_cost_multipliers(
@@ -1601,7 +1728,7 @@ fn process_harmony_effect(
     harmony_data: &mut HarmonyData,
     harmony_type: &str,
     technique_type: &str,
-    context: HarmonyProcessContext,
+    context: HarmonyProcessContext<'_>,
 ) -> HarmonyEffectResult {
     match harmony_type {
         "forge" => process_forge(harmony_data, technique_type),
@@ -1683,63 +1810,82 @@ fn process_enhancing_echo(
 /// then swaps focus whenever the focused bar clears a band.
 fn process_eccentric_decree(
     harmony_data: &mut HarmonyData,
-    context: HarmonyProcessContext,
+    context: HarmonyProcessContext<'_>,
 ) -> HarmonyEffectResult {
     let mut decree = harmony_data.eccentric_decree.clone().unwrap_or_default();
 
-    let completion = clamp(context.completion.floor(), 0.0, context.max_completion);
-    let perfection = clamp(context.perfection.floor(), 0.0, context.max_perfection);
-    let completion_delta = completion - decree.last_completion;
-    let perfection_delta = perfection - decree.last_perfection;
-    let focused_completion = decree.focused_bar != "perfection";
-    let focused_delta = if focused_completion {
-        completion_delta
+    // 0.7.6 fires `onBarChange` once per completion/perfection application, so a
+    // turn can score several times and flip focus part-way through. Replay the
+    // recorded applications in order; with no events (pre-0.7.6 fixtures, or an
+    // action that moved no bar) fall back to a single end-of-turn delta, which is
+    // what the 0.7.5 `processEffect` did.
+    let fallback = [BarChange {
+        completion_bar: true,
+        completion: context.completion,
+        perfection: context.perfection,
+    }];
+    let events: &[BarChange] = if context.bar_changes.is_empty() {
+        &fallback
     } else {
-        perfection_delta
-    };
-    let stray_delta = if focused_completion {
-        perfection_delta
-    } else {
-        completion_delta
+        context.bar_changes
     };
 
     let mut harmony_delta = 0.0;
     let mut pool_delta = 0.0;
-    if focused_delta > 0.0 {
-        harmony_delta += ECCENTRIC_DECREE_OBEY_HARMONY;
-    }
-    if stray_delta > 0.0 {
-        harmony_delta += ECCENTRIC_DECREE_STRAY_HARMONY;
-        pool_delta += ECCENTRIC_DECREE_STRAY_POOL;
-    }
 
-    let band_target = if focused_completion {
-        context.target_completion
-    } else {
-        context.target_perfection
-    };
-    let previous_focused = if focused_completion {
-        decree.last_completion
-    } else {
-        decree.last_perfection
-    };
-    let next_focused = if focused_completion {
-        completion
-    } else {
-        perfection
-    };
-
-    decree.last_completion = completion;
-    decree.last_perfection = perfection;
-
-    let cleared_band = get_bonus_and_chance(next_focused, band_target).guaranteed
-        > get_bonus_and_chance(previous_focused, band_target).guaranteed;
-    if cleared_band {
-        decree.focused_bar = if focused_completion {
-            "perfection".to_string()
+    for event in events {
+        let completion = clamp(event.completion.floor(), 0.0, context.max_completion);
+        let perfection = clamp(event.perfection.floor(), 0.0, context.max_perfection);
+        let completion_delta = completion - decree.last_completion;
+        let perfection_delta = perfection - decree.last_perfection;
+        let focused_completion = decree.focused_bar != "perfection";
+        let focused_delta = if focused_completion {
+            completion_delta
         } else {
-            "completion".to_string()
+            perfection_delta
         };
+        let stray_delta = if focused_completion {
+            perfection_delta
+        } else {
+            completion_delta
+        };
+
+        if focused_delta > 0.0 {
+            harmony_delta += ECCENTRIC_DECREE_OBEY_HARMONY;
+        }
+        if stray_delta > 0.0 {
+            harmony_delta += ECCENTRIC_DECREE_STRAY_HARMONY;
+            pool_delta += ECCENTRIC_DECREE_STRAY_POOL;
+        }
+
+        let band_target = if focused_completion {
+            context.target_completion
+        } else {
+            context.target_perfection
+        };
+        let previous_focused = if focused_completion {
+            decree.last_completion
+        } else {
+            decree.last_perfection
+        };
+        let next_focused = if focused_completion {
+            completion
+        } else {
+            perfection
+        };
+
+        decree.last_completion = completion;
+        decree.last_perfection = perfection;
+
+        let cleared_band = get_bonus_and_chance(next_focused, band_target).guaranteed
+            > get_bonus_and_chance(previous_focused, band_target).guaranteed;
+        if cleared_band {
+            decree.focused_bar = if focused_completion {
+                "perfection".to_string()
+            } else {
+                "completion".to_string()
+            };
+        }
     }
 
     let modifiers = eccentric_decree_modifiers(&decree.focused_bar);
@@ -2827,6 +2973,7 @@ mod tests {
                 max_perfection: 1000.0,
                 target_completion: 100.0,
                 target_perfection: 80.0,
+                bar_changes: &[],
             },
         );
         assert_eq!(result.harmony_delta, ECCENTRIC_DECREE_OBEY_HARMONY);
@@ -2834,6 +2981,227 @@ mod tests {
             data.eccentric_decree.unwrap().focused_bar,
             "perfection".to_string()
         );
+    }
+
+    /// 0.7.6 moved scoring into a per-application `onBarChange` hook, so a turn
+    /// can award several times and flip focus part-way through. Mirrors the
+    /// `per-bar-change scoring (0.7.6)` cases in `src/__tests__/harmony.test.ts`.
+    #[test]
+    fn eccentric_decree_awards_once_per_bar_application() {
+        let mut data = HarmonyData {
+            eccentric_decree: Some(EccentricDecreeData::default()),
+            ..HarmonyData::default()
+        };
+        let result = process_harmony_effect(
+            &mut data,
+            "eccentricDecree",
+            "fusion",
+            HarmonyProcessContext {
+                completion: 40.0,
+                perfection: 0.0,
+                max_completion: 1000.0,
+                max_perfection: 1000.0,
+                target_completion: 100.0,
+                target_perfection: 100.0,
+                bar_changes: &[
+                    BarChange {
+                        completion_bar: true,
+                        completion: 20.0,
+                        perfection: 0.0,
+                    },
+                    BarChange {
+                        completion_bar: true,
+                        completion: 40.0,
+                        perfection: 0.0,
+                    },
+                ],
+            },
+        );
+        assert_eq!(result.harmony_delta, 2.0 * ECCENTRIC_DECREE_OBEY_HARMONY);
+        assert_eq!(result.pool_delta, 0.0);
+        assert_eq!(data.eccentric_decree.unwrap().last_completion, 40.0);
+    }
+
+    #[test]
+    fn eccentric_decree_scores_focused_and_stray_applications_separately() {
+        let mut data = HarmonyData {
+            eccentric_decree: Some(EccentricDecreeData::default()),
+            ..HarmonyData::default()
+        };
+        let result = process_harmony_effect(
+            &mut data,
+            "eccentricDecree",
+            "fusion",
+            HarmonyProcessContext {
+                completion: 40.0,
+                perfection: 30.0,
+                max_completion: 1000.0,
+                max_perfection: 1000.0,
+                target_completion: 100.0,
+                target_perfection: 100.0,
+                bar_changes: &[
+                    BarChange {
+                        completion_bar: true,
+                        completion: 20.0,
+                        perfection: 0.0,
+                    },
+                    BarChange {
+                        completion_bar: true,
+                        completion: 40.0,
+                        perfection: 0.0,
+                    },
+                    BarChange {
+                        completion_bar: false,
+                        completion: 40.0,
+                        perfection: 30.0,
+                    },
+                ],
+            },
+        );
+        assert_eq!(
+            result.harmony_delta,
+            2.0 * ECCENTRIC_DECREE_OBEY_HARMONY + ECCENTRIC_DECREE_STRAY_HARMONY
+        );
+        assert_eq!(result.pool_delta, ECCENTRIC_DECREE_STRAY_POOL);
+    }
+
+    #[test]
+    fn eccentric_decree_flips_focus_mid_turn() {
+        let mut data = HarmonyData {
+            eccentric_decree: Some(EccentricDecreeData::default()),
+            ..HarmonyData::default()
+        };
+        let result = process_harmony_effect(
+            &mut data,
+            "eccentricDecree",
+            "fusion",
+            HarmonyProcessContext {
+                completion: 100.0,
+                perfection: 30.0,
+                max_completion: 1000.0,
+                max_perfection: 1000.0,
+                target_completion: 100.0,
+                target_perfection: 100.0,
+                bar_changes: &[
+                    // Clears the first completion band, so focus flips to perfection.
+                    BarChange {
+                        completion_bar: true,
+                        completion: 100.0,
+                        perfection: 0.0,
+                    },
+                    // Judged against the *new* focus: an award, not a stray penalty.
+                    BarChange {
+                        completion_bar: false,
+                        completion: 100.0,
+                        perfection: 30.0,
+                    },
+                ],
+            },
+        );
+        assert_eq!(result.harmony_delta, 2.0 * ECCENTRIC_DECREE_OBEY_HARMONY);
+        assert_eq!(result.pool_delta, 0.0);
+        assert_eq!(
+            data.eccentric_decree.unwrap().focused_bar,
+            "perfection".to_string()
+        );
+    }
+
+    #[test]
+    fn eccentric_decree_scores_nothing_past_the_cap() {
+        let mut data = HarmonyData {
+            eccentric_decree: Some(EccentricDecreeData {
+                focused_bar: "completion".to_string(),
+                last_completion: 120.0,
+                last_perfection: 0.0,
+            }),
+            ..HarmonyData::default()
+        };
+        let result = process_harmony_effect(
+            &mut data,
+            "eccentricDecree",
+            "fusion",
+            HarmonyProcessContext {
+                completion: 500.0,
+                perfection: 0.0,
+                max_completion: 120.0,
+                max_perfection: 1000.0,
+                target_completion: 100.0,
+                target_perfection: 100.0,
+                bar_changes: &[
+                    BarChange {
+                        completion_bar: true,
+                        completion: 300.0,
+                        perfection: 0.0,
+                    },
+                    BarChange {
+                        completion_bar: true,
+                        completion: 500.0,
+                        perfection: 0.0,
+                    },
+                ],
+            },
+        );
+        assert_eq!(result.harmony_delta, 0.0);
+        assert_eq!(result.pool_delta, 0.0);
+    }
+
+    #[test]
+    fn eccentric_decree_requires_a_whole_point_before_scoring() {
+        let mut data = HarmonyData {
+            eccentric_decree: Some(EccentricDecreeData::default()),
+            ..HarmonyData::default()
+        };
+        let result = process_harmony_effect(
+            &mut data,
+            "eccentricDecree",
+            "fusion",
+            HarmonyProcessContext {
+                completion: 1.0,
+                perfection: 0.0,
+                max_completion: 1000.0,
+                max_perfection: 1000.0,
+                target_completion: 100.0,
+                target_perfection: 100.0,
+                bar_changes: &[
+                    // floor(0.5) == 0, so the first application does not move the bar.
+                    BarChange {
+                        completion_bar: true,
+                        completion: 0.5,
+                        perfection: 0.0,
+                    },
+                    BarChange {
+                        completion_bar: true,
+                        completion: 1.0,
+                        perfection: 0.0,
+                    },
+                ],
+            },
+        );
+        assert_eq!(result.harmony_delta, ECCENTRIC_DECREE_OBEY_HARMONY);
+    }
+
+    #[test]
+    fn eccentric_decree_falls_back_to_the_single_end_of_turn_delta() {
+        let context = HarmonyProcessContext {
+            completion: 40.0,
+            perfection: 30.0,
+            max_completion: 1000.0,
+            max_perfection: 1000.0,
+            target_completion: 100.0,
+            target_perfection: 100.0,
+            bar_changes: &[],
+        };
+        let mut data = HarmonyData {
+            eccentric_decree: Some(EccentricDecreeData::default()),
+            ..HarmonyData::default()
+        };
+        let result = process_harmony_effect(&mut data, "eccentricDecree", "fusion", context);
+
+        assert_eq!(
+            result.harmony_delta,
+            ECCENTRIC_DECREE_OBEY_HARMONY + ECCENTRIC_DECREE_STRAY_HARMONY
+        );
+        assert_eq!(result.pool_delta, ECCENTRIC_DECREE_STRAY_POOL);
     }
 
     fn sublime_scoring_input() -> MctsInput {

@@ -90785,13 +90785,13 @@
           "skillIndex": 0,
           "skillKey": "effect_refine",
           "expected": {
-            "qi": 156,
+            "qi": 151,
             "stability": 38,
             "stabilityPenalty": 1,
             "completion": 0,
             "perfection": 56,
             "toxicity": 0,
-            "harmony": 25,
+            "harmony": 20,
             "step": 1,
             "completionBonus": 0,
             "controlBuffTurns": 0,
@@ -90860,7 +90860,7 @@
           "skillIndex": 1,
           "skillKey": "effect_fusion",
           "expected": {
-            "qi": 156,
+            "qi": 151,
             "stability": 38,
             "stabilityPenalty": 1,
             "completion": 55,
@@ -90935,13 +90935,13 @@
           "skillIndex": 2,
           "skillKey": "conditional_surge",
           "expected": {
-            "qi": 163,
+            "qi": 158,
             "stability": 41,
             "stabilityPenalty": 1,
             "completion": 30,
             "perfection": 8,
             "toxicity": 0,
-            "harmony": 30,
+            "harmony": 25,
             "step": 1,
             "completionBonus": 0,
             "controlBuffTurns": 0,
@@ -91010,13 +91010,13 @@
           "skillIndex": 3,
           "skillKey": "mastered_refine",
           "expected": {
-            "qi": 157,
+            "qi": 152,
             "stability": 42,
             "stabilityPenalty": 1,
             "completion": 0,
             "perfection": 72,
             "toxicity": 0,
-            "harmony": 25,
+            "harmony": 20,
             "step": 1,
             "completionBonus": 0,
             "controlBuffTurns": 0,
@@ -91231,13 +91231,13 @@
           "skillIndex": 6,
           "skillKey": "disciplined_touch",
           "expected": {
-            "qi": 146,
+            "qi": 141,
             "stability": 37,
             "stabilityPenalty": 1,
             "completion": 24,
             "perfection": 32,
             "toxicity": 0,
-            "harmony": 25,
+            "harmony": 20,
             "step": 1,
             "completionBonus": 0,
             "controlBuffTurns": 0,
@@ -91679,6 +91679,2053 @@
               "decreeFocusedBar": "completion",
               "decreeLastCompletion": 40,
               "decreeLastPerfection": 30
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "decree-multi-award",
+      "input": {
+        "state": {
+          "qi": 180,
+          "stability": 48,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 40,
+          "perfection": 30,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 20,
+          "harmony_data": {
+            "eccentric_decree": {
+              "focused_bar": "completion",
+              "last_completion": 40,
+              "last_perfection": 30
+            },
+            "recommended_technique_types": [
+              "fusion"
+            ]
+          },
+          "cooldowns": [
+            0,
+            0,
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "lingering_warmth",
+              "name": "Lingering Warmth",
+              "stacks": 2,
+              "definition": {
+                "name": "Lingering Warmth",
+                "canStack": false,
+                "effects": [
+                  {
+                    "kind": "stability",
+                    "amount": {
+                      "value": 6
+                    },
+                    "condition": {
+                      "kind": "stability",
+                      "mode": "less",
+                      "percentage": 50
+                    }
+                  },
+                  {
+                    "kind": "negate"
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 194,
+          "max_stability": 60,
+          "base_intensity": 12,
+          "base_control": 16,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "crafting_type": "eccentricDecree",
+          "is_sublime_craft": true,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "target_completion": 150,
+          "target_perfection": 110,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Twin Fusion",
+            "key": "twin_fusion",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 14,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 6,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 4,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Balanced Sweep",
+            "key": "balanced_sweep",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 15,
+            "stability_cost": 6,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 5,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 5,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 2,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Trailing Polish",
+            "key": "trailing_polish",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 13,
+            "stability_cost": 4,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 3,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 0.4,
+                  "stat": "control"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 150,
+        "target_perfection": 110,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "twin_fusion",
+          "expected": {
+            "qi": 166,
+            "stability": 43,
+            "stabilityPenalty": 1,
+            "completion": 220,
+            "perfection": 30,
+            "toxicity": 0,
+            "harmony": 30,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "perfection",
+              "decreeLastCompletion": 220,
+              "decreeLastPerfection": 30
+            }
+          }
+        },
+        {
+          "skillIndex": 1,
+          "skillKey": "balanced_sweep",
+          "expected": {
+            "qi": 160,
+            "stability": 42,
+            "stabilityPenalty": 1,
+            "completion": 166,
+            "perfection": 110,
+            "toxicity": 0,
+            "harmony": 25,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "perfection",
+              "decreeLastCompletion": 166,
+              "decreeLastPerfection": 110
+            }
+          }
+        },
+        {
+          "skillIndex": 2,
+          "skillKey": "trailing_polish",
+          "expected": {
+            "qi": 157,
+            "stability": 44,
+            "stabilityPenalty": 1,
+            "completion": 40,
+            "perfection": 84,
+            "toxicity": 0,
+            "harmony": 10,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 40,
+              "decreeLastPerfection": 84
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "decree-focus-perfection",
+      "input": {
+        "state": {
+          "qi": 180,
+          "stability": 48,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 40,
+          "perfection": 30,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 20,
+          "harmony_data": {
+            "eccentric_decree": {
+              "focused_bar": "perfection",
+              "last_completion": 40,
+              "last_perfection": 30
+            },
+            "recommended_technique_types": [
+              "refine"
+            ]
+          },
+          "cooldowns": [
+            0,
+            0,
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "lingering_warmth",
+              "name": "Lingering Warmth",
+              "stacks": 2,
+              "definition": {
+                "name": "Lingering Warmth",
+                "canStack": false,
+                "effects": [
+                  {
+                    "kind": "stability",
+                    "amount": {
+                      "value": 6
+                    },
+                    "condition": {
+                      "kind": "stability",
+                      "mode": "less",
+                      "percentage": 50
+                    }
+                  },
+                  {
+                    "kind": "negate"
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 194,
+          "max_stability": 60,
+          "base_intensity": 12,
+          "base_control": 16,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "crafting_type": "eccentricDecree",
+          "is_sublime_craft": true,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "target_completion": 150,
+          "target_perfection": 110,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Twin Fusion",
+            "key": "twin_fusion",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 14,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 6,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 4,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Balanced Sweep",
+            "key": "balanced_sweep",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 15,
+            "stability_cost": 6,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 5,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 5,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 2,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Trailing Polish",
+            "key": "trailing_polish",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 13,
+            "stability_cost": 4,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 3,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 0.4,
+                  "stat": "control"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 150,
+        "target_perfection": 110,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "twin_fusion",
+          "expected": {
+            "qi": 156,
+            "stability": 43,
+            "stabilityPenalty": 1,
+            "completion": 160,
+            "perfection": 30,
+            "toxicity": 0,
+            "harmony": 10,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "perfection",
+              "decreeLastCompletion": 160,
+              "decreeLastPerfection": 30
+            }
+          }
+        },
+        {
+          "skillIndex": 1,
+          "skillKey": "balanced_sweep",
+          "expected": {
+            "qi": 160,
+            "stability": 42,
+            "stabilityPenalty": 1,
+            "completion": 124,
+            "perfection": 150,
+            "toxicity": 0,
+            "harmony": 25,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 124,
+              "decreeLastPerfection": 150
+            }
+          }
+        },
+        {
+          "skillIndex": 2,
+          "skillKey": "trailing_polish",
+          "expected": {
+            "qi": 167,
+            "stability": 44,
+            "stabilityPenalty": 1,
+            "completion": 40,
+            "perfection": 111,
+            "toxicity": 0,
+            "harmony": 30,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 40,
+              "decreeLastPerfection": 111
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "decree-midturn-flip",
+      "input": {
+        "state": {
+          "qi": 180,
+          "stability": 48,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 149,
+          "perfection": 30,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 20,
+          "harmony_data": {
+            "eccentric_decree": {
+              "focused_bar": "completion",
+              "last_completion": 149,
+              "last_perfection": 30
+            },
+            "recommended_technique_types": [
+              "fusion"
+            ]
+          },
+          "cooldowns": [
+            0,
+            0,
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "lingering_warmth",
+              "name": "Lingering Warmth",
+              "stacks": 2,
+              "definition": {
+                "name": "Lingering Warmth",
+                "canStack": false,
+                "effects": [
+                  {
+                    "kind": "stability",
+                    "amount": {
+                      "value": 6
+                    },
+                    "condition": {
+                      "kind": "stability",
+                      "mode": "less",
+                      "percentage": 50
+                    }
+                  },
+                  {
+                    "kind": "negate"
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 194,
+          "max_stability": 60,
+          "base_intensity": 12,
+          "base_control": 16,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "crafting_type": "eccentricDecree",
+          "is_sublime_craft": true,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "target_completion": 150,
+          "target_perfection": 110,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Twin Fusion",
+            "key": "twin_fusion",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 14,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 6,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 4,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Balanced Sweep",
+            "key": "balanced_sweep",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 15,
+            "stability_cost": 6,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 5,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 5,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 2,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Trailing Polish",
+            "key": "trailing_polish",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 13,
+            "stability_cost": 4,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 3,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 0.4,
+                  "stat": "control"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 150,
+        "target_perfection": 110,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "twin_fusion",
+          "expected": {
+            "qi": 161,
+            "stability": 43,
+            "stabilityPenalty": 1,
+            "completion": 329,
+            "perfection": 30,
+            "toxicity": 0,
+            "harmony": 20,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "perfection",
+              "decreeLastCompletion": 329,
+              "decreeLastPerfection": 30
+            }
+          }
+        },
+        {
+          "skillIndex": 1,
+          "skillKey": "balanced_sweep",
+          "expected": {
+            "qi": 165,
+            "stability": 42,
+            "stabilityPenalty": 1,
+            "completion": 275,
+            "perfection": 110,
+            "toxicity": 0,
+            "harmony": 35,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 275,
+              "decreeLastPerfection": 110
+            }
+          }
+        },
+        {
+          "skillIndex": 2,
+          "skillKey": "trailing_polish",
+          "expected": {
+            "qi": 157,
+            "stability": 44,
+            "stabilityPenalty": 1,
+            "completion": 149,
+            "perfection": 84,
+            "toxicity": 0,
+            "harmony": 10,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 149,
+              "decreeLastPerfection": 84
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "decree-cap-overflow",
+      "input": {
+        "state": {
+          "qi": 180,
+          "stability": 48,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 300,
+          "perfection": 220,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 20,
+          "harmony_data": {
+            "eccentric_decree": {
+              "focused_bar": "completion",
+              "last_completion": 300,
+              "last_perfection": 220
+            },
+            "recommended_technique_types": [
+              "fusion"
+            ]
+          },
+          "cooldowns": [
+            0,
+            0,
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "lingering_warmth",
+              "name": "Lingering Warmth",
+              "stacks": 2,
+              "definition": {
+                "name": "Lingering Warmth",
+                "canStack": false,
+                "effects": [
+                  {
+                    "kind": "stability",
+                    "amount": {
+                      "value": 6
+                    },
+                    "condition": {
+                      "kind": "stability",
+                      "mode": "less",
+                      "percentage": 50
+                    }
+                  },
+                  {
+                    "kind": "negate"
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 194,
+          "max_stability": 60,
+          "max_completion": 300,
+          "max_perfection": 220,
+          "base_intensity": 12,
+          "base_control": 16,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "crafting_type": "eccentricDecree",
+          "is_sublime_craft": true,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "target_completion": 150,
+          "target_perfection": 110,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Twin Fusion",
+            "key": "twin_fusion",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 14,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 6,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 4,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Balanced Sweep",
+            "key": "balanced_sweep",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 15,
+            "stability_cost": 6,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 5,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 5,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 2,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Trailing Polish",
+            "key": "trailing_polish",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 13,
+            "stability_cost": 4,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 3,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 0.4,
+                  "stat": "control"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 150,
+        "target_perfection": 110,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "twin_fusion",
+          "expected": {
+            "qi": 166,
+            "stability": 43,
+            "stabilityPenalty": 1,
+            "completion": 300,
+            "perfection": 220,
+            "toxicity": 0,
+            "harmony": 20,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 300,
+              "decreeLastPerfection": 220
+            }
+          }
+        },
+        {
+          "skillIndex": 1,
+          "skillKey": "balanced_sweep",
+          "expected": {
+            "qi": 165,
+            "stability": 42,
+            "stabilityPenalty": 1,
+            "completion": 300,
+            "perfection": 220,
+            "toxicity": 0,
+            "harmony": 20,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 300,
+              "decreeLastPerfection": 220
+            }
+          }
+        },
+        {
+          "skillIndex": 2,
+          "skillKey": "trailing_polish",
+          "expected": {
+            "qi": 167,
+            "stability": 44,
+            "stabilityPenalty": 1,
+            "completion": 300,
+            "perfection": 220,
+            "toxicity": 0,
+            "harmony": 20,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 300,
+              "decreeLastPerfection": 220
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "decree-lazy-seed",
+      "input": {
+        "state": {
+          "qi": 180,
+          "stability": 48,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 88,
+          "perfection": 61,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 20,
+          "harmony_data": {
+            "eccentric_decree": {
+              "focused_bar": "completion",
+              "last_completion": 88,
+              "last_perfection": 61
+            },
+            "recommended_technique_types": [
+              "fusion"
+            ]
+          },
+          "cooldowns": [
+            0,
+            0,
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "lingering_warmth",
+              "name": "Lingering Warmth",
+              "stacks": 2,
+              "definition": {
+                "name": "Lingering Warmth",
+                "canStack": false,
+                "effects": [
+                  {
+                    "kind": "stability",
+                    "amount": {
+                      "value": 6
+                    },
+                    "condition": {
+                      "kind": "stability",
+                      "mode": "less",
+                      "percentage": 50
+                    }
+                  },
+                  {
+                    "kind": "negate"
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 194,
+          "max_stability": 60,
+          "base_intensity": 12,
+          "base_control": 16,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "crafting_type": "eccentricDecree",
+          "is_sublime_craft": true,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "target_completion": 150,
+          "target_perfection": 110,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Twin Fusion",
+            "key": "twin_fusion",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 14,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 6,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 4,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Balanced Sweep",
+            "key": "balanced_sweep",
+            "technique_type": "fusion",
+            "action_kind": "skill",
+            "qi_cost": 15,
+            "stability_cost": 6,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 5,
+                  "stat": "intensity"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 5,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 2,
+                  "stat": "intensity"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          },
+          {
+            "name": "Trailing Polish",
+            "key": "trailing_polish",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 13,
+            "stability_cost": 4,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 3,
+                  "stat": "control"
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 0.4,
+                  "stat": "control"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 150,
+        "target_perfection": 110,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "twin_fusion",
+          "expected": {
+            "qi": 161,
+            "stability": 43,
+            "stabilityPenalty": 1,
+            "completion": 268,
+            "perfection": 61,
+            "toxicity": 0,
+            "harmony": 20,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "perfection",
+              "decreeLastCompletion": 268,
+              "decreeLastPerfection": 61
+            }
+          }
+        },
+        {
+          "skillIndex": 1,
+          "skillKey": "balanced_sweep",
+          "expected": {
+            "qi": 165,
+            "stability": 42,
+            "stabilityPenalty": 1,
+            "completion": 214,
+            "perfection": 141,
+            "toxicity": 0,
+            "harmony": 35,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 214,
+              "decreeLastPerfection": 141
+            }
+          }
+        },
+        {
+          "skillIndex": 2,
+          "skillKey": "trailing_polish",
+          "expected": {
+            "qi": 157,
+            "stability": 44,
+            "stabilityPenalty": 1,
+            "completion": 88,
+            "perfection": 115,
+            "toxicity": 0,
+            "harmony": 10,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0,
+              0,
+              0
+            ],
+            "buffs": [],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": "completion",
+              "decreeLastCompletion": 88,
+              "decreeLastPerfection": 115
             }
           }
         }
@@ -115543,13 +117590,13 @@
           "skillIndex": 0,
           "skillKey": "effect_refine",
           "expected": {
-            "qi": 94,
+            "qi": 89,
             "stability": 6,
             "stabilityPenalty": 3,
             "completion": 88,
             "perfection": 207,
             "toxicity": 2,
-            "harmony": -69,
+            "harmony": -74,
             "step": 103,
             "completionBonus": 0,
             "controlBuffTurns": 0,
@@ -115624,7 +117671,7 @@
             "completion": 244,
             "perfection": 32,
             "toxicity": 2,
-            "harmony": -69,
+            "harmony": -59,
             "step": 103,
             "completionBonus": 0,
             "controlBuffTurns": 0,
@@ -115689,7 +117736,7 @@
           "skillIndex": 2,
           "skillKey": "conditional_surge",
           "expected": {
-            "qi": 96,
+            "qi": 91,
             "stability": 6,
             "stabilityPenalty": 3,
             "completion": 135,
@@ -115760,13 +117807,13 @@
           "skillIndex": 3,
           "skillKey": "mastered_refine",
           "expected": {
-            "qi": 95,
+            "qi": 90,
             "stability": 6,
             "stabilityPenalty": 3,
             "completion": 88,
             "perfection": 278,
             "toxicity": 2,
-            "harmony": -69,
+            "harmony": -74,
             "step": 103,
             "completionBonus": 0,
             "controlBuffTurns": 0,
@@ -115989,13 +118036,13 @@
           "skillIndex": 6,
           "skillKey": "disciplined_touch",
           "expected": {
-            "qi": 85,
+            "qi": 75,
             "stability": 6,
             "stabilityPenalty": 3,
             "completion": 157,
             "perfection": 106,
             "toxicity": 2,
-            "harmony": -69,
+            "harmony": -79,
             "step": 103,
             "completionBonus": 0,
             "controlBuffTurns": 0,
@@ -116139,13 +118186,13 @@
           "skillIndex": 8,
           "skillKey": "false_fusion",
           "expected": {
-            "qi": 81,
+            "qi": 76,
             "stability": 6,
             "stabilityPenalty": 3,
             "completion": 512,
             "perfection": 32,
             "toxicity": 2,
-            "harmony": -69,
+            "harmony": -74,
             "step": 103,
             "completionBonus": 0,
             "controlBuffTurns": 0,
