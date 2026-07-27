@@ -29,6 +29,7 @@ import {
   processHarmonyEffect,
   getHarmonyStatModifiers,
   getHarmonyCostMultipliers,
+  BarChangeEvent,
   HarmonyStatModifiers,
 } from './harmony';
 import {
@@ -43,7 +44,20 @@ import { normalizeIdentifier } from './nameNormalization';
  * Can be constructed from game's TechniqueDefinition or manually defined.
  */
 export interface SkillDefinition {
+  /**
+   * Internal technique name, and the identity every key and lookup derives from.
+   *
+   * Not necessarily what the player sees: 0.7.6 renamed False Fusion to "Strive
+   * for Completion" purely through `displayName`, leaving `name` as
+   * `` `False Fusion` ``. Use `displayName ?? name` for anything user-facing.
+   */
   name: string;
+  /**
+   * Player-facing label from the runtime's `displayName`, when it differs.
+   *
+   * Present only when the game supplies one; UI must fall back to `name`.
+   */
+  displayName?: string;
   key: string;
   qiCost: number;
   stabilityCost: number;
@@ -296,11 +310,147 @@ function clampStabilityToBounds(
   return Math.max(0, Math.min(maxStability, stability));
 }
 
+/**
+ * One completion/perfection effect, in the order the runtime applies it.
+ *
+ * `amount` is the raw pre-crit, pre-expected-value contribution. The aggregate
+ * `SkillGains.completion` / `.perfection` already carry crit and success-chance
+ * weighting, so callers rebuilding per-application bar values distribute the
+ * aggregate proportionally across these raw amounts rather than using them
+ * directly - that keeps the reconstructed running values summing exactly to the
+ * figures the simulator commits to.
+ */
+export interface BarContribution {
+  readonly bar: 'completion' | 'perfection';
+  readonly amount: number;
+}
+
+/**
+ * The label to show the player for a technique.
+ *
+ * 0.7.6 renamed False Fusion to "Strive for Completion" through `displayName`
+ * alone - the internal `name` is unchanged - so every user-facing surface must
+ * resolve the label through here rather than reading `name` directly. Keys and
+ * lookups keep using `name`.
+ */
+export function techniqueDisplayName(
+  skill: Pick<SkillDefinition, 'name' | 'displayName'>,
+): string {
+  const display = skill.displayName?.trim();
+  return display && display.length > 0 ? display : skill.name;
+}
+
+/**
+ * Whether per-application bar ordering needs to be recorded at all.
+ *
+ * Eccentric Decree is the only harmony that scores per bar change, so recording
+ * the ordering for anything else would allocate on every node of the search for
+ * data nobody reads. Mirrors `needs_bar_contributions` in the Rust engine.
+ */
+function needsBarContributions(config: OptimizerConfig): boolean {
+  return (
+    config.isSublimeCraft === true && config.craftingType === 'eccentricDecree'
+  );
+}
+
+/**
+ * Rescale raw per-effect contributions onto the aggregate expected-value gains.
+ *
+ * `calculateSkillGains` records raw amounts but returns crit- and
+ * success-weighted totals, so the raw list is normalized here: each bar's
+ * contributions are scaled by `actual / rawSum`, which preserves both the
+ * ordering and the exact total. A zero raw sum implies a zero total, so the
+ * scale collapses to 0 rather than dividing by zero.
+ */
+function scaleBarContributions(
+  contributions: readonly BarContribution[],
+  actualCompletion: number,
+  actualPerfection: number,
+): BarContribution[] {
+  let rawCompletion = 0;
+  let rawPerfection = 0;
+  for (const contribution of contributions) {
+    if (contribution.bar === 'completion') {
+      rawCompletion += contribution.amount;
+    } else {
+      rawPerfection += contribution.amount;
+    }
+  }
+  const completionScale = rawCompletion !== 0 ? actualCompletion / rawCompletion : 0;
+  const perfectionScale = rawPerfection !== 0 ? actualPerfection / rawPerfection : 0;
+  return contributions.map((contribution) => ({
+    bar: contribution.bar,
+    amount:
+      contribution.bar === 'completion'
+        ? contribution.amount * completionScale
+        : contribution.amount * perfectionScale,
+  }));
+}
+
+/**
+ * Stand-in contributions for gain paths that expose no per-effect breakdown.
+ *
+ * Disciplined Touch and the legacy scalar summary both bypass the effect tree, so
+ * they report only aggregate gains. Emitting one synthetic application per moved
+ * bar - completion first, matching the runtime's effect ordering - keeps the event
+ * list complete. Dropping them instead would hide the technique's own movement
+ * whenever a buff contributed events, and mis-attribute the bar values the
+ * Eccentric Decree fold reads.
+ *
+ * With no buff events this is equivalent to the single end-of-turn delta, but it
+ * additionally models a focus flip landing between the two applications.
+ */
+function synthesizeBarContributions(
+  completion: number,
+  perfection: number,
+): BarContribution[] {
+  const synthesized: BarContribution[] = [];
+  if (completion !== 0) {
+    synthesized.push({ bar: 'completion', amount: completion });
+  }
+  if (perfection !== 0) {
+    synthesized.push({ bar: 'perfection', amount: perfection });
+  }
+  return synthesized;
+}
+
+/**
+ * Replay ordered bar contributions into the running values after each one.
+ *
+ * Mirrors what 0.7.6 sees inside `applyCompletion` / `applyPerfection`: the hook
+ * observes the bars as they stand immediately after that single application.
+ */
+function buildBarChangeEvents(
+  startCompletion: number,
+  startPerfection: number,
+  ordered: readonly BarContribution[],
+): BarChangeEvent[] {
+  let completion = startCompletion;
+  let perfection = startPerfection;
+  const events: BarChangeEvent[] = [];
+  for (const contribution of ordered) {
+    if (contribution.bar === 'completion') {
+      completion += contribution.amount;
+    } else {
+      perfection += contribution.amount;
+    }
+    events.push({ bar: contribution.bar, completion, perfection });
+  }
+  return events;
+}
+
 export interface SkillGains {
   completion: number;
   perfection: number;
   stability: number;
   toxicityCleanse?: number;
+  /**
+   * Ordered per-effect bar contributions, present only on the effect-tree path.
+   *
+   * Eccentric Decree scores per bar application in 0.7.6, so `processTurn` needs
+   * the ordering; every other harmony ignores it.
+   */
+  barContributions?: readonly BarContribution[];
 }
 
 export interface ActionSurvivabilityFloor {
@@ -1681,7 +1831,7 @@ function clampDisplayedStabilityGain(
  * Calculate gains for Disciplined Touch skill.
  * Converts existing buffs into completion and perfection gains.
  *
- * Runtime 0.7.5 defines both halves against Qi Intensity:
+ * The runtime defines both halves against Qi Intensity:
  *   effects: [
  *     { kind: 'perfection', amount: { value: 0.5, stat: 'intensity', upgradeKey: 'perfection' } },
  *     { kind: 'completion',  amount: { value: 0.5, stat: 'intensity', upgradeKey: 'perfection' } },
@@ -1907,6 +2057,8 @@ export function calculateSkillGains(
     let perfectionGain = 0;
     let stabilityGain = 0;
     let toxicityCleanse = 0;
+    const recordBars = needsBarContributions(config);
+    const barContributions: BarContribution[] = [];
 
     for (const effect of skill.effects) {
       if (!effect) continue;
@@ -1934,6 +2086,9 @@ export function calculateSkillGains(
             amount = 0;
           }
           completionGain += amount;
+          if (recordBars && amount !== 0) {
+            barContributions.push({ bar: 'completion', amount });
+          }
           break;
         }
         case 'perfection': {
@@ -1948,6 +2103,9 @@ export function calculateSkillGains(
             amount = 0;
           }
           perfectionGain += amount;
+          if (recordBars && amount !== 0) {
+            barContributions.push({ bar: 'perfection', amount });
+          }
           break;
         }
         case 'stability':
@@ -1991,6 +2149,7 @@ export function calculateSkillGains(
       ),
       stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
       toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),
+      barContributions,
     };
   }
 
@@ -3233,6 +3392,15 @@ export function applySkill(
   // Process per-turn buff effects (game's doExecuteBuff runs after technique)
   let buffCompletion = 0;
   let buffPerfection = 0;
+  /**
+   * Ordered buff bar contributions, appended after the technique's own effects.
+   *
+   * The runtime executes buffs after the technique resolves, and each of their
+   * completion/perfection applications goes through the same appliers, so it
+   * fires the Eccentric Decree `onBarChange` hook too.
+   */
+  const recordBarChanges = needsBarContributions(config);
+  const buffBarContributions: BarContribution[] = [];
   let buffStabilityDelta = 0;
   let buffPoolDelta = 0;
   let buffToxicityDelta = 0;
@@ -3458,9 +3626,15 @@ export function applySkill(
     switch (effect.kind) {
       case 'completion':
         buffCompletion += amount;
+        if (recordBarChanges && amount !== 0) {
+          buffBarContributions.push({ bar: 'completion', amount });
+        }
         break;
       case 'perfection':
         buffPerfection += amount;
+        if (recordBarChanges && amount !== 0) {
+          buffBarContributions.push({ bar: 'perfection', amount });
+        }
         break;
       case 'stability':
         buffStabilityDelta += amount;
@@ -3623,6 +3797,25 @@ export function applySkill(
     config.craftingType &&
     state.harmonyData
   ) {
+    // 0.7.6 scores Eccentric Decree from inside every completion/perfection
+    // application, so replay this turn's applications in the runtime's order:
+    // the technique's own effects first, then the per-turn buff effects the
+    // reducer executes afterwards. Every other harmony ignores the list.
+    let barChanges: readonly BarChangeEvent[] = [];
+    if (recordBarChanges) {
+      const techniqueBarContributions =
+        gains.barContributions && gains.barContributions.length > 0
+          ? scaleBarContributions(
+              gains.barContributions,
+              gains.completion,
+              gains.perfection,
+            )
+          : synthesizeBarContributions(gains.completion, gains.perfection);
+      barChanges = buildBarChangeEvents(state.completion, state.perfection, [
+        ...techniqueBarContributions,
+        ...buffBarContributions,
+      ]);
+    }
     const harmonyResult = processHarmonyEffect(
       state.harmonyData,
       config.craftingType,
@@ -3634,6 +3827,7 @@ export function applySkill(
         maxPerfection: config.maxPerfection ?? newPerfection,
         targetCompletion: config.targetCompletion ?? 0,
         targetPerfection: config.targetPerfection ?? 0,
+        barChanges,
       },
     );
     newHarmonyData = harmonyResult.harmonyData;

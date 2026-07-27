@@ -1251,6 +1251,162 @@ function effectMechanicScenarios(): ScenarioSpec[] {
     });
   }
 
+  // 0.7.6 scores Eccentric Decree once per completion/perfection application, so
+  // these pin the orderings that a once-per-turn model gets wrong: two awards in
+  // one turn, a stray alongside a focused advance, a mid-turn focus flip, overflow
+  // past the cap, and a lazy seed anchored on the live bars.
+  const decreeSkills: SkillDefinition[] = [
+    skill({
+      name: 'Twin Fusion',
+      key: 'twin_fusion',
+      qiCost: 14,
+      stabilityCost: 5,
+      type: 'fusion',
+      scalesWithIntensity: false,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      effects: [
+        { kind: 'completion', amount: { value: 6, stat: 'intensity' } },
+        { kind: 'completion', amount: { value: 4, stat: 'intensity' } },
+      ],
+    }),
+    skill({
+      name: 'Balanced Sweep',
+      key: 'balanced_sweep',
+      qiCost: 15,
+      stabilityCost: 6,
+      type: 'fusion',
+      scalesWithIntensity: false,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      effects: [
+        { kind: 'completion', amount: { value: 5, stat: 'intensity' } },
+        { kind: 'perfection', amount: { value: 5, stat: 'control' } },
+        { kind: 'completion', amount: { value: 2, stat: 'intensity' } },
+      ],
+    }),
+    skill({
+      name: 'Trailing Polish',
+      key: 'trailing_polish',
+      qiCost: 13,
+      stabilityCost: 4,
+      type: 'refine',
+      scalesWithIntensity: false,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      effects: [
+        { kind: 'perfection', amount: { value: 3, stat: 'control' } },
+        { kind: 'perfection', amount: { value: 0.4, stat: 'control' } },
+      ],
+    }),
+  ];
+
+  const decreeConfig = (overrides: Partial<OptimizerConfig> = {}) =>
+    config({
+      skills: decreeSkills,
+      craftingType: 'eccentricDecree',
+      isSublimeCraft: true,
+      maxToxicity: 100,
+      targetCompletion: 150,
+      targetPerfection: 110,
+      ...overrides,
+    });
+
+  const decreeCases: ReadonlyArray<{
+    readonly suffix: string;
+    readonly completion: number;
+    readonly perfection: number;
+    readonly decree: {
+      focusedBar: 'completion' | 'perfection';
+      lastCompletion: number;
+      lastPerfection: number;
+    };
+    readonly overrides?: Partial<OptimizerConfig>;
+  }> = [
+    {
+      suffix: 'multi-award',
+      completion: 40,
+      perfection: 30,
+      decree: {
+        focusedBar: 'completion',
+        lastCompletion: 40,
+        lastPerfection: 30,
+      },
+    },
+    {
+      suffix: 'focus-perfection',
+      completion: 40,
+      perfection: 30,
+      decree: {
+        focusedBar: 'perfection',
+        lastCompletion: 40,
+        lastPerfection: 30,
+      },
+    },
+    {
+      // Sitting one point under the first completion band, so the first
+      // application of a multi-effect technique flips focus mid-turn.
+      suffix: 'midturn-flip',
+      completion: 149,
+      perfection: 30,
+      decree: {
+        focusedBar: 'completion',
+        lastCompletion: 149,
+        lastPerfection: 30,
+      },
+    },
+    {
+      suffix: 'cap-overflow',
+      completion: 300,
+      perfection: 220,
+      decree: {
+        focusedBar: 'completion',
+        lastCompletion: 300,
+        lastPerfection: 220,
+      },
+      overrides: { maxCompletion: 300, maxPerfection: 220 },
+    },
+    {
+      // Lazy seed: the decree anchors on the live bars, so the first observed
+      // turn scores only its own movement.
+      suffix: 'lazy-seed',
+      completion: 88,
+      perfection: 61,
+      decree: {
+        focusedBar: 'completion',
+        lastCompletion: 88,
+        lastPerfection: 61,
+      },
+    },
+  ];
+
+  for (const decreeCase of decreeCases) {
+    specs.push({
+      name: `decree-${decreeCase.suffix}`,
+      state: new CraftingState({
+        qi: 180,
+        stability: 48,
+        initialMaxStability: 60,
+        maxToxicity: 100,
+        completion: decreeCase.completion,
+        perfection: decreeCase.perfection,
+        harmony: 20,
+        harmonyData: {
+          eccentricDecree: { ...decreeCase.decree },
+          recommendedTechniqueTypes:
+            decreeCase.decree.focusedBar === 'completion'
+              ? ['fusion']
+              : ['refine'],
+        },
+        buffs: buffMap([['lingering_warmth', 'lingeringWarmth', 2]]),
+      }),
+      config: decreeConfig(decreeCase.overrides),
+      targetCompletion: 150,
+      targetPerfection: 110,
+      condition: 'neutral',
+    });
+  }
+
   return specs;
 }
 

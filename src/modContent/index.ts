@@ -454,7 +454,7 @@ function buildAutoCraftStateFingerprint(): string {
     `cooldowns:${buildAutoCraftCooldownSignature()}`,
     `buffs:${buildAutoCraftBuffSignature()}`,
     `items:${buildAutoCraftInventorySignature()}`,
-    // Harmony drives several 0.7.5 outcomes and the harmony mini-game state is
+    // Harmony drives several outcomes and the harmony mini-game state is
     // not derivable from the bars, so both belong in the advance signal.
     `harmony:${parseGameNumber((lastProgressState as any)?.harmony, 0)}`,
     `harmonyData:${serializeHarmonyData(
@@ -1730,6 +1730,8 @@ function updateRecommendation(
     progressHarmonyData: gameHarmonyData,
     nativeVariables: rawNativeVariables,
     buffs: extractedBuffs,
+    completion,
+    perfection,
   });
   if (isSublimeCraft) {
     recordHarmonyDataSource(harmonyDataSource);

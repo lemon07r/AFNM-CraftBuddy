@@ -19,6 +19,7 @@ import {
   getEffectiveStabilityCost,
   calculateEffectiveActionCosts,
   setNativeCanUseActionProvider,
+  techniqueDisplayName,
 } from '../optimizer/skills';
 import { evaluateScaling, type ScalingVariables } from '../optimizer/gameTypes';
 
@@ -2703,5 +2704,30 @@ describe('success chance and progress headroom interaction', () => {
     for (const chance of [0.1, 0.5, 0.65, 1]) {
       expect(gainsAt(chance)).toBeLessThanOrEqual(100);
     }
+  });
+});
+
+describe('techniqueDisplayName', () => {
+  // 0.7.6 renamed False Fusion to "Strive for Completion" through `displayName`
+  // alone; `name` still reads `False Fusion` and every key derives from it.
+  it('prefers the display name the game supplies', () => {
+    expect(
+      techniqueDisplayName({
+        name: 'False Fusion',
+        displayName: 'Strive for Completion',
+      }),
+    ).toBe('Strive for Completion');
+  });
+
+  it('falls back to the internal name when none is supplied', () => {
+    expect(techniqueDisplayName({ name: 'Simple Fusion' })).toBe(
+      'Simple Fusion',
+    );
+  });
+
+  it('treats a blank display name as absent', () => {
+    expect(
+      techniqueDisplayName({ name: 'Simple Fusion', displayName: '   ' }),
+    ).toBe('Simple Fusion');
   });
 });

@@ -25,6 +25,7 @@ export {
   applySkill,
   canApplySkill,
   getAvailableSkills,
+  techniqueDisplayName,
   calculateSkillGains,
   isTerminalState,
   getEffectiveQiCost,
@@ -62,7 +63,7 @@ export type {
   SetupForHint,
 } from './search';
 
-// Conjunctive outcome evaluator (0.7.5): the single authority on band
+// Conjunctive outcome evaluator: the single authority on band
 // thresholds, tier requirements and the auto-finish predicate. Presentation and
 // runtime code must consume these instead of recomputing any of them.
 export {
@@ -96,13 +97,14 @@ export {
   INSCRIBED_PATTERN_BLOCK,
 } from './harmony';
 export type {
+  BarChangeEvent,
   HarmonyEffectResult,
   HarmonyStatModifiers,
   HarmonyProcessContext,
   HarmonyCostMultipliers,
 } from './harmony';
 
-// Harmony registry (0.7.5): static per-harmony data
+// Harmony registry: static per-harmony data
 export {
   HARMONY_TYPES,
   FORMLESS_HARMONY,

@@ -253,6 +253,82 @@ describe('modContent harmony hydration', () => {
     expect(result.harmonyData).toEqual(progressHarmonyData);
     expect(result.harmonyData).not.toBe(progressHarmonyData);
   });
+
+  it('seeds absent Eccentric Decree state from the live bars, not zero', () => {
+    // 0.7.6's processEffect/onBarChange seed from progressState.completion /
+    // .perfection. Anchoring at zero would let the first observed turn claim
+    // harmony for progress made before CraftBuddy attached to the craft.
+    const result = hydrateHarmonyData({
+      isSublimeCraft: true,
+      craftingType: 'eccentricDecree',
+      progressHarmonyData: { recommendedTechniqueTypes: ['fusion'] } as any,
+      completion: 40.7,
+      perfection: 30.2,
+    });
+
+    expect(result.source).toBe('progressState');
+    expect(result.harmonyData?.eccentricDecree).toEqual({
+      focusedBar: 'completion',
+      lastCompletion: 40,
+      lastPerfection: 30,
+    });
+  });
+
+  it('never overwrites Eccentric Decree state the runtime already reported', () => {
+    const progressHarmonyData = {
+      eccentricDecree: {
+        focusedBar: 'perfection' as const,
+        lastCompletion: 120,
+        lastPerfection: 80,
+      },
+      recommendedTechniqueTypes: ['refine'] as const,
+    };
+
+    const result = hydrateHarmonyData({
+      isSublimeCraft: true,
+      craftingType: 'eccentricDecree',
+      progressHarmonyData: progressHarmonyData as any,
+      completion: 5,
+      perfection: 5,
+    });
+
+    expect(result.harmonyData?.eccentricDecree).toEqual(
+      progressHarmonyData.eccentricDecree,
+    );
+  });
+
+  it('preserves Enhancing Echo attunement reported by the runtime', () => {
+    const progressHarmonyData = {
+      enhancingEcho: { attunedType: 'refine' as const },
+      recommendedTechniqueTypes: ['refine'] as const,
+    };
+
+    const result = hydrateHarmonyData({
+      isSublimeCraft: true,
+      craftingType: 'enhancingEcho',
+      progressHarmonyData: progressHarmonyData as any,
+    });
+
+    expect(result.harmonyData?.enhancingEcho).toEqual({
+      attunedType: 'refine',
+    });
+  });
+
+  it('leaves other harmonies alone when Eccentric Decree state is absent', () => {
+    const progressHarmonyData = {
+      recommendedTechniqueTypes: ['support'] as const,
+    };
+
+    const result = hydrateHarmonyData({
+      isSublimeCraft: true,
+      craftingType: 'alchemical',
+      progressHarmonyData: progressHarmonyData as any,
+      completion: 40,
+      perfection: 30,
+    });
+
+    expect(result.harmonyData?.eccentricDecree).toBeUndefined();
+  });
 });
 
 describe('canonical native variables', () => {

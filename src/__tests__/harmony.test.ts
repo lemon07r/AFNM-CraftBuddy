@@ -1,7 +1,7 @@
 /**
  * Harmony System Tests
  *
- * Validates all 7 harmony types against installed runtime 0.7.5 behaviour:
+ * Validates all 7 harmony types against installed runtime 0.7.6 behaviour:
  * - Forge Works (heat gauge)
  * - Alchemical Arts (combo system)
  * - Inscribed Patterns (block patterns)
@@ -412,7 +412,7 @@ describe('Spiritual Resonance', () => {
 });
 
 // ============================================================
-// Formless Way (0.7.5)
+// Formless Way
 // ============================================================
 
 describe('Formless Way', () => {
@@ -445,7 +445,7 @@ describe('Formless Way', () => {
 });
 
 // ============================================================
-// Enhancing Echo (0.7.5)
+// Enhancing Echo
 // ============================================================
 
 describe('Enhancing Echo', () => {
@@ -511,7 +511,7 @@ describe('Enhancing Echo', () => {
 });
 
 // ============================================================
-// Eccentric Decree (0.7.5)
+// Eccentric Decree
 // ============================================================
 
 describe('Eccentric Decree', () => {
@@ -621,6 +621,187 @@ describe('Eccentric Decree', () => {
     });
     expect(result.harmonyData.eccentricDecree?.lastCompletion).toBe(120);
   });
+
+  // ----------------------------------------------------------
+  // 0.7.6: scoring moved into a per-application `onBarChange` hook
+  // ----------------------------------------------------------
+
+  describe('per-bar-change scoring (0.7.6)', () => {
+    it('awards once per focused application, not once per turn', () => {
+      const hd = initHarmonyData('eccentricDecree');
+      const result = processHarmonyEffect(hd, 'eccentricDecree', 'fusion', {
+        ...context(40, 0),
+        barChanges: [
+          { bar: 'completion', completion: 20, perfection: 0 },
+          { bar: 'completion', completion: 40, perfection: 0 },
+        ],
+      });
+
+      expect(result.harmonyDelta).toBe(10);
+      expect(result.poolDelta).toBe(0);
+      expect(result.harmonyData.eccentricDecree?.lastCompletion).toBe(40);
+    });
+
+    it('scores focused and stray applications independently in one turn', () => {
+      const hd = initHarmonyData('eccentricDecree');
+      const result = processHarmonyEffect(hd, 'eccentricDecree', 'fusion', {
+        ...context(40, 30),
+        barChanges: [
+          { bar: 'completion', completion: 20, perfection: 0 },
+          { bar: 'completion', completion: 40, perfection: 0 },
+          { bar: 'perfection', completion: 40, perfection: 30 },
+        ],
+      });
+
+      // +5 +5 for the two focused advances, -5 for the stray one.
+      expect(result.harmonyDelta).toBe(5);
+      expect(result.poolDelta).toBe(-5);
+    });
+
+    it('flips focus mid-turn so a later application scores as focused', () => {
+      const hd = initHarmonyData('eccentricDecree');
+      const result = processHarmonyEffect(hd, 'eccentricDecree', 'fusion', {
+        ...context(100, 30),
+        barChanges: [
+          // Clears the first completion band, so focus flips to perfection.
+          { bar: 'completion', completion: 100, perfection: 0 },
+          // Judged against the *new* focus: +5, not the -5 a stray would cost.
+          { bar: 'perfection', completion: 100, perfection: 30 },
+        ],
+      });
+
+      expect(result.harmonyDelta).toBe(10);
+      expect(result.poolDelta).toBe(0);
+      expect(result.harmonyData.eccentricDecree?.focusedBar).toBe('perfection');
+    });
+
+    it('scores nothing once the focused bar is already at the cap', () => {
+      const result = processHarmonyEffect(
+        {
+          eccentricDecree: {
+            focusedBar: 'completion',
+            lastCompletion: 120,
+            lastPerfection: 0,
+          },
+          recommendedTechniqueTypes: ['fusion'],
+        },
+        'eccentricDecree',
+        'fusion',
+        {
+          ...context(500, 0),
+          maxCompletion: 120,
+          barChanges: [
+            { bar: 'completion', completion: 300, perfection: 0 },
+            { bar: 'completion', completion: 500, perfection: 0 },
+          ],
+        },
+      );
+
+      expect(result.harmonyDelta).toBe(0);
+      expect(result.poolDelta).toBe(0);
+    });
+
+    it('requires a whole point of progress before an application scores', () => {
+      const hd = initHarmonyData('eccentricDecree');
+      const result = processHarmonyEffect(hd, 'eccentricDecree', 'fusion', {
+        ...context(1, 0),
+        barChanges: [
+          // floor(0.5) === 0, so the first application does not move the bar.
+          { bar: 'completion', completion: 0.5, perfection: 0 },
+          { bar: 'completion', completion: 1, perfection: 0 },
+        ],
+      });
+
+      expect(result.harmonyDelta).toBe(5);
+    });
+
+    it('never awards or flips on a negative application', () => {
+      const result = processHarmonyEffect(
+        {
+          eccentricDecree: {
+            focusedBar: 'completion',
+            lastCompletion: 40,
+            lastPerfection: 30,
+          },
+          recommendedTechniqueTypes: ['fusion'],
+        },
+        'eccentricDecree',
+        'fusion',
+        {
+          ...context(20, 10),
+          barChanges: [
+            { bar: 'completion', completion: 20, perfection: 30 },
+            { bar: 'perfection', completion: 20, perfection: 10 },
+          ],
+        },
+      );
+
+      expect(result.harmonyDelta).toBe(0);
+      expect(result.poolDelta).toBe(0);
+      expect(result.harmonyData.eccentricDecree?.focusedBar).toBe('completion');
+    });
+
+    it('falls back to the single end-of-turn delta when no events are supplied', () => {
+      const hd = initHarmonyData('eccentricDecree');
+      const withEmptyList = processHarmonyEffect(
+        hd,
+        'eccentricDecree',
+        'fusion',
+        { ...context(40, 30), barChanges: [] },
+      );
+      const withoutList = processHarmonyEffect(
+        hd,
+        'eccentricDecree',
+        'fusion',
+        context(40, 30),
+      );
+
+      expect(withEmptyList.harmonyDelta).toBe(withoutList.harmonyDelta);
+      expect(withEmptyList.poolDelta).toBe(withoutList.poolDelta);
+      expect(withEmptyList.harmonyDelta).toBe(0);
+      expect(withEmptyList.poolDelta).toBe(-5);
+    });
+
+    it('flips focus only once when the focused bar clears two bands at a time', () => {
+      const hd = initHarmonyData('eccentricDecree');
+      const result = processHarmonyEffect(hd, 'eccentricDecree', 'fusion', {
+        ...context(300, 0),
+        barChanges: [{ bar: 'completion', completion: 300, perfection: 0 }],
+      });
+
+      expect(result.harmonyData.eccentricDecree?.focusedBar).toBe('perfection');
+    });
+  });
+
+  it.each([
+    'forge',
+    'alchemical',
+    'inscription',
+    'resonance',
+    'formless',
+    'enhancingEcho',
+  ] as const)(
+    'leaves %s untouched when bar-change events are supplied',
+    (harmonyType) => {
+      const hd = initHarmonyData(harmonyType);
+      const withEvents = processHarmonyEffect(hd, harmonyType, 'fusion', {
+        ...context(40, 30),
+        barChanges: [
+          { bar: 'completion', completion: 20, perfection: 0 },
+          { bar: 'completion', completion: 40, perfection: 0 },
+          { bar: 'perfection', completion: 40, perfection: 30 },
+        ],
+      });
+      const withoutEvents = processHarmonyEffect(
+        hd,
+        harmonyType,
+        'fusion',
+        context(40, 30),
+      );
+
+      expect(withEvents).toEqual(withoutEvents);
+    },
+  );
 });
 
 // ============================================================
@@ -652,6 +833,128 @@ describe('Harmony integration with applySkill', () => {
     expect(newState!.harmonyData?.forgeWorks?.heat).toBe(2);
     // Heat 2 is suboptimal zone → -10 harmony
     expect(newState!.harmony).toBe(-10);
+  });
+
+  describe('Eccentric Decree per-bar-change events (0.7.6)', () => {
+    const decreeConfig = (
+      overrides: Partial<OptimizerConfig> = {},
+    ): OptimizerConfig => ({
+      ...DEFAULT_CONFIG,
+      isSublimeCraft: true,
+      craftingType: 'eccentricDecree',
+      targetMultiplier: 2.0,
+      targetCompletion: 100,
+      targetPerfection: 100,
+      maxCompletion: 300,
+      maxPerfection: 300,
+      skills: [],
+      ...overrides,
+    });
+
+    const decreeState = (
+      overrides: Partial<ConstructorParameters<typeof CraftingState>[0]> = {},
+    ) =>
+      new CraftingState({
+        qi: 200,
+        stability: 50,
+        initialMaxStability: 60,
+        harmony: 0,
+        harmonyData: initHarmonyData('eccentricDecree'),
+        ...overrides,
+      });
+
+    it('awards once per completion effect of the same technique', () => {
+      const skill: SkillDefinition = {
+        ...makeSkill('fusion', 'Double Fusion'),
+        baseCompletionGain: 0,
+        scalesWithIntensity: false,
+        effects: [
+          { kind: 'completion', amount: { value: 10 } },
+          { kind: 'completion', amount: { value: 10 } },
+        ] as any,
+      };
+      const config = decreeConfig({ skills: [skill] });
+
+      const next = applySkill(decreeState(), skill, config);
+
+      expect(next).not.toBeNull();
+      expect(next!.completion).toBe(20);
+      // Two applications, two awards - the pre-0.7.6 model scored +5 once.
+      expect(next!.harmony).toBe(10);
+    });
+
+    it('charges harmony and qi for a stray effect inside a mixed technique', () => {
+      const focusedOnly: SkillDefinition = {
+        ...makeSkill('fusion', 'Plain Fusion'),
+        qiCost: 0,
+        baseCompletionGain: 0,
+        scalesWithIntensity: false,
+        effects: [{ kind: 'completion', amount: { value: 10 } }] as any,
+      };
+      const mixed: SkillDefinition = {
+        ...focusedOnly,
+        name: 'Mixed Fusion',
+        key: 'mixed_fusion',
+        effects: [
+          { kind: 'completion', amount: { value: 10 } },
+          { kind: 'perfection', amount: { value: 10 } },
+        ] as any,
+      };
+      const config = decreeConfig({ skills: [focusedOnly, mixed] });
+      const state = decreeState();
+
+      const baseline = applySkill(state, focusedOnly, config);
+      const next = applySkill(state, mixed, config);
+
+      expect(baseline).not.toBeNull();
+      expect(next).not.toBeNull();
+      expect(baseline!.harmony).toBe(5);
+      // +5 focused, -5 stray.
+      expect(next!.harmony).toBe(0);
+      // The stray application's Qi Pool loss reaches the next state.
+      expect(next!.qi).toBe(baseline!.qi - 5);
+    });
+
+    it('scores a buff-driven stray advance after the technique resolves', () => {
+      const skill: SkillDefinition = {
+        ...makeSkill('fusion', 'Plain Fusion'),
+        qiCost: 0,
+        baseCompletionGain: 0,
+        scalesWithIntensity: false,
+        effects: [{ kind: 'completion', amount: { value: 10 } }] as any,
+      };
+      const config = decreeConfig({ skills: [skill] });
+      const withoutBuff = decreeState();
+      const withBuff = decreeState({
+        buffs: new Map([
+          [
+            'lingering_polish',
+            {
+              name: 'Lingering Polish',
+              stacks: 1,
+              duration: 3,
+              definition: {
+                name: 'Lingering Polish',
+                canStack: false,
+                effects: [{ kind: 'perfection', amount: { value: 10 } }],
+                stats: {},
+              },
+            },
+          ],
+        ]) as any,
+      });
+
+      const baseline = applySkill(withoutBuff, skill, config);
+      const next = applySkill(withBuff, skill, config);
+
+      expect(baseline).not.toBeNull();
+      expect(next).not.toBeNull();
+      expect(next!.perfection).toBe(10);
+      expect(baseline!.harmony).toBe(5);
+      // +5 for the focused technique effect, -5/-5 for the buff's stray advance.
+      expect(next!.harmony).toBe(0);
+      expect(next!.qi).toBe(baseline!.qi - 5);
+    });
   });
 
   it('should include resonance-triggered stability loss in survivability floors', () => {

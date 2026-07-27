@@ -53,6 +53,17 @@ function cloneHarmonyData(harmonyData: HarmonyData): HarmonyData {
   if (harmonyData.resonance) {
     clone.resonance = { ...harmonyData.resonance };
   }
+  // Enhancing Echo and Eccentric Decree arrived with the 0.7.5 harmony rework
+  // and were missed here, so their authoritative runtime state was silently
+  // dropped during hydration and the simulator restarted them from scratch every
+  // poll. Eccentric Decree in particular then lost its focused bar and its
+  // last-seen bar values, which 0.7.6 scoring depends on.
+  if (harmonyData.enhancingEcho) {
+    clone.enhancingEcho = { ...harmonyData.enhancingEcho };
+  }
+  if (harmonyData.eccentricDecree) {
+    clone.eccentricDecree = { ...harmonyData.eccentricDecree };
+  }
   if (harmonyData.additionalData !== undefined) {
     clone.additionalData = JSON.parse(
       JSON.stringify(harmonyData.additionalData),
@@ -142,12 +153,49 @@ function canonicalizeForgeHarmonyData(
   return clone;
 }
 
+/**
+ * Seed missing Eccentric Decree state from the *current* bars.
+ *
+ * 0.7.6's `processEffect` / `onBarChange` both do
+ * `harmonyData.eccentricDecree ||= { focusedBar: 'completion',
+ * lastCompletion: progressState.completion, lastPerfection: ... }`, i.e. they
+ * anchor on where the craft stands right now rather than on zero. Mirroring that
+ * matters when CraftBuddy attaches to a craft already in progress from a
+ * synthesized snapshot: anchoring at zero would credit the first observed turn
+ * with every point of progress made before CraftBuddy saw the craft.
+ */
+function seedEccentricDecreeData(
+  harmonyData: HarmonyData,
+  completion: number | undefined,
+  perfection: number | undefined,
+): HarmonyData {
+  if (harmonyData.eccentricDecree) {
+    return harmonyData;
+  }
+  const clampBar = (value: number | undefined): number =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? Math.max(0, Math.floor(value))
+      : 0;
+  return {
+    ...harmonyData,
+    eccentricDecree: {
+      focusedBar: 'completion',
+      lastCompletion: clampBar(completion),
+      lastPerfection: clampBar(perfection),
+    },
+  };
+}
+
 export function hydrateHarmonyData(params: {
   isSublimeCraft: boolean;
   craftingType?: HarmonyType | null;
   progressHarmonyData?: HarmonyData | null;
   nativeVariables?: Record<string, number>;
   buffs?: Map<string, TrackedBuff>;
+  /** Live completion, used to seed absent Eccentric Decree state. */
+  completion?: number;
+  /** Live perfection, used to seed absent Eccentric Decree state. */
+  perfection?: number;
 }): { harmonyData?: HarmonyData; source: HarmonyDataSource } {
   const {
     isSublimeCraft,
@@ -155,6 +203,8 @@ export function hydrateHarmonyData(params: {
     progressHarmonyData,
     nativeVariables,
     buffs,
+    completion,
+    perfection,
   } = params;
 
   if (!isSublimeCraft || !craftingType) {
@@ -162,15 +212,22 @@ export function hydrateHarmonyData(params: {
   }
 
   if (progressHarmonyData) {
+    if (craftingType === 'forge') {
+      return {
+        harmonyData: canonicalizeForgeHarmonyData(
+          progressHarmonyData,
+          nativeVariables,
+          buffs,
+        ),
+        source: 'progressState',
+      };
+    }
+    const cloned = cloneHarmonyData(progressHarmonyData);
     return {
       harmonyData:
-        craftingType === 'forge'
-          ? canonicalizeForgeHarmonyData(
-              progressHarmonyData,
-              nativeVariables,
-              buffs,
-            )
-          : cloneHarmonyData(progressHarmonyData),
+        craftingType === 'eccentricDecree'
+          ? seedEccentricDecreeData(cloned, completion, perfection)
+          : cloned,
       source: 'progressState',
     };
   }

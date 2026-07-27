@@ -3,9 +3,9 @@
  *
  * Deterministic simulation of the 7 harmony types for sublime crafts.
  *
- * Ground truth: installed runtime 0.7.5-d764178 harmony configs (`GH` in
+ * Ground truth: installed runtime 0.7.6-7c586da harmony configs (`GH` in
  * `dist-electron/_rolldown_dynamic_import_helper.js`). `CraftingCode/harmony/*`
- * and `0.7.3-nonMinifiedCode/` are readability aids only and are behind 0.7.5.
+ * and `0.7.3-nonMinifiedCode/` are readability aids only and are behind 0.7.6.
  *
  * Each harmony type has a processEffect function that updates HarmonyData
  * and returns stat modifiers + harmony changes. These are pure functions
@@ -53,6 +53,34 @@ export interface HarmonyEffectResult {
 }
 
 /**
+ * One completion/perfection application, in the runtime's own order.
+ *
+ * AFNM 0.7.6 moved Eccentric Decree scoring out of the end-of-turn
+ * `processEffect` hook into a new `onBarChange` hook, dispatched by
+ * `ths(bar, progressState, craftState, ctx)` from inside `applyCompletion`
+ * (`ahs`) and `applyPerfection` (`ihs`). A single turn can therefore award
+ * harmony several times and flip its focused bar part-way through.
+ *
+ * CraftBuddy applies aggregated expected values rather than discrete gains, so
+ * instead of threading a callback into every apply site it records the running
+ * bar values after each application and folds over them in one place.
+ */
+export interface BarChangeEvent {
+  /**
+   * Which bar this application advanced.
+   *
+   * Recorded to mirror the hook's signature and to keep fixtures readable, but
+   * deliberately unread by the fold: the runtime's `onBarChange` also ignores its
+   * `bar` argument and derives focused/stray purely by diffing both clamped bars.
+   */
+  readonly bar: 'completion' | 'perfection';
+  /** Running completion *after* this application, before clamping. */
+  readonly completion: number;
+  /** Running perfection *after* this application, before clamping. */
+  readonly perfection: number;
+}
+
+/**
  * Post-action craft figures some harmony systems need in order to resolve.
  *
  * Eccentric Decree compares clamped completion/perfection against the previous
@@ -72,6 +100,15 @@ export interface HarmonyProcessContext {
   targetCompletion: number;
   /** Recipe perfection target - one band's width. */
   targetPerfection: number;
+  /**
+   * Ordered bar changes produced by this action, for harmonies that score per
+   * application rather than per turn.
+   *
+   * Empty or absent for every harmony except Eccentric Decree, which falls back
+   * to the pre-0.7.6 single-delta model when no events are supplied so replay
+   * fixtures recorded without event data degrade rather than mis-score.
+   */
+  readonly barChanges?: readonly BarChangeEvent[];
 }
 
 /** Qi Pool / Stability cost scaling a harmony applies to a single action. */
@@ -124,7 +161,7 @@ export function clampForgeHeat(value: number): number {
 }
 
 /**
- * Installed runtime verification (0.7.5-d764178) shows the low-control band is
+ * Installed runtime verification (0.7.6-7c586da) shows the low-control band is
  * heat 2-3, even though some older UI/reference text still says 1-3.
  *
  * Heat 1 falls in no band: the runtime's buff applicator is not called at all,
@@ -639,46 +676,65 @@ function processEccentricDecree(
     };
   }
 
-  const completion = clampBarValue(context.completion, context.maxCompletion);
-  const perfection = clampBarValue(context.perfection, context.maxPerfection);
-  const completionDelta = completion - decree.lastCompletion;
-  const perfectionDelta = perfection - decree.lastPerfection;
-
-  const focusedDelta =
-    decree.focusedBar === 'completion' ? completionDelta : perfectionDelta;
-  const strayDelta =
-    decree.focusedBar === 'completion' ? perfectionDelta : completionDelta;
+  // 0.7.6 fires `onBarChange` once per completion/perfection application, so a
+  // turn can score several times and flip focus part-way through. Replay the
+  // recorded applications in order; with no events (pre-0.7.6 fixtures, or an
+  // action that moved no bar) fall back to a single end-of-turn delta, which is
+  // what the 0.7.5 `processEffect` did.
+  const events: readonly BarChangeEvent[] =
+    context.barChanges && context.barChanges.length > 0
+      ? context.barChanges
+      : [
+          {
+            bar: 'completion',
+            completion: context.completion,
+            perfection: context.perfection,
+          },
+        ];
 
   let harmonyDelta = 0;
   let poolDelta = 0;
-  if (focusedDelta > 0) {
-    harmonyDelta += ECCENTRIC_DECREE_OBEY_HARMONY;
-  }
-  if (strayDelta > 0) {
-    harmonyDelta += ECCENTRIC_DECREE_STRAY_HARMONY;
-    poolDelta += ECCENTRIC_DECREE_STRAY_POOL;
-  }
 
-  const bandTarget =
-    decree.focusedBar === 'completion'
-      ? context.targetCompletion
-      : context.targetPerfection;
-  const previousFocusedValue =
-    decree.focusedBar === 'completion'
-      ? decree.lastCompletion
-      : decree.lastPerfection;
-  const nextFocusedValue =
-    decree.focusedBar === 'completion' ? completion : perfection;
+  for (const event of events) {
+    const completion = clampBarValue(event.completion, context.maxCompletion);
+    const perfection = clampBarValue(event.perfection, context.maxPerfection);
+    const completionDelta = completion - decree.lastCompletion;
+    const perfectionDelta = perfection - decree.lastPerfection;
 
-  decree.lastCompletion = completion;
-  decree.lastPerfection = perfection;
+    const focusedDelta =
+      decree.focusedBar === 'completion' ? completionDelta : perfectionDelta;
+    const strayDelta =
+      decree.focusedBar === 'completion' ? perfectionDelta : completionDelta;
 
-  const clearedBand =
-    getBonusAndChance(nextFocusedValue, bandTarget).guaranteed >
-    getBonusAndChance(previousFocusedValue, bandTarget).guaranteed;
-  if (clearedBand) {
-    decree.focusedBar =
-      decree.focusedBar === 'completion' ? 'perfection' : 'completion';
+    if (focusedDelta > 0) {
+      harmonyDelta += ECCENTRIC_DECREE_OBEY_HARMONY;
+    }
+    if (strayDelta > 0) {
+      harmonyDelta += ECCENTRIC_DECREE_STRAY_HARMONY;
+      poolDelta += ECCENTRIC_DECREE_STRAY_POOL;
+    }
+
+    const bandTarget =
+      decree.focusedBar === 'completion'
+        ? context.targetCompletion
+        : context.targetPerfection;
+    const previousFocusedValue =
+      decree.focusedBar === 'completion'
+        ? decree.lastCompletion
+        : decree.lastPerfection;
+    const nextFocusedValue =
+      decree.focusedBar === 'completion' ? completion : perfection;
+
+    decree.lastCompletion = completion;
+    decree.lastPerfection = perfection;
+
+    const clearedBand =
+      getBonusAndChance(nextFocusedValue, bandTarget).guaranteed >
+      getBonusAndChance(previousFocusedValue, bandTarget).guaranteed;
+    if (clearedBand) {
+      decree.focusedBar =
+        decree.focusedBar === 'completion' ? 'perfection' : 'completion';
+    }
   }
 
   return {
@@ -790,7 +846,7 @@ export function initHarmonyData(harmonyType: HarmonyType): HarmonyData {
 /**
  * Qi Pool / Stability cost scaling the active harmony applies to one action.
  *
- * Only Enhancing Echo defines these in 0.7.5: echoing the attuned type halves
+ * Only Enhancing Echo defines these: echoing the attuned type halves
  * both costs, breaking the attunement doubles them. Resolved from the harmony
  * state *before* the action is processed, matching the game's live action cost.
  */
