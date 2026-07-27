@@ -107,3 +107,6 @@ crates/craftbuddy-engine/target/
 old-nonMinifiedCode/
 0.7.3-nonMinifiedCode/
 CraftingCode/
+
+# Captured stdout/stderr from agent-run background processes
+.background_output_*.txt
