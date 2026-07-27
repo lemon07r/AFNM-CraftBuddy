@@ -1,5 +1,5 @@
 /**
- * Runtime parity tests for AFNM 0.7.5.
+ * Runtime parity tests for AFNM 0.7.6 (runtime `0.7.6-7c586da`).
  *
  * Every fixture in this file mirrors a definition read out of the installed
  * runtime bundle, and every expected number is derived from the corresponding
@@ -135,13 +135,24 @@ describe('Fallen Soulflame fragment triggers', () => {
   //    { kind: 'addStack', stacks: { value: -9 }, condition: t }]
   // with `t = KXi(e)` = `{ kind: 'condition', condition: 'stacks >= 9' }`
   // (or `stacks >= 9 and <normalizedName> < <maxStacks>` when capped).
+  // 0.7.6 nerfed the Fallen Soulflame: `Soul of Fusion` completion and
+  // `Soul of Refinement` perfection both went `0.5 -> 0.2` per stack, `Soul of Qi`
+  // pool `3 -> 2` and `Soul of Stability` stability `2 -> 1`. The 9-stack /
+  // 5-stability fragment threshold is unchanged. Both engines read these from the
+  // live buff definitions, so the nerf needs no code change - only this fixture.
+  const SOUL_OF_FUSION_PER_STACK = 0.2;
+
   const soulOfFusion: BuffDefinition = {
     name: 'Soul of Fusion',
     canStack: true,
     effects: [
       {
         kind: 'completion',
-        amount: { value: 0.5, stat: 'intensity', scaling: 'stacks' },
+        amount: {
+          value: SOUL_OF_FUSION_PER_STACK,
+          stat: 'intensity',
+          scaling: 'stacks',
+        },
       },
     ],
   };
@@ -242,6 +253,31 @@ describe('Fallen Soulflame fragment triggers', () => {
     expect(safeFloor).not.toBeNull();
     expect(floor!.stability).toBe(45);
     expect(safeFloor!.stability).toBe(50);
+  });
+
+  it('should take the Soul buff payout straight from its definition', () => {
+    // Proves the 0.7.6 nerf flows through without a code change: the completion a
+    // Soul of Fusion stack pays is `value * intensity * stacks`, read from the
+    // live definition. baseIntensity 12, 2 stacks -> 0.2 * 12 * 2 = 4.8, where
+    // 0.5 would have paid 12. Buff per-turn contributions are carried unfloored as
+    // expected values, which is why this is 4.8 rather than 4.
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      step: 1,
+      buffs: new Map([
+        [
+          'soul_of_fusion',
+          { name: 'Soul of Fusion', stacks: 2, definition: soulOfFusion },
+        ],
+      ]),
+    });
+
+    const result = applySkill(state, fusionSkill, config);
+
+    expect(result).not.toBeNull();
+    expect(result!.completion).toBeCloseTo(SOUL_OF_FUSION_PER_STACK * 12 * 2, 6);
   });
 });
 

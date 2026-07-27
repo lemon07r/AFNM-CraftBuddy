@@ -1,10 +1,19 @@
 /**
- * CraftBuddy - Native crafting auto-use contract (AFNM 0.7.5)
+ * CraftBuddy - Native crafting auto-use contract (AFNM 0.7.6)
  *
  * 0.7.5 added a native crafting auto-use loadout: the player configures slots on
  * `player.player.currentCraftingAutoUseLoadout`, and the game applies the
  * matching pills/reagents *immediately before* every technique dispatch. It is a
  * pre-technique hook, not a background timer.
+ *
+ * 0.7.6 kept this read path byte-for-byte: the reducers for
+ * `currentCraftingAutoUseLoadout` and `storedAutoUseLoadouts` are structurally
+ * identical, and the only change is that a crafting loadout now names its paired
+ * auto-use loadout (`craftingLoadout.craftingAutoUseLoadoutId`), which the game
+ * resolves before CraftBuddy ever reads state. 0.7.6 also added a
+ * `(This Effect)` self-reference condition to auto-use rules; CraftBuddy has no
+ * condition engine, so any unrecognised condition kind stays permissive - see
+ * `isSlotConditionMet` below.
  *
  * This module owns the contract shared by the controller, the executor and the
  * craft-state extraction seam: what the loadout covers (so CraftBuddy never
@@ -13,7 +22,7 @@
  * landing).
  *
  * The selection rules mirror the runtime selector verbatim; see
- * `docs/project/RUNTIME_EVIDENCE_075.md` section 1 for the extracted source and
+ * `docs/project/RUNTIME_EVIDENCE.md` section 1 for the extracted source and
  * the rule table this file implements.
  */
 
@@ -64,7 +73,7 @@ export interface NativeAutoUseSlot {
    *
    * CraftBuddy cannot evaluate it without the game's condition engine, so it is
    * kept opaque here and treated as satisfiable unless a caller injects a real
-   * evaluator.
+   * evaluator. That includes the `(This Effect)` self-reference kind 0.7.6 added.
    */
   readonly blocks?: unknown;
   readonly conditions?: unknown;
@@ -107,7 +116,9 @@ export interface NativeAutoUseProjectionInput {
   /**
    * Slot condition predicate. Defaults to `true`, matching the conservative
    * assumption that the native loadout will fire: over-estimating native
-   * consumption keeps CraftBuddy from duplicating it.
+   * consumption keeps CraftBuddy from duplicating it. Unknown condition kinds -
+   * including 0.7.6's `(This Effect)` self-reference form - therefore resolve to
+   * "will fire" rather than "will not fire".
    */
   readonly isSlotConditionMet?: (
     slot: NativeAutoUseSlot,
@@ -195,7 +206,7 @@ function defaultItemKindResolver(itemName: string): string | undefined {
 /**
  * Mirror the runtime's slot selection for the current turn.
  *
- * Implements the rule order from `RUNTIME_EVIDENCE_075.md` section 1.2. The two
+ * Implements the rule order from `RUNTIME_EVIDENCE.md` section 1.2. The two
  * rules that need the game's own evaluators - the slot condition expression and
  * the "effects already satisfied" check - are injectable and default to
  * permissive, so an unmodelled predicate makes CraftBuddy expect *more* native

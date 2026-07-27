@@ -260,6 +260,28 @@ describe('projectNativeAutoUse', () => {
     ).toEqual([]);
   });
 
+  it('defaults an unrecognised slot condition kind to "will fire"', () => {
+    // 0.7.6 added a `(This Effect)` self-reference condition to auto-use rules.
+    // CraftBuddy has no condition engine, so any unmodelled condition shape must
+    // stay permissive: over-estimating native consumption keeps CraftBuddy from
+    // duplicating it, whereas under-estimating would double-consume the item.
+    const selfReferenceSlot: NativeAutoUseSlot = {
+      item: 'Qi Pill',
+      blocks: [
+        {
+          conditions: [{ kind: 'thisEffect', comparison: 'lessThan', value: 1 }],
+        },
+      ],
+      conditions: [{ kind: 'thisEffect' }],
+    };
+
+    expect(
+      project([selfReferenceSlot], { pillsPerRound: 1 }).map(
+        (entry) => entry.itemName,
+      ),
+    ).toEqual(['Qi Pill']);
+  });
+
   it('stops at the toxicity ceiling but keeps scanning later slots', () => {
     const selected = project([{ item: 'Qi Pill' }, { item: 'Focus Pill' }], {
       step: 5,
