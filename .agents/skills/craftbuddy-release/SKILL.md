@@ -40,6 +40,11 @@ Update both version strings together:
 - Never commit Steam credentials, login files, or local uploader artifacts.
 - Do not sync title/description unless explicitly intended.
 - Preview images should stay small; the uploader can compress large images.
+- **Steam caps the description at 8,000 characters.** Exceeding it fails late, with Steam reporting only `a parameter is invalid` / `GenericFailure` after the zip has already uploaded - the uploader then prints its usage text, which looks like a bad flag but is not. Check the length of `WORKSHOP_DESCRIPTION.md`'s body (frontmatter excluded) before uploading:
+  ```bash
+  bun -e 'const t=require("fs").readFileSync("docs/project/WORKSHOP_DESCRIPTION.md","utf8").trim();const b=t.startsWith("---")?t.slice(t.indexOf("\n---",3)+4).trim():t;console.log(b.length,"/ 8000")'
+  ```
+  When a new version section pushes it over, condense the oldest `What's New` section rather than cutting feature copy - the full history lives in `docs/project/RELEASE_NOTES_*.md`.
 
 ## Gotchas
 

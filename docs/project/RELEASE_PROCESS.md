@@ -106,6 +106,12 @@ When the public Workshop description needs to change, update [`WORKSHOP_DESCRIPT
 bun run workshop:upload -- --change-note "vX.Y.Z - What changed" --description-file docs/project/WORKSHOP_DESCRIPTION.md
 ```
 
+**Steam caps the description at 8,000 characters**, counted on the body only — the wrapper strips the frontmatter before sending it. Going over fails *after* the zip has already uploaded, and Steam reports only `a parameter is invalid` (`GenericFailure`), after which the uploader prints its usage text. That looks like a rejected flag and is not; check the length first:
+
+```bash
+bun -e 'const t=require("fs").readFileSync("docs/project/WORKSHOP_DESCRIPTION.md","utf8").trim();const b=t.startsWith("---")?t.slice(t.indexOf("\n---",3)+4).trim():t;console.log(b.length,"/ 8000")'
+```
+
 What that wrapper does:
 
 - rebuilds CraftBuddy unless `--skip-build` is passed

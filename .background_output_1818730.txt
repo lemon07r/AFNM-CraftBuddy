@@ -3,3 +3,58 @@
 127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
 127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
 127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+[27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /?state=outcome-setup HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:44] "GET /craftbuddy-ui-harness.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jul/2026 10:56:45] code 404, message File not found
+127.0.0.1 - - [27/Jul/2026 10:56:45] "GET /favicon.ico HTTP/1.1" 404 -

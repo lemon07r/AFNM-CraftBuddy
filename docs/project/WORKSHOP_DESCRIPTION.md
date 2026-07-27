@@ -41,14 +41,12 @@ A game-version update with one real mechanics change.
 A ground-up accuracy rework built around one goal: play the craft the way the game actually scores it.
 
 [list]
-[*] [b]0.7.5 harmonies, done properly[/b] — you choose the harmony, all seven types are simulated, and each harmony's complexity multiplier is applied to your real targets.
-[*] [b]A new outcome model[/b] — CraftBuddy now plays for the outcome tier you can actually reach, requiring completion [b]and[/b] perfection bands together, instead of dumping points into whichever bar happened to score highest.
-[*] [b]Sublime crafts finally behave[/b] — no more runaway over-completion, and no more perfection spam that never banks another band.
-[*] [b]It shows its work[/b] — projected tier, band progress on each bar, which bar is holding you back, when the craft will auto-finish, and when an action is setting up a gated technique instead of looking like a wasted turn.
-[*] [b]Plays nicely with auto-use[/b] — auto mode respects your crafting auto-use loadout instead of double-spending your pills, and re-verifies the live craft before every single action.
-[*] [b]Mechanics fixes[/b] — Disciplined Touch now scales off Qi Intensity, Soulflame stability loss is accounted for, Spiritual Resonance uses the real penalty, and crit, mastery and toxicity maths were corrected against the 0.7.5 runtime.
-[*] [b]Faster[/b] — the native engine is [b]1.90x[/b] quicker while producing identical recommendations, so deeper searches fit in the same time budget on modest hardware.
-[*] [b]Proven, not promised[/b] — both simulators are locked together by a 1,417-transition differential test suite, backed by 800 automated tests.
+[*] [b]Harmonies done properly[/b] — you choose the harmony, all seven types are simulated, and each one's complexity multiplier is applied to your real targets.
+[*] [b]A new outcome model[/b] — CraftBuddy plays for the outcome tier you can actually reach, requiring completion [b]and[/b] perfection bands together instead of dumping points into whichever bar scored highest. Sublime crafts stopped running away with over-completion or perfection spam that never banks a band.
+[*] [b]It shows its work[/b] — projected tier, band progress per bar, which bar is holding you back, when the craft will auto-finish, and when an action is setting up a gated technique.
+[*] [b]Plays nicely with auto-use[/b] — auto mode respects your crafting auto-use loadout instead of double-spending pills, and re-verifies the live craft before every action.
+[*] [b]Mechanics fixes[/b] — Disciplined Touch scaling, Soulflame stability loss, the real Spiritual Resonance penalty, and corrected crit, mastery and toxicity maths.
+[*] [b]Faster[/b] — the native engine became [b]1.90x[/b] quicker while producing identical recommendations.
 [/list]
 
 [hr][/hr]
