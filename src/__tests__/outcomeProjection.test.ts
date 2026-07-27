@@ -349,8 +349,11 @@ describe('setupFor hint contract', () => {
     );
 
     expect(setupCandidate).toBeDefined();
+    // `techniqueName` carries the label the game shows, so the panel never has to
+    // titlecase the key - which could not produce 0.7.6's "Strive for Completion".
     expect(setupCandidate!.setupFor).toEqual({
       techniqueKey: 'payoff',
+      techniqueName: 'Payoff',
       reason: 'Reaches 1 charge to enable Payoff',
     });
   });

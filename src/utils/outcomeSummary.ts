@@ -1,5 +1,5 @@
 /**
- * CraftBuddy - Outcome Summary (AFNM 0.7.5)
+ * CraftBuddy - Outcome Summary (AFNM 0.7.6)
  *
  * Pure presentation derivation for the conjunctive outcome model. The panel is a
  * dumb renderer of the rows produced here, and every number in those rows is
@@ -82,7 +82,7 @@ export interface HarmonySummaryRow {
   readonly complexityApplies: boolean;
 }
 
-/** Terminal / auto-finish indication. 0.7.5 has no manual finish action. */
+/** Terminal / auto-finish indication. There is no manual finish action. */
 export interface AutoFinishSummaryRow {
   readonly active: boolean;
   readonly label: string;
@@ -275,7 +275,7 @@ function buildAutoFinishRow(
     active: true,
     label: `Auto-finishing as ${tierLabel}`,
     detail:
-      'This craft resolves itself on the next input - 0.7.5 has no manual finish action, so nothing further can be banked.',
+      'This craft resolves itself on the next input - there is no manual finish action, so nothing further can be banked.',
     tone: buildTierTone(projection.tier, projection.targetTier),
   };
 }
@@ -352,7 +352,15 @@ export function buildSetupSummary(
   if (!hint || typeof hint.techniqueKey !== 'string' || !hint.techniqueKey) {
     return null;
   }
-  const techniqueLabel = formatTechniqueKey(hint.techniqueKey);
+  // Prefer the label the game itself shows. 0.7.6 renamed False Fusion to
+  // "Strive for Completion" while leaving the key as `false_fusion`, so the
+  // key-derived title is only a fallback for hints recorded without a label.
+  const suppliedName =
+    typeof hint.techniqueName === 'string' ? hint.techniqueName.trim() : '';
+  const techniqueLabel =
+    suppliedName.length > 0
+      ? suppliedName
+      : formatTechniqueKey(hint.techniqueKey);
   const detail = hint.reason?.trim();
   return {
     techniqueKey: hint.techniqueKey,

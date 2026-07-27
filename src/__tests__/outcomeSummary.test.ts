@@ -295,6 +295,31 @@ describe('buildSetupSummary', () => {
     });
   });
 
+  it("prefers the game's own label over the key-derived title", () => {
+    // 0.7.6 renamed False Fusion to "Strive for Completion" via `displayName`,
+    // leaving the key as `false_fusion`. No titlecasing of the key could produce
+    // the new label, so the supplied name has to win.
+    const row = buildSetupSummary({
+      techniqueKey: 'false_fusion',
+      techniqueName: 'Strive for Completion',
+      reason: 'Rushing completion to 100% unlocks Strive for Completion.',
+    });
+
+    expect(row?.techniqueLabel).toBe('Strive for Completion');
+    expect(row?.label).toBe('Setup for Strive for Completion');
+    expect(row?.techniqueKey).toBe('false_fusion');
+  });
+
+  it('falls back to the key-derived title when no label is supplied', () => {
+    expect(
+      buildSetupSummary({
+        techniqueKey: 'focused_refine',
+        techniqueName: '   ',
+        reason: '',
+      })?.techniqueLabel,
+    ).toBe('Focused Refine');
+  });
+
   it('falls back to a generated reason when the hint carries none', () => {
     const row = buildSetupSummary({
       techniqueKey: 'purifyingIntensity',

@@ -147,7 +147,13 @@ const fixtureResult = {
   outcomeProjection: perfectionBoundProjection,
 } as any;
 
-/** A gated-technique setup turn: weak gains now, False Fusion unlocked next. */
+/**
+ * A gated-technique setup turn: weak gains now, the gated technique unlocked next.
+ *
+ * 0.7.6 renamed this technique to "Strive for Completion" while keeping the
+ * internal key `false_fusion`, so the fixture carries both to prove the panel
+ * shows the player-facing label rather than titlecasing the key.
+ */
 const setupFixtureResult = {
   ...fixtureResult,
   recommendation: {
@@ -157,8 +163,9 @@ const setupFixtureResult = {
     reasoning: 'Push completion to the gate instead of banking perfection',
     setupFor: {
       techniqueKey: 'false_fusion',
+      techniqueName: 'Strive for Completion',
       reason:
-        'Reaching 100% completion unlocks False Fusion, which converts the overflow into perfection next turn.',
+        'Reaching 100% completion unlocks Strive for Completion, which converts the overflow into perfection next turn.',
     },
   },
 } as any;
@@ -212,7 +219,7 @@ function parseHarnessViewport(value: string | null): {
 }
 
 const harnessViewport = parseHarnessViewport(harnessParams.get('viewport'));
-/** Selected harmony, so the harness can show any of the seven 0.7.5 types. */
+/** Selected harmony, so the harness can show any of the seven types. */
 const harnessHarmony = (harnessParams.get('harmony') ||
   'resonance') as HarmonyType;
 
@@ -461,7 +468,7 @@ function Harness() {
       onAutoModeArm={() => {}}
       onAutoModeStop={() => {}}
       onAutoModePolicyChange={() => {}}
-      version="6.0.0"
+      version="6.1.0"
     />
   );
 

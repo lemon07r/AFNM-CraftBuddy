@@ -27,6 +27,7 @@ import {
   isTerminalState,
   getBlockedSkillReasons,
   getConditionEffectsForConfig,
+  techniqueDisplayName,
 } from './skills';
 import { INSCRIBED_PATTERN_BLOCK, getHarmonyStatModifiers } from './harmony';
 import {
@@ -114,6 +115,14 @@ export interface SkillRecommendation {
 export interface SetupForHint {
   /** Stable key of the technique this action unlocks. */
   readonly techniqueKey: string;
+  /**
+   * Player-facing label for that technique, as the game labels it.
+   *
+   * Supplied so the panel never has to reconstruct a name from the key: 0.7.6
+   * shows `false_fusion` as "Strive for Completion", which no key-to-title
+   * transformation could produce.
+   */
+  readonly techniqueName?: string;
   /** Human-readable explanation for the panel. */
   readonly reason: string;
 }
@@ -183,6 +192,14 @@ export interface SearchResult {
   blockedReasons?: SkillBlockedReason[];
   /** Full optimal rotation (sequence of skills) to reach targets */
   optimalRotation?: string[];
+  /**
+   * `optimalRotation` rendered with the game's own technique labels.
+   *
+   * Parallel to `optimalRotation`, which stays on internal names because callers
+   * compare it against `SkillDefinition.name`. Absent on older replay fixtures,
+   * in which case the UI falls back to the internal names.
+   */
+  optimalRotationLabels?: string[];
   /** Expected final state if following the optimal rotation */
   expectedFinalState?: {
     completion: number;
@@ -442,7 +459,7 @@ const SCORING = {
   // Toxicity penalty as a fraction of totalTargetMagnitude.
   // Proportional so it scales correctly for small and large crafts.
   TOXICITY_PENALTY_FRACTION: 0.025,
-  // Harmony bonus weight in sublime mode. Real 0.7.5 value is driving the
+  // Harmony bonus weight in sublime mode. Real 0.7.6 value is driving the
   // condition timeline (more positive/veryPositive ⇒ Harmonious/Brilliant
   // techniques), so this is worth a lot early and almost nothing once the
   // target tier is banked. Scaled by remaining work on the binding bar.
@@ -3017,7 +3034,8 @@ function estimateGoalUnlockOrderingBonus(
           unlockCount += 1;
           unlocks?.push({
             techniqueKey: skill.key,
-            reason: `Unlocks ${skill.name}'s gated effect`,
+            techniqueName: techniqueDisplayName(skill),
+            reason: `Unlocks ${techniqueDisplayName(skill)}'s gated effect`,
           });
         }
       }
@@ -3035,7 +3053,8 @@ function estimateGoalUnlockOrderingBonus(
         unlockCount += 1;
         unlocks?.push({
           techniqueKey: skill.key,
-          reason: `Reaches ${requirement.amount} ${requirement.buffName} to enable ${skill.name}`,
+          techniqueName: techniqueDisplayName(skill),
+          reason: `Reaches ${requirement.amount} ${requirement.buffName} to enable ${techniqueDisplayName(skill)}`,
         });
       }
     }
@@ -3960,7 +3979,7 @@ function runLookaheadSearch(
     candidate: CraftingState,
   ): SearchMoveCandidate | null => {
     // Previously offered when goals were unmet and projectedSuccessChance > 0
-    // (voluntary early finish). Runtime 0.7.5 has no manual finish — gate on
+    // (voluntary early finish). The runtime has no manual finish — gate on
     // willAutoFinish instead. Dead crafts stay terminal without this action.
     if (candidate.stability <= 0 || !stateWillAutoFinish(candidate)) {
       return null;
@@ -5583,6 +5602,15 @@ function runLookaheadSearch(
   let optimalRotation: string[] = [bestFirstMove.name];
   let expectedFinalState: SearchResult['expectedFinalState'] = undefined;
 
+  // The rotation carries internal names so callers can match it against
+  // `SkillDefinition.name`; the labels are resolved once here for display.
+  const rotationLabelsByName = new Map<string, string>();
+  for (const skill of config.skills) {
+    rotationLabelsByName.set(skill.name, techniqueDisplayName(skill));
+  }
+  const rotationLabelForName = (name: string): string =>
+    rotationLabelsByName.get(name) ?? name;
+
   if (stateAfterFirstMoveDisplay) {
     const { searchState: stateAfterFirstMove } =
       buildSearchStateForContinuation(
@@ -5723,6 +5751,7 @@ function runLookaheadSearch(
     isTerminal: false,
     targetsMet: false,
     optimalRotation,
+    optimalRotationLabels: optimalRotation.map(rotationLabelForName),
     expectedFinalState,
     searchMetrics: metrics,
   };

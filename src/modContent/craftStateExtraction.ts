@@ -797,8 +797,18 @@ export function convertGameTechniques(
     // Extract icon from technique (game provides icon as string path)
     const icon = sourceTech.icon as string | undefined;
 
+    // 0.7.6 renamed False Fusion to "Strive for Completion" via `displayName`
+    // only; `name` is still `False Fusion`, so keys stay stable while the UI can
+    // show what the player actually sees.
+    const rawDisplayName = (sourceTech as { displayName?: unknown }).displayName;
+    const displayName =
+      typeof rawDisplayName === 'string' && rawDisplayName.trim().length > 0
+        ? rawDisplayName
+        : undefined;
+
     skills.push({
       name: techName,
+      displayName: displayName !== techName ? displayName : undefined,
       key: techName.toLowerCase().replace(/\s+/g, '_'),
       qiCost,
       stabilityCost,

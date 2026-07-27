@@ -30,6 +30,7 @@ import {
   SkillRecommendation,
   CraftingConditionType,
   HarmonyType,
+  techniqueDisplayName,
 } from '../optimizer';
 import {
   AUTO_CRAFT_POLICY_OPTIONS,
@@ -1095,7 +1096,7 @@ const SkillCard = memo(function SkillCard({
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <SingleSkillBox
-            name={rec.skill.name}
+            name={techniqueDisplayName(rec.skill)}
             type={rec.skill.type}
             actionKind={rec.skill.actionKind}
             gains={rec.immediateGains}
@@ -1156,7 +1157,7 @@ const SkillCard = memo(function SkillCard({
                 </Typography>
               )}
               <SingleSkillBox
-                name={rec.followUpSkill.name}
+                name={techniqueDisplayName(rec.followUpSkill)}
                 type={rec.followUpSkill.type}
                 actionKind={rec.followUpSkill.actionKind}
                 gains={rec.followUpSkill.immediateGains}
@@ -1279,7 +1280,7 @@ const ProgressSection = memo(function ProgressSection({
 });
 
 // ============================================================================
-// Outcome projection (0.7.5 conjunctive outcome model)
+// Outcome projection (conjunctive outcome model)
 // ============================================================================
 
 /**
@@ -2260,6 +2261,8 @@ export function RecommendationPanel({
   // Outcome rows come entirely from the shared evaluator's projection. A result
   // without one is a legacy replay snapshot, in which case `summary` is null and
   // the panel falls back to the pre-0.7.5 layout instead of guessing bands.
+  // (0.7.5 is the version that introduced the conjunctive model, so snapshots
+  // recorded before it genuinely carry no projection.)
   const outcomeSummary = useMemo(
     () =>
       buildOutcomeSummary({
@@ -2675,7 +2678,7 @@ export function RecommendationPanel({
           sx={{ color: colors.completionLight, mt: 1 }}
         >
           {outcomeSummary?.autoFinish.active
-            ? 'The craft resolves itself from here - there is no manual finish in 0.7.5.'
+            ? 'The craft resolves itself from here - there is no manual finish action.'
             : 'Every band this tier needs is banked.'}
         </Typography>
         {autoMode && (showAutoModePanel || autoMode.phase !== 'off') && (
@@ -2835,9 +2838,12 @@ export function RecommendationPanel({
           />
 
           {/* Optimal rotation preview */}
-          {showOptimalRotation && result.optimalRotation && (
+          {showOptimalRotation && (result.optimalRotationLabels ??
+            result.optimalRotation) && (
             <RotationSection
-              rotation={result.optimalRotation}
+              rotation={
+                result.optimalRotationLabels ?? result.optimalRotation ?? []
+              }
               maxDisplay={
                 compactMode
                   ? Math.min(maxRotationDisplay, 4)
