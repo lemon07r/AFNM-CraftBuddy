@@ -19,8 +19,8 @@ use effects::{
     MasteryBonuses, MasteryEntry,
 };
 use outcome::{
-    band_threshold, build_outcome_bands, classify_outcome, tier_requirement, OutcomeBands,
-    OutcomeClassification, OutcomeTier,
+    band_threshold, build_outcome_bands, classify_outcome, compute_overcraft_extras,
+    tier_requirement, OutcomeBands, OutcomeClassification, OutcomeTier,
 };
 
 const FINISH_CRAFT_KEY: &str = "__finish_craft__";
@@ -38,6 +38,11 @@ const BALANCE_WEIGHT: f64 = 0.35;
 const BONUS_ROLL_WEIGHT: f64 = 0.2;
 const IN_TIER_PROGRESS_WEIGHT: f64 = 0.05;
 const EXTRA_BAND_WEIGHT: f64 = 0.75;
+/// Extra completion bands pay a material refund (20% of recipe cost each,
+/// capped at 80%), which is worth less than the stacks/quality scaling each
+/// extra perfection band buys. Mirrors `SCORING.COMPLETION_EXTRA_BAND_WEIGHT`
+/// in `src/optimizer/search.ts`.
+const COMPLETION_EXTRA_BAND_WEIGHT: f64 = 0.25;
 const FINISHED_UNMET_PENALTY_WEIGHT: f64 = 1.0;
 const STEP_PENALTY: f64 = 0.5;
 const DEATH_PENALTY_MULTIPLIER: f64 = 3.0;
@@ -197,6 +202,10 @@ struct EngineConfig {
     training_mode: bool,
     #[serde(default)]
     goal_priority_bias: f64,
+    /// Unilateral overcraft extras scoring (RUNTIME_EVIDENCE section 12).
+    /// Defaults on, mirroring `DEFAULT_SEARCH_CONFIG.overcraftAmbition`.
+    #[serde(default = "default_true")]
+    overcraft_ambition: bool,
     /// Config-level completion target. Seeds the `maxcompletion` scaling
     /// variable; the input-level `target_completion` drives the completion
     /// bonus. The TypeScript simulator reads them from two different places.
@@ -1101,6 +1110,7 @@ impl Engine {
             completion_weight,
             perfection_weight,
             false,
+            self.input.config.overcraft_ambition,
         );
 
         let mode_targets_met = (goals.mode_completion <= 0.0
@@ -1159,6 +1169,11 @@ impl Engine {
     /// The `min` on the two margins is the whole point: once a bar's band
     /// requirement is met, more of it cannot raise the gate, so search is
     /// forced onto whichever bar is actually blocking the next tier.
+    ///
+    /// With `overcraft_ambition` the extras term counts each bar's banked
+    /// bands past the target tier *unilaterally* (the runtime pays them
+    /// independently), instead of the legacy conjunctive minimum. Extras
+    /// bank guaranteed bands only, matching the TypeScript scorer.
     fn conjunctive_goal_score(
         &self,
         outcome: &OutcomeClassification,
@@ -1166,6 +1181,7 @@ impl Engine {
         completion_weight: f64,
         perfection_weight: f64,
         count_basic_checkpoint: bool,
+        overcraft_ambition: bool,
     ) -> f64 {
         let total_target_magnitude =
             (goals.mode_completion.max(0.0) + goals.mode_perfection.max(0.0)).max(1.0);
@@ -1181,7 +1197,13 @@ impl Engine {
         );
         let bonus_credit = bonus_chance_credit_when_one_band_short(outcome);
         let residual = residual_shortfall_progress(outcome, &goals.bands);
-        let extras = extra_resolved_bands(outcome, &goals.bands);
+        let extras_score = if overcraft_ambition {
+            let extras = compute_overcraft_extras(outcome, &goals.bands, false);
+            EXTRA_BAND_WEIGHT * extras.perfection_bands
+                + COMPLETION_EXTRA_BAND_WEIGHT * extras.completion_bands
+        } else {
+            EXTRA_BAND_WEIGHT * extra_resolved_bands(outcome, &goals.bands) as f64
+        };
         let scored_tier_rank =
             goal_score_tier_rank(outcome, goals.bands.target_tier, count_basic_checkpoint) as f64;
 
@@ -1191,7 +1213,7 @@ impl Engine {
                 + BALANCE_WEIGHT * balance
                 + BONUS_ROLL_WEIGHT * bonus_credit
                 + IN_TIER_PROGRESS_WEIGHT * residual)
-            + EXTRA_BAND_WEIGHT * extras as f64 * base_target_magnitude
+            + extras_score * base_target_magnitude
     }
 
     /// Expected value of a finished craft.
@@ -1240,6 +1262,7 @@ impl Engine {
                     completion_weight,
                     perfection_weight,
                     true,
+                    self.input.config.overcraft_ambition,
                 );
                 // Unmet work is permanent once the craft has ended, so price it
                 // at full weight rather than as remaining potential.
@@ -2687,6 +2710,10 @@ fn default_success_chance() -> f64 {
 
 fn default_unit() -> f64 {
     1.0
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_pills_per_round() -> f64 {

@@ -4,7 +4,7 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+last_verified: 2026-07-28
 source_of_truth: installed AFNM 0.7.6 runtime bundle (scripts/installed-game-runtime.js)
 review_cycle_days: 90
 related_files:
@@ -616,5 +616,144 @@ Recorded here so the evidence and its resolution stay together.
 | Auto-use loadout pairing (7) | No change: the game resolves the pairing before CraftBuddy reads state. The `(This Effect)` condition falls to the conservative "will fire" default. |
 | False Fusion rename (8) | Display-only; labels resolve through `techniqueDisplayName()` while internal keys keep using `name`. |
 | Cleanse never critted in crafting (9) | No change in either engine. |
+| Overcraft extras are unilateral (12) | `src/optimizer/search.ts` scores extra perfection and extra completion bands as two independent post-tier terms, mirrored in the Rust engine; the conjunctive tier gate itself is untouched. |
+
+---
+
+## 12. Overcraft reward scaling (verified for the overcraft scoring fix)
+
+Verified 2026-07-28 against `0.7.6-7c586da`. Motivation: the optimizer credited
+extra bands *conjunctively* (`min(extraCompletion, extraPerfection)`), so after
+the 2-band sublime gate every further perfection action was score-neutral and
+recommendations plateaued at ~2 bands even when the game pays for more. The
+game pays **unilaterally**, per bar, as shown below.
+
+### 12.1 Stacks scaling: +20% per extra perfection band, per bar independently
+
+`ZIa` (helper chunk) is the stacks scaler; `XIa` is the per-band bonus:
+
+```js
+// verbatim, helper chunk
+JIa=1.3,
+EH=(e,t)=>{let n=t,r=e,i=0;for(;r>0&&n>0&&r>=n;)r-=n,i++,n=Math.floor(n*JIa);let a=r/n,o=e+(n-r);
+  return{guaranteed:i,bonusChance:a,nextThreshold:o}},
+XIa=.2,
+ZIa=(e,t,n)=>Math.floor(e*(1+(t-n)*XIa))
+```
+
+`EH` is `getBonusAndChance` (unchanged, section header of `outcome.ts`). `ZIa`
+takes `(baseStacks, bandCount, baseline)` and pays `+0.2` of base stacks per
+band **above the baseline**. The craft-result code in `Game.js` calls it with
+baseline 2 for sublime and baseline 1 for perfect (`pc` is the `Game.js` alias
+of `ZIa`):
+
+```js
+// verbatim, Game.js craft-result effect
+if(r===`stacks`)n.stacks=pc(n.stacks,o,2);            // sublime: o = perfectionSuccess
+...
+n===`stacks`?t.stacks=pc(t.stacks,o,1):               // perfect
+```
+
+So perfection band count scales the result **regardless of how many completion
+bands were banked** (beyond what the tier gate needs). Decoded:
+
+| Result | Formula |
+| --- | --- |
+| sublime, `stacks` kind | `floor(baseStacks * (1 + (perfectionSuccess - 2) * 0.2))` |
+| perfect, `stacks` kind | `floor(baseStacks * (1 + (perfectionSuccess - 1) * 0.2))` |
+
+### 12.2 Quality path: sublime grants a harmony augment of `perf - 2`
+
+```js
+// verbatim, Game.js sublime branch (r === `quality`)
+let t=o-2;n.hiddenPotential=f>0?f:void 0,t>0&&(n.harmonyAugment={type:e.recipeStats.harmonyType,quality:t})
+```
+
+In 0.7.6 the sublime quality reward is a `harmonyAugment` of
+`quality = perfectionSuccess - 2` (granted only when positive). This differs
+from the `CraftingCode` snapshot, which assigned `qualityTier = perf - 2`
+directly; the installed runtime wins. The perfect branch sets only
+`hiddenPotential` — no quality or augment — so extra perfection bands pay
+quality **only on the sublime result**.
+
+The result-tier gate itself is unchanged and still conjunctive:
+
+```js
+// verbatim, Game.js
+BFe=(e,t,n)=>e===0?`failed`:e>1&&t>1&&n.isSublimeCraft?`sublime`:t>0?`perfect`:`basic`
+```
+
+### 12.3 Completion extras: material refund, 20% per band, capped at 80%
+
+```js
+// verbatim, Game.js craft-result effect
+if(e.recipe.isSublimeCraft&&a>1){let t=Math.max(0,Math.min((a-1)*20,80)),
+n=e.recipe.ingredients.reduce((e,t)=>e+t.quantity,0),r=Math.floor(n*t/100),...
+```
+
+Extra **completion** bands refund materials on sublime-capable crafts:
+`(completionSuccess - 1) * 20` percent of the total ingredient count, clamped
+to `[0, 80]`, dispensed as randomly chosen single stacks. This also scales
+unilaterally — it does not depend on the perfection band count.
+
+### 12.4 `canOvercraft` and the stated intent (tooltips)
+
+`canOvercraft` is set at craft start to `isSublimeCraft && perfectionEffect !== 'none'`:
+
+```js
+// verbatim, Game.js craft-start dispatch
+recipe:{...D,sublimeItem:n?D?.sublimeItem:void 0,isSublimeCraft:n,canOvercraft:n&&ce!==`none`}
+```
+
+The in-game tooltips state the intended bonuses verbatim:
+
+> For each 100% you go over the completion maximum, you will gain an additional
+> 10% Qi Control bonus and a chance to reclaim up to 20% of the materials used
+> (max 80%). Current reclaim percentage is {reclaimPercentage}%.
+
+> For each 100% you go over the perfection maximum, you will gain 20% more
+> stacks of the final items. Current bonus items is {bonusPercentage}%.
+
+> For each 100% you go over the perfection maximum, the crafted item will be 1
+> quality tier higher. The maximum quality tier based on your realm is
+> {maxQualityTier}. Current quality tier is {currentQualityTier}.
+
+with
+
+```js
+// verbatim, Game.js tooltip block
+let e=Math.max(0,Math.floor((Ye.guaranteed-1)*20));        // bonusPercentage (stacks)
+let r=3+W.indexOf(t.realm)+(W.indexOf(e.recipe.realm)-3),  // maxQualityTier (realm-capped)
+i=Math.max(0,Math.floor(Ye.guaranteed-2));                 // currentQualityTier
+let r=Math.max(0,Math.min((Je.guaranteed-1)*20,80));       // reclaimPercentage
+```
+
+The "10% Qi Control bonus" application site was **not** located in this pass
+(no `qiControl` symbol anywhere in either chunk); the refund and stacks/quality
+scaling above are the mechanically verified rewards, and are what the scoring
+weights derive from. `maxQualityTier = 3 + realmIndex(player.realm) +
+(realmIndex(recipe.realm) - 3)` caps how far quality can scale, so perfection
+extras have diminishing value past that cap on quality-kind recipes.
+
+### 12.5 Auto-finish predicate for overcraft crafts (re-verified)
+
+The craft-complete flag in the 0.7.6 `Game.js`:
+
+```js
+// verbatim, Game.js
+Be=e=>e.guaranteed>=5,
+Ve=e.recipe&&e.recipeStats?Qt(e.recipe,e.recipeStats,t.realm).flat:0,   // getMaxCompletion
+z=e.recipe&&e.recipeStats?ld(e.recipe,e.recipeStats,t.realm).flat:0,    // getMaxPerfection
+He=e.recipe&&e.recipeStats&&e.progressState?Bl(e.progressState.completion,e.recipeStats.completion):void 0,
+Ue=(e.progressState?.stability??0)<=0||e.recipe&&e.recipeStats&&e.progressState&&
+  (e.progressState.completion>=Ve&&e.progressState.perfection>=z
+   ||e.recipe.canOvercraft&&He!==void 0&&Be(He)&&e.progressState.perfection>=z)
+```
+
+Decoded: finish when stability runs out, or both bars reach their caps, or —
+for `canOvercraft` recipes — completion holds **5 guaranteed bands** and
+perfection reaches its cap. `src/optimizer/outcome.ts::willAutoFinish` already
+mirrors all three branches, including the 5-band overcraft branch; no change
+was needed there.
 
 <!-- prettier-ignore-end -->

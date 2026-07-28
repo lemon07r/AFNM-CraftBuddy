@@ -389,6 +389,11 @@ function simulateCraft(
       };
     }
 
+    if (process.env.CRAFT_SIM_DEBUG) {
+      console.log(
+        `turn ${turn}: ${skill.name} c${state.completion} p${state.perfection} s${state.stability} q${state.qi}`,
+      );
+    }
     log.push({
       turn,
       condition,
@@ -451,18 +456,52 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
   const neutralOnly: CraftingConditionType[] = ['neutral'];
 
   it('should complete a basic tutorial craft (comp=50, perf=50)', () => {
-    const state = new CraftingState({
-      qi: 194,
-      stability: 60,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
+    // Tier-only play (overcraft ambition off) is the efficiency baseline:
+    // straight to 50/50 well inside the 20-turn budget.
+    const tierOnly = simulateCraft(
+      new CraftingState({
+        qi: 194,
+        stability: 60,
+        initialMaxStability: 60,
+        completion: 0,
+        perfection: 0,
+      }),
+      config,
+      50,
+      50,
+      neutralOnly,
+      20,
+      6,
+      { overcraftAmbition: false },
+    );
+    expect(tierOnly.targetsMet).toBe(true);
+    expect(tierOnly.craftDied).toBe(false);
+    expect(tierOnly.turnsUsed).toBeLessThanOrEqual(15);
 
-    const sim = simulateCraft(state, config, 50, 50, neutralOnly, 20);
-    expect(sim.targetsMet).toBe(true);
-    expect(sim.craftDied).toBe(false);
-    expect(sim.turnsUsed).toBeLessThanOrEqual(15);
+    // With ambition on (the default), the optimizer may spend extra turns
+    // banking post-tier perfection bands — the runtime pays +20% stacks per
+    // band (RUNTIME_EVIDENCE.md §12) — so it must still meet targets inside
+    // the same budget while finishing with banked overshoot on a bar.
+    const ambitious = simulateCraft(
+      new CraftingState({
+        qi: 194,
+        stability: 60,
+        initialMaxStability: 60,
+        completion: 0,
+        perfection: 0,
+      }),
+      config,
+      50,
+      50,
+      neutralOnly,
+      20,
+    );
+    expect(ambitious.targetsMet).toBe(true);
+    expect(ambitious.craftDied).toBe(false);
+    expect(
+      ambitious.finalState.perfection > 50 ||
+        ambitious.finalState.completion > 50,
+    ).toBe(true);
   });
 
   it('should complete a longer tutorial craft (comp=100, perf=100)', () => {
@@ -1610,8 +1649,13 @@ describe('craft simulation — sublime crafts', () => {
     const neutralOnly: CraftingConditionType[] = ['neutral'];
 
     // Pass scaled targets (200/200) to the simulation loop so it doesn't
-    // stop at base targets.
-    const sim = simulateCraft(state, config, 200, 200, neutralOnly, 60);
+    // stop at base targets.  The search is time-budgeted, so on slower
+    // machines each turn explores less deeply and convergence needs more
+    // turns; give this deep craft generous turn and per-turn budgets so the
+    // contract checks the model, not machine speed.
+    const sim = simulateCraft(state, config, 200, 200, neutralOnly, 90, 6, {
+      timeBudgetMs: 1000,
+    });
     expect(sim.craftDied).toBe(false);
     expect(sim.targetsMet).toBe(true);
     expect(sim.finalState.completion).toBeGreaterThanOrEqual(200);

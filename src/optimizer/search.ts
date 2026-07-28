@@ -47,6 +47,7 @@ import {
   bandThreshold,
   buildOutcomeBands,
   classifyOutcome,
+  computeOvercraftExtras,
   tierRank,
   TIER_REQUIREMENTS,
   willAutoFinish,
@@ -298,6 +299,13 @@ export interface SearchConfig {
   mctsExploration?: number;
   /** Native MCTS node cap. */
   mctsMaxNodes?: number;
+  /**
+   * Overcraft ambition (default: true). When true, extra bands past the
+   * target tier earn unilateral value up to the game's caps, mirroring the
+   * runtime's per-bar rewards; when false, scoring is tier-only with the
+   * legacy conjunctive extras term.
+   */
+  overcraftAmbition?: boolean;
 }
 
 /** Game UI + runtime always expose 3 future conditions. */
@@ -322,6 +330,7 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   mctsRolloutDepth: 16,
   mctsExploration: 1.15,
   mctsMaxNodes: 5000,
+  overcraftAmbition: true,
 };
 
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
@@ -379,10 +388,18 @@ const SCORING = {
   // Fine-grained residual shortfall fill (0–1). Supplies early gradient while
   // tierRank is flat at `failed` before the first completion band.
   IN_TIER_PROGRESS_WEIGHT: 0.05,
-  // Extra guaranteed bands past the target tier, counted conjunctively
-  // (min of the two bars' extras). 0.75× base magnitude per extra band pair
-  // distinguishes Tier IV/V finishes without rivaling a full tier jump.
+  // Extra bands past the target tier. With overcraft ambition off they are
+  // counted conjunctively (min of the two bars' extras) at 0.75× base
+  // magnitude per pair. With ambition on they are counted unilaterally once
+  // the tier is secured, matching the runtime reward: each extra perfection
+  // band pays +20% of the product stacks (or +1 quality on the sublime
+  // result), so it keeps the full 0.75× per band.
   EXTRA_BAND_WEIGHT: 0.75,
+  // Unilateral extra completion bands pay a material refund of
+  // (bands - 1) × 20% capped at 80% of the ingredients — bounded by input
+  // cost rather than product value — so they earn a third of the perfection
+  // weight and stop at the refund cap (OVERCRAFT_REFUND_MAX_BANDS).
+  COMPLETION_EXTRA_BAND_WEIGHT: 0.25,
   // Intentionally tiny: tiebreaker only — never large enough to justify
   // spending an extra turn to preserve qi/stability.
   RESOURCE_TIEBREAKER: 0.001,
@@ -2028,6 +2045,12 @@ function goalScoreTierRank(
  * Conjunctive goal score. Math.min on margins is the whole point: once a bar's
  * requirement is met, more of it cannot raise the gate, so search is forced
  * onto the blocking bar.
+ *
+ * Overcraft extras (`overcraft.enabled`) are credited unilaterally per bar by
+ * `computeOvercraftExtras`, which returns zero until the tier is secured — so
+ * they can never raise the effective tier or trade off the binding bar. With
+ * ambition off the legacy conjunctive `extraResolvedBands` term is kept
+ * bit-identical.
  */
 function computeConjunctiveGoalScore(
   outcome: OutcomeClassification,
@@ -2040,6 +2063,10 @@ function computeConjunctiveGoalScore(
   perfectionWeight: number,
   options: { readonly countBasicCheckpoint: boolean } = {
     countBasicCheckpoint: false,
+  },
+  overcraft: { readonly enabled: boolean; readonly fractionalExtras: boolean } = {
+    enabled: false,
+    fractionalExtras: false,
   },
 ): number {
   const totalTargetMagnitude = Math.max(
@@ -2059,7 +2086,17 @@ function computeConjunctiveGoalScore(
   );
   const bonusCredit = bonusChanceCreditWhenOneBandShort(outcome);
   const residual = residualShortfallProgress(outcome, bands);
-  const extras = extraResolvedBands(outcome, bands);
+  const extrasScore = overcraft.enabled
+    ? (() => {
+        const extras = computeOvercraftExtras(outcome, bands, {
+          fractional: overcraft.fractionalExtras,
+        });
+        return (
+          SCORING.EXTRA_BAND_WEIGHT * extras.perfectionBands +
+          SCORING.COMPLETION_EXTRA_BAND_WEIGHT * extras.completionBands
+        );
+      })()
+    : SCORING.EXTRA_BAND_WEIGHT * extraResolvedBands(outcome, bands);
   const scoredTierRank = goalScoreTierRank(outcome, bands.targetTier, options);
 
   return (
@@ -2069,7 +2106,7 @@ function computeConjunctiveGoalScore(
         SCORING.BALANCE_WEIGHT * balance +
         SCORING.BONUS_ROLL_WEIGHT * bonusCredit +
         SCORING.IN_TIER_PROGRESS_WEIGHT * residual) +
-    SCORING.EXTRA_BAND_WEIGHT * extras * baseTargetMagnitude
+    extrasScore * baseTargetMagnitude
   );
 }
 
@@ -2096,6 +2133,7 @@ function scoreState(
   maxPerfectionCap?: number,
   ctx: ScoringContext = DEFAULT_SCORING_CONTEXT,
   goalPriorityBias: number = DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
+  overcraftAmbition: boolean = true,
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
     return Math.min(state.completion, state.perfection);
@@ -2219,6 +2257,11 @@ function scoreState(
   // ── 1. conjunctive goal score (primary) ──────────────────────────────
   // Live search does not count the completion-only basic checkpoint toward
   // perfect/sublime targets (gate/balance already price completion).
+  // Overcraft extras bank guaranteed bands only, same as terminal scoring:
+  // fractional bonus-roll EV made band-fraction noise at the horizon decide
+  // between strategically different lines (e.g. buff setup vs immediate
+  // progress) and rewarded front-loading sub-band overshoot, neither of
+  // which the tier model can price honestly.
   let score = computeConjunctiveGoalScore(
     outcome,
     bands,
@@ -2229,6 +2272,7 @@ function scoreState(
     completionWeight,
     perfectionWeight,
     { countBasicCheckpoint: false },
+    { enabled: overcraftAmbition, fractionalExtras: false },
   );
 
   const totalTargetMagnitude = Math.max(
@@ -2307,6 +2351,11 @@ function scoreState(
 
   // ── 5. overshoot penalty ─────────────────────────────────────────────
   // Soft overshoot past the active mode goal (band threshold, cap-clamped).
+  // This stays on even with overcraft ambition: banked extras are priced
+  // against the step penalty, and the overshoot term keeps pressure against
+  // dead sub-band weight (it is also the only ranking signal between two
+  // overshooting live lines — removing it flipped the forge-heat runway
+  // replay's heat-recovery pick).
   const modeCompLimit = effectiveCompGoal;
   const modePerfLimit = effectivePerfGoal;
   const compOver =
@@ -2435,6 +2484,7 @@ function scoreFinishedOutcome(
   maxPerfectionCap?: number,
   ctx: ScoringContext = DEFAULT_SCORING_CONTEXT,
   goalPriorityBias: number = DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
+  overcraftAmbition: boolean = true,
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
     return Math.min(state.completion, state.perfection);
@@ -2473,6 +2523,11 @@ function scoreFinishedOutcome(
   );
 
   // Finished crafts count the real runtime tier, including basic as a floor.
+  // Tier rank and extras both bank guaranteed bands only (no bonus-roll EV:
+  // overvaluing the roll made finishing beat live lines that could still
+  // secure the missing bar, and fractional extras let band-fraction noise
+  // override real strategy). Terminal extras therefore match the live
+  // horizon exactly.
   let score = computeConjunctiveGoalScore(
     outcome,
     bands,
@@ -2483,6 +2538,7 @@ function scoreFinishedOutcome(
     completionWeight,
     perfectionWeight,
     { countBasicCheckpoint: true },
+    { enabled: overcraftAmbition, fractionalExtras: false },
   );
 
   const totalTargetMagnitude = Math.max(
@@ -3264,6 +3320,7 @@ function runGreedySearch(
         config.maxPerfection,
         scoringCtx,
         cfg.goalPriorityBias,
+        cfg.overcraftAmbition,
       ),
       reasoning: generateFinishReasoning(projectedSuccessChance),
       projectedSuccessChance,
@@ -3462,6 +3519,7 @@ function runGreedySearch(
             config.maxPerfection,
             scoringCtx,
             cfg.goalPriorityBias,
+            cfg.overcraftAmbition,
           )
         : scoreState(
             newState,
@@ -3474,6 +3532,7 @@ function runGreedySearch(
             config.maxPerfection,
             scoringCtx,
             cfg.goalPriorityBias,
+            cfg.overcraftAmbition,
           );
     const reasoning = generateReasoning(
       skill,
@@ -3712,6 +3771,7 @@ function runLookaheadSearch(
       currentConditionType: normalizedCurrentCondition,
       forecastedConditionTypes,
       goalPriorityBias: cfg.goalPriorityBias,
+      overcraftAmbition: cfg.overcraftAmbition,
       search: {
         iterations: budgetedIterations,
         rolloutDepth: Math.min(depth, cfg.mctsRolloutDepth ?? depth),
@@ -3810,6 +3870,7 @@ function runLookaheadSearch(
         config.maxPerfection,
         scoringCtx,
         cfg.goalPriorityBias,
+        cfg.overcraftAmbition,
       );
     }
 
@@ -3824,6 +3885,7 @@ function runLookaheadSearch(
       config.maxPerfection,
       scoringCtx,
       cfg.goalPriorityBias,
+      cfg.overcraftAmbition,
     );
     const remainingCompletion = Math.max(
       0,
@@ -4008,6 +4070,7 @@ function runLookaheadSearch(
         config.maxPerfection,
         scoringCtx,
         cfg.goalPriorityBias,
+        cfg.overcraftAmbition,
       ),
       immediateProgress: 0,
       requiresProbabilisticSurvival: false,
@@ -4406,6 +4469,7 @@ function runLookaheadSearch(
         config.maxPerfection,
         scoringCtx,
         cfg.goalPriorityBias,
+        cfg.overcraftAmbition,
       );
     }
 
@@ -4482,6 +4546,7 @@ function runLookaheadSearch(
           config.maxPerfection,
           scoringCtx,
           cfg.goalPriorityBias,
+          cfg.overcraftAmbition,
         );
       } else if (!actionConsumesTurn(skill)) {
         score = search(
@@ -4574,6 +4639,7 @@ function runLookaheadSearch(
         config.maxPerfection,
         scoringCtx,
         cfg.goalPriorityBias,
+        cfg.overcraftAmbition,
       );
     }
 

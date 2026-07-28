@@ -56,6 +56,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -862,6 +863,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -1668,6 +1670,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -2474,6 +2477,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -3280,6 +3284,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -4042,6 +4047,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -4804,6 +4810,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -5610,6 +5617,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -6416,6 +6424,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -7222,6 +7231,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -8033,6 +8043,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -8846,6 +8857,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -9687,6 +9699,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -10525,6 +10538,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -11332,6 +11346,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -12143,6 +12158,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -12955,6 +12971,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -13769,6 +13786,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -14601,6 +14619,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -15407,6 +15426,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -16219,6 +16239,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -17030,6 +17051,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -17836,6 +17858,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -18642,6 +18665,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -19448,6 +19472,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -20254,6 +20279,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -21060,6 +21086,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -21871,6 +21898,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -22677,6 +22705,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -23483,6 +23512,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -24289,6 +24319,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -25096,6 +25127,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -25726,6 +25758,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -26532,6 +26565,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -27344,6 +27378,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -27798,6 +27833,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -28605,6 +28641,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -29418,6 +29455,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -30258,6 +30296,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -31091,6 +31130,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -31897,6 +31937,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -32400,6 +32441,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -33206,6 +33248,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -34020,6 +34063,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -34858,6 +34902,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -35664,6 +35709,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -36470,6 +36516,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -37237,6 +37284,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -38043,6 +38091,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -38855,6 +38904,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -39667,6 +39717,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -40473,6 +40524,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -41279,6 +41331,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -42085,6 +42138,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -42896,6 +42950,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -43702,6 +43757,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -44508,6 +44564,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -45322,6 +45379,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -46154,6 +46212,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -46960,6 +47019,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -47766,6 +47826,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -48572,6 +48633,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -49378,6 +49440,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -50189,6 +50252,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -50995,6 +51059,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 0,
           "target_perfection": 0,
           "pills_per_round": 1
@@ -51818,6 +51883,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -53414,6 +53480,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -55042,6 +55109,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -56723,6 +56791,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -58377,6 +58446,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -60111,6 +60181,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -61789,6 +61860,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -63454,6 +63526,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -65169,6 +65242,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -66765,6 +66839,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -68361,6 +68436,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -69765,6 +69841,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -71170,6 +71247,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -72779,6 +72857,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -74421,6 +74500,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -76097,6 +76177,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -77773,6 +77854,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -79481,6 +79563,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -81236,6 +81319,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -83025,6 +83109,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -84811,6 +84896,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -86560,6 +86646,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -88313,6 +88400,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -90067,6 +90155,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 2
@@ -91767,6 +91856,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 1
@@ -92176,6 +92266,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 1
@@ -92585,6 +92676,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 1
@@ -92996,6 +93088,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 1
@@ -93405,6 +93498,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 150,
           "target_perfection": 110,
           "pills_per_round": 1
@@ -93886,6 +93980,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 198,
           "target_perfection": 92,
           "pills_per_round": 3
@@ -95690,6 +95785,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 240,
           "target_perfection": 133,
           "pills_per_round": 2
@@ -97179,6 +97275,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 257,
           "target_perfection": 161,
           "pills_per_round": 1
@@ -98205,6 +98302,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 204,
           "target_perfection": 166,
           "pills_per_round": 2
@@ -99826,6 +99924,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 265,
           "target_perfection": 116,
           "pills_per_round": 2
@@ -101353,6 +101452,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 96,
           "target_perfection": 220,
           "pills_per_round": 1
@@ -102887,6 +102987,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 274,
           "target_perfection": 108,
           "pills_per_round": 2
@@ -104536,6 +104637,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 107,
           "target_perfection": 47,
           "pills_per_round": 1
@@ -105971,6 +106073,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 283,
           "target_perfection": 206,
           "pills_per_round": 2
@@ -107554,6 +107657,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 193,
           "target_perfection": 200,
           "pills_per_round": 2
@@ -109185,6 +109289,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 227,
           "target_perfection": 117,
           "pills_per_round": 1
@@ -110759,6 +110864,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 247,
           "target_perfection": 171,
           "pills_per_round": 1
@@ -112272,6 +112378,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 94,
           "target_perfection": 59,
           "pills_per_round": 1
@@ -113807,6 +113914,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 133,
           "target_perfection": 165,
           "pills_per_round": 2
@@ -115280,6 +115388,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 165,
           "target_perfection": 54,
           "pills_per_round": 2
@@ -116872,6 +116981,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 238,
           "target_perfection": 122,
           "pills_per_round": 1
@@ -118463,6 +118573,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 181,
           "target_perfection": 217,
           "pills_per_round": 1
@@ -120008,6 +120119,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 212,
           "target_perfection": 41,
           "pills_per_round": 2
@@ -121533,6 +121645,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 163,
           "target_perfection": 212,
           "pills_per_round": 3
@@ -123038,6 +123151,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 152,
           "target_perfection": 87,
           "pills_per_round": 2
@@ -124430,6 +124544,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 185,
           "target_perfection": 215,
           "pills_per_round": 1
@@ -125887,6 +126002,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 152,
           "target_perfection": 150,
           "pills_per_round": 3
@@ -127496,6 +127612,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 265,
           "target_perfection": 199,
           "pills_per_round": 1
@@ -129296,6 +129413,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 298,
           "target_perfection": 179,
           "pills_per_round": 2
@@ -130829,6 +130947,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 206,
           "target_perfection": 144,
           "pills_per_round": 1
@@ -132364,6 +132483,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 125,
           "target_perfection": 81,
           "pills_per_round": 1
@@ -133987,6 +134107,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 264,
           "target_perfection": 170,
           "pills_per_round": 2
@@ -135737,6 +135858,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 115,
           "target_perfection": 117,
           "pills_per_round": 1
@@ -137302,6 +137424,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 244,
           "target_perfection": 133,
           "pills_per_round": 3
@@ -138885,6 +139008,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 186,
           "target_perfection": 203,
           "pills_per_round": 3
@@ -140467,6 +140591,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 218,
           "target_perfection": 161,
           "pills_per_round": 2
@@ -142146,6 +142271,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 254,
           "target_perfection": 111,
           "pills_per_round": 2
@@ -143970,6 +144096,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 140,
           "target_perfection": 84,
           "pills_per_round": 2
@@ -145501,6 +145628,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 290,
           "target_perfection": 123,
           "pills_per_round": 2
@@ -147107,6 +147235,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 96,
           "target_perfection": 68,
           "pills_per_round": 1
@@ -148617,6 +148746,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 247,
           "target_perfection": 132,
           "pills_per_round": 3
@@ -150180,6 +150310,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 231,
           "target_perfection": 41,
           "pills_per_round": 2
@@ -151675,6 +151806,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 123,
           "target_perfection": 168,
           "pills_per_round": 2
@@ -153357,6 +153489,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 231,
           "target_perfection": 69,
           "pills_per_round": 1
@@ -154964,6 +155097,7 @@
           "target_multiplier": 2,
           "training_mode": false,
           "goal_priority_bias": 0,
+          "overcraft_ambition": true,
           "target_completion": 172,
           "target_perfection": 119,
           "pills_per_round": 3

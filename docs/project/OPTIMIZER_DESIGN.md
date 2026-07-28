@@ -109,8 +109,29 @@ Characteristics:
                           + BALANCE_WEIGHT   * weightedMarginAverage
                           + BONUS_ROLL_WEIGHT* bonusCreditWhenOneBandShort
                           + IN_TIER_PROGRESS_WEIGHT * residualShortfall )
-   + EXTRA_BAND_WEIGHT * conjunctiveExtraBands * baseTargetMagnitude
+   + ( EXTRA_BAND_WEIGHT            * extraPerfectionBands
+     + COMPLETION_EXTRA_BAND_WEIGHT * extraCompletionBands ) * baseTargetMagnitude
    ```
+
+   The extras term counts each bar's banked bands past the target tier
+   **unilaterally** (`computeOvercraftExtras` in `outcome.ts`), because the
+   runtime pays them independently: every extra perfection band scales the
+   result (`stacks * (1 + (bands - baseline) * 0.2)`, plus +1 harmony-augment
+   quality on the sublime path), and every extra completion band grows the
+   material refund (20% of recipe cost each, capped at 80%, so only the first
+   five bands pay and only on sublime-capable crafts). Evidence:
+   `docs/project/RUNTIME_EVIDENCE.md` section 12. The pre-6.2 behavior counted
+   extras conjunctively (`min` of the two bars), which plateaued at the target
+   tier: one-sided perfection pushes earned nothing. Extras are gated on the
+   target tier being secured (both margins `>= 1`), so they can never raise
+   the effective tier or trade off the binding bar, and they bank **guaranteed
+   bands only** in both live and terminal scoring — fractional bonus-roll EV
+   let band-fraction noise at the horizon override real strategy (buff setup
+   vs immediate progress) and is kept only as an analysis mode. The soft
+   overshoot penalty stays active in both modes: it is the only ranking
+   signal between two overshooting live lines. This is the
+   `overcraftAmbition` search setting below; when off, the legacy conjunctive
+   `min` term runs bit-identically.
 
 2. **Buff valuation** — expected future return while the target tier is unmet.
 3. **Resource value** — qi and stability as future turns of progress; tiny tie-breakers only once goals are met.
@@ -171,6 +192,13 @@ Because lookahead is bounded by wall clock, node cap, beam width and iterative d
 - `searchMaxNodes` (`1,000-5,000,000`, default `1,000,000`)
 - `searchBeamWidth` (`3-20`, default `5`)
 - `searchGoalPriorityBias` (default `0`)
+- `overcraftAmbition` ("Push Extra Bands", default **on**)
+
+`overcraftAmbition` switches the extras term between the unilateral
+runtime-faithful model (on) and the legacy conjunctive `min` (off); see the
+scoring section. Replay snapshots capture it, so a snapshot replays under the
+ambition it was recorded with; pre-6.2 snapshots without the field replay with
+the new default (on).
 
 Sliders persist on commit, not per drag. They are coupled: over-raising one while starving the others reduces effective frontier quality, which is why presets exist. Beam stays narrow through mid-budget tiers because replay benchmarking showed a wide beam can strand the search on a shallow frontier.
 

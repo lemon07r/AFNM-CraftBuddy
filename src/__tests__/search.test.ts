@@ -2076,6 +2076,246 @@ describe('craft-end ladder modeling', () => {
   });
 });
 
+describe('overcraft extras scoring', () => {
+  // Deep-realm overcraft caps: 11 bands of width 100 per bar (runtime `nLa`),
+  // so both bars have headroom far past the 2-band sublime requirement.
+  const OVERCRAFT_CAP = bandThreshold(100, 11);
+  const TWO_BANDS = bandThreshold(100, 2); // 230
+  const THREE_BANDS = bandThreshold(100, 3); // 399
+  const FIVE_BANDS = bandThreshold(100, 5); // 902
+
+  function overcraftState(
+    completion: number,
+    perfection: number,
+    step: number = 10,
+  ): CraftingState {
+    return new CraftingState({
+      qi: 100,
+      stability: 40,
+      initialMaxStability: 60,
+      completion,
+      perfection,
+      step,
+    });
+  }
+
+  it('ranks a deep overcraft finish above a tier-only finish (terminal parity)', () => {
+    const shallowScore = scoreFinishedOutcome(
+      overcraftState(TWO_BANDS, TWO_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+    const deepScore = scoreFinishedOutcome(
+      overcraftState(TWO_BANDS, FIVE_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+
+    // 3 extra perfection bands must outrank the bare 2-band sublime finish.
+    expect(deepScore).toBeGreaterThan(shallowScore);
+  });
+
+  it('values extra perfection bands unilaterally once the tier is secured', () => {
+    const securedScore = scoreState(
+      overcraftState(TWO_BANDS, TWO_BANDS),
+      100,
+      100,
+      true,
+      2,
+      false,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+    // One extra perfection band, one extra step: the banded value must beat
+    // the step penalty, and the conjunctive extras must not zero it out just
+    // because completion stayed at 2 bands.
+    const overshotScore = scoreState(
+      overcraftState(TWO_BANDS, THREE_BANDS, 11),
+      100,
+      100,
+      true,
+      2,
+      false,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+
+    expect(overshotScore).toBeGreaterThan(securedScore);
+  });
+
+  it('keeps tier-only behavior when overcraft ambition is off', () => {
+    const securedScore = scoreState(
+      overcraftState(TWO_BANDS, TWO_BANDS),
+      100,
+      100,
+      true,
+      2,
+      false,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+      undefined,
+      undefined,
+      false,
+    );
+    const overshotScore = scoreState(
+      overcraftState(TWO_BANDS, THREE_BANDS, 11),
+      100,
+      100,
+      true,
+      2,
+      false,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+      undefined,
+      undefined,
+      false,
+    );
+
+    // No unilateral extras and the soft overshoot penalty still applies:
+    // pushing one bar past the tier alone must not pay.
+    expect(overshotScore).toBeLessThan(securedScore);
+  });
+
+  it('values extra completion bands below extra perfection bands (refund vs product)', () => {
+    const completionFinishScore = scoreFinishedOutcome(
+      overcraftState(FIVE_BANDS, TWO_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+    const perfectionFinishScore = scoreFinishedOutcome(
+      overcraftState(TWO_BANDS, FIVE_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+    const shallowScore = scoreFinishedOutcome(
+      overcraftState(TWO_BANDS, TWO_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+
+    // Both unilateral extras pay something past the tier...
+    expect(completionFinishScore).toBeGreaterThan(shallowScore);
+    // ...but material refunds (capped at 80% of inputs) are worth less per
+    // band than +20% of the product per band.
+    expect(perfectionFinishScore).toBeGreaterThan(completionFinishScore);
+  });
+
+  it('stops crediting completion extras past the 80% refund cap', () => {
+    const fiveBandScore = scoreFinishedOutcome(
+      overcraftState(FIVE_BANDS, TWO_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+    const sevenBandScore = scoreFinishedOutcome(
+      overcraftState(bandThreshold(100, 7), TWO_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+
+    // Refund is `(bands - 1) * 20` capped at 80%, so bands 6+ add nothing.
+    expect(sevenBandScore).toBeCloseTo(fiveBandScore, 5);
+  });
+
+  function createOvercraftRecommendationFixture(): {
+    config: OptimizerConfig;
+    state: CraftingState;
+  } {
+    const refine = createCustomSkill({
+      name: 'Deep Refine',
+      key: 'deep_refine',
+      type: 'refine',
+      stabilityCost: 10,
+      basePerfectionGain: 500,
+      scalesWithControl: false,
+    });
+    const wait = createCustomSkill({
+      name: 'Wait',
+      key: 'wait',
+      type: 'support',
+      stabilityCost: 10,
+    });
+    return {
+      config: createTestConfig({
+        minStability: 0,
+        isSublimeCraft: true,
+        maxCompletion: OVERCRAFT_CAP,
+        maxPerfection: OVERCRAFT_CAP,
+        skills: [refine, wait],
+      }),
+      // The tier is banked and the craft is near its stability end, so the
+      // recommendation is priced by the terminal finish: this is the reported
+      // "stops at ~2 bands although 1100% is achievable" scenario.
+      state: new CraftingState({
+        qi: 100,
+        stability: 40,
+        initialMaxStability: 60,
+        completion: TWO_BANDS,
+        perfection: TWO_BANDS,
+        step: 10,
+      }),
+    };
+  }
+
+  it('recommends pushing extra perfection bands while headroom remains', () => {
+    const { config, state } = createOvercraftRecommendationFixture();
+
+    const result = findBestSkill(state, config, 100, 100, false, 4);
+
+    expect(result.recommendation?.skill.key).toBe('deep_refine');
+  });
+
+  it('pays strictly more for the deep line than the tier-only line, only with ambition on', () => {
+    const { config, state } = createOvercraftRecommendationFixture();
+
+    const ambitionOn = findBestSkill(state, config, 100, 100, false, 4);
+    const ambitionOff = findBestSkill(
+      state,
+      config,
+      100,
+      100,
+      false,
+      4,
+      undefined,
+      [],
+      { overcraftAmbition: false },
+    );
+
+    // Tier-only scoring must not bank the extra bands the deep line reaches.
+    expect(ambitionOn.recommendation?.skill.key).toBe('deep_refine');
+    expect(ambitionOn.recommendation?.score ?? 0).toBeGreaterThan(
+      (ambitionOff.recommendation?.score ?? 0) + 100,
+    );
+  });
+});
+
 describe('findBestSkill', () => {
   const config = createTestConfig();
 
@@ -3968,7 +4208,7 @@ describe('scoreState (isolated)', () => {
     );
   });
 
-  it('should penalize overshoot beyond targets', () => {
+  it('should price overshoot beyond targets according to overcraft ambition', () => {
     const exact = new CraftingState({
       qi: 100,
       stability: 50,
@@ -3976,15 +4216,62 @@ describe('scoreState (isolated)', () => {
       completion: 100,
       perfection: 100,
     });
-    const over = new CraftingState({
+    // Sub-band overshoot banks nothing guaranteed: it stays soft-penalized
+    // below the exact state in both modes (dead weight, anti-waste pressure).
+    const halfBand = new CraftingState({
       qi: 100,
       stability: 50,
       initialMaxStability: 60,
       completion: 150,
       perfection: 150,
     });
-    expect(scoreState(exact, 100, 100)).toBeGreaterThan(
-      scoreState(over, 100, 100),
+    expect(scoreState(halfBand, 100, 100)).toBeLessThan(
+      scoreState(exact, 100, 100),
+    );
+    // A fully banked extra perfection band (230 = 2 bands at target 100) on
+    // ONE bar is unilateral value — the game scales result stacks per band —
+    // so with ambition on the overshot state must outrank the exact one.
+    const over = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 230,
+    });
+    expect(scoreState(over, 100, 100)).toBeGreaterThan(
+      scoreState(exact, 100, 100),
+    );
+    // Ambition off keeps the legacy conjunctive behavior: a one-sided extra
+    // band earns nothing (extras require both bars) and the overshoot is
+    // soft-penalized, so the exact state wins.
+    expect(
+      scoreState(
+        exact,
+        100,
+        100,
+        false,
+        2,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false,
+      ),
+    ).toBeGreaterThan(
+      scoreState(
+        over,
+        100,
+        100,
+        false,
+        2,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false,
+      ),
     );
   });
 

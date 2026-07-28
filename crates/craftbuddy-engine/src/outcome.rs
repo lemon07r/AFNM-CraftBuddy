@@ -69,6 +69,12 @@ pub struct OutcomeBands {
     pub can_overcraft: bool,
     pub has_sublime_outcome: bool,
     pub target_tier: OutcomeTier,
+    /// Band count at the game's completion cap, set only when the cap came
+    /// from the game (not reconstructed from the tier requirement). Bounds
+    /// overcraft extras; `None` means "no known cap", i.e. uncapped.
+    pub completion_cap_band_count: Option<i32>,
+    /// As `completion_cap_band_count`, for perfection.
+    pub perfection_cap_band_count: Option<i32>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -144,6 +150,103 @@ pub fn build_outcome_bands(
             .unwrap_or(false),
         has_sublime_outcome,
         target_tier,
+        completion_cap_band_count: match completion_cap {
+            Some(cap) if completion_target > 0.0 => {
+                Some(get_bonus_and_chance(cap, completion_target).guaranteed)
+            }
+            _ => None,
+        },
+        perfection_cap_band_count: match perfection_cap {
+            Some(cap) if perfection_target > 0.0 => {
+                Some(get_bonus_and_chance(cap, perfection_target).guaranteed)
+            }
+            _ => None,
+        },
+    }
+}
+
+/// The game caps the material refund at 80% of the recipe cost
+/// (`(completionBands - 1) * 20`, clamped to `[0, 80]` — RUNTIME_EVIDENCE
+/// section 12.3), so the fifth band is the last one that pays.
+pub const OVERCRAFT_REFUND_MAX_BANDS: i32 = 5;
+
+/// Extra bands past the target tier that the game still pays for, per bar.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OvercraftExtras {
+    /// Value-adding completion bands past the target tier's requirement. The
+    /// material refund caps at 80%, so this never exceeds the refund band cap,
+    /// and only sublime-capable crafts refund at all.
+    pub completion_bands: f64,
+    /// Value-adding perfection bands past the target tier's requirement. The
+    /// stacks/quality reward scales per band with no cap of its own, so this
+    /// is bounded only by the game's perfection cap when one is known.
+    pub perfection_bands: f64,
+}
+
+/// Count the extra bands the game rewards *unilaterally* once the target tier
+/// is secured (RUNTIME_EVIDENCE section 12): each extra perfection band scales
+/// the result (`stacks * (1 + (bands - baseline) * 0.2)` or +1 harmony-augment
+/// quality on the sublime result), and each extra completion band grows the
+/// material refund, independently of the other bar.
+///
+/// Returns zero on both bars while the tier is not secured, so extras can
+/// never raise the effective tier or trade off the binding bar.
+///
+/// Both live and terminal scoring bank guaranteed bands only (`fractional:
+/// false`), so horizon leaves and finished states price overshoot identically.
+/// The fractional mode (adds each bar's bonus-roll chance as a fraction of the
+/// next band) is kept for parity with `computeOvercraftExtras` in
+/// `outcome.ts`; it proved too noisy for search.
+pub fn compute_overcraft_extras(
+    outcome: &OutcomeClassification,
+    bands: &OutcomeBands,
+    fractional: bool,
+) -> OvercraftExtras {
+    if outcome.completion_margin < 1.0 || outcome.perfection_margin < 1.0 {
+        return OvercraftExtras::default();
+    }
+    let requirement = tier_requirement(bands.target_tier);
+    let completion_required = if bands.completion_target > 0.0 {
+        requirement.completion
+    } else {
+        0
+    };
+    let perfection_required = if bands.perfection_target > 0.0 {
+        requirement.perfection
+    } else {
+        0
+    };
+
+    let completion_count = outcome.completion_bands as f64
+        + if fractional {
+            outcome.completion_bonus_chance.max(0.0)
+        } else {
+            0.0
+        };
+    let perfection_count = outcome.perfection_bands as f64
+        + if fractional {
+            outcome.perfection_bonus_chance.max(0.0)
+        } else {
+            0.0
+        };
+
+    let completion_ceiling = bands
+        .completion_cap_band_count
+        .unwrap_or(i32::MAX)
+        .min(if bands.has_sublime_outcome {
+            OVERCRAFT_REFUND_MAX_BANDS
+        } else {
+            completion_required
+        });
+    let perfection_ceiling = bands.perfection_cap_band_count.unwrap_or(i32::MAX);
+
+    OvercraftExtras {
+        completion_bands: (completion_count.min(completion_ceiling as f64)
+            - completion_required as f64)
+            .max(0.0),
+        perfection_bands: (perfection_count.min(perfection_ceiling as f64)
+            - perfection_required as f64)
+            .max(0.0),
     }
 }
 

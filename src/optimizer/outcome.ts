@@ -100,6 +100,14 @@ export interface OutcomeBands {
   readonly hasSublimeOutcome: boolean;
   /** Best tier this craft can reach - the tier the search should aim at. */
   readonly targetTier: OutcomeTier;
+  /**
+   * Band count at the game's completion cap, set only when the cap came from
+   * the game (not reconstructed from the tier requirement). Bounds overcraft
+   * extras; undefined means "no known cap", i.e. uncapped.
+   */
+  readonly completionCapBandCount?: number;
+  /** As `completionCapBandCount`, for perfection. */
+  readonly perfectionCapBandCount?: number;
 }
 
 export interface OutcomeClassification {
@@ -217,6 +225,14 @@ export function buildOutcomeBands(params: OutcomeBandParams): OutcomeBands {
       completionCap !== undefined && completionCap > derivedCompletionFlat,
     hasSublimeOutcome,
     targetTier,
+    completionCapBandCount:
+      completionCap !== undefined && completionCap > 0 && completionTarget > 0
+        ? getBonusAndChance(completionCap, completionTarget).guaranteed
+        : undefined,
+    perfectionCapBandCount:
+      perfectionCap !== undefined && perfectionCap > 0 && perfectionTarget > 0
+        ? getBonusAndChance(perfectionCap, perfectionTarget).guaranteed
+        : undefined,
   };
 }
 
@@ -416,4 +432,89 @@ export function willAutoFinish(
     }
   }
   return false;
+}
+
+/**
+ * Last completion band that still increases the material refund.
+ *
+ * Runtime: refund percentage is `(completionSuccess - 1) * 20` clamped to
+ * `[0, 80]` (`docs/project/RUNTIME_EVIDENCE.md` section 12.3), so the fifth
+ * band is the last one that pays.
+ */
+export const OVERCRAFT_REFUND_MAX_BANDS = 5;
+
+/** Extra bands past the target tier that the game still pays for, per bar. */
+export interface OvercraftExtras {
+  /**
+   * Value-adding completion bands past the target tier's requirement. The
+   * material refund caps at 80%, so this never exceeds the refund band cap,
+   * and only sublime-capable crafts refund at all.
+   */
+  readonly completionBands: number;
+  /**
+   * Value-adding perfection bands past the target tier's requirement. The
+   * stacks/quality reward scales per band with no cap of its own, so this is
+   * bounded only by the game's perfection cap when one is known.
+   */
+  readonly perfectionBands: number;
+}
+
+/**
+ * Count the extra bands the game rewards *unilaterally* once the target tier
+ * is secured (RUNTIME_EVIDENCE section 12): each extra perfection band scales
+ * the result (`stacks * (1 + (bands - baseline) * 0.2)` or +1 harmony-augment
+ * quality on the sublime result), and each extra completion band grows the
+ * material refund, independently of the other bar.
+ *
+ * Returns zero on both bars while the tier is not secured, so extras can never
+ * raise the effective tier or trade off the binding bar.
+ *
+ * Both live and terminal scoring bank guaranteed bands only (`fractional:
+ * false`), so horizon leaves and finished states price overshoot identically.
+ * The fractional mode (adds each bar's bonus-roll chance as a fraction of the
+ * next band, i.e. the runtime's expected band count) is kept for analysis
+ * tooling; it proved too noisy for search, where band-fraction artifacts
+ * overrode real strategy.
+ */
+export function computeOvercraftExtras(
+  outcome: OutcomeClassification,
+  bands: OutcomeBands,
+  options: { readonly fractional: boolean },
+): OvercraftExtras {
+  const zero: OvercraftExtras = { completionBands: 0, perfectionBands: 0 };
+  if (outcome.completionMargin < 1 || outcome.perfectionMargin < 1) {
+    return zero;
+  }
+  const requirement = TIER_REQUIREMENTS[bands.targetTier];
+  const completionRequired =
+    bands.completionTarget > 0 ? requirement.completion : 0;
+  const perfectionRequired =
+    bands.perfectionTarget > 0 ? requirement.perfection : 0;
+
+  const completionCount =
+    outcome.completionBands +
+    (options.fractional ? Math.max(0, outcome.completionBonusChance) : 0);
+  const perfectionCount =
+    outcome.perfectionBands +
+    (options.fractional ? Math.max(0, outcome.perfectionBonusChance) : 0);
+
+  const completionCeiling = Math.min(
+    bands.completionCapBandCount ?? Number.POSITIVE_INFINITY,
+    bands.hasSublimeOutcome
+      ? OVERCRAFT_REFUND_MAX_BANDS
+      : completionRequired,
+  );
+  const perfectionCeiling =
+    bands.perfectionCapBandCount ?? Number.POSITIVE_INFINITY;
+
+  return {
+    completionBands: Math.max(
+      0,
+      Math.min(completionCount, completionCeiling) - completionRequired,
+    ),
+    perfectionBands: Math.max(
+      0,
+      Math.min(perfectionCount, perfectionCeiling) - perfectionRequired,
+    ),
+  };
 }

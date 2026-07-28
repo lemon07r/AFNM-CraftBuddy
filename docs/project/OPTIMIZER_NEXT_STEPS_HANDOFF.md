@@ -4,7 +4,7 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+last_verified: 2026-07-28
 source_of_truth: src/optimizer/*, crates/craftbuddy-engine/*, src/__tests__/*, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 30
 related_files:
@@ -36,6 +36,7 @@ Baseline for the next agent working on recommendation accuracy or speed, current
 | Packed numeric transposition key | Measured at 1.0-1.4% of the budget. Dropped. |
 | Expected progress is `p * min(gain, headroom)` | Runtime-verified: the completion/perfection appliers run only in the success branch, so the headroom clamp must sit **inside** the success weighting. Clamping first credits an overshooting technique with its whole headroom and hides its failure risk. |
 | MCTS iterations stay at `250`, beam stays at `5` | Both measured; more of either costs more frontier than it buys. |
+| Overcraft extras are unilateral, guaranteed-band-only, and gated on the secured tier | Runtime-verified (RUNTIME_EVIDENCE §12): the game pays each bar's extra bands independently. Conjunctive `min` extras were the 297%-vs-1100% plateau. Fractional bonus-roll EV in search was measured to flip buff-setup lines on band-fraction noise, so extras bank guaranteed bands only; the soft overshoot penalty stays on in both modes because it is the only ranking signal between two overshooting live lines. |
 
 ## Genuinely open
 

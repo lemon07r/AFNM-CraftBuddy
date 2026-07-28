@@ -781,6 +781,7 @@ function buildOptimizerReplayInputSnapshot(params: {
       maxNodes: params.searchConfig.maxNodes,
       beamWidth: params.searchConfig.beamWidth,
       goalPriorityBias: params.searchConfig.goalPriorityBias,
+      overcraftAmbition: params.searchConfig.overcraftAmbition,
       useMonteCarloTreeSearch: params.searchConfig.useMonteCarloTreeSearch,
     },
     settings: {
@@ -789,6 +790,7 @@ function buildOptimizerReplayInputSnapshot(params: {
       searchMaxNodes: currentSettings.searchMaxNodes,
       searchBeamWidth: currentSettings.searchBeamWidth,
       searchGoalPriorityBias: currentSettings.searchGoalPriorityBias,
+      overcraftAmbition: currentSettings.overcraftAmbition,
       optimizerEngine: currentSettings.optimizerEngine,
       compactMode: currentSettings.compactMode,
       panelVisible: currentSettings.panelVisible,

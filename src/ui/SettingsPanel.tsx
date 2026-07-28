@@ -177,6 +177,13 @@ const SEARCH_GOAL_PRIORITY_HELP: SettingHelpContent = {
   note: 'Negative values favor perfection, positive values favor completion, and 0 keeps the default balanced policy.',
 };
 
+const OVERCRAFT_AMBITION_HELP: SettingHelpContent = {
+  title: 'Push Extra Bands',
+  description:
+    'Lets the optimizer keep crafting past the target tier for extra completion and perfection bands, matching the game rewards: more result stacks or quality per extra perfection band and material refunds per extra completion band.',
+  note: 'On by default. Turn off to stop at the target tier as soon as it is secured.',
+};
+
 const SEARCH_GOAL_PRIORITY_MARKS = [
   { value: SEARCH_GOAL_PRIORITY_BIAS_MIN, label: 'Perfection' },
   { value: 0, label: 'Balanced' },
@@ -549,6 +556,7 @@ export const SettingsPanel = memo(function SettingsPanel({
     | 'searchMaxNodes'
     | 'searchBeamWidth'
     | 'searchGoalPriorityBias'
+    | 'overcraftAmbition'
     | 'optimizerEngine';
 
   const applySettingsPatch = useCallback(
@@ -584,8 +592,18 @@ export const SettingsPanel = memo(function SettingsPanel({
     'searchMaxNodes',
     'searchBeamWidth',
     'searchGoalPriorityBias',
+    'overcraftAmbition',
     'optimizerEngine',
   ];
+
+  const handleOvercraftAmbitionChange = useCallback(
+    (value: boolean) => {
+      if (settings.overcraftAmbition === value) return;
+      const newSettings = applySettingsPatch({ overcraftAmbition: value });
+      onSearchSettingsChange?.(newSettings);
+    },
+    [settings.overcraftAmbition, applySettingsPatch, onSearchSettingsChange],
+  );
 
   const handleSliderCommit = useCallback(
     <K extends SliderSettingKey>(key: K, value: number) => {
@@ -1220,6 +1238,13 @@ export const SettingsPanel = memo(function SettingsPanel({
                       onCommit={(v) =>
                         handleSliderCommit('searchGoalPriorityBias', v)
                       }
+                    />
+
+                    <ToggleSetting
+                      label="Push Extra Bands"
+                      checked={settings.overcraftAmbition}
+                      tooltip={OVERCRAFT_AMBITION_HELP}
+                      onChange={handleOvercraftAmbitionChange}
                     />
                   </Box>
                 </SettingsGroup>

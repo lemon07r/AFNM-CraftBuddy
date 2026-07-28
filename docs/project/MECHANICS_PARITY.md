@@ -110,6 +110,7 @@ Outcome layer (`src/optimizer/outcome.ts`):
 - `TIER_REQUIREMENTS`: `basic` = 1 completion band; `perfect` = 1 + 1; `sublime` = **2 + 2**, and only when the recipe has a distinct sublime item
 - fractional bonus-roll chance carried separately from guaranteed bands, so a near-miss is never reported as banked
 - `willAutoFinish` mirroring the runtime predicate, including the overcraft branch at `>= 5` guaranteed completion bands
+- unilateral overcraft reward scaling (`computeOvercraftExtras`): each extra perfection band scales result stacks by `1 + (bands - baseline) * 0.2` (baseline 1 perfect / 2 sublime, plus +1 harmony-augment quality on the sublime path), each extra completion band refunds 20% of recipe cost capped at 80% (five bands, sublime-capable crafts only), all gated on the target tier being secured — `docs/project/RUNTIME_EVIDENCE.md` section 12
 
 Search layer (`src/optimizer/search.ts`): see `docs/project/OPTIMIZER_DESIGN.md`.
 
@@ -142,6 +143,7 @@ Each was verified against the installed bundle before the fix and has a regressi
 | `cloneHarmonyData` in `src/modContent/harmonyState.ts` silently dropped `enhancingEcho` and `eccentricDecree` during hydration, so the simulator restarted those two state machines from scratch on **every poll** — losing attunement, the focused bar and the last-seen bar values | fixed in 6.1.0: both are now cloned and preserved. This entry previously claimed the fix had landed in 6.0.0; it had not, and the omission dated back to the 0.7.5 harmony rework that introduced the two subsystems |
 | Rust rejected the whole `MctsInput` when any field arrived as an explicit `null`, silently disabling the native prior on real game data | deep `stripNullish` at the bridge plus a `null_default` serde helper |
 | The Rust recommendation was not deterministic (hash-ordered condition merge) | insertion-ordered merge mirroring `normalizeConditionDistribution` |
+| Overcraft scoring plateaued at the target tier: extras were counted conjunctively (`min` of both bars), so a one-sided perfection push to the game caps earned nothing and the optimizer stopped at ~297% on a craft the game pays out to 1100% | unilateral per-bar extras gated on the secured tier (`overcraftAmbition`, default on), with the refund's 80% cap and the game caps as ceilings, mirrored in Rust |
 
 ## Cross-engine parity
 

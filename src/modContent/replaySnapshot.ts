@@ -14,6 +14,7 @@ export interface OptimizerReplaySearchConfigSnapshot extends Pick<
   | 'maxNodes'
   | 'beamWidth'
   | 'goalPriorityBias'
+  | 'overcraftAmbition'
   | 'useMonteCarloTreeSearch'
 > {}
 
@@ -42,6 +43,7 @@ export interface OptimizerReplayInputSnapshot {
     searchMaxNodes: number;
     searchBeamWidth: number;
     searchGoalPriorityBias: number;
+    overcraftAmbition?: boolean;
     optimizerEngine?: string;
     compactMode: boolean;
     panelVisible: boolean;

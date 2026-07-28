@@ -9,9 +9,11 @@
 
 import {
   BAND_GROWTH_RATIO,
+  OVERCRAFT_REFUND_MAX_BANDS,
   TIER_REQUIREMENTS,
   bandThreshold,
   classifyOutcome,
+  computeOvercraftExtras,
   deriveOutcomeBands,
   tierForBands,
   tierRank,
@@ -284,5 +286,103 @@ describe('willAutoFinish', () => {
         bands,
       ).willAutoFinish,
     ).toBe(true);
+  });
+});
+
+describe('computeOvercraftExtras', () => {
+  // Deep overcraft caps: 11 bands of width 100 per bar.
+  const overcraftBands = deriveOutcomeBands({
+    ...sublimeConfig,
+    maxCompletion: bandThreshold(100, 11),
+    maxPerfection: bandThreshold(100, 11),
+  });
+
+  it('returns zero while the target tier is not secured', () => {
+    // 5 perfection bands but completion one band short of the 2-band gate.
+    const outcome = classifyOutcome(
+      { completion: 230 - 1, perfection: 902, stability: 50 },
+      overcraftBands,
+    );
+    expect(computeOvercraftExtras(outcome, overcraftBands, {
+      fractional: true,
+    })).toEqual({ completionBands: 0, perfectionBands: 0 });
+  });
+
+  it('counts extra bands unilaterally once the tier is secured', () => {
+    const outcome = classifyOutcome(
+      { completion: 230, perfection: 902, stability: 50 },
+      overcraftBands,
+    );
+    const extras = computeOvercraftExtras(outcome, overcraftBands, {
+      fractional: false,
+    });
+    expect(extras.perfectionBands).toBe(3); // 5 guaranteed - 2 required
+    expect(extras.completionBands).toBe(0);
+  });
+
+  it('adds the bonus-roll fraction for live (fractional) scoring only', () => {
+    // 230 + 65 into the third band (width 169): guaranteed 2, bonusChance 65/169.
+    const outcome = classifyOutcome(
+      { completion: 230, perfection: 230 + 65, stability: 50 },
+      overcraftBands,
+    );
+    expect(outcome.perfectionBonusChance).toBeCloseTo(65 / 169, 5);
+    expect(
+      computeOvercraftExtras(outcome, overcraftBands, { fractional: true })
+        .perfectionBands,
+    ).toBeCloseTo(65 / 169, 5);
+    expect(
+      computeOvercraftExtras(outcome, overcraftBands, { fractional: false })
+        .perfectionBands,
+    ).toBe(0);
+  });
+
+  it('caps completion extras at the 80% refund ceiling', () => {
+    const outcome = classifyOutcome(
+      { completion: bandThreshold(100, 8), perfection: 230, stability: 50 },
+      overcraftBands,
+    );
+    expect(outcome.completionBands).toBe(8);
+    const extras = computeOvercraftExtras(outcome, overcraftBands, {
+      fractional: false,
+    });
+    // Refund pays (bands - 1) * 20% capped at 80%: only 3 of the 6 extras pay.
+    expect(extras.completionBands).toBe(OVERCRAFT_REFUND_MAX_BANDS - 2);
+  });
+
+  it('pays no completion extras for non-sublime crafts (no refund exists)', () => {
+    const perfectBands = deriveOutcomeBands({
+      ...normalConfig,
+      maxCompletion: bandThreshold(100, 11),
+      maxPerfection: bandThreshold(100, 11),
+    });
+    const outcome = classifyOutcome(
+      { completion: 902, perfection: 902, stability: 50 },
+      perfectBands,
+    );
+    const extras = computeOvercraftExtras(outcome, perfectBands, {
+      fractional: false,
+    });
+    expect(extras.completionBands).toBe(0);
+    // Perfect results still scale stacks per extra perfection band.
+    expect(extras.perfectionBands).toBe(4); // 5 guaranteed - 1 required
+  });
+
+  it('bounds perfection extras at the game cap band count', () => {
+    const shallowCapBands = deriveOutcomeBands({
+      ...sublimeConfig,
+      maxCompletion: bandThreshold(100, 4),
+      maxPerfection: bandThreshold(100, 4),
+    });
+    // Bars cannot exceed the cap, but a stale/extracted state may claim more;
+    // credit is bounded at the cap's band count regardless.
+    const outcome = classifyOutcome(
+      { completion: 230, perfection: bandThreshold(100, 6), stability: 50 },
+      shallowCapBands,
+    );
+    const extras = computeOvercraftExtras(outcome, shallowCapBands, {
+      fractional: false,
+    });
+    expect(extras.perfectionBands).toBe(4 - 2);
   });
 });

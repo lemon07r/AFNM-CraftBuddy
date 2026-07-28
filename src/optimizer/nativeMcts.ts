@@ -125,6 +125,12 @@ interface NativeMctsConfig {
   training_mode: boolean;
   goal_priority_bias: number;
   /**
+   * Unilateral overcraft extras scoring (RUNTIME_EVIDENCE section 12).
+   * Mirrors `SearchConfig.overcraftAmbition`; defaults on in the engine when
+   * the bridge omits it.
+   */
+  overcraft_ambition?: boolean;
+  /**
    * Config-level targets. Distinct from the input-level `target_completion` /
    * `target_perfection`: the config pair seeds the `maxcompletion` /
    * `maxperfection` scaling variables, while the input pair drives the
@@ -599,6 +605,7 @@ export function buildNativeMctsInput(params: {
   currentConditionType?: string;
   forecastedConditionTypes?: string[];
   goalPriorityBias?: number;
+  overcraftAmbition?: boolean;
   search?: NativeMctsSearchOptions;
 }): NativeMctsInput {
   const {
@@ -609,6 +616,7 @@ export function buildNativeMctsInput(params: {
     currentConditionType,
     forecastedConditionTypes = [],
     goalPriorityBias = 0,
+    overcraftAmbition = true,
     search = {},
   } = params;
   // Item (pill/reagent) actions are part of the searchable action space: the
@@ -668,6 +676,7 @@ export function buildNativeMctsInput(params: {
       target_multiplier: finiteNumber(config.targetMultiplier, 2),
       training_mode: config.trainingMode === true,
       goal_priority_bias: finiteNumber(goalPriorityBias),
+      overcraft_ambition: overcraftAmbition,
       target_completion: finiteNumber(config.targetCompletion),
       target_perfection: finiteNumber(config.targetPerfection),
       pills_per_round: Math.max(
@@ -801,6 +810,7 @@ export function getNativeMctsPolicy(params: {
   currentConditionType?: string;
   forecastedConditionTypes?: string[];
   goalPriorityBias?: number;
+  overcraftAmbition?: boolean;
   search?: NativeMctsSearchOptions;
 }): NativeMctsPolicy | null {
   const nativeModule = loadNativeMctsModule();

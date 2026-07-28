@@ -46,6 +46,12 @@ export interface CraftBuddySettings {
    * -100 = perfection priority, 0 = balanced, 100 = completion priority.
    */
   searchGoalPriorityBias: number;
+  /**
+   * Overcraft ambition. When true (default), extra bands past the target tier
+   * earn value up to the game's caps ("push extra bands"); when false, the
+   * optimizer stops at the tier, matching the pre-6.2 behavior.
+   */
+  overcraftAmbition: boolean;
   /** Optimizer engine mode. Legacy is the default; experimental enables native MCTS policy guidance. */
   optimizerEngine: OptimizerEngine;
   /** Preferred policy for per-craft automatic execution mode. */
@@ -187,10 +193,12 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   | 'searchMaxNodes'
   | 'searchBeamWidth'
   | 'searchGoalPriorityBias'
+  | 'overcraftAmbition'
   | 'optimizerEngine'
 > = {
   ...LEGACY_SEARCH_PRESET_BUDGETS.fast,
   searchGoalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
+  overcraftAmbition: true,
   optimizerEngine: DEFAULT_OPTIMIZER_ENGINE,
 };
 
@@ -278,6 +286,10 @@ function normalizeSettings(
       DEFAULT_SETTINGS.searchBeamWidth,
     ),
     searchGoalPriorityBias,
+    overcraftAmbition:
+      typeof settings.overcraftAmbition === 'boolean'
+        ? settings.overcraftAmbition
+        : DEFAULT_SETTINGS.overcraftAmbition,
     optimizerEngine:
       settings.optimizerEngine === 'experimental'
         ? 'experimental'
@@ -468,6 +480,7 @@ export function getSearchConfig(): {
   maxNodes: number;
   beamWidth: number;
   goalPriorityBias: number;
+  overcraftAmbition: boolean;
   useMonteCarloTreeSearch: boolean;
   mctsIterations?: number;
   mctsRolloutDepth?: number;
@@ -494,6 +507,7 @@ export function getSearchConfig(): {
     maxNodes: currentSettings.searchMaxNodes,
     beamWidth: currentSettings.searchBeamWidth,
     goalPriorityBias: currentSettings.searchGoalPriorityBias,
+    overcraftAmbition: currentSettings.overcraftAmbition,
     useMonteCarloTreeSearch,
     ...mctsConfig,
   };

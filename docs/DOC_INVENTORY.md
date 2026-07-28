@@ -3,7 +3,7 @@ title: Documentation Inventory
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-27
+last_verified: 2026-07-28
 source_of_truth: repository markdown file inventory
 review_cycle_days: 30
 related_files:
@@ -12,7 +12,7 @@ related_files:
 
 # Documentation Inventory
 
-Generated on: 2026-07-27
+Generated on: 2026-07-28
 
 ## Summary
 
@@ -23,8 +23,8 @@ Generated on: 2026-07-27
 | project-meta | 1 |
 | history | 0 |
 | reference | 20 |
-| root-or-other | 14 |
-| total | 54 |
+| root-or-other | 15 |
+| total | 55 |
 
 ## Authoritative Docs
 
@@ -73,6 +73,7 @@ Generated on: 2026-07-27
 | `docs/plans/mcts-wasm/07-PROJECT-SETUP.md` | - | - | - | review |
 | `docs/plans/mcts-wasm/08-AGENT-WORKFLOW.md` | - | - | - | review |
 | `GEMINI.md` | - | - | - | review |
+| `PROJECT_UPGRADE_BRIEF.md` | - | - | - | review |
 | `README.md` | - | - | - | keep-authoritative-root |
 
 ## Reference Corpus Summary
