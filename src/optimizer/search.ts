@@ -216,6 +216,8 @@ export interface SearchResult {
     /** Cache-miss frontier nodes that were actually expanded. */
     nodesExplored: number;
     cacheHits: number;
+    /** Hits served from the shared cross-step table (completed passes from earlier steps of this craft scope). */
+    crossStepHits?: number;
     timeTakenMs: number;
     /** Deepest fully completed frontier kept for the returned result set. */
     depthReached: number;
@@ -306,6 +308,13 @@ export interface SearchConfig {
    * legacy conjunctive extras term.
    */
   overcraftAmbition?: boolean;
+  /**
+   * Shared transposition table carried across the steps of a craft (see
+   * `CrossStepSearchCache`). Entries are keyed by state/depth/condition and
+   * assume the caller drops the table whenever the craft or any scoring input
+   * changes. When omitted the search uses a fresh per-call table.
+   */
+  transpositionCache?: TranspositionCache;
 }
 
 /** Game UI + runtime always expose 3 future conditions. */
@@ -2800,12 +2809,10 @@ function hasGuaranteedSafeStabilizeAction(
   });
 }
 
-interface TranspositionCacheEntry {
-  score: number;
-  bestMove: string;
-}
-
-type TranspositionCache = Map<string, TranspositionCacheEntry>;
+// Structural aliases for the shared types; `CrossStepSearchCache` in
+// crossStepCache.ts hands one table across the steps of a craft.
+type TranspositionCacheEntry = import('./crossStepCache').TranspositionCacheEntry;
+type TranspositionCache = import('./crossStepCache').TranspositionCache;
 
 function computeScoreTieWindow(totalTargetMagnitude: number): number {
   // Treat sub-resource-tiebreak differences as effectively equal so tiny
@@ -4091,8 +4098,52 @@ function runLookaheadSearch(
     }
     return Math.max(continuationScore, finishCandidate.orderingScore);
   };
+  // The working table is always per call. A caller-supplied cross-step table
+  // acts as a second level underneath it: it only ever holds completed-pass
+  // content merged in at the end of earlier searches (see the merge after the
+  // deepening loop), so probing it can never read this call's partial
+  // frontier — the same discipline the acceptedCache snapshot enforces within
+  // one call.
+  const crossStepTable = cfg.transpositionCache;
   let cache: TranspositionCache = new Map();
   let acceptedCache: TranspositionCache = new Map();
+
+  // Probe the cross-step table for a completed-pass entry from an earlier
+  // step of this craft scope. Used for budget-truncated frontier fallbacks
+  // and principal-variation move hints, never as a substitute for a
+  // completed pass at the requested depth. Note the cache key carries the
+  // realized condition-queue context (including stochastic tail draws), so
+  // cross-call equality is exact for unchanged-state redispatches and
+  // coincident contexts, and structurally rare for step-advanced states —
+  // relaxing that would mix scoring contexts that genuinely differ.
+  const probeCrossStepEntry = (
+    candidate: CraftingState,
+    conditionAtDepth: CraftingConditionType,
+    nextConditionQueueAtDepth: CraftingConditionType[],
+    maxRemainingDepth: number,
+  ): TranspositionCacheEntry | undefined => {
+    if (!crossStepTable) {
+      return undefined;
+    }
+    for (let probeDepth = maxRemainingDepth; probeDepth >= 1; probeDepth--) {
+      const probeEntry = crossStepTable.get(
+        getNormalizedCacheKey(
+          candidate,
+          effectiveCompGoal,
+          effectivePerfGoal,
+          probeDepth,
+          conditionAtDepth,
+          nextConditionQueueAtDepth,
+          cfg.progressBucketSize,
+        ),
+      );
+      if (probeEntry) {
+        metrics.crossStepHits = (metrics.crossStepHits ?? 0) + 1;
+        return probeEntry;
+      }
+    }
+    return undefined;
+  };
 
   const getDeepestCachedEntry = (
     cacheToProbe: TranspositionCache,
@@ -4140,15 +4191,29 @@ function runLookaheadSearch(
     nextConditionQueueAtDepth: CraftingConditionType[],
     remainingDepth: number,
   ): number => {
-    const cachedScore = getDeepestCachedEntry(
+    const accepted = getDeepestCachedEntry(
       acceptedCache,
       candidate,
       conditionAtDepth,
       nextConditionQueueAtDepth,
       Math.max(0, remainingDepth - 1),
     )?.score;
-    return typeof cachedScore === 'number' && Number.isFinite(cachedScore)
-      ? cachedScore
+    // A budget-truncated node wants the most informed answer available.
+    // Prefer this call's accepted frontier; when it has nothing, entries from
+    // earlier steps of this craft scope qualify even at deeper remaining
+    // depths, since a deeper completed pass knows strictly more about the
+    // same state.
+    if (typeof accepted === 'number' && Number.isFinite(accepted)) {
+      return accepted;
+    }
+    const crossStep = probeCrossStepEntry(
+      candidate,
+      conditionAtDepth,
+      nextConditionQueueAtDepth,
+      depth,
+    )?.score;
+    return typeof crossStep === 'number' && Number.isFinite(crossStep)
+      ? crossStep
       : scoreStateConsideringFinish(candidate, conditionAtDepth);
   };
 
@@ -4319,14 +4384,24 @@ function runLookaheadSearch(
 
     // Promote only previously accepted principal-variation moves. Using the
     // live in-progress cache here can let a partially explored sibling branch
-    // steer beam truncation for the current frontier.
-    const cachedBestMoveKey = getCachedBestMoveKey(
-      acceptedCache,
-      currentState,
-      currentConditionAtDepth,
-      nextConditionQueueAtDepth,
-      Math.max(0, remainingDepth - 1),
-    );
+    // steer beam truncation for the current frontier. The cross-step table
+    // qualifies the same way: it only holds completed passes from earlier
+    // steps of this craft scope.
+    const cachedBestMoveKey =
+      getCachedBestMoveKey(
+        acceptedCache,
+        currentState,
+        currentConditionAtDepth,
+        nextConditionQueueAtDepth,
+        Math.max(0, remainingDepth - 1),
+      ) ??
+      probeCrossStepEntry(
+        currentState,
+        currentConditionAtDepth,
+        nextConditionQueueAtDepth,
+        Math.max(0, remainingDepth - 1),
+        )?.bestMove ??
+      null;
     if (cachedBestMoveKey) {
       const cachedIndex = filteredCandidates.findIndex(
         (candidate) => candidate.skill.key === cachedBestMoveKey,
@@ -4487,9 +4562,20 @@ function runLookaheadSearch(
       nextConditionQueueAtDepth,
       cfg.progressBucketSize,
     );
-    if (cache.has(cacheKey)) {
+    const localHit = cache.get(cacheKey);
+    if (localHit) {
       metrics.cacheHits++;
-      return cache.get(cacheKey)!.score;
+      return localHit.score;
+    }
+    // Second level: completed-pass entries from earlier steps of this craft
+    // scope (unchanged-state repolls and cross-branch transpositions hit
+    // these). Copy through so this call's accepted snapshot carries them.
+    const crossStepHit = crossStepTable?.get(cacheKey);
+    if (crossStepHit) {
+      metrics.cacheHits++;
+      metrics.crossStepHits = (metrics.crossStepHits ?? 0) + 1;
+      cache.set(cacheKey, crossStepHit);
+      return crossStepHit.score;
     }
 
     if (!consumeNodeBudget()) {
@@ -4771,13 +4857,21 @@ function runLookaheadSearch(
       let chosenSkill: SkillDefinition | null = null;
       let chosenNextState: CraftingState | null = null;
 
-      const cachedBestMove = getCachedBestMoveKey(
-        acceptedCache,
-        currentState,
-        conditionAtDepth,
-        conditionQueueAtDepth,
-        remainingDepth,
-      );
+      const cachedBestMove =
+        getCachedBestMoveKey(
+          acceptedCache,
+          currentState,
+          conditionAtDepth,
+          conditionQueueAtDepth,
+          remainingDepth,
+        ) ??
+        probeCrossStepEntry(
+          currentState,
+          conditionAtDepth,
+          conditionQueueAtDepth,
+          remainingDepth,
+            )?.bestMove ??
+        null;
       if (cachedBestMove) {
         if (cachedBestMove === FINISH_CRAFT_KEY) {
           const finishAction = getFinishAction(currentState);
@@ -5009,13 +5103,21 @@ function runLookaheadSearch(
       conditionAtDepth,
     );
     const maxRemainingDepth = Math.max(0, depthToSearch - depthIndex);
-    const cachedBestMove = getCachedBestMoveKey(
-      acceptedCache,
-      stateAfterSkill,
-      conditionAtDepth,
-      nextConditionQueueAtDepth,
-      maxRemainingDepth,
-    );
+    const cachedBestMove =
+      getCachedBestMoveKey(
+        acceptedCache,
+        stateAfterSkill,
+        conditionAtDepth,
+        nextConditionQueueAtDepth,
+        maxRemainingDepth,
+      ) ??
+      probeCrossStepEntry(
+        stateAfterSkill,
+        conditionAtDepth,
+        nextConditionQueueAtDepth,
+        maxRemainingDepth,
+        )?.bestMove ??
+      null;
     if (cachedBestMove) {
       if (cachedBestMove === FINISH_CRAFT_KEY) {
         const finishAction = getFinishAction(stateAfterSkill);
@@ -5572,6 +5674,16 @@ function runLookaheadSearch(
 
   if (metrics.depthReached === 0) {
     metrics.depthReached = usedDepth;
+  }
+
+  // Publish this call's accepted (completed-pass) frontier into the
+  // cross-step table so the next step of this craft scope can reuse it.
+  // acceptedCache is empty when no pass completed, so truncated searches
+  // never publish partial frontiers.
+  if (crossStepTable && acceptedCache.size > 0) {
+    acceptedCache.forEach((entry, key) => {
+      crossStepTable.set(key, entry);
+    });
   }
 
   if (scoredSkills.length === 0) {

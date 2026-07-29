@@ -485,6 +485,7 @@ export function getSearchConfig(): {
   mctsIterations?: number;
   mctsRolloutDepth?: number;
   mctsMaxNodes?: number;
+  transpositionCache?: import('../optimizer/crossStepCache').TranspositionCache;
 } {
   const useMonteCarloTreeSearch =
     currentSettings.optimizerEngine === 'experimental';

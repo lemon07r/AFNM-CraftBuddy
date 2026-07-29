@@ -85,6 +85,40 @@ Measured on the resonance replay: `250` iterations ≈ `0.75 s`, `500` ≈ `1.45
 
 Replay sweeps repeatedly showed a wider beam reaching a shallower frontier and producing _worse_ recommendations, including forge turns that strand on a shallow terminal frontier and drift into heat overshoot. Beam stays at `5` through mid-budget presets.
 
+## Cross-step transposition reuse (Phase 2.1, 2026-07-28)
+
+`CrossStepSearchCache` hands one transposition table per craft scope across
+search calls (`modContent` builds the scope from targets/caps/stats/roster/
+settings; budget fields excluded; table dropped on scope change or beyond
+400k entries). The search keeps its working table per call and treats the
+shared table as a second level: exact-depth hits copy through, the
+budget-truncated frontier fallback and PV move promotion may consult it, and
+only completed passes merge back at search end, so a truncated search never
+publishes a partial frontier. Hits surface as `searchMetrics.crossStepHits`.
+
+Measured on the tutorial fixture (instrumented key dumps, then jest
+contracts in `search.test.ts`):
+
+- **Unchanged-state redispatch collapses.** A repeat search of the same
+  state/depth/queue context reproduces every probe key, so the whole
+  deepening loop is served from the table (523 → ~0 explored nodes in the
+  fixture). If the populating search was itself budget-capped, its completed
+  shallow passes still carry over: a warm `maxNodes: 80` run after a
+  `maxNodes: 40` run recorded 22 cross-step hits, and at a generous budget
+  the warm run explored strictly fewer nodes with a byte-identical
+  recommendation.
+- **Step-advanced reuse is structurally rare — verified, not assumed.** The
+  normalized key includes the realized condition-queue context (visible
+  3-window plus the stochastic tail draws the transition tree branches on).
+  Stepping the craft shifts the window and rotates the draw positions, so a
+  step-advanced state's probe keys are disjoint from what the previous step
+  stored: key dumps showed 8 same-state entries with zero queue-exact
+  matches. Relaxing the key to share more would mix scoring contexts that
+  genuinely differ (future conditions change gains), so it was rejected.
+- **No drift under any budget.** Warm and table-free searches return
+  byte-identical recommendations and scores once passes complete; the
+  replay bench stays at 98/98.
+
 ## Presets
 
 Defined in `src/settings/index.ts`. Unchanged by the 0.7.5 rework.

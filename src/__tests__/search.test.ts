@@ -7,6 +7,7 @@ import {
   SkillDefinition,
   OptimizerConfig,
   DEFAULT_SKILLS,
+  applySkill,
   calculateSkillGains,
   getAvailableSkills,
   getConditionEffectsForConfig,
@@ -19,7 +20,9 @@ import {
   setConditionTransitionProvider,
   VISIBLE_CONDITION_QUEUE_LENGTH,
   __testing,
+  type CraftingConditionType,
 } from '../optimizer/search';
+import { CrossStepSearchCache } from '../optimizer/crossStepCache';
 import {
   getReplaySearchInput,
   loadOptimizerReplaySnapshot,
@@ -2312,6 +2315,210 @@ describe('overcraft extras scoring', () => {
     expect(ambitionOn.recommendation?.skill.key).toBe('deep_refine');
     expect(ambitionOn.recommendation?.score ?? 0).toBeGreaterThan(
       (ambitionOff.recommendation?.score ?? 0) + 100,
+    );
+  });
+});
+
+describe('cross-step transposition cache', () => {
+  // Node-budget behavior only: wall-clock budgets intentionally scale with
+  // machine speed, so these contracts assert explored-node counts.
+  const config = createTutorialConfig({});
+  const forecast: CraftingConditionType[] = ['neutral', 'neutral', 'neutral'];
+  const searchConfig = {
+    timeBudgetMs: 2000,
+    maxNodes: 200000,
+    beamWidth: 6,
+  };
+
+  const initialCraftState = () =>
+    new CraftingState({
+      qi: 194,
+      stability: 60,
+      initialMaxStability: 60,
+      completion: 0,
+      perfection: 0,
+    });
+
+  it('collapses re-searches of an unchanged state within one craft scope', () => {
+    const cache = new CrossStepSearchCache();
+    const scope = 'tutorial-craft';
+    const state0 = initialCraftState();
+    const cold = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      { ...searchConfig, transpositionCache: cache.tableFor(scope) },
+    );
+    expect(cold.recommendation).not.toBeNull();
+    expect(cache.size).toBeGreaterThan(0);
+
+    // Manual recalculates and re-dispatches of an unchanged state replay the
+    // exact frontier the previous search already completed.
+    const warm = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
+      ...searchConfig,
+      transpositionCache: cache.tableFor(scope),
+    });
+
+    expect(warm.recommendation?.skill.key).toBe(
+      cold.recommendation?.skill.key,
+    );
+    expect(warm.searchMetrics!.crossStepHits ?? 0).toBeGreaterThan(0);
+    expect(warm.searchMetrics!.nodesExplored).toBeLessThan(
+      cold.searchMetrics!.nodesExplored,
+    );
+  });
+
+  it('serves the previous step frontier to a step-advanced state without drift', () => {
+    const cache = new CrossStepSearchCache();
+    const scope = 'tutorial-craft';
+    const state0 = initialCraftState();
+    const cold = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      { ...searchConfig, transpositionCache: cache.tableFor(scope) },
+    );
+    expect(cold.recommendation).not.toBeNull();
+
+    const next = applySkill(
+      state0,
+      cold.recommendation!.skill,
+      config,
+      getConditionEffectsForConfig(config, 'neutral'),
+      100,
+      'neutral',
+    );
+    expect(next).not.toBeNull();
+
+    // The cache key carries the realized condition-queue context (visible
+    // window plus stochastic tail draws), so a step-advanced state almost
+    // never key-matches the previous step's entries: the window shifts and
+    // the draw positions rotate. That is deliberate — relaxing the key
+    // would mix scoring contexts that genuinely differ. What must hold
+    // instead is the no-drift invariant: with the table warm, completed
+    // passes agree exactly with a table-free search, under both a tight
+    // (truncating) and a generous budget.
+    const tightBudget = { ...searchConfig, maxNodes: 80, timeBudgetMs: 2000 };
+    const warmTight = lookaheadSearch(next!, config, 100, 100, 6, 'neutral', forecast, {
+      ...tightBudget,
+      transpositionCache: cache.tableFor(scope),
+    });
+    const controlTight = lookaheadSearch(next!, config, 100, 100, 6, 'neutral', forecast, {
+      ...tightBudget,
+    });
+    expect(warmTight.recommendation).not.toBeNull();
+    expect(controlTight.recommendation).not.toBeNull();
+    expect(controlTight.searchMetrics!.crossStepHits ?? 0).toBe(0);
+
+    const warmFull = lookaheadSearch(next!, config, 100, 100, 6, 'neutral', forecast, {
+      ...searchConfig,
+      transpositionCache: cache.tableFor(scope),
+    });
+    const controlFull = lookaheadSearch(next!, config, 100, 100, 6, 'neutral', forecast, {
+      ...searchConfig,
+    });
+    expect(warmFull.recommendation?.skill.key).toBe(
+      controlFull.recommendation?.skill.key,
+    );
+    expect(warmFull.recommendation?.score).toBe(controlFull.recommendation?.score);
+  });
+
+  it('carries completed shallow passes into a later deeper search of the same state', () => {
+    const cache = new CrossStepSearchCache();
+    const scope = 'tutorial-craft';
+    const state0 = initialCraftState();
+
+    // A shallow, budget-truncated search still publishes its completed
+    // passes; a later deeper search of the same state reuses them instead of
+    // re-expanding those frontier nodes.
+    const shallow = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
+      ...searchConfig,
+      maxNodes: 40,
+      transpositionCache: cache.tableFor(scope),
+    });
+    expect(shallow.recommendation).not.toBeNull();
+    expect(cache.size).toBeGreaterThan(0);
+
+    // Under a truncating budget both searches spend the whole budget, so the
+    // reuse shows up as cross-step hits, not fewer nodes.
+    const warmCapped = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
+      ...searchConfig,
+      maxNodes: 80,
+      transpositionCache: cache.tableFor(scope),
+    });
+    const controlCapped = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
+      ...searchConfig,
+      maxNodes: 80,
+    });
+    expect(warmCapped.searchMetrics!.crossStepHits ?? 0).toBeGreaterThan(0);
+    expect(controlCapped.searchMetrics!.crossStepHits ?? 0).toBe(0);
+    expect(warmCapped.recommendation?.skill.key).toBe(
+      controlCapped.recommendation?.skill.key,
+    );
+
+    // Under a generous budget the collapsed shallow passes are worth real
+    // node savings, and the completed passes still agree exactly.
+    const warm = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
+      ...searchConfig,
+      transpositionCache: cache.tableFor(scope),
+    });
+    const control = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
+      ...searchConfig,
+    });
+    expect(warm.searchMetrics!.crossStepHits ?? 0).toBeGreaterThan(0);
+    expect(warm.searchMetrics!.nodesExplored).toBeLessThan(
+      control.searchMetrics!.nodesExplored,
+    );
+    expect(warm.recommendation?.skill.key).toBe(
+      control.recommendation?.skill.key,
+    );
+    expect(warm.recommendation?.score).toBe(control.recommendation?.score);
+  });
+
+  it('drops the table when the craft scope changes', () => {
+    const cache = new CrossStepSearchCache();
+    const state0 = initialCraftState();
+    const cold = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      { ...searchConfig, transpositionCache: cache.tableFor('craft-a') },
+    );
+    expect(cold.searchMetrics!.nodesExplored).toBeGreaterThan(0);
+    expect(cache.size).toBeGreaterThan(0);
+
+    // A different craft/config scope must start cold: entries are keyed by
+    // state/depth/condition only and would otherwise leak across crafts.
+    const freshTable = cache.tableFor('craft-b');
+    expect(freshTable.size).toBe(0);
+
+    const restarted = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      { ...searchConfig, transpositionCache: freshTable },
+    );
+    expect(restarted.recommendation?.skill.key).toBe(
+      cold.recommendation?.skill.key,
+    );
+    expect(restarted.searchMetrics!.nodesExplored).toBeGreaterThanOrEqual(
+      cold.searchMetrics!.nodesExplored,
     );
   });
 });

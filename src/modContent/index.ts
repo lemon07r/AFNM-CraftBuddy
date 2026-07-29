@@ -42,6 +42,7 @@ import {
   setNativeCanUseActionProvider,
   preloadNativeMctsPolicyEngine,
   buildCanonicalNativeVariables,
+  CrossStepSearchCache,
   type HarmonyData,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
@@ -68,6 +69,7 @@ import { createDomAutoCraftExecutor } from './autoCraftExecutor';
 import {
   diffCraftStateSignatures,
   readLiveCraftStateSignature,
+  serializeCanonicalValue,
   serializeHarmonyData,
   serializeTechniqueRoster,
 } from './craftStateSignature';
@@ -257,6 +259,51 @@ let autoCraftUiState: AutoCraftUiState = createDefaultAutoCraftUiState(
 // Calculation state tracking for loading indicator
 let isCalculating = false;
 let recommendationSearchEpoch = 0;
+
+// Cross-step transposition cache for the synchronous search backend. One
+// instance here; a worker-pool backend would hold one per worker instead.
+const crossStepSearchCache = new CrossStepSearchCache();
+
+/**
+ * Scope signature for the cross-step transposition cache: everything that
+ * changes what a cached score means while staying constant across the steps
+ * of one craft. Budget fields (time/nodes/beam) are deliberately excluded —
+ * they change how much is explored, not what a state is worth.
+ */
+function buildCrossStepCacheScope(
+  config: OptimizerConfig,
+  targetCompletion: number,
+  targetPerfection: number,
+  searchConfig: ReturnType<typeof getSearchConfig>,
+): string {
+  return serializeCanonicalValue({
+    targets: [targetCompletion, targetPerfection],
+    caps: [config.maxCompletion ?? null, config.maxPerfection ?? null],
+    stats: [
+      config.maxQi,
+      config.maxStability,
+      config.baseIntensity,
+      config.baseControl,
+      config.defaultBuffMultiplier,
+    ],
+    flags: [
+      config.isSublimeCraft === true,
+      config.trainingMode === true,
+      config.targetMultiplier ?? null,
+      config.conditionEffectType ?? null,
+      config.craftingType ?? null,
+      config.pillsPerRound ?? null,
+    ],
+    roster: (config.skills ?? [])
+      .map((skill) => skill.key)
+      .sort()
+      .join('|'),
+    scoring: [
+      searchConfig.goalPriorityBias,
+      searchConfig.overcraftAmbition !== false,
+    ],
+  });
+}
 
 // Track search-affecting settings for stale detection
 interface LastSearchSettings {
@@ -1787,6 +1834,20 @@ function updateRecommendation(
 
   const lookaheadDepth = currentSettings.lookaheadDepth;
   const searchConfig = getSearchConfig();
+
+  // Carry one transposition table across the steps of this craft. The scope
+  // covers every scoring input that is stable for the craft's lifetime; any
+  // change (new craft, stat/roster change, settings change) drops the table.
+  if (currentConfig) {
+    searchConfig.transpositionCache = crossStepSearchCache.tableFor(
+      buildCrossStepCacheScope(
+        currentConfig,
+        targetCompletionAtSearchStart,
+        targetPerfectionAtSearchStart,
+        searchConfig,
+      ),
+    );
+  }
 
   // Capture config locally for the async callback
   const config = currentConfig;

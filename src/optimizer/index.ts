@@ -125,6 +125,11 @@ export type { HarmonyDefinition } from './harmonyRegistry';
 export { preloadNativeMctsPolicyEngine } from './nativeMcts';
 export { buildCanonicalNativeVariables } from './nativeVariables';
 
+// Cross-step transposition cache: one instance per search backend, scoped by
+// the caller's craft/config signature.
+export { CrossStepSearchCache } from './crossStepCache';
+export type { TranspositionCache } from './crossStepCache';
+
 // Game-accurate type exports
 export {
   evaluateScaling,
