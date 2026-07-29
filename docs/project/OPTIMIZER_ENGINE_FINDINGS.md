@@ -176,6 +176,39 @@ Defined in `src/settings/index.ts`. Unchanged by the 0.7.5 rework.
 
 Experimental depth is lower than legacy at high tiers because the prior and the TypeScript search share one user-facing budget, and the ceiling is `4.0 s` to stay under the `4.5 s` responsiveness cap on slower machines. These are safe cross-machine defaults, not proof of optimality on one benchmark box.
 
+### Quality-vs-spend map (Phase 2.3, 2026-07-28)
+
+`bun run optimizer:bench` sweeps all presets over the 14 replay payloads
+(98 contracts). Measured after the Phase 2.1/2.2 changes:
+
+| Config | avg ms | avg depth | contracts | early exits | top-key agreement with Legacy Balanced |
+| --- | --- | --- | --- | --- | --- |
+| Legacy Instant (32d/1.0s/400k) | 852 | 4.6 | 14/14 | 3 | 10/14 |
+| Legacy Fast (48d/2.0s/1M) | 1545 | 5.0 | 14/14 | 6 | 11/14 |
+| Same-budget Legacy 2s | 1540 | 5.1 | 14/14 | 6 | 12/14 |
+| Same-budget MCTS 2s | 2002 | 5.2 | 14/14 | 0 | 10/14 |
+| Legacy Balanced (64d/4.5s/2M) | 2939 | 5.3 | 14/14 | 6 | (reference) |
+| Experimental Fast (32d/1.5s/500k) | 1502 | 5.0 | 14/14 | 0 | 10/14 |
+| Experimental Balanced (48d/2.25s/800k) | 2252 | 5.3 | 14/14 | 0 | 11/14 |
+
+Read: every preset passes every contract; the disagreements cluster on the
+four contested payloads (`pattern-step-1`, `resonance-regression`,
+`live-workshop-step-2`, `premature-finish-runway`) where contracts are
+deliberately materiality-aware because depth-dependent runner-up ranking
+shifts with whatever the wall clock completes. Legacy Balanced buys +0.3
+average depth for 1.9x the time of Fast — no retune signal, presets stay.
+The relaxed early exit fires on 3-6 of 14 payloads for the legacy presets
+(stable mid-craft turns return immediately instead of burning the budget);
+the experimental configs never exit because the MCTS gate stays intact.
+
+**Wall-clock budgets intentionally scale with machine speed.** A preset's
+milliseconds cap *time*, not work: slower machines complete fewer and
+shallower passes at the same budget and land on a different (shallower but
+still completed) frontier. That is by design — the alternative (fixed node
+budgets) would freeze slow machines for many multiples of the intended
+time. Contracts therefore assert recommendation invariants and node
+counts, never wall-clock depth.
+
 MCTS config: `mctsIterations 250`, `mctsMaxNodes 5000`, `mctsRolloutDepth clamp(round(lookaheadDepth / 4), 8, 16)`, `mctsExploration 1.15`.
 
 ## Benchmark harness
