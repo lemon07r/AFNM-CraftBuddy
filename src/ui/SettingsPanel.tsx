@@ -35,9 +35,11 @@ import {
   LEGACY_SEARCH_PRESET_BUDGETS,
   saveSettings,
   OPTIMIZER_ENGINE_OPTIONS,
+  SEARCH_THREAD_OPTIONS,
   type OptimizerEngine,
   type SearchPresetBudget,
   type SearchPresetId,
+  type SearchThreadCount,
 } from '../settings';
 import {
   formatSearchGoalPriorityBias,
@@ -140,6 +142,13 @@ const OPTIMIZER_ENGINE_HELP: SettingHelpContent = {
   description:
     'Chooses which search engine contributes to recommendations. Legacy uses the established TypeScript search only; Experimental adds the Rust/WASM MCTS policy prior for harder crafts.',
   note: 'Legacy is the v5 default. Experimental is opt-in while MCTS behavior is still being validated.',
+};
+
+const SEARCH_THREADS_HELP: SettingHelpContent = {
+  title: 'Search Threads',
+  description:
+    'Runs the recommendation search on a background worker pool. Above 1, the root candidates are split across workers and the ranked results are merged, so wall-clock time drops on multi-core machines.',
+  note: 'Auto uses min(cores - 2, 4). Each worker carries its own engine instance (a few MB of memory). Falls back to the single-worker path when blob workers are blocked.',
 };
 
 const LOOKAHEAD_DEPTH_HELP: SettingHelpContent = {
@@ -557,7 +566,8 @@ export const SettingsPanel = memo(function SettingsPanel({
     | 'searchBeamWidth'
     | 'searchGoalPriorityBias'
     | 'overcraftAmbition'
-    | 'optimizerEngine';
+    | 'optimizerEngine'
+    | 'searchThreads';
 
   const applySettingsPatch = useCallback(
     (patch: Partial<CraftBuddySettings>): CraftBuddySettings => {
@@ -594,6 +604,7 @@ export const SettingsPanel = memo(function SettingsPanel({
     'searchGoalPriorityBias',
     'overcraftAmbition',
     'optimizerEngine',
+    'searchThreads',
   ];
 
   const handleOvercraftAmbitionChange = useCallback(
@@ -603,6 +614,15 @@ export const SettingsPanel = memo(function SettingsPanel({
       onSearchSettingsChange?.(newSettings);
     },
     [settings.overcraftAmbition, applySettingsPatch, onSearchSettingsChange],
+  );
+
+  const handleSearchThreadsChange = useCallback(
+    (threads: SearchThreadCount) => {
+      if (settings.searchThreads === threads) return;
+      const newSettings = applySettingsPatch({ searchThreads: threads });
+      onSearchSettingsChange?.(newSettings);
+    },
+    [settings.searchThreads, applySettingsPatch, onSearchSettingsChange],
   );
 
   const handleSliderCommit = useCallback(
@@ -1059,6 +1079,71 @@ export const SettingsPanel = memo(function SettingsPanel({
                             onClick={() => handleEngineChange(option.id)}
                             sx={{
                               minWidth: compact ? 104 : 122,
+                              color: active ? '#141414' : colors.textSecondary,
+                              backgroundColor: active
+                                ? colors.gold
+                                : 'transparent',
+                              borderColor: active
+                                ? colors.gold
+                                : `${colors.borderMedium}`,
+                              transition: transitions.smooth,
+                              '&:hover': {
+                                borderColor: colors.gold,
+                                backgroundColor: active
+                                  ? colors.goldDark
+                                  : 'rgba(197, 160, 89, 0.12)',
+                              },
+                            }}
+                          >
+                            {option.label}
+                          </Button>
+                        </Tooltip>
+                      );
+                    })}
+                  </FlexRow>
+                  <FlexRow
+                    gap={0.65}
+                    sx={{ flexWrap: 'wrap', alignItems: 'center', mt: 1 }}
+                  >
+                    <Tooltip
+                      title={renderHelpContent(SEARCH_THREADS_HELP)}
+                      enterDelay={250}
+                      placement="top"
+                      arrow
+                      PopperProps={getTooltipPopperProps()}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: colors.textSecondary,
+                          cursor: 'help',
+                          mr: 0.5,
+                        }}
+                      >
+                        Threads
+                      </Typography>
+                    </Tooltip>
+                    {SEARCH_THREAD_OPTIONS.map((option) => {
+                      const active = settings.searchThreads === option.id;
+                      return (
+                        <Tooltip
+                          key={String(option.id)}
+                          title={renderHelpContent({
+                            title: option.label,
+                            description: option.description,
+                            note: option.note,
+                          })}
+                          enterDelay={250}
+                          placement="top"
+                          arrow
+                          PopperProps={getTooltipPopperProps()}
+                        >
+                          <Button
+                            size="small"
+                            variant={active ? 'contained' : 'outlined'}
+                            onClick={() => handleSearchThreadsChange(option.id)}
+                            sx={{
+                              minWidth: compact ? 44 : 52,
                               color: active ? '#141414' : colors.textSecondary,
                               backgroundColor: active
                                 ? colors.gold

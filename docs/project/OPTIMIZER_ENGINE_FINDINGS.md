@@ -211,6 +211,77 @@ counts, never wall-clock depth.
 
 MCTS config: `mctsIterations 250`, `mctsMaxNodes 5000`, `mctsRolloutDepth clamp(round(lookaheadDepth / 4), 8, 16)`, `mctsExploration 1.15`.
 
+## Worker pool (Phase 2.4, 2026-07-29)
+
+The search now runs on a pool of blob-URL workers
+(`src/worker/searchWorker.ts`, compiled by a second webpack pass into
+`src/worker/generated/searchWorker.js` and inlined into `mod.js` as a string
+via `asset/source`; the production `mod://` publicPath cannot resolve
+URL-loaded chunks). The mod layer drives it through
+`src/modContent/searchBackendClient.ts`: one smoke probe per session, epoch
+cancellation (a newer dispatch posts cooperative cancels and drops stale
+replies), and a synchronous `findBestSkill` fallback whenever the probe or a
+worker fails — so a runtime that blocks blob workers behaves exactly as
+before. `searchThreads` (1/2/4/auto, default 1; auto = `min(cores-2, 4)`,
+unknown concurrency resolves to 1) controls the pool size; each worker
+carries its own engine instance and its own cross-step cache keyed by the
+same scope signature as the sync backend (caches are never shared).
+
+**Partition and merge semantics** (implemented in
+`src/optimizer/searchBackend.ts`):
+
+- Root candidates are partitioned by stride (`key i % N`) over the full
+  possible root key space (roster + the synthetic finish action); keys that
+  are unavailable at the root simply never materialize. Each worker searches
+  its slice at the full depth/budget.
+- Partial results merge by pooling every ranked candidate, deduping by skill
+  key (higher score wins), sorting by score with a key tiebreak, and
+  recomputing quality ratings over the merged range (ratings are relative to
+  the candidate set). Work metrics (nodes, cache hits, pruned) sum; frontier
+  markers (depth, time) take the max. The native MCTS prior is root-parallel:
+  worker `i` runs `seed = baseSeed + i`.
+- Per-candidate deep scores are absolute, not relative to the root sibling
+  set, so the merged ranking matches an unpartitioned search up to the
+  per-partition early-exit frontier.
+- Known metric artifact: a worker whose slice completes every planned depth
+  (e.g. an empty or finish-only slice) reports the full plan as its
+  `depthReached`, so the merged max can read higher than the decisive
+  frontier on early-exit payloads. Ranking is unaffected.
+
+**Why pooling helps under a wall-clock budget:** the fast preset caps *time*
+(2s), not work, so more threads cannot shorten a search — they multiply
+explored nodes and reachable depth inside the same wall time. Measured with
+`bun scripts/bench-worker-pool.ts` (6 replay payloads, real Bun workers at
+the captured production budgets, `tmp/engine-worker-bench.json`):
+
+| Payload | sync (ms / nodes / depth) | t=2 nodes/ms x sync | t=4 nodes/ms x sync | depth gain |
+| --- | --- | --- | --- | --- |
+| low-stability-regression | 225 / 271 / 5 | 0.89 | 0.80 | none (early exit, node-bound) |
+| low-stability-step-before | 234 / 300 / 5 | 0.96 | 0.85 | none (early exit, node-bound) |
+| skyfall-bow-heat-regression | 4501 / 8655 / 5 | 1.71 | 2.71 | none (already d5) |
+| alchemical-sequence | 1002 / 1314 / 4 | 1.72 | 2.60 | +1 (d5 at t>=2) |
+| live-workshop-step-1 | 1002 / 1399 / 4 | 1.52 | 2.56 | +1 (d5 at t>=2) |
+| premature-finish-runway | 2006 / 627 / 4 | 2.43 | 4.11 | +1 (d5 at t=4) |
+
+All 18 pooled runs return the same top skill as the sync backend, and the
+single-worker pool matches the sync backend within noise (0.83-1.19x) —
+real-worker parity on top of the byte-identical jest round-trip over all 14
+fixtures at `threads=1`. Node-bound early-exit payloads gain nothing (as
+expected — they finish before the budget matters); time-bound payloads gain
+1.5-1.7x throughput at 2 threads and 2.6-4.1x at 4 threads, which converts
+to one extra completed frontier on the shallow payloads. On
+`alchemical-sequence` and `live-workshop-step-1` the top-line score rises
+36k -> 119k at t>=2 — same recommendation, but now backed by a fully
+explored line instead of a truncated one.
+
+**Bundle cost:** worker bundle 626 KB minified; `mod.js` grows 2.40 MB ->
+3.05 MB (+644 KB, +27%) because the worker source is inlined as a string;
+the zipped package grows correspondingly less (the inlined copy compresses
+well against the original). Workers spawn lazily on the first search: after
+a passing probe, every search — including the default `searchThreads: 1` —
+runs on a worker, keeping the 2s search off the UI thread; the synchronous
+in-page engine runs only when the probe or a worker fails.
+
 ## Benchmark harness
 
 ```bash

@@ -14,6 +14,8 @@ module.exports = {
   // Mock external dependencies
   moduleNameMapper: {
     '^afnm-types$': '<rootDir>/src/__tests__/__mocks__/afnm-types.ts',
+    'generated/searchWorker\\.js$':
+      '<rootDir>/src/__tests__/__mocks__/searchWorkerBundle.ts',
   },
   // Transform TypeScript files
   transform: {

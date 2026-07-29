@@ -8,10 +8,62 @@ const isProduction =
     process.argv[process.argv.indexOf('--mode') + 1] === 'production') ||
   process.argv.includes('production');
 
+const tsRule = {
+  test: /\.tsx?$/,
+  use: {
+    loader: 'ts-loader',
+    options: {
+      compilerOptions: {
+        sourceMap: !isProduction,
+        inlineSourceMap: false,
+        removeComments: isProduction,
+      },
+    },
+  },
+  exclude: /node_modules/,
+};
+
+// Second compilation: the self-contained search worker bundle (optimizer +
+// inline WASM, no externals). Emitted to src/worker/generated and imported
+// by the main bundle as raw text (asset/source), then instantiated from a
+// Blob URL at runtime — the production publicPath is mod:// and the mod runs
+// as an inline script on a file:// page, so URL-loaded chunks cannot resolve.
+const workerConfig = {
+  name: 'worker',
+  mode: 'development',
+  devtool: false,
+  target: 'webworker',
+  entry: './src/worker/searchWorker.ts',
+  optimization: {
+    minimize: isProduction,
+  },
+  module: {
+    rules: [tsRule],
+  },
+  resolve: {
+    extensions: ['.tsx', '.ts', '.js'],
+  },
+  output: {
+    filename: 'searchWorker.js',
+    path: path.resolve(__dirname, 'src/worker/generated'),
+  },
+  plugins: [
+    new webpack.DefinePlugin({
+      MOD_METADATA: JSON.stringify({
+        name: package.name,
+        version: package.version,
+        author: package.author,
+        description: package.description,
+      }),
+    }),
+  ],
+};
+
 module.exports = {
   mode: 'development',
   devtool: isProduction ? false : 'source-map',
   entry: './src/mod.ts',
+  dependencies: ['worker'],
   externals: {
     react: 'React',
     'react-dom': 'ReactDOM',
@@ -24,19 +76,12 @@ module.exports = {
   },
   module: {
     rules: [
+      tsRule,
       {
-        test: /\.tsx?$/,
-        use: {
-          loader: 'ts-loader',
-          options: {
-            compilerOptions: {
-              sourceMap: !isProduction,
-              inlineSourceMap: false,
-              removeComments: isProduction,
-            },
-          },
-        },
-        exclude: /node_modules/,
+        // The worker bundle crosses into the main bundle as raw text and is
+        // instantiated via `new Worker(URL.createObjectURL(new Blob([...])))`.
+        test: /generated[\\/]searchWorker\.js$/,
+        type: 'asset/source',
       },
       {
         test: /\.(png|jpg|gif|svg|webp)$/i,
@@ -79,3 +124,6 @@ module.exports = {
     }),
   ],
 };
+
+const mainConfig = module.exports;
+module.exports = [workerConfig, mainConfig];

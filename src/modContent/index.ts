@@ -43,6 +43,9 @@ import {
   preloadNativeMctsPolicyEngine,
   buildCanonicalNativeVariables,
   CrossStepSearchCache,
+  FINISH_CRAFT_KEY,
+  serializeSearchInput,
+  type SearchBackendInput,
   type HarmonyData,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
@@ -52,7 +55,14 @@ import {
   saveSettings,
   loadSettings,
   getSearchConfig,
+  resolveSearchThreadCount,
 } from '../settings';
+import {
+  cancelSearchBackendPool,
+  getSearchBackendStatus,
+  requestWorkerSearch,
+  setSearchBackendDiagnosticsHook,
+} from './searchBackendClient';
 import {
   createDefaultAutoCraftUiState,
   type AutoCraftPolicy,
@@ -261,8 +271,13 @@ let isCalculating = false;
 let recommendationSearchEpoch = 0;
 
 // Cross-step transposition cache for the synchronous search backend. One
-// instance here; a worker-pool backend would hold one per worker instead.
+// instance here; the worker pool holds one per worker instead.
 const crossStepSearchCache = new CrossStepSearchCache();
+
+// Worker-pool probe/lifecycle messages surface in the debug log; the
+// structured status is mirrored into integrationDiagnostics by
+// checkIntegrationHealth.
+setSearchBackendDiagnosticsHook((message) => debugLog(`[CraftBuddy] ${message}`));
 
 /**
  * Scope signature for the cross-step transposition cache: everything that
@@ -372,6 +387,15 @@ function checkIntegrationHealth(): void {
   lastDiagnosticsCheckCount++;
   if (lastDiagnosticsCheckCount < DIAGNOSTICS_CHECK_INTERVAL) return;
   lastDiagnosticsCheckCount = 0;
+
+  // Mirror the worker-pool search backend status for support snapshots.
+  const backendStatus = getSearchBackendStatus();
+  integrationDiagnostics.searchBackendProbe = backendStatus.probe;
+  integrationDiagnostics.searchBackendProbeDetail = backendStatus.detail;
+  integrationDiagnostics.searchBackendWorkerResultCount =
+    backendStatus.workerResultCount;
+  integrationDiagnostics.searchBackendSyncFallbackCount =
+    backendStatus.syncFallbackCount;
 
   const d = integrationDiagnostics;
   if (d.nativeCanUseActionCalls > 10 && d.nativeCanUseActionErrors > 0) {
@@ -1838,15 +1862,18 @@ function updateRecommendation(
   // Carry one transposition table across the steps of this craft. The scope
   // covers every scoring input that is stable for the craft's lifetime; any
   // change (new craft, stat/roster change, settings change) drops the table.
+  // The same scope string keys the per-worker caches when the worker pool
+  // backend serves the search.
+  let crossStepScope: string | null = null;
   if (currentConfig) {
-    searchConfig.transpositionCache = crossStepSearchCache.tableFor(
-      buildCrossStepCacheScope(
-        currentConfig,
-        targetCompletionAtSearchStart,
-        targetPerfectionAtSearchStart,
-        searchConfig,
-      ),
+    crossStepScope = buildCrossStepCacheScope(
+      currentConfig,
+      targetCompletionAtSearchStart,
+      targetPerfectionAtSearchStart,
+      searchConfig,
     );
+    searchConfig.transpositionCache =
+      crossStepSearchCache.tableFor(crossStepScope);
   }
 
   // Capture config locally for the async callback
@@ -1858,6 +1885,9 @@ function updateRecommendation(
 
   archiveCurrentOptimizerReplayTurn('Search superseded before completion.');
   const searchEpoch = ++recommendationSearchEpoch;
+  // A newer dispatch supersedes any in-flight worker-pool search: the pool
+  // posts cooperative cancels and the stale reply is dropped on arrival.
+  cancelSearchBackendPool();
   const replayInputSnapshot = buildOptimizerReplayInputSnapshot({
     state,
     harmonyDataSource,
@@ -1895,25 +1925,65 @@ function updateRecommendation(
   refreshOptimizerReplaySnapshot();
   renderOverlay({ sync: true });
 
-  // Cross a paint boundary before the expensive synchronous search so the
-  // loading shell has a frame to appear on main-menu craft entry.
+  // Cross a paint boundary before the expensive search so the loading shell
+  // has a frame to appear on main-menu craft entry. The worker pool serves
+  // the search when available; otherwise the synchronous in-page engine runs
+  // exactly as before.
   scheduleSearchAfterLoadingShell(() => {
     if (searchEpoch !== recommendationSearchEpoch) {
       return;
     }
+    void runRecommendationSearch();
+  });
 
+  const runRecommendationSearch = async (): Promise<void> => {
     try {
-      const recommendation = findBestSkill(
+      const threads = resolveSearchThreadCount(
+        currentSettings.searchThreads,
+        typeof navigator !== 'undefined'
+          ? navigator.hardwareConcurrency
+          : undefined,
+      );
+      const backendInput: SearchBackendInput = {
         state,
         config,
-        targetCompletionAtSearchStart,
-        targetPerfectionAtSearchStart,
-        false,
+        targetCompletion: targetCompletionAtSearchStart,
+        targetPerfection: targetPerfectionAtSearchStart,
         lookaheadDepth,
-        currentConditionType,
-        forecastedConditionTypes,
+        currentCondition: currentConditionType as
+          | CraftingCondition
+          | undefined,
+        forecast: forecastedConditionTypes as CraftingCondition[],
         searchConfig,
-      );
+      };
+      const outcome = await requestWorkerSearch({
+        epoch: searchEpoch,
+        scope: crossStepScope ?? 'unscoped',
+        threads,
+        baseSeed: searchEpoch,
+        rootSkillKeys: [
+          ...config.skills.map((skill) => skill.key),
+          FINISH_CRAFT_KEY,
+        ],
+        input: serializeSearchInput(backendInput),
+      });
+      if (outcome.kind === 'stale' || searchEpoch !== recommendationSearchEpoch) {
+        return;
+      }
+      const recommendation =
+        outcome.kind === 'result'
+          ? outcome.result
+          : findBestSkill(
+              state,
+              config,
+              targetCompletionAtSearchStart,
+              targetPerfectionAtSearchStart,
+              false,
+              lookaheadDepth,
+              currentConditionType,
+              forecastedConditionTypes,
+              searchConfig,
+            );
       if (searchEpoch !== recommendationSearchEpoch) {
         return;
       }
@@ -1990,7 +2060,7 @@ function updateRecommendation(
       // Update the overlay with results
       renderOverlay();
     }
-  });
+  };
 }
 
 /**

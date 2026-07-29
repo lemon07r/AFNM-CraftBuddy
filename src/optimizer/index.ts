@@ -130,6 +130,24 @@ export { buildCanonicalNativeVariables } from './nativeVariables';
 export { CrossStepSearchCache } from './crossStepCache';
 export type { TranspositionCache } from './crossStepCache';
 
+// Worker-pool search backend: wire format, root partitioning, merge, and the
+// worker/client protocol messages. The mod layer talks to these through
+// `src/modContent/searchBackendClient.ts`.
+export {
+  FINISH_CRAFT_KEY,
+  mergePartitionedResults,
+  partitionRootSkillKeys,
+  reviveSearchInput,
+  runSearchBackendInput,
+  serializeSearchInput,
+} from './searchBackend';
+export type {
+  PlainSearchInput,
+  SearchBackendInput,
+  SearchWorkerRequest,
+  SearchWorkerResponse,
+} from './searchBackend';
+
 // Game-accurate type exports
 export {
   evaluateScaling,

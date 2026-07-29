@@ -55,6 +55,13 @@ export interface IntegrationDiagnostics {
   harmonyDataFromNativeVariablesCount: number;
   harmonyDataFromBuffsCount: number;
   harmonyDataMissingCount: number;
+  /** Worker-pool search backend: once-per-session blob probe outcome. */
+  searchBackendProbe: 'unprobed' | 'passed' | 'failed';
+  searchBackendProbeDetail: string;
+  /** Searches completed by the worker pool this session. */
+  searchBackendWorkerResultCount: number;
+  /** Searches that fell back to the synchronous in-page engine. */
+  searchBackendSyncFallbackCount: number;
 }
 
 export const integrationDiagnostics: IntegrationDiagnostics = {
@@ -93,4 +100,8 @@ export const integrationDiagnostics: IntegrationDiagnostics = {
   harmonyDataFromNativeVariablesCount: 0,
   harmonyDataFromBuffsCount: 0,
   harmonyDataMissingCount: 0,
+  searchBackendProbe: 'unprobed',
+  searchBackendProbeDetail: 'probe has not run yet',
+  searchBackendWorkerResultCount: 0,
+  searchBackendSyncFallbackCount: 0,
 };

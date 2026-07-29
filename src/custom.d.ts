@@ -37,3 +37,7 @@ declare module '*.ttf' {
     const value: string;
     export default value;
 }
+declare module '*/generated/searchWorker.js' {
+    const value: string;
+    export default value;
+}

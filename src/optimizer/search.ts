@@ -315,6 +315,20 @@ export interface SearchConfig {
    * changes. When omitted the search uses a fresh per-call table.
    */
   transpositionCache?: TranspositionCache;
+  /**
+   * Restricts the root move candidates to these skill keys (worker-pool root
+   * partitioning). Deeper frontiers are unaffected. Keys that are unavailable
+   * at the root are simply absent from the candidate set.
+   */
+  rootSkillKeys?: readonly string[];
+  /**
+   * Cooperative cancellation polled alongside the budget checks. Not
+   * serializable: set by an in-process wrapper (search worker), never sent
+   * across the wire.
+   */
+  shouldAbort?: () => boolean;
+  /** Seed override for the native MCTS root policy (worker-pool root-parallelism uses seed = base + workerIndex). */
+  mctsSeed?: number;
 }
 
 /** Game UI + runtime always expose 3 future conditions. */
@@ -343,7 +357,7 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
 };
 
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
-const FINISH_CRAFT_KEY = '__finish_craft__';
+export const FINISH_CRAFT_KEY = '__finish_craft__';
 const FINISH_CRAFT_NAME = 'Finish Craft';
 const ZERO_GAINS: GainPreview = Object.freeze({
   completion: 0,
@@ -3785,6 +3799,7 @@ function runLookaheadSearch(
         exploration: cfg.mctsExploration,
         maxNodes: budgetedMaxNodes,
         timeBudgetMs: nativeBudgetMs,
+        seed: cfg.mctsSeed,
       },
     });
 
@@ -4463,6 +4478,11 @@ function runLookaheadSearch(
    */
   function checkBudget(): boolean {
     if (shouldTerminate) return true;
+
+    if (cfg.shouldAbort?.()) {
+      shouldTerminate = true;
+      return true;
+    }
 
     // Check time budget
     if (Date.now() - startTime > cfg.timeBudgetMs) {
@@ -5313,7 +5333,7 @@ function runLookaheadSearch(
       normalizedCurrentCondition,
       true,
     );
-    const orderedCandidates = buildOrderedMoveCandidates(
+    const orderedCandidatesAll = buildOrderedMoveCandidates(
       state,
       depthToSearch,
       normalizedCurrentCondition,
@@ -5321,6 +5341,16 @@ function runLookaheadSearch(
       currentConditionEffects,
       true,
     );
+    // Worker-pool root partitioning: restrict this call to its slice of the
+    // root candidates. Deeper frontiers always see the full move set.
+    const rootSkillKeyFilter = cfg.rootSkillKeys
+      ? new Set(cfg.rootSkillKeys)
+      : null;
+    const orderedCandidates = rootSkillKeyFilter
+      ? orderedCandidatesAll.filter((candidate) =>
+          rootSkillKeyFilter.has(candidate.skill.key),
+        )
+      : orderedCandidatesAll;
     const evaluatedFirstMoves: Array<
       SkillRecommendation & UnsafeCandidateClassification
     > = [];

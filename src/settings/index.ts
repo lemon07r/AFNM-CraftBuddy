@@ -54,11 +54,85 @@ export interface CraftBuddySettings {
   overcraftAmbition: boolean;
   /** Optimizer engine mode. Legacy is the default; experimental enables native MCTS policy guidance. */
   optimizerEngine: OptimizerEngine;
+  /**
+   * Search worker threads. 1 (default) keeps the current single-worker
+   * behaviour; 2/4 partition the root candidates across a worker pool; 'auto'
+   * resolves to min(hardwareConcurrency - 2, 4), at least 1. Each worker
+   * instantiates its own engine (a few MB of memory per thread).
+   */
+  searchThreads: SearchThreadCount;
   /** Preferred policy for per-craft automatic execution mode. */
   preferredAutoModePolicy: AutoCraftPolicy;
 }
 
 export type OptimizerEngine = 'legacy' | 'experimental';
+
+export type SearchThreadCount = 1 | 2 | 4 | 'auto';
+
+/**
+ * Resolve the effective worker count. `auto` leaves two cores for the game
+ * and caps at 4; each worker carries its own inline engine instance. Unknown
+ * concurrency resolves conservatively to 1 (the pre-pool behaviour).
+ */
+export function resolveSearchThreadCount(
+  setting: SearchThreadCount,
+  hardwareConcurrency?: number,
+): number {
+  if (setting !== 'auto') {
+    return setting;
+  }
+  const numeric = Number(hardwareConcurrency);
+  if (!Number.isFinite(numeric) || numeric < 1) {
+    return 1;
+  }
+  return Math.max(1, Math.min(Math.floor(numeric) - 2, 4));
+}
+
+function normalizeSearchThreadCount(
+  value: unknown,
+): SearchThreadCount {
+  return value === 1 || value === 2 || value === 'auto' || value === 4
+    ? value
+    : DEFAULT_SETTINGS.searchThreads;
+}
+
+export interface SearchThreadOption {
+  id: SearchThreadCount;
+  label: string;
+  description: string;
+  note: string;
+}
+
+export const SEARCH_THREAD_OPTIONS: SearchThreadOption[] = [
+  {
+    id: 1,
+    label: '1 (Default)',
+    description:
+      'Runs the search on a single background worker. Matches the pre-pool behaviour exactly.',
+    note: 'Recommended unless searches feel slow on a many-core machine.',
+  },
+  {
+    id: 2,
+    label: '2',
+    description:
+      'Splits the root candidates across two workers and merges the ranked results.',
+    note: 'Each worker carries its own engine instance (a few MB of memory).',
+  },
+  {
+    id: 4,
+    label: '4',
+    description:
+      'Splits the root candidates across four workers and merges the ranked results.',
+    note: 'Highest parallelism and highest memory use.',
+  },
+  {
+    id: 'auto',
+    label: 'Auto',
+    description:
+      'Uses min(cores - 2, 4) workers, leaving headroom for the game itself.',
+    note: 'Resolves at search time from navigator.hardwareConcurrency.',
+  },
+];
 
 export type SearchPresetId =
   | 'instant'
@@ -211,6 +285,7 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showForecastedConditions: true,
   showExpectedFinalState: true,
   showOptimalRotation: true,
+  searchThreads: 1,
   preferredAutoModePolicy: DEFAULT_AUTO_CRAFT_POLICY,
 };
 
@@ -294,6 +369,7 @@ function normalizeSettings(
       settings.optimizerEngine === 'experimental'
         ? 'experimental'
         : DEFAULT_SETTINGS.optimizerEngine,
+    searchThreads: normalizeSearchThreadCount(settings.searchThreads),
     preferredAutoModePolicy: normalizeAutoCraftPolicy(
       settings.preferredAutoModePolicy,
       DEFAULT_SETTINGS.preferredAutoModePolicy,

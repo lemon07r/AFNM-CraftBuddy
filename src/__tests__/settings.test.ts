@@ -7,6 +7,7 @@ import {
   LEGACY_SEARCH_PRESET_BUDGETS,
   loadSettings,
   resetSettings,
+  resolveSearchThreadCount,
   saveSettings,
   setSearchMaxNodes,
   setSearchTimeBudget,
@@ -138,6 +139,34 @@ describe('settings search budget', () => {
 
     expect(migrated.optimizerEngine).toBe('legacy');
     expect(getSearchConfig().useMonteCarloTreeSearch).toBe(false);
+  });
+
+  it('keeps searchThreads at 1 by default and normalizes invalid values', () => {
+    expect(loadSettings().searchThreads).toBe(1);
+
+    expect(saveSettings({ searchThreads: 'auto' }).searchThreads).toBe('auto');
+    expect(saveSettings({ searchThreads: 4 }).searchThreads).toBe(4);
+
+    storageData['craftbuddy_settings'] = JSON.stringify({ searchThreads: 3 });
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
+    expect(loadSettings().searchThreads).toBe(1);
+  });
+
+  it('resolves auto thread count as min(cores - 2, 4), at least 1', () => {
+    expect(resolveSearchThreadCount(1, 16)).toBe(1);
+    expect(resolveSearchThreadCount(2, 16)).toBe(2);
+    expect(resolveSearchThreadCount(4, 16)).toBe(4);
+    expect(resolveSearchThreadCount('auto', 16)).toBe(4);
+    expect(resolveSearchThreadCount('auto', 6)).toBe(4);
+    expect(resolveSearchThreadCount('auto', 4)).toBe(2);
+    expect(resolveSearchThreadCount('auto', 2)).toBe(1);
+    expect(resolveSearchThreadCount('auto', 1)).toBe(1);
+    // Unknown concurrency resolves conservatively to the pre-pool behaviour.
+    expect(resolveSearchThreadCount('auto', undefined)).toBe(1);
+    expect(resolveSearchThreadCount('auto', NaN)).toBe(1);
   });
 
   it('clamps search time budget to 100-10000ms', () => {

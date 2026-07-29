@@ -756,4 +756,38 @@ perfection reaches its cap. `src/optimizer/outcome.ts::willAutoFinish` already
 mirrors all three branches, including the 5-band overcraft branch; no change
 was needed there.
 
+## 13. Blob-URL search workers (Phase 2.4 capability verification)
+
+Verified 2026-07-29. Motivation: the worker-pool backend
+(`src/modContent/searchBackendClient.ts`) instantiates the search bundle from
+a Blob URL (`new Worker(URL.createObjectURL(new Blob([bundle])))`), which is
+a capability some embedded-browser runtimes block. The mod must detect that
+and fall back to the synchronous engine.
+
+Environment facts that shaped the design:
+
+- The production bundle is served from the `mod://` publicPath and the mod
+  runs as an inline script on a `file://` page, so URL-loaded worker chunks
+  (`new Worker('mod://...')`) cannot resolve. The worker bundle is therefore
+  inlined into `mod.js` as a string (webpack second compilation +
+  `asset/source`) and instantiated from a Blob URL — no URL resolution, no
+  extra files in the zip.
+- No system Chromium is available on the development machine, so the game's
+  embedded browser cannot be probed headlessly from a script. The executable
+  proxy is Bun 1.3.14, whose `Worker` supports blob-URL scripts: the echo
+  smoke test (`new Worker(blobUrl)` + postMessage round-trip) passes, and
+  `bun scripts/bench-worker-pool.ts` drives the real worker entry through
+  full partitioned searches (see OPTIMIZER_ENGINE_FINDINGS "Worker pool").
+
+The authoritative in-game check is the client's **once-per-session smoke
+probe**: on the first search dispatch the client spawns one worker, round-
+trips a probe message with a 1500 ms timeout, and terminates it. The outcome
+is recorded in `integrationDiagnostics` (`searchBackendProbe`:
+`passed`/`failed`, plus `searchBackendProbeDetail`,
+`searchBackendWorkerResultCount`, `searchBackendSyncFallbackCount`) and
+surfaced in the debug log, so a failing runtime is diagnosable from a support
+snapshot. On probe failure (or any worker error mid-search) the caller runs
+the synchronous `findBestSkill` path unchanged, so behavior on a runtime that
+blocks blob workers is byte-identical to the pre-pool mod.
+
 <!-- prettier-ignore-end -->
