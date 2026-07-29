@@ -5585,12 +5585,16 @@ function runLookaheadSearch(
   // Early exit stability tracking: stop deepening when the top recommendation
   // has been the same for several consecutive fully completed passes with a
   // comfortable score margin. Requires a minimum depth so trivial 1-step states
-  // don't exit before a meaningful frontier is established.
-  const EARLY_EXIT_STABLE_PASSES = 4;
-  const EARLY_EXIT_MIN_DEPTH = Math.max(
-    baselineDepth + 6,
-    Math.min(depth, Math.floor(depth * 0.35)),
-  );
+  // don't exit before a meaningful frontier is established. The minimum depth
+  // sits far below the old 35%-of-depth gate: replay instrumentation shows
+  // real 2s searches are time-bound around depth 3-7, where the old gate
+  // (depth 22+ for a 64-deep plan) could never fire. The margin and
+  // risky-challenger checks stay conservative so contested states keep
+  // searching, and the exit stays disabled whenever the native MCTS policy
+  // participates in root ordering (its near-ties need the full budget to
+  // converge).
+  const EARLY_EXIT_STABLE_PASSES = 3;
+  const EARLY_EXIT_MIN_DEPTH = baselineDepth + 2;
   const EARLY_EXIT_MARGIN_MULTIPLIER = 10;
   const recentTopKeys: string[] = [];
 
@@ -5642,8 +5646,12 @@ function runLookaheadSearch(
           recentTopKeys.length === EARLY_EXIT_STABLE_PASSES &&
           recentTopKeys.every((k) => k === recentTopKeys[0]) &&
           recentTopKeys[0] !== '';
+        // Scan challengers only: the top line's own risk flags were already
+        // priced into its score by the completed passes, so they must not
+        // block the exit — what matters is whether a *challenger* close
+        // enough to overtake at a deeper frontier is risky or terminal.
         const hasRiskyNearTopLine = candidateSkills
-          .slice(0, Math.min(4, candidateSkills.length))
+          .slice(1, Math.min(4, candidateSkills.length))
           .some(
             (rec) =>
               topScore - rec.score <= stableMarginThreshold &&

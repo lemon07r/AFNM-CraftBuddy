@@ -119,6 +119,49 @@ contracts in `search.test.ts`):
   byte-identical recommendations and scores once passes complete; the
   replay bench stays at 98/98.
 
+## Relaxed early exit (Phase 2.2, 2026-07-28)
+
+Instrumenting all 14 replay payloads showed the old gate was dead code in
+production: real 2s searches are time-bound around depth 3-7
+(~120-6k nodes/s depending on roster/harmony weight), while the old
+criteria needed 4 stable passes no shallower than 35% of the planned depth
+(depth 22+ on a 64-deep plan). Zero early exits ever fired.
+
+The relaxation, with each change justified by a measured blocker:
+
+1. **Minimum depth `max(baseline+6, 35% of plan)` → `baseline+2` (= 3).**
+   The old formula's first *eligible* pass was deeper than the time-bound
+   frontier ever reached.
+2. **Stable passes 4 → 3.** Three consecutive completed passes with an
+   unchanged top key is the stability signal; the fourth pass cost a full
+   extra frontier for no measurable ranking change.
+3. **The risky-near-top scan now skips the top line itself.** The old scan
+   included index 0, so a dominant-but-unsafe-flagged recommendation (e.g.
+   a low-stability recovery stabilize) blocked its own exit forever even
+   with a 198k margin. What matters is whether a *challenger* close enough
+   to overtake is risky or terminal; the top line's risk flags are already
+   priced into its score.
+
+Unchanged on purpose: the margin threshold (`max(10 x tieWindow, 2 x
+avgGainPerTurn)`), the challenger scan over the next three ranks, and the
+hard disable whenever the native MCTS policy participates in root ordering
+(its near-ties need the full budget to converge).
+
+Measured on the replay payloads (before → after):
+
+- `low-stability-regression`: exits at depth 5, 8259 → 271 nodes.
+- `low-stability-step-before`: exits at depth 5, 9078 → 300 nodes.
+- `user-report-fairy-recovery`: exits at depth 6, 1041 → 355 nodes (and
+  returns as soon as stability is proven instead of burning the rest of
+  the 2s wall-clock budget on a partial pass that is then discarded).
+- The contested payloads (margins 46-732 against thresholds 1.3k-10.6k)
+  correctly never exit.
+
+Accuracy gate: replay bench stays at 98/98, and the two jest contracts pin
+both sides — the stable fairy-recovery line must exit (node-budget-bound,
+so machine speed cannot matter) and the contested pattern-step-1 state must
+not.
+
 ## Presets
 
 Defined in `src/settings/index.ts`. Unchanged by the 0.7.5 rework.

@@ -5088,6 +5088,76 @@ describe('scoreState (isolated)', () => {
     expect(fairyRecovery).toBeDefined();
   });
 
+  it('exits deepening early on the stable fairy-recovery line without changing the recommendation', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-fairy-recovery.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    // Bind on the node budget, not wall clock: the exit must be a function of
+    // completed passes (deterministic), not of machine speed. The stable exit
+    // fires at depth 6 after ~355 nodes, so 1000 nodes is generous headroom
+    // and 120s keeps the time budget from ever binding.
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: 120000,
+      maxNodes: 1000,
+    };
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      stableSearchConfig,
+    );
+
+    // The recovery line is stable with a ~199k margin over the runner-up, so
+    // the relaxed early exit must fire well below the 48-deep plan instead of
+    // burning the whole time budget on passes that cannot flip it.
+    const earlyExit = result.searchMetrics!.earlyExit;
+    expect(earlyExit?.reason).toBe('stableRecommendation');
+    expect(earlyExit!.depth).toBeLessThan(input.lookaheadDepth);
+    expect(result.searchMetrics!.depthReached).toBe(earlyExit!.depth);
+    expect(result.recommendation).not.toBeNull();
+    expect([
+      'delayed_fusion',
+      "fairy's_blessing",
+      'overbearing_stabilization',
+    ]).toContain(result.recommendation!.skill.key);
+  });
+
+  it('does not exit early on the contested pattern-step-1 state', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-pattern-step-1.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+    };
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      stableSearchConfig,
+    );
+
+    // The top line leads by ~93 against a ~3.7k stability threshold, so the
+    // margin gate must keep the search running: contested states get the
+    // full budget.
+    expect(result.recommendation).not.toBeNull();
+    expect(result.searchMetrics!.earlyExit).toBeUndefined();
+  });
+
   it('replays the forge heat runway snapshot at heat two and prioritizes heat recovery over support setup', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'forge-heat-runway-step-2.snapshot.json',
