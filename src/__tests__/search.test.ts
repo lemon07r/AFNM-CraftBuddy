@@ -4047,7 +4047,7 @@ describe('condition timeline modeling', () => {
 describe('search performance', () => {
   const config = createTestConfig();
 
-  it('should complete depth-3 search in reasonable time', () => {
+  it('should complete depth-3 search without exploring excess nodes', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -4056,16 +4056,26 @@ describe('search performance', () => {
       perfection: 0,
     });
 
-    const startTime = Date.now();
-    const result = lookaheadSearch(state, config, 100, 100, 3);
-    const endTime = Date.now();
+    // The contract is the explored frontier, not wall-clock speed (which
+    // scales with machine load): depth 3 on this roster completes around
+    // 107 nodes, so a generous ceiling catches runaway exploration.
+    const result = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      3,
+      undefined,
+      undefined,
+      { timeBudgetMs: 120000 },
+    );
 
     expect(result.recommendation).not.toBeNull();
-    // Should complete in under 1 second
-    expect(endTime - startTime).toBeLessThan(1000);
+    expect(result.searchMetrics?.depthReached).toBe(3);
+    expect(result.searchMetrics!.nodesExplored).toBeLessThan(2000);
   });
 
-  it('should complete depth-4 search in reasonable time', () => {
+  it('should complete depth-4 search without exploring excess nodes', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -4074,13 +4084,23 @@ describe('search performance', () => {
       perfection: 0,
     });
 
-    const startTime = Date.now();
-    const result = lookaheadSearch(state, config, 100, 100, 4);
-    const endTime = Date.now();
+    // Depth 4 completes around 703 nodes on this roster; the ceiling leaves
+    // an order of magnitude of headroom for scoring changes while still
+    // bounding the frontier.
+    const result = lookaheadSearch(
+      state,
+      config,
+      100,
+      100,
+      4,
+      undefined,
+      undefined,
+      { timeBudgetMs: 120000 },
+    );
 
     expect(result.recommendation).not.toBeNull();
-    // Should complete in under 2 seconds
-    expect(endTime - startTime).toBeLessThan(2000);
+    expect(result.searchMetrics?.depthReached).toBe(4);
+    expect(result.searchMetrics!.nodesExplored).toBeLessThan(20000);
   });
 
   it('should benefit from memoization', () => {
