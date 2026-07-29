@@ -4,11 +4,12 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 source_of_truth: Steam Workshop item 3661729323, package.json, src/settings/index.ts, src/optimizer/search.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
   - docs/project/RELEASE_PROCESS.md
+  - docs/project/RELEASE_NOTES_6.2.0.md
   - docs/project/RELEASE_NOTES_6.1.0.md
   - docs/project/RELEASE_NOTES_6.0.0.md
   - docs/project/OPTIMIZER_DESIGN.md
@@ -24,29 +25,37 @@ CraftBuddy reads your live craft, simulates thousands of possible continuations,
 
 [hr][/hr]
 
+[h1]What's New in v6.2.0[/h1]
+Smarter overcraft scoring and a faster search.
+
+[list]
+[*] [b]Overcraft pays what the game pays[/b] — extra bands used to count only when both bars overran together, so advice plateaued at about two bands. The game pays per bar (more stacks, higher quality, material refunds), and the optimizer now scores it the same way. The new [b]Push Extra Bands[/b] toggle restores the old stop-at-tier behaviour.
+[*] [b]The search runs in the background[/b] — recommendations compute on background workers, so the game UI stays responsive while CraftBuddy thinks.
+[*] [b]New: Search Threads setting[/b] — split the search across 2 or 4 workers (or Auto): same 2-second budget, up to ~4x the explored lines, an extra lookahead depth on hard crafts.
+[*] [b]Stable crafts answer instantly[/b] — once the best move stops changing, CraftBuddy returns it instead of burning the full budget; some mid-craft turns finish 30x sooner.
+[*] [b]Recalcs are near-instant[/b] — repeating a search on an unchanged craft reuses the previous work.
+[/list]
+
+[hr][/hr]
+
 [h1]What's New in v6.1.0[/h1]
 A game-version update with one real mechanics change.
 
 [list]
 [*] [b]Updated for 0.7.6[/b] — verified against the live game, so every recommendation is scored with the current rules.
-[*] [b]Eccentric Decree now matches the game[/b] — the game rewards this harmony on [i]each[/i] burst of completion or perfection, and the focused bar can switch mid-technique. CraftBuddy scores it the same way instead of settling up once at the end of your turn.
-[*] [b]The Fallen Soulflame nerf is accounted for[/b] — the weaker souls are picked up straight from the game, so CraftBuddy no longer over-values a Soulflame line.
-[*] [b]Techniques are labelled the way the game labels them[/b] — the renamed "Strive for Completion" now reads as "Strive for Completion" in the panel instead of its older name.
-[*] [b]Fixed: harmony progress was being forgotten[/b] — Enhancing Echo attunement and Eccentric Decree's focused bar were being reset every time CraftBuddy re-read your craft. They are kept now, so advice for those two harmonies builds on your real harmony state.
+[*] [b]Eccentric Decree now matches the game[/b] — it rewards each burst of completion or perfection (and can switch bars mid-technique); CraftBuddy scores it the same way. The Fallen Soulflame nerf is picked up straight from the game.
+[*] [b]Fixed: harmony progress was being forgotten[/b] — Enhancing Echo attunement and Eccentric Decree's focused bar were being reset on every re-read. They are kept now.
 [/list]
 
 [hr][/hr]
 
 [h1]What's New in v6.0.0[/h1]
-A ground-up accuracy rework built around one goal: play the craft the way the game actually scores it.
+A ground-up accuracy rework: play the craft the way the game actually scores it.
 
 [list]
-[*] [b]Harmonies done properly[/b] — you choose the harmony, all seven types are simulated, and each one's complexity multiplier is applied to your real targets.
-[*] [b]A new outcome model[/b] — CraftBuddy plays for the outcome tier you can actually reach, requiring completion [b]and[/b] perfection bands together instead of dumping points into whichever bar scored highest. Sublime crafts stopped running away with over-completion or perfection spam that never banks a band.
-[*] [b]It shows its work[/b] — projected tier, band progress per bar, which bar is holding you back, when the craft will auto-finish, and when an action is setting up a gated technique.
-[*] [b]Plays nicely with auto-use[/b] — auto mode respects your crafting auto-use loadout instead of double-spending pills, and re-verifies the live craft before every action.
-[*] [b]Mechanics fixes[/b] — Disciplined Touch scaling, Soulflame stability loss, the real Spiritual Resonance penalty, and corrected crit, mastery and toxicity maths.
-[*] [b]Faster[/b] — the native engine became [b]1.90x[/b] quicker while producing identical recommendations.
+[*] [b]Harmonies done properly[/b] — all seven types simulated, each one's complexity multiplier applied to your real targets.
+[*] [b]A new outcome model[/b] — plays for the outcome tier you can actually reach, and shows its work: projected tier, band progress per bar, auto-finish timing, and setup turns for gated techniques.
+[*] [b]Faster and auto-use aware[/b] — the native engine became [b]1.90x[/b] quicker with identical recommendations, and auto mode respects your crafting auto-use loadout instead of double-spending pills.
 [/list]
 
 [hr][/hr]
