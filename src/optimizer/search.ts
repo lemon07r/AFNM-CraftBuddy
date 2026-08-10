@@ -28,6 +28,7 @@ import {
   getBlockedSkillReasons,
   getConditionEffectsForConfig,
   techniqueDisplayName,
+  getBuffDiscordantConditions,
 } from './skills';
 import { INSCRIBED_PATTERN_BLOCK, getHarmonyStatModifiers } from './harmony';
 import {
@@ -287,6 +288,13 @@ export interface SearchConfig {
    * Minimum branch probability retained before top-N fallback.
    */
   conditionBranchMinProbability: number;
+  /**
+   * 0.7.7+ Uncontrollable Flames discordance (0-1): while a buff carrying
+   * `discordantConditions` is held, would-be Balanced queue rolls only stay
+   * Balanced (1 - d) of the time. Computed from the root state's buffs when
+   * unset; equipment-granted and constant for the craft.
+   */
+  conditionDiscordance?: number;
   /**
    * Enable the native Rust/WASM Monte Carlo Tree Search root policy prior.
    * The TypeScript scorer remains authoritative; MCTS only influences
@@ -870,6 +878,7 @@ function getGeneratedConditionDistribution(
   currentCondition: CraftingConditionType,
   nextConditions: CraftingConditionType[],
   harmony: number,
+  discordance: number = 0,
 ): ConditionDistributionEntry[] {
   const current = normalizeConditionType(currentCondition);
   const queue = nextConditions.map(normalizeConditionType);
@@ -917,12 +926,20 @@ function getGeneratedConditionDistribution(
   }
 
   const positiveChance = clampProbability((clampedHarmony + 100) / 200);
+  // 0.7.7+ discordant gate (runtime: `if (Math.random() >= d) return neutral`
+  // at the stay-neutral decision): a would-be neutral outcome only stays
+  // neutral (1 - d) of the time; the rest falls through to the harmony roll.
+  const effectiveChangeProbability =
+    changeProbability + (1 - changeProbability) * clampProbability(discordance);
   return normalizeConditionDistribution([
-    { condition: 'neutral', probability: 1 - changeProbability },
-    { condition: 'positive', probability: changeProbability * positiveChance },
+    { condition: 'neutral', probability: 1 - effectiveChangeProbability },
+    {
+      condition: 'positive',
+      probability: effectiveChangeProbability * positiveChance,
+    },
     {
       condition: 'negative',
-      probability: changeProbability * (1 - positiveChance),
+      probability: effectiveChangeProbability * (1 - positiveChance),
     },
   ]);
 }
@@ -959,6 +976,7 @@ function getConditionTransitions(
   cfg: SearchConfig,
 ): ConditionTransition[] {
   const queue = nextConditions.map(normalizeConditionType);
+  const discordance = cfg.conditionDiscordance ?? 0;
   if (queue.length > 0) {
     const nextCondition = queue[0];
     const shiftedQueue = queue.slice(1);
@@ -966,6 +984,7 @@ function getConditionTransitions(
       nextCondition,
       shiftedQueue,
       harmony,
+      discordance,
     );
     const appendedBranches = pickBranchConditionDistribution(
       appendedDistribution,
@@ -982,6 +1001,7 @@ function getConditionTransitions(
     currentCondition,
     queue,
     harmony,
+    discordance,
   );
   const branchedDistribution = pickBranchConditionDistribution(
     generatedDistribution,
@@ -992,6 +1012,7 @@ function getConditionTransitions(
       entry.condition,
       [],
       harmony,
+      discordance,
     );
     const appendedCondition = getMostLikelyCondition(appendedDistribution);
     return {
@@ -1057,6 +1078,7 @@ export function normalizeForecastConditionQueue(
   forecastedConditionTypes: CraftingConditionType[],
   harmony: number,
   visibleQueueLength: number = VISIBLE_CONDITION_QUEUE_LENGTH,
+  discordance: number = 0,
 ): CraftingConditionType[] {
   const targetLength = Math.max(0, Math.floor(visibleQueueLength));
   const normalizedCurrent = normalizeConditionType(currentConditionType);
@@ -1069,6 +1091,7 @@ export function normalizeForecastConditionQueue(
       normalizedCurrent,
       queue,
       harmony,
+      discordance,
     );
     queue.push(getMostLikelyCondition(distribution));
   }
@@ -3681,6 +3704,12 @@ function runLookaheadSearch(
 ): SearchResult {
   // Merge with default search config
   const cfg: SearchConfig = { ...DEFAULT_SEARCH_CONFIG, ...searchConfig };
+  // 0.7.7+ Uncontrollable Flames (Flame of Discordance): equipment-granted
+  // and permanent for the craft, so the discordance is computed once from the
+  // root state's buffs rather than per expanded node.
+  if (cfg.conditionDiscordance === undefined) {
+    cfg.conditionDiscordance = getBuffDiscordantConditions(state.buffs);
+  }
   const normalizedCurrentCondition =
     normalizeConditionType(currentConditionType);
   const initialConditionQueue = normalizeForecastConditionQueue(

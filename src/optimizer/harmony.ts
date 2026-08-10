@@ -628,11 +628,16 @@ function getEnhancingEchoCostMultipliers(
 /** Harmony gained when the focused bar advances. */
 export const ECCENTRIC_DECREE_OBEY_HARMONY = 5;
 
-/** Harmony lost when the unfocused bar advances. */
-export const ECCENTRIC_DECREE_STRAY_HARMONY = -5;
+/**
+ * Harmony lost when the unfocused bar advances.
+ *
+ * 0.7.8 raised the stray penalty from 5 to 15 (runtime `onBarChange`:
+ * `n.harmony -= 15, r.stats.pool -= 15`).
+ */
+export const ECCENTRIC_DECREE_STRAY_HARMONY = -15;
 
 /** Qi Pool lost when the unfocused bar advances. */
-export const ECCENTRIC_DECREE_STRAY_POOL = -5;
+export const ECCENTRIC_DECREE_STRAY_POOL = -15;
 
 function getEccentricDecreeStatModifiers(
   focusedBar: 'completion' | 'perfection',

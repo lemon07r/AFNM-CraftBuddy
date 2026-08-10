@@ -34,6 +34,7 @@ import {
   loadOptimizerReplaySnapshot,
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
+import { convertGameTechniques } from '../modContent/craftStateExtraction';
 
 const { evaluateCraftEndOutcomeDistribution, getProgressTowardRawGoal } =
   __testing;
@@ -1830,6 +1831,61 @@ describe('craft simulation — sublime crafts', () => {
     expect(chosenTypes[1]).not.toBe('fusion');
     expect(state.harmonyData?.forgeWorks?.heat).toBeLessThanOrEqual(6);
     expect(chosenTypes[2]).toBe('fusion');
+  });
+
+  it('should not recommend Focused Fusion without a Focus buff (user report)', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-focused-fusion-prereq.snapshot.json',
+    );
+    // The snapshot captured skills extracted by the buggy build, which dropped
+    // the native technique's top-level buffCost. Re-extract from the embedded
+    // native techniques so the replay exercises current extraction.
+    // (Jest runs in the node environment, so the ModAPI probes need a window
+    // stand-in - the same pattern the seams suite uses.)
+    const originalWindow = (global as any).window;
+    (global as any).window = {};
+    let reExtractedSkills: SkillDefinition[];
+    try {
+      const snapshotSkills = snapshot.input.config.skills as Array<
+        Record<string, unknown>
+      >;
+      const nativeTechniques = snapshotSkills.map(
+        (skill) => (skill.nativeTechnique ?? skill) as never,
+      );
+      reExtractedSkills = convertGameTechniques(nativeTechniques);
+    } finally {
+      (global as any).window = originalWindow;
+    }
+    const focusedFusion = reExtractedSkills.find(
+      (skill) => skill.key === 'focused_fusion',
+    );
+    expect(focusedFusion?.buffCost).toEqual({ buffName: 'focus', amount: 1 });
+
+    const input = getReplaySearchInput(snapshot);
+    const config = { ...input.config, skills: reExtractedSkills };
+    // The captured state holds no Focus buff.
+    expect(input.state.getBuffStacks('focus')).toBe(0);
+
+    const result = findBestSkill(
+      input.state,
+      config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as CraftingConditionType[],
+      input.searchConfig,
+    );
+
+    // The buggy build recommended focused_fusion here; with the Focus cost
+    // modelled, the action is gated out of the recommendation entirely.
+    expect(snapshot.output?.recommendation?.skill?.key).toBe('focused_fusion');
+    expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).not.toBe('focused_fusion');
+    for (const alternative of result.alternativeSkills) {
+      expect(alternative.skill.key).not.toBe('focused_fusion');
+    }
   });
 
   it('should stabilize across the low-stability replay regression sequence', () => {

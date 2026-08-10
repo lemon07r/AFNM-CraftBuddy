@@ -10,6 +10,7 @@
 
 import {
   computeObservedMaxStability,
+  convertGameTechniques,
   extractBuffInfo,
   extractCapCandidate,
   findPositiveGameNumber,
@@ -307,5 +308,119 @@ describe('modApiProviders: defensive probes', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     expect(resolveMaxToxicityCap('Qi Condensation', 120)).toBe(120);
     warn.mockRestore();
+  });
+});
+
+describe('craftStateExtraction: native technique buff gates', () => {
+  // Focused Fusion / Focused Refine carry their Focus cost on the native
+  // technique's top-level `buffCost`, not in the effects list. The game's own
+  // canUseAction gates on that field, so extraction must surface it or the
+  // optimizer recommends the action with no Focus buff present.
+  let originalWindow: typeof global.window | undefined;
+
+  beforeEach(() => {
+    originalWindow = (global as any).window;
+    (global as any).window = {};
+  });
+
+  afterEach(() => {
+    (global as any).window = originalWindow;
+  });
+
+  const focusedFusionPayload = {
+    name: 'Focused Fusion',
+    icon: 'focusedFusion.webp',
+    poolCost: 5,
+    stabilityCost: 5,
+    buffCost: {
+      buff: {
+        name: 'Focus',
+        icon: 'focus.webp',
+        canStack: true,
+        effectHint: 'Used to activate certain crafting actions.',
+        effects: [],
+        onFusion: [],
+        onRefine: [],
+        stacks: 1,
+        displayLocation: 'avatar',
+      },
+      amount: 1,
+    },
+    successChance: 1,
+    cooldown: 0,
+    effects: [
+      {
+        kind: 'completion',
+        amount: { value: 2.1, stat: 'intensity', upgradeKey: 'completion' },
+      },
+    ],
+    currentCooldown: 0,
+    type: 'fusion',
+    realm: 'qiCondensation',
+  };
+
+  it('maps a native top-level buffCost onto the extracted skill', () => {
+    const skills = convertGameTechniques([
+      focusedFusionPayload,
+    ] as unknown as CraftingTechnique[]);
+    expect(skills).toHaveLength(1);
+    expect(skills[0].key).toBe('focused_fusion');
+    expect(skills[0].buffCost).toEqual({ buffName: 'focus', amount: 1 });
+    expect(skills[0].buffRequirement).toBeUndefined();
+  });
+
+  it('maps a native top-level buffRequirement onto the extracted skill', () => {
+    const payload = {
+      ...focusedFusionPayload,
+      name: 'Focused Refine',
+      buffCost: undefined,
+      buffRequirement: {
+        buff: { name: 'Inner Focus' },
+        amount: 2,
+      },
+    };
+    const skills = convertGameTechniques([
+      payload,
+    ] as unknown as CraftingTechnique[]);
+    expect(skills[0].buffRequirement).toEqual({
+      buffName: 'inner_focus',
+      amount: 2,
+    });
+    expect(skills[0].buffCost).toBeUndefined();
+  });
+
+  it('lets a native buffCost win over an effect-scanned gate', () => {
+    const payload = {
+      ...focusedFusionPayload,
+      effects: [
+        {
+          kind: 'consumeBuff',
+          buff: { name: 'Pressure' },
+          stacks: { value: 3 },
+        },
+      ],
+    };
+    const skills = convertGameTechniques([
+      payload,
+    ] as unknown as CraftingTechnique[]);
+    expect(skills[0].buffCost).toEqual({ buffName: 'focus', amount: 1 });
+  });
+
+  it('keeps effect-scanned buff gates when no native field exists', () => {
+    const payload = {
+      ...focusedFusionPayload,
+      buffCost: undefined,
+      effects: [
+        {
+          kind: 'consumeBuff',
+          buff: { name: 'Pressure' },
+          stacks: { value: 2 },
+        },
+      ],
+    };
+    const skills = convertGameTechniques([
+      payload,
+    ] as unknown as CraftingTechnique[]);
+    expect(skills[0].buffCost).toEqual({ buffName: 'pressure', amount: 2 });
   });
 });

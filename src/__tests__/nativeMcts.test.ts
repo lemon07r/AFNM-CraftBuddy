@@ -313,6 +313,65 @@ describe('native MCTS bridge', () => {
     expect(JSON.stringify(input)).not.toContain('null');
   });
 
+  it('omits internal_state entirely when a buff carries no state', () => {
+    // `internal_state` is a plain map on the Rust side, not an Option, so a
+    // present-but-undefined value fails `serde_wasm_bindgen` deserialization
+    // of the whole MctsInput and silently costs the search its native prior.
+    // (`Option` fields tolerate an explicit undefined; non-Option fields with
+    // only `#[serde(default)]` do not.)
+    const input = nativeMctsTesting.buildNativeMctsInput({
+      state: new CraftingState({
+        qi: 100,
+        stability: 60,
+        buffs: new Map([
+          [
+            'soulflame',
+            {
+              name: 'Soulflame',
+              stacks: 3,
+              definition: {
+                name: 'Soulflame',
+                canStack: true,
+                effects: [],
+              },
+            },
+          ],
+        ]),
+      }),
+      config: createConfig(),
+      targetCompletion: 100,
+      targetPerfection: 80,
+    });
+
+    const buff = input.state.buffs[0];
+    expect(buff).toBeTruthy();
+    expect(Object.prototype.hasOwnProperty.call(buff, 'internal_state')).toBe(
+      false,
+    );
+
+    // And the stateful case keeps the key with a real map.
+    const withState = nativeMctsTesting.buildNativeMctsInput({
+      state: new CraftingState({
+        qi: 100,
+        stability: 60,
+        buffs: new Map([
+          [
+            'true_bifang_flame',
+            {
+              name: 'True Bifang Flame',
+              stacks: 1,
+              internalState: { blaze: 25 },
+            },
+          ],
+        ]),
+      }),
+      config: createConfig(),
+      targetCompletion: 100,
+      targetPerfection: 80,
+    });
+    expect(withState.state.buffs[0]?.internal_state).toEqual({ blaze: 25 });
+  });
+
   it('honors low explicit MCTS budgets for short searches', () => {
     const input = nativeMctsTesting.buildNativeMctsInput({
       state: new CraftingState({ qi: 100, stability: 60 }),

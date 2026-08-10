@@ -63,7 +63,27 @@ export function serializeCraftingBuffs(
         .trim()
         .toLowerCase();
       const stacks = Number(buff?.stacks ?? 0) || 0;
-      return `${name}:${stacks}`;
+      // 0.7.7+ buffs carry trigger-written internal state (e.g. True Bifang
+      // Flame's blaze) that changes stat scaling without touching stacks; the
+      // fingerprint must move with it or the optimizer keeps stale results.
+      const internalState = (buff as { internalState?: unknown } | undefined)
+        ?.internalState;
+      if (!internalState || typeof internalState !== 'object') {
+        return `${name}:${stacks}`;
+      }
+      const statePart = Object.entries(
+        internalState as Record<string, unknown>,
+      )
+        .filter(
+          (entry): entry is [string, number] =>
+            typeof entry[1] === 'number' && Number.isFinite(entry[1]),
+        )
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([stateKey, stateValue]) => `${stateKey}=${stateValue}`)
+        .join(',');
+      return statePart
+        ? `${name}:${stacks}{${statePart}}`
+        : `${name}:${stacks}`;
     })
     .filter(Boolean)
     .sort()
@@ -761,6 +781,44 @@ export function convertGameTechniques(
           }
           buffDuration = effect.stacks?.value || 2;
           break;
+      }
+    }
+
+    // Native top-level buff gates/costs (e.g., Focused Fusion consumes 1
+    // Focus). These live on the technique itself, not in its effects list, so
+    // the effect scan above never sees them. The game's own canUseAction gates
+    // on `technique.buffCost` / `technique.buffRequirement`, so the optimizer
+    // must see them too. Native fields are authoritative and win over anything
+    // inferred from effects.
+    const nativeBuffRequirement = (
+      sourceTech as {
+        buffRequirement?: { buff?: { name?: string }; amount?: number };
+      }
+    ).buffRequirement;
+    if (nativeBuffRequirement?.buff?.name) {
+      const buffName = nativeBuffRequirement.buff.name
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '_');
+      if (buffName) {
+        buffRequirement = {
+          buffName,
+          amount: nativeBuffRequirement.amount ?? 1,
+        };
+      }
+    }
+    const nativeBuffCost = (
+      sourceTech as {
+        buffCost?: { buff?: { name?: string }; amount?: number };
+      }
+    ).buffCost;
+    if (nativeBuffCost?.buff?.name) {
+      const buffName = nativeBuffCost.buff.name
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '_');
+      if (buffName) {
+        buffCost = { buffName, amount: nativeBuffCost.amount ?? 1 };
       }
     }
 

@@ -1115,6 +1115,7 @@ function normalizeNextConditionQueue(
   current: string | undefined,
   rawQueue: string[] | undefined,
   harmony: number,
+  entity?: CraftingEntity,
 ): CraftingCondition[] {
   const targetLength = VISIBLE_CONDITION_QUEUE_LENGTH;
   const normalizedCurrent = normalizeConditionKey(current);
@@ -1137,12 +1138,17 @@ function normalizeNextConditionQueue(
     try {
       const queue = normalizedRaw.slice();
       while (queue.length < targetLength) {
+        // 0.7.7+ signature: getNextCondition(progress, entity) - the entity's
+        // buffs carry discordantConditions (Uncontrollable Flames).
         const generated = normalizeConditionKey(
-          resolver({
-            condition: normalizedCurrent,
-            nextConditions: queue.slice(),
-            harmony,
-          }) as string | undefined,
+          resolver(
+            {
+              condition: normalizedCurrent,
+              nextConditions: queue.slice(),
+              harmony,
+            },
+            entity,
+          ) as string | undefined,
         );
         queue.push(generated);
       }
@@ -1156,11 +1162,27 @@ function normalizeNextConditionQueue(
     }
   }
 
+  // Local fallback: mirror the runtime's discordant gate with the strongest
+  // discordantConditions value across the live buffs.
+  let discordance = 0;
+  for (const buff of entity?.buffs ?? []) {
+    const value = (buff as { discordantConditions?: unknown } | undefined)
+      ?.discordantConditions;
+    if (
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      value > discordance
+    ) {
+      discordance = value;
+    }
+  }
+
   return normalizeForecastConditionQueue(
     normalizedCurrent,
     normalizedRaw,
     harmony,
     targetLength,
+    discordance,
   ) as CraftingCondition[];
 }
 
@@ -1656,6 +1678,7 @@ function updateRecommendation(
     normalizedCondition,
     rawNextConditions as unknown as string[],
     Number(progressState?.harmony ?? 0) || 0,
+    entity,
   );
   if (
     rawNextConditions.length !== normalizedNextConditions.length ||
@@ -1707,7 +1730,12 @@ function updateRecommendation(
 
   const extractedBuffs = new Map<
     string,
-    { name: string; stacks: number; definition?: any }
+    {
+      name: string;
+      stacks: number;
+      definition?: any;
+      internalState?: Record<string, number>;
+    }
   >();
   if (buffs) {
     for (const buff of buffs) {
@@ -1715,6 +1743,21 @@ function updateRecommendation(
       if (!key) continue;
       const stacks = buff?.stacks ?? 0;
       if (stacks > 0) {
+        // 0.7.7+ buffs carry live trigger-written state (e.g. True Bifang
+        // Flame's blaze). Capture it so stat scaling off those keys evaluates
+        // against the real values instead of zero.
+        const rawInternalState = (buff as any)?.internalState;
+        const internalState: Record<string, number> = {};
+        if (rawInternalState && typeof rawInternalState === 'object') {
+          for (const [stateKey, stateValue] of Object.entries(
+            rawInternalState as Record<string, unknown>,
+          )) {
+            const numeric = Number(stateValue);
+            if (stateKey && Number.isFinite(numeric)) {
+              internalState[stateKey] = numeric;
+            }
+          }
+        }
         extractedBuffs.set(key, {
           name: buff?.name || key,
           stacks,
@@ -1722,6 +1765,8 @@ function updateRecommendation(
             ...(buff as any),
             effects: (buff as any)?.effects ?? [],
           },
+          internalState:
+            Object.keys(internalState).length > 0 ? internalState : undefined,
         });
       }
     }

@@ -550,16 +550,265 @@ fn create_buff_respects_stack_and_max_stack_rules() {
     let mut set = BuffSet::new(Vec::new());
     let stackable =
         buff_definition(json!({ "name": "Soulflame", "canStack": true, "maxStacks": 3 }));
-    set.upsert_from_definition(Some(&stackable), 2.0);
+    set.upsert_from_definition(Some(&stackable), 2.0, None);
     assert_eq!(set.stacks("soulflame"), 2);
-    set.upsert_from_definition(Some(&stackable), 5.0);
+    set.upsert_from_definition(Some(&stackable), 5.0, None);
     assert_eq!(set.stacks("soulflame"), 3);
 
     let unstackable = buff_definition(json!({ "name": "Unique", "canStack": false }));
-    set.upsert_from_definition(Some(&unstackable), 1.0);
+    set.upsert_from_definition(Some(&unstackable), 1.0, None);
     assert_eq!(set.stacks("unique"), 1);
-    set.upsert_from_definition(Some(&unstackable), 1.0);
+    set.upsert_from_definition(Some(&unstackable), 1.0, None);
     assert_eq!(set.stacks("unique"), 1);
+}
+
+// ---------------------------------------------------------------------------
+// 0.7.7/0.7.8 buff mechanics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn upsert_seeds_internal_state_from_initial_state_eqns() {
+    let mut set = BuffSet::new(Vec::new());
+    let definition = buff_definition(json!({
+        "name": "Seeded",
+        "canStack": false,
+        "initialState": { "blaze": "0", "charge": "1 + 1" }
+    }));
+    set.upsert_from_definition(Some(&definition), 1.0, None);
+    let buff = set.get("seeded").expect("buff should exist");
+    assert_eq!(buff.internal_state.get("blaze"), Some(&0.0));
+    assert_eq!(buff.internal_state.get("charge"), Some(&2.0));
+}
+
+#[test]
+fn sealed_max_stability_forces_decay_and_blocks_restoration() {
+    let config = base_config();
+
+    // A technique that prevents decay normally leaves the penalty untouched.
+    let careful = skill(merge(
+        minimal_skill("careful"),
+        json!({ "prevents_max_stability_decay": true }),
+    ));
+    let skills = vec![careful.clone()];
+    let env = ActionEnv {
+        config: &config,
+        skills: &skills,
+    };
+    let unsealed = apply_skill(
+        &env,
+        &base_state(),
+        0,
+        &careful,
+        "none",
+        ConditionEffectSummary::default(),
+        100.0,
+    )
+    .expect("action should be legal");
+    assert_eq!(unsealed.stability_penalty, 0.0);
+
+    // With an Illume Crucible-style sealed buff, decay is forced every action.
+    let mut sealed_state = base_state();
+    sealed_state.buffs = serde_json::from_value(json!([{
+        "key": "illume_crucible",
+        "name": "Illume Crucible",
+        "stacks": 1,
+        "definition": {
+            "name": "Illume Crucible",
+            "canStack": false,
+            "sealedMaxStability": true
+        }
+    }]))
+    .expect("buffs should deserialize");
+    let sealed = apply_skill(
+        &env,
+        &sealed_state,
+        0,
+        &careful,
+        "none",
+        ConditionEffectSummary::default(),
+        100.0,
+    )
+    .expect("action should be legal");
+    assert_eq!(sealed.stability_penalty, 1.0);
+
+    // Full restoration is dropped while sealed (decay still runs: 5 -> 6).
+    let restorer = skill(merge(
+        minimal_skill("restorer"),
+        json!({ "restores_max_stability_to_full": true }),
+    ));
+    let skills = vec![restorer.clone()];
+    let env = ActionEnv {
+        config: &config,
+        skills: &skills,
+    };
+    let mut penalized = sealed_state.clone();
+    penalized.stability_penalty = 5.0;
+    let sealed_restore = apply_skill(
+        &env,
+        &penalized,
+        0,
+        &restorer,
+        "none",
+        ConditionEffectSummary::default(),
+        100.0,
+    )
+    .expect("action should be legal");
+    assert_eq!(sealed_restore.stability_penalty, 6.0);
+}
+
+#[test]
+fn true_bifang_flame_stores_floor_percent_gained_blaze() {
+    let config = base_config();
+    let mut state = base_state();
+    state.buffs = serde_json::from_value(json!([{
+        "key": "true_bifang_flame",
+        "name": "True Bifang Flame",
+        "stacks": 1,
+        "internal_state": { "blaze": 0.0 },
+        "definition": {
+            "name": "True Bifang Flame",
+            "canStack": false,
+            "stats": {
+                "control": { "value": 0.03, "stat": "control", "scaling": "blaze" }
+            },
+            "initialState": { "blaze": "0" },
+            "triggeredEffects": [{
+                "trigger": "completionGained",
+                "effects": [{
+                    "kind": "setState",
+                    "key": "blaze",
+                    "mode": "set",
+                    "value": { "value": 1.0, "eqn": "max(blaze, floor(percentGained))" }
+                }]
+            }]
+        }
+    }]))
+    .expect("buffs should deserialize");
+    // One deterministic completion application of 25 against a 100 target:
+    // tier progress 0 -> 0.25, so percentGained = 25 and blaze = 25.
+    let subject = skill(merge(
+        minimal_skill("completion_technique"),
+        json!({ "effects": [{ "kind": "completion", "amount": { "value": 25.0 } }] }),
+    ));
+    let skills = vec![subject.clone()];
+    let env = ActionEnv {
+        config: &config,
+        skills: &skills,
+    };
+    let next = apply_skill(
+        &env,
+        &state,
+        0,
+        &subject,
+        "none",
+        ConditionEffectSummary::default(),
+        100.0,
+    )
+    .expect("action should be legal");
+    let buff = next
+        .buffs
+        .iter()
+        .find(|buff| buff.key == "true_bifang_flame")
+        .expect("buff should persist");
+    assert_eq!(buff.internal_state.get("blaze"), Some(&25.0));
+}
+
+#[test]
+fn azure_depths_stores_qi_per_percent_pool_spent_then_decays() {
+    let config = base_config();
+    let mut state = base_state();
+    state.buffs = serde_json::from_value(json!([{
+        "key": "flame_of_the_azure_depths_iv",
+        "name": "Flame of the Azure Depths IV",
+        "stacks": 1,
+        "definition": {
+            "name": "Flame of the Azure Depths IV",
+            "canStack": false,
+            "initialState": { "stored": "0", "charge": "0" },
+            "effects": [{
+                "kind": "setState",
+                "key": "stored",
+                "mode": "set",
+                "value": { "value": 1.0, "eqn": "max(0, stored - 1)" }
+            }],
+            "triggeredEffects": [{
+                "trigger": "poolSpent",
+                "effects": [
+                    {
+                        "kind": "setState",
+                        "key": "charge",
+                        "mode": "add",
+                        "value": { "value": 1.0, "eqn": "amount / 1" }
+                    },
+                    {
+                        "kind": "setState",
+                        "key": "stored",
+                        "mode": "add",
+                        "value": { "value": 1.0, "eqn": "floor(charge * 100 / maxpool)" }
+                    },
+                    {
+                        "kind": "setState",
+                        "key": "charge",
+                        "mode": "set",
+                        "value": {
+                            "value": 1.0,
+                            "eqn": "charge - floor(charge * 100 / maxpool) * maxpool / 100"
+                        }
+                    }
+                ]
+            }]
+        }
+    }]))
+    .expect("buffs should deserialize");
+    let subject = skill(merge(
+        minimal_skill("spender"),
+        json!({ "qi_cost": 10.0, "stability_cost": 10.0 }),
+    ));
+    let skills = vec![subject.clone()];
+    let env = ActionEnv {
+        config: &config,
+        skills: &skills,
+    };
+    let next = apply_skill(
+        &env,
+        &state,
+        0,
+        &subject,
+        "none",
+        ConditionEffectSummary::default(),
+        100.0,
+    )
+    .expect("action should be legal");
+    let buff = next
+        .buffs
+        .iter()
+        .find(|buff| buff.key == "flame_of_the_azure_depths_iv")
+        .expect("buff should persist");
+    // maxpool is 200: charge = 10, stored += floor(10 * 100 / 200) = 5, then
+    // the per-action decay removes 1; charge keeps the 10 - 5 * 2 = 0 remainder.
+    assert_eq!(buff.internal_state.get("stored"), Some(&4.0));
+    assert_eq!(buff.internal_state.get("charge"), Some(&0.0));
+}
+
+#[test]
+fn discordant_conditions_picks_the_strongest_value() {
+    let buffs: Vec<ActiveBuff> = serde_json::from_value(json!([
+        {
+            "key": "a",
+            "name": "A",
+            "stacks": 1,
+            "definition": { "name": "A", "discordantConditions": 0.2 }
+        },
+        {
+            "key": "b",
+            "name": "B",
+            "stacks": 1,
+            "definition": { "name": "B", "discordantConditions": 0.7 }
+        }
+    ]))
+    .expect("buffs should deserialize");
+    assert_eq!(buff_discordant_conditions(&buffs), 0.7);
+    assert_eq!(buff_discordant_conditions(&[]), 0.0);
 }
 
 #[test]

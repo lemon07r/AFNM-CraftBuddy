@@ -117,7 +117,8 @@ export type BuffEffectKind =
   | 'negate'
   | 'createBuff'
   | 'addStack'
-  | 'changeToxicity';
+  | 'changeToxicity'
+  | 'setState';
 
 /**
  * Buff effect definition.
@@ -128,6 +129,33 @@ export interface BuffEffect {
   stacks?: Scaling;
   buff?: BuffDefinition;
   condition?: CraftingTechniqueCondition;
+  /**
+   * `setState` (0.7.7+): which key of the holding buff's `internalState` to
+   * write, the Scaling to evaluate, and whether to overwrite ('set', the
+   * default) or accumulate ('add').
+   */
+  key?: string;
+  value?: Scaling;
+  mode?: 'set' | 'add';
+}
+
+/**
+ * Crafting events a buff can react to through `triggeredEffects` (0.7.7+).
+ * The firing event puts `amount` (size of the change, always positive) into
+ * the block's eqn scope; the two bar triggers add `percentGained`, that one
+ * change's share of the recipe with threshold inflation priced in.
+ */
+export type CraftingBuffTrigger =
+  | 'poolSpent'
+  | 'poolRestored'
+  | 'stabilitySpent'
+  | 'stabilityRestored'
+  | 'completionGained'
+  | 'perfectionGained';
+
+export interface CraftingTriggeredEffectBlock {
+  trigger: CraftingBuffTrigger | string;
+  effects: BuffEffect[];
 }
 
 /**
@@ -165,6 +193,28 @@ export interface BuffDefinition {
   onStabilize?: BuffEffect[];
   /** Effects executed on support actions */
   onSupport?: BuffEffect[];
+  /**
+   * Effect blocks run the moment a matching crafting event fires (0.7.7+),
+   * rather than once per action alongside `effects`.
+   */
+  triggeredEffects?: CraftingTriggeredEffectBlock[];
+  /**
+   * Expressions evaluated when this buff is created, seeding the instance's
+   * `internalState` (0.7.7+).
+   */
+  initialState?: Record<string, string>;
+  /**
+   * Seals the craft's maximum stability while held (0.7.7+): the ceiling falls
+   * by one every action regardless of the technique's `noMaxStabilityLoss`,
+   * and maxStability-restoring effects are dropped.
+   */
+  sealedMaxStability?: boolean;
+  /**
+   * Rewrites upcoming-condition queue rolls while held (0.7.7+): each slot
+   * comes up non-Balanced with this chance (0-1) instead of following the
+   * usual drift. The highest value across held buffs wins.
+   */
+  discordantConditions?: number;
   displayLocation?: 'player' | 'recipe';
 }
 

@@ -3,9 +3,9 @@ title: Runtime Evidence
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-28
-source_of_truth: installed AFNM 0.7.6 runtime bundle (scripts/installed-game-runtime.js)
+game_version: 0.7.8-24a8210
+last_verified: 2026-08-09
+source_of_truth: installed AFNM 0.7.8 runtime bundle (scripts/installed-game-runtime.js)
 review_cycle_days: 90
 related_files:
   - docs/project/MECHANICS_PARITY.md
@@ -26,7 +26,7 @@ related_files:
 # Runtime Evidence
 
 Verbatim findings extracted from the **installed** AFNM runtime, currently
-**0.7.6-7c586da**. The runtime is the sole authority here: where a tooltip, a
+**0.7.8-24a8210**. The runtime is the sole authority here: where a tooltip, a
 patch note, or an earlier CraftBuddy note disagrees with the code below, the code
 below wins.
 
@@ -44,10 +44,11 @@ bun run runtime:extract                     # unpacks app.asar into tmp/installe
 bun run runtime:grep -- "<pattern>"         # searches the extracted bundle
 ```
 
-`runtime:oracle` reports `gameVersion: 0.7.6-7c586da`, extracted to
-`tmp/installed-game-runtime/1172405719-1785155522026/`. The 0.7.6 findings below
-were produced by diffing that against the previous build, `0.7.5-d764178`,
-extracted to `tmp/installed-game-runtime/1170135731-1784964316349/`.
+`runtime:oracle` reports `gameVersion: 0.7.8-24a8210`, extracted to
+`tmp/installed-game-runtime/1168651333-1786309913280/`. The 0.7.6 findings below
+were produced by diffing the 0.7.6 build (`1172405719-1785155522026/`) against
+`0.7.5-d764178` (`1170135731-1784964316349/`); the 0.7.7/0.7.8 findings
+(section 14) were verified directly on the current extraction.
 
 The two crafting-relevant chunks are `dist-electron/Game.js` (~4.5 MB) and
 `dist-electron/_rolldown_dynamic_import_helper.js`, which grew from ~12.8 MB in
@@ -789,5 +790,101 @@ surfaced in the debug log, so a failing runtime is diagnosable from a support
 snapshot. On probe failure (or any worker error mid-search) the caller runs
 the synchronous `findBestSkill` path unchanged, so behavior on a runtime that
 blocks blob workers is byte-identical to the pre-pool mod.
+
+## 14. Stateful buffs, the Illume Crucible seal, and discordant conditions (0.7.7/0.7.8)
+
+Verified 2026-08-09 against the installed 0.7.8 build, extracted to
+`tmp/installed-game-runtime/1168651333-1786309913280/`; all crafting mechanics
+below live in `dist-electron/_rolldown_dynamic_import_helper.js`. Symbol names
+are from this extraction and will not survive a rebuild.
+
+### 14.1 Buff `internalState`, `triggeredEffects`, and `setState`
+
+0.7.7 buffs carry a per-instance key→number map. The definition's
+`initialState` eqns seed it at creation, the buff's own eqns read it, and
+`setState` effects write it (`set` / `add`); effects later in the same block
+observe earlier writes. Triggered blocks fire on six crafting triggers —
+`completionGained`, `perfectionGained`, `poolSpent`, `poolRestored`,
+`stabilitySpent`, `stabilityRestored` — with `amount` in scope, plus
+`percentGained` for the two bar triggers.
+
+`percentGained` is the tier-scaled delta, not the raw bar delta (runtime
+`O7o`, over the shared threshold helper `ox`):
+
+```js
+// O7o(amount, barAfter, target): r = ox(barAfter - amount, target),
+// i = ox(barAfter, target); percentGained =
+//   (i.guaranteed + i.bonusChance - (r.guaranteed + r.bonusChance)) * 100
+```
+
+`ox` is the same 1.3×-inflated threshold-tier helper the outcome bands use,
+so crossing into the 130-wide second tier dilutes the percentage per point.
+
+### 14.2 True Bifang Flame
+
+Definition (`gmi`): `initialState: { blaze: '0' }`, a `completionGained`
+trigger running `blaze = max(blaze, floor(percentGained))`, and a control
+stat scaling `+0.03` per blaze. Tier V adds an `onFusion` block granting
+`+0.02` perfection per blaze; tier VI grants it on every action. Only the
+**largest single application** is kept — there is no accumulation.
+
+### 14.3 Flame of the Azure Depths
+
+Definition (`Jpi`): `initialState: { stored: '0', charge: '0' }`, a
+`poolSpent` trigger that charges `amount` into `charge`, grants
+`stored += floor(charge * 100 / maxpool)` (one stored Qi per 1% of max pool
+spent; the `1` in `Hpi(1)` is the divisor), and keeps the remainder in
+`charge`. A per-turn effect decays `stored = max(0, stored - 1)` every
+action, gated by the temper condition while stability < 50%. Tier VI adds a
+`poolRestored` backdraft (`Hpi(3)`). Stats grant `+0.01` control and
+intensity per stored.
+
+### 14.4 Illume Crucible `sealedMaxStability`
+
+The seal is two runtime checks (`E7o` = any active buff has
+`sealedMaxStability`, `D7o` = the restoration block):
+
+```js
+// decay:  (!i.noMaxStabilityLoss || E7o(e)) && t.stabilityPenalty++
+// restore: dropped entirely while E7o(e) holds
+```
+
+So max stability falls by 1 every action even when the technique prevents
+decay, and no max-stability restoration (full restore, positive
+`maxStabilityChange`, technique or buff deltas) applies while the seal is
+held. Reductions still apply. The definition's tooltip matches: "Maximum
+Stability always falls by 1 every action and cannot be restored."
+
+### 14.5 `discordantConditions` (Uncontrollable Flames / Flame of Discordance)
+
+The buff carries `discordantConditions: 0.7`. The gate sits at the
+**stay-neutral decision** of `getNextCondition` only:
+
+```js
+if (Math.random() >= d) return 'neutral';
+```
+
+A would-be neutral outcome therefore holds only `1 - d` of the time; the
+rest falls through to the harmony roll. The positive/negative early-return
+branches (upgrade/degrade decisions) are not gated. As a probability
+distribution over the stay-neutral block that is
+`effectiveChange = change + (1 - change) * d`.
+
+### 14.6 Eccentric Decree rebalance (0.7.8)
+
+The stray-bar penalty moved from `-5` harmony / `-5` Qi Pool to
+**`-15` / `-15`**; the focused bar still awards `+5`. This supersedes the
+0.7.7 patch note's "3x worse" phrasing — the 0.7.8 note ("5 to 15 for both
+Harmony and Qi Pool") and the runtime agree.
+
+### 14.7 Verified unchanged in 0.7.7/0.7.8
+
+- Turbid Qi: first stack at step 100, then every 3 steps, granted after the
+  step bump. ("Crafting Actions" in the tooltip is a UI label, not a second
+  counter.)
+- All seven harmony complexity multipliers (forge 1.2, alchemical 1.2,
+  inscription 0.9, resonance 1.3, formless 1.5, echo 1.3, decree 1.0) and
+  Formless Way's starting harmony of 33.
+- Reagent toxicity gating.
 
 <!-- prettier-ignore-end -->

@@ -3,8 +3,8 @@ title: Workshop Description
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-29
+game_version: 0.7.8-24a8210
+last_verified: 2026-08-09
 source_of_truth: Steam Workshop item 3661729323, package.json, src/settings/index.ts, src/optimizer/search.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
@@ -21,41 +21,23 @@ related_files:
 
 CraftBuddy reads your live craft, simulates thousands of possible continuations, and tells you the best next action — and [i]why[/i]. No spreadsheets, no memorised rotations, no wasted materials.
 
-[b]Updated for game version 0.7.6.[/b]
+[b]Updated for game version 0.7.8.[/b]
 
 [hr][/hr]
 
-[h1]What's New in v6.2.0[/h1]
-Smarter overcraft scoring and a faster search.
+[h1]Highlights of the 6.x Series[/h1]
+The 6.x releases rebuilt CraftBuddy around one principle: play the craft the way the game actually scores it. The most noteworthy changes, all verified against the live game:
 
 [list]
-[*] [b]Overcraft pays what the game pays[/b] — extra bands used to count only when both bars overran together, so advice plateaued at about two bands. The game pays per bar (more stacks, higher quality, material refunds), and the optimizer now scores it the same way. The new [b]Push Extra Bands[/b] toggle restores the old stop-at-tier behaviour.
-[*] [b]The search runs in the background[/b] — recommendations compute on background workers, so the game UI stays responsive while CraftBuddy thinks.
-[*] [b]New: Search Threads setting[/b] — split the search across 2 or 4 workers (or Auto): same 2-second budget, up to ~4x the explored lines, an extra lookahead depth on hard crafts.
-[*] [b]Stable crafts answer instantly[/b] — once the best move stops changing, CraftBuddy returns it instead of burning the full budget; some mid-craft turns finish 30x sooner.
-[*] [b]Recalcs are near-instant[/b] — repeating a search on an unchanged craft reuses the previous work.
-[/list]
-
-[hr][/hr]
-
-[h1]What's New in v6.1.0[/h1]
-A game-version update with one real mechanics change.
-
-[list]
-[*] [b]Updated for 0.7.6[/b] — verified against the live game, so every recommendation is scored with the current rules.
-[*] [b]Eccentric Decree now matches the game[/b] — it rewards each burst of completion or perfection (and can switch bars mid-technique); CraftBuddy scores it the same way. The Fallen Soulflame nerf is picked up straight from the game.
-[*] [b]Fixed: harmony progress was being forgotten[/b] — Enhancing Echo attunement and Eccentric Decree's focused bar were being reset on every re-read. They are kept now.
-[/list]
-
-[hr][/hr]
-
-[h1]What's New in v6.0.0[/h1]
-A ground-up accuracy rework: play the craft the way the game actually scores it.
-
-[list]
-[*] [b]Harmonies done properly[/b] — all seven types simulated, each one's complexity multiplier applied to your real targets.
-[*] [b]A new outcome model[/b] — plays for the outcome tier you can actually reach, and shows its work: projected tier, band progress per bar, auto-finish timing, and setup turns for gated techniques.
-[*] [b]Faster and auto-use aware[/b] — the native engine became [b]1.90x[/b] quicker with identical recommendations, and auto mode respects your crafting auto-use loadout instead of double-spending pills.
+[*] [b]Harmonies done properly[/b] — all seven harmony types are simulated, each one's complexity multiplier applied to your real targets, with harmony progress (Enhancing Echo attunement, Eccentric Decree's focused bar) kept faithfully between turns.
+[*] [b]A new outcome model[/b] — plays for the outcome tier you can actually reach and shows its work: projected tier, band progress per bar, auto-finish timing, and setup turns for gated techniques.
+[*] [b]Overcraft pays what the game pays[/b] — extra bands past the target tier are scored per bar, the way the game grants them (more stacks, higher quality, material refunds). The [b]Push Extra Bands[/b] toggle restores the old stop-at-tier behaviour.
+[*] [b]The newest buffs, simulated exactly[/b] — True Bifang Flame's blaze, Flame of the Azure Depths' stored Qi, Illume Crucible's sealed max stability, and the discordant-condition flames all behave in the optimizer precisely as they do in 0.7.7/0.7.8, including Eccentric Decree's per-burst scoring and its latest rebalance.
+[*] [b]The search runs in the background[/b] — recommendations compute on background workers, so the game UI stays responsive. The [b]Search Threads[/b] setting splits the search across 2 or 4 workers (or Auto): same 2-second budget, up to ~4x the explored lines.
+[*] [b]Stable crafts answer instantly[/b] — once the best move stops changing, CraftBuddy returns it instead of burning the full budget; some mid-craft turns finish 30x sooner, and recalcs on an unchanged craft are near-instant.
+[*] [b]Two engines, one answer[/b] — the optional Rust/WASM engine models the same mechanics as the main engine, runs [b]1.90x[/b] faster than before, and is kept honest by a transition-for-transition parity corpus replayed on every change.
+[*] [b]Auto-use aware[/b] — auto mode respects your crafting auto-use loadout instead of double-spending pills.
+[*] [b]Fixes that matter[/b] — gated techniques (like Focused Fusion) are no longer recommended without their required buff, and harmony progress is no longer forgotten on re-reads.
 [/list]
 
 [hr][/hr]

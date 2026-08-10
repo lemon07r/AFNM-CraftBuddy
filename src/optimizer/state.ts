@@ -59,6 +59,12 @@ function cloneTrackedBuff(buff: TrackedBuff): TrackedBuff {
     stacks: buff.stacks,
     definition: buff.definition,
   };
+  if (buff.internalState) {
+    // 0.7.7 added per-instance buff state (True Bifang Flame's blaze, Flame of
+    // the Azure Depths' stored Qi). Cloned per state copy so trigger writes on
+    // one search branch never leak into another.
+    cloned.internalState = Object.freeze({ ...buff.internalState });
+  }
   return Object.freeze(cloned);
 }
 
@@ -99,6 +105,13 @@ export interface TrackedBuff {
   stacks: number;
   /** Full buff definition for effect processing */
   definition?: BuffDefinition;
+  /**
+   * Live per-instance state written by `setState` effects and seeded from the
+   * definition's `initialState` (0.7.7+). Keys share the eqn namespace with
+   * crafting stats and buff names, so stat Scaling like
+   * `{ value: 0.03, stat: 'control', scaling: 'blaze' }` reads them directly.
+   */
+  internalState?: Record<string, number>;
 }
 
 export interface CraftingStateData {
@@ -442,10 +455,27 @@ export class CraftingState implements CraftingStateData {
     // - gate skill availability (requirements)
     // - scale skill gains (per-stack effects)
     // - provide stat modifiers
+    // Buff internal state (0.7.7+ trigger-written values like True Bifang
+    // Flame's blaze) changes stat scaling, so it must be part of the key or
+    // states that differ only there would collide in the transposition table.
     const buffStr = Array.from(this.buffs.entries())
       .filter(([_, v]) => v.stacks > 0)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}:${v.stacks}`)
+      .map(([k, v]) => {
+        const base = `${k}:${v.stacks}`;
+        if (!v.internalState) {
+          return base;
+        }
+        const stateKeys = Object.keys(v.internalState);
+        if (stateKeys.length === 0) {
+          return base;
+        }
+        stateKeys.sort();
+        const parts = stateKeys.map(
+          (stateKey) => `${stateKey}=${v.internalState![stateKey]}`,
+        );
+        return `${base}{${parts.join(';')}}`;
+      })
       .join(',');
 
     // Include crit/success values because they change expected gains for most techniques.

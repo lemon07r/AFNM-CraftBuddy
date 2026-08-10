@@ -547,7 +547,7 @@ describe('Eccentric Decree', () => {
     expect(result.harmonyData.eccentricDecree?.lastCompletion).toBe(40);
   });
 
-  it('should lose 5 harmony and 5 qi when the unfocused bar advances', () => {
+  it('should lose 15 harmony and 15 qi when the unfocused bar advances', () => {
     const hd = initHarmonyData('eccentricDecree');
     const result = processHarmonyEffect(
       hd,
@@ -555,11 +555,11 @@ describe('Eccentric Decree', () => {
       'refine',
       context(0, 30),
     );
-    expect(result.harmonyDelta).toBe(-5);
-    expect(result.poolDelta).toBe(-5);
+    expect(result.harmonyDelta).toBe(-15);
+    expect(result.poolDelta).toBe(-15);
   });
 
-  it('should net to zero harmony but still cost qi when both bars advance', () => {
+  it('should net to -10 harmony and still cost qi when both bars advance', () => {
     const hd = initHarmonyData('eccentricDecree');
     const result = processHarmonyEffect(
       hd,
@@ -567,8 +567,8 @@ describe('Eccentric Decree', () => {
       'fusion',
       context(40, 30),
     );
-    expect(result.harmonyDelta).toBe(0);
-    expect(result.poolDelta).toBe(-5);
+    expect(result.harmonyDelta).toBe(-10);
+    expect(result.poolDelta).toBe(-15);
   });
 
   it('should flip focus once the focused bar clears a band', () => {
@@ -653,9 +653,9 @@ describe('Eccentric Decree', () => {
         ],
       });
 
-      // +5 +5 for the two focused advances, -5 for the stray one.
-      expect(result.harmonyDelta).toBe(5);
-      expect(result.poolDelta).toBe(-5);
+      // +5 +5 for the two focused advances, -15 for the stray one.
+      expect(result.harmonyDelta).toBe(-5);
+      expect(result.poolDelta).toBe(-15);
     });
 
     it('flips focus mid-turn so a later application scores as focused', () => {
@@ -758,8 +758,8 @@ describe('Eccentric Decree', () => {
 
       expect(withEmptyList.harmonyDelta).toBe(withoutList.harmonyDelta);
       expect(withEmptyList.poolDelta).toBe(withoutList.poolDelta);
-      expect(withEmptyList.harmonyDelta).toBe(0);
-      expect(withEmptyList.poolDelta).toBe(-5);
+      expect(withEmptyList.harmonyDelta).toBe(-10);
+      expect(withEmptyList.poolDelta).toBe(-15);
     });
 
     it('flips focus only once when the focused bar clears two bands at a time', () => {
@@ -909,10 +909,10 @@ describe('Harmony integration with applySkill', () => {
       expect(baseline).not.toBeNull();
       expect(next).not.toBeNull();
       expect(baseline!.harmony).toBe(5);
-      // +5 focused, -5 stray.
-      expect(next!.harmony).toBe(0);
+      // +5 focused, -15 stray.
+      expect(next!.harmony).toBe(-10);
       // The stray application's Qi Pool loss reaches the next state.
-      expect(next!.qi).toBe(baseline!.qi - 5);
+      expect(next!.qi).toBe(baseline!.qi - 15);
     });
 
     it('scores a buff-driven stray advance after the technique resolves', () => {
@@ -951,9 +951,9 @@ describe('Harmony integration with applySkill', () => {
       expect(next).not.toBeNull();
       expect(next!.perfection).toBe(10);
       expect(baseline!.harmony).toBe(5);
-      // +5 for the focused technique effect, -5/-5 for the buff's stray advance.
-      expect(next!.harmony).toBe(0);
-      expect(next!.qi).toBe(baseline!.qi - 5);
+      // +5 for the focused technique effect, -15/-15 for the buff's stray advance.
+      expect(next!.harmony).toBe(-10);
+      expect(next!.qi).toBe(baseline!.qi - 15);
     });
   });
 

@@ -140,7 +140,7 @@ describe('cross-engine differential corpus', () => {
     // Soulflame burns a stack and bites stability every turn.
     const soulflame = caseFor('effects-soulflame-active', 'effect_refine');
     expect(soulflame?.expected?.buffs).toEqual([
-      { key: 'soulflame', stacks: 2 },
+      { key: 'soulflame', stacks: 2, internalState: {} },
     ]);
     expect(soulflame?.expected?.perfection).toBeGreaterThan(0);
   });

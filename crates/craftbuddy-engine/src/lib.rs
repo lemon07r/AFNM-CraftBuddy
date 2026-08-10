@@ -63,9 +63,12 @@ const ENHANCING_ECHO_DISCORD_COST_PERCENTAGE: f64 = 200.0;
 /// Harmony gained when Eccentric Decree's focused bar advances.
 const ECCENTRIC_DECREE_OBEY_HARMONY: f64 = 5.0;
 /// Harmony lost when Eccentric Decree's unfocused bar advances.
-const ECCENTRIC_DECREE_STRAY_HARMONY: f64 = -5.0;
+///
+/// 0.7.8 raised the stray penalty from 5 to 15 (runtime `onBarChange`:
+/// `n.harmony -= 15, r.stats.pool -= 15`).
+const ECCENTRIC_DECREE_STRAY_HARMONY: f64 = -15.0;
 /// Qi Pool lost when Eccentric Decree's unfocused bar advances.
-const ECCENTRIC_DECREE_STRAY_POOL: f64 = -5.0;
+const ECCENTRIC_DECREE_STRAY_POOL: f64 = -15.0;
 
 #[wasm_bindgen(js_name = runMcts)]
 pub fn run_mcts(input: JsValue) -> Result<JsValue, JsValue> {
@@ -492,7 +495,7 @@ struct HarmonyProcessContext<'a> {
 /// are recorded pre-crit and pre-success-weighting, so each bar's contributions
 /// are scaled by `actual / rawSum`. That preserves both the ordering and the exact
 /// total. A zero raw sum implies a zero total, so the scale collapses to 0.
-fn scale_bar_contributions(
+pub(crate) fn scale_bar_contributions(
     contributions: &[effects::BarContribution],
     actual_completion: f64,
     actual_perfection: f64,
@@ -537,7 +540,7 @@ fn scale_bar_contributions(
 /// only aggregate gains; emitting one synthetic application per moved bar keeps the
 /// event list complete rather than hiding the technique's own movement whenever a
 /// buff contributed events.
-fn synthesize_bar_contributions(
+pub(crate) fn synthesize_bar_contributions(
     completion: f64,
     perfection: f64,
 ) -> Vec<effects::BarContribution> {
@@ -1055,7 +1058,10 @@ impl Engine {
         )?;
 
         let (next_condition, next_queue) = if consumes_turn {
-            advance_condition(&condition, queue, next.harmony, rng)
+            // 0.7.7+ Uncontrollable Flames: the queue roll reads the strongest
+            // discordantConditions value across the post-action buffs.
+            let discordance = effects::buff_discordant_conditions(&next.buffs);
+            advance_condition(&condition, queue, next.harmony, discordance, rng)
         } else {
             (condition, queue.to_vec())
         };
@@ -2311,6 +2317,7 @@ fn advance_condition(
     current_condition: &str,
     queue: &[String],
     harmony: f64,
+    discordance: f64,
     rng: &mut SmallRng,
 ) -> (String, Vec<String>) {
     let normalized_queue = normalize_queue(queue);
@@ -2318,15 +2325,17 @@ fn advance_condition(
         let next_condition = normalized_queue[0].clone();
         let shifted = normalized_queue[1..].to_vec();
         let appended_distribution =
-            generated_condition_distribution(&next_condition, &shifted, harmony);
+            generated_condition_distribution(&next_condition, &shifted, harmony, discordance);
         let appended = sample_distribution(&appended_distribution, rng);
         let mut next_queue = shifted;
         next_queue.push(appended);
         (next_condition, next_queue)
     } else {
-        let generated = generated_condition_distribution(current_condition, &[], harmony);
+        let generated =
+            generated_condition_distribution(current_condition, &[], harmony, discordance);
         let next_condition = sample_distribution(&generated, rng);
-        let appended_distribution = generated_condition_distribution(&next_condition, &[], harmony);
+        let appended_distribution =
+            generated_condition_distribution(&next_condition, &[], harmony, discordance);
         let appended = most_likely_condition(&appended_distribution);
         (next_condition, vec![appended])
     }
@@ -2336,6 +2345,7 @@ fn generated_condition_distribution(
     current_condition: &str,
     next_conditions: &[String],
     harmony: f64,
+    discordance: f64,
 ) -> Vec<(String, f64)> {
     let current = normalize_condition(current_condition);
     let queue = normalize_queue(next_conditions);
@@ -2390,12 +2400,20 @@ fn generated_condition_distribution(
         )
     };
     let positive_chance = clamp((clamped_harmony + 100.0) / 200.0, 0.0, 1.0);
+    // 0.7.7+ discordant gate (runtime: `if (Math.random() >= d) return neutral`
+    // at the stay-neutral decision): a would-be neutral outcome only stays
+    // neutral (1 - d) of the time; the rest falls through to the harmony roll.
+    let effective_change_probability =
+        change_probability + (1.0 - change_probability) * clamp(discordance, 0.0, 1.0);
     normalize_distribution(vec![
-        ("neutral".to_string(), 1.0 - change_probability),
-        ("positive".to_string(), change_probability * positive_chance),
+        ("neutral".to_string(), 1.0 - effective_change_probability),
+        (
+            "positive".to_string(),
+            effective_change_probability * positive_chance,
+        ),
         (
             "negative".to_string(),
-            change_probability * (1.0 - positive_chance),
+            effective_change_probability * (1.0 - positive_chance),
         ),
     ])
 }

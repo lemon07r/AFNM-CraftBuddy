@@ -3,8 +3,8 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+game_version: 0.7.8-24a8210
+last_verified: 2026-08-09
 source_of_truth: src/optimizer/outcome.ts, src/optimizer/skills.ts, src/optimizer/harmony.ts, src/optimizer/harmonyRegistry.ts, src/optimizer/gameTypes.ts, src/optimizer/state.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, src/modContent/harmonyState.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
@@ -16,9 +16,9 @@ related_files:
 
 # Mechanics Parity Status
 
-Which AFNM **0.7.6** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
+Which AFNM **0.7.8** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
 
-Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` holds the extracted runtime source, currently for build `0.7.6-7c586da`.
+Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` holds the extracted runtime source, currently for build `0.7.8-24a8210`.
 
 ## How parity is proven
 
@@ -29,9 +29,9 @@ Authority order: installed runtime bundle → tests → this document. When they
 | TypeScript ↔ Rust engine parity | the differential corpus: `src/__tests__/fixtures/differentialCorpus.ts` → `engineDifferential.test.ts` (TS side) and `crates/craftbuddy-engine/tests/differential_corpus.json` → `differential_tests.rs` (Rust side) |
 | Multi-turn behaviour | `craftSimulation.test.ts`, replay fixtures in `src/__tests__/__fixtures__/replay-snapshots/` |
 
-The corpus is schema v2 and covers **134 scenarios / 1,432 transitions**, with `expected` asserting qi, stability, stability penalty, completion, perfection, toxicity, harmony, step, completion bonus, cooldowns, the active-buff set, `items`, `consumedPillsThisTurn`, and a `harmonyData` digest. Regenerate with `bun run optimizer:differential-corpus`; never hand-edit the JSON.
+The corpus is schema v3 and covers **137 scenarios / 1,471 transitions**, with `expected` asserting qi, stability, stability penalty, completion, perfection, toxicity, harmony, step, completion bonus, cooldowns, the active-buff set (including per-buff `internalState`), `items`, `consumedPillsThisTurn`, and a `harmonyData` digest. Regenerate with `bun run optimizer:differential-corpus`; never hand-edit the JSON.
 
-The wider suites report **828 Jest tests across 31 suites** and **64 passing Rust tests** (plus 3 `#[ignore]`d profiling tests).
+The wider suites report **888 Jest tests across 33 suites** and **69 passing Rust tests** (plus 3 `#[ignore]`d profiling tests).
 
 ## The 0.7.6 change: Eccentric Decree scores per bar application
 
@@ -60,6 +60,24 @@ Seeding matches the runtime's laziness: `processEffect` and `onBarChange` both a
 
 Everything else in 0.7.6 needed no model change: the Fallen Soulflame nerf is data carried by the definition-driven buff path, complexity multipliers are unchanged, the auto-use read path is unchanged, the False Fusion rename is display-only, and crafting toxicity cleansing never critted in either build.
 
+## The 0.7.7/0.7.8 changes: stateful buffs, the Illume Crucible seal, and discordant conditions
+
+0.7.7 introduced buffs that carry **per-instance internal state** written by triggered effects, and 0.7.8 added the Illume Crucible seal and rebalanced Eccentric Decree's stray penalty. The extracted runtime source and offsets are in `docs/project/RUNTIME_EVIDENCE.md` section 14; what follows is only how CraftBuddy models them. Every piece is mirrored in both engines and locked by the differential corpus (schema v3 digests each buff's `internalState`).
+
+| Mechanic | Runtime behaviour | CraftBuddy model |
+| --- | --- | --- |
+| Buff `internalState` | Buffs carry an instance key→number map, seeded from the definition's `initialState` eqns at creation and readable by all of the buff's own eqns | `TrackedBuff.internalState` / `ActiveBuff.internal_state`, cloned on every transition, included in cache keys, signatures and the WASM bridge, seeded by `seedBuffInternalState` / `seed_internal_state` |
+| `triggeredEffects` | Six crafting triggers (`completionGained`, `perfectionGained`, `poolSpent`, `poolRestored`, `stabilitySpent`, `stabilityRestored`) fire the buff's effect block with `amount` (and `percentGained` for the bar triggers) in scope | `dispatchBuffTriggers` / `dispatch_buff_triggers` run after costs and technique applications, before the per-turn buff fold, so the fold reads the state the triggers just wrote |
+| `setState` effects | Write the buff's internal state (`set` / `add`); later effects in the same block read earlier writes | a `setState` arm in `executeBuffEffect` and the Rust `run` closure over a working state map |
+| `percentGained` | `100 × (tier(after) − tier(before))` over the 1.3×-inflated threshold tiers (runtime `O7o`/`ox`) | `computeTriggerPercentGained` / `compute_trigger_percent_gained` on top of the shared `getBonusAndChance` / `bonus_and_chance` |
+| True Bifang Flame | `completionGained` → `blaze = max(blaze, floor(percentGained))`; +0.03 control per blaze | definition-driven; no special case |
+| Flame of the Azure Depths | `poolSpent` → charge accumulates `amount`, `stored` gains `floor(charge × 100 / maxpool)`, charge keeps the remainder; every action decays `stored` by 1 | definition-driven; the per-action decay is an ordinary `setState` per-turn effect |
+| Illume Crucible `sealedMaxStability` | Max stability falls by 1 every action even when the technique prevents decay, and **no** max stability restoration applies while held (runtime `E7o`/`D7o`) | `hasSealedMaxStabilityBuff` / `has_sealed_max_stability_buff` force the decay and drop positive `maxStabilityChange`, `restoresMaxStabilityToFull`, and technique/buff max-stability deltas in the action fold, the survivability floor, and the display frame |
+| `discordantConditions` (Uncontrollable Flames) | At the stay-neutral decision the runtime rolls `if (Math.random() >= d) return 'neutral'`: a would-be neutral outcome only holds `1 − d` of the time, the rest falls through to the harmony roll | `getBuffDiscordantConditions` takes the strongest `d` across held buffs; `getGeneratedConditionDistribution` / `generated_condition_distribution` apply `effectiveChange = change + (1 − change) × d` only at the final neutral/positive/negative block, matching the gate's placement |
+| Eccentric Decree rebalance (0.7.8) | Stray bar change now costs **−15 harmony and −15 Qi Pool** (was −5/−5); the focused bar still awards +5 | constants updated in both engines; tests and corpus regenerated |
+
+Verified unchanged, so no model change: Turbid Qi (first stack at step 100, then every 3 steps, granted after the step bump), all seven harmony complexity multipliers, Formless Way's starting harmony of 33, and reagent toxicity gating.
+
 ## 0.7.5 model changes
 
 These are the semantics that changed with the 0.7.5 harmony rework and still hold in 0.7.6. Older CraftBuddy notes describing the opposite are wrong and have been removed.
@@ -84,7 +102,7 @@ Harmony registry values, verified against the installed bundle:
 | Spiritual Resonance | 1.3 | 0 | mismatch applies `-9` harmony / `-3` stability (the in-game log text saying `-15` is stale) |
 | Formless Way | 1.5 | 33 | pins the harmony value every action instead of accumulating deltas |
 | Enhancing Echo | 1.3 | 0 | only harmony that scales live Qi/stability action costs |
-| Eccentric Decree | 1.0 | 0 | scores per bar application in 0.7.6; `+5` focused, `-5` harmony and `-5` Qi Pool for straying |
+| Eccentric Decree | 1.0 | 0 | scores per bar application since 0.7.6; `+5` focused, `-15` harmony and `-15` Qi Pool for straying since 0.7.8 |
 
 The multiplier only applies to **sublime** recipes, matching the runtime's `initCrafting` guard.
 
@@ -96,6 +114,9 @@ Transition and formula layer (`src/optimizer/skills.ts`, `gameTypes.ts`, `state.
 - scaling evaluation with mastery `upgradeKey` rewrites, additive/multiplicative upgrades, and `percentage` fields treated as percentages
 - crit expected value including excess-crit conversion
 - generic active buffs with full definitions: stat contributions, per-turn effects, action-type effects (`onFusion` / `onRefine` / `onStabilize` / `onSupport`), expression gates, stack consumption. Definition-driven buffs such as False Fusion (displayed as "Strive for Completion" since 0.7.6) and Fallen Soulflame fragments flow through this path — there are no per-skill special cases, which is why the 0.7.6 Soulflame re-balance needed no code change
+- stateful buffs (0.7.7+): per-instance `internalState` seeded from `initialState`, `triggeredEffects` on the six crafting triggers with `amount`/`percentGained` in scope, and `setState` writes visible to later effects in the same block — True Bifang Flame and Flame of the Azure Depths flow through this path with no per-buff code
+- `sealedMaxStability` (0.7.8): forced per-action max-stability decay and full restoration block while an Illume Crucible-style buff is held
+- `discordantConditions` (0.7.7+): the stay-neutral gate applied at the generated-condition distribution, in search, the forecast queue, and the live `getNextCondition` fallback
 - dynamic max-pool buff evaluation for `% maxpool` restores with qi-cap clamping
 - active-buff definition hydration from skill payloads when a runtime snapshot omits definitions
 - Qi/stability cost order: percentage buffs floor after each application, then condition multipliers, then the flat `poolCostFlat` surcharge
@@ -144,12 +165,13 @@ Each was verified against the installed bundle before the fix and has a regressi
 | Rust rejected the whole `MctsInput` when any field arrived as an explicit `null`, silently disabling the native prior on real game data | deep `stripNullish` at the bridge plus a `null_default` serde helper |
 | The Rust recommendation was not deterministic (hash-ordered condition merge) | insertion-ordered merge mirroring `normalizeConditionDistribution` |
 | Overcraft scoring plateaued at the target tier: extras were counted conjunctively (`min` of both bars), so a one-sided perfection push to the game caps earned nothing and the optimizer stopped at ~297% on a craft the game pays out to 1100% | unilateral per-bar extras gated on the secured tier (`overcraftAmbition`, default on), with the refund's 80% cap and the game caps as ceilings, mirrored in Rust |
+| Buff-gated techniques (Focused Fusion without an active Focus buff) were recommended because the extraction only read CraftBuddy's own buff-gate fields and missed the game's native top-level `buffCost` / `buffRequirement` | `convertGameTechniques` reads the native fields; regression tests on the extraction seam plus a replay-snapshot fixture of the exact user report |
 
 ## Cross-engine parity
 
 The Rust engine models the **same searchable action space** as TypeScript: generic active buffs, effect-tree techniques, mastery, Soulflame triggers and stack consumption, toxicity effects, and pill/reagent actions. Item actions are no longer filtered out of the bridge payload.
 
-Both engines share the conjunctive outcome model (`outcome.ts` / `crates/craftbuddy-engine/src/outcome.rs`) and agree on all 1,432 corpus transitions.
+Both engines share the conjunctive outcome model (`outcome.ts` / `crates/craftbuddy-engine/src/outcome.rs`) and agree on all 1,471 corpus transitions.
 
 What is still asymmetric, deliberately:
 

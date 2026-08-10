@@ -41,6 +41,11 @@ import { HARMONY_TYPES } from '../../optimizer/harmonyRegistry';
 export interface DifferentialBuffState {
   key: string;
   stacks: number;
+  /**
+   * Trigger-written per-instance state (0.7.7+), with sorted keys so the
+   * checked-in file is stable. `{}` when the buff carries no state.
+   */
+  internalState: Record<string, number>;
 }
 
 /** Remaining item counts after a transition, in iteration order. */
@@ -122,8 +127,12 @@ export interface DifferentialCorpus {
  *
  * 2 added `buffs`, `items`, `consumedPillsThisTurn` and the `harmonyData`
  * digest, plus the effect-tree/mastery/buff/item scenarios that exercise them.
+ *
+ * 3 added `internalState` to the buff digest and the 0.7.7/0.7.8 buff
+ * scenarios (sealed max stability, triggered setState effects) that exercise
+ * it.
  */
-export const DIFFERENTIAL_CORPUS_VERSION = 2;
+export const DIFFERENTIAL_CORPUS_VERSION = 3;
 
 /**
  * Deterministic 32-bit LCG.
@@ -410,20 +419,101 @@ const BUFF_DEFINITIONS: Record<string, BuffDefinition> = {
       { kind: 'negate' },
     ],
   },
+  // 0.7.8 Illume Crucible shape: the seal forces max stability decay every
+  // action and drops every max stability restoration while it is held.
+  illumeCrucible: {
+    name: 'Illume Crucible',
+    canStack: false,
+    sealedMaxStability: true,
+    effects: [],
+  } as BuffDefinition,
+  // 0.7.7 True Bifang Flame shape: completionGained stores the largest single
+  // application's tier-scaled percentage as blaze.
+  trueBifangFlame: {
+    name: 'True Bifang Flame',
+    canStack: false,
+    stats: {
+      control: { value: 0.03, stat: 'control', scaling: 'blaze' },
+    },
+    initialState: { blaze: '0' },
+    effects: [],
+    triggeredEffects: [
+      {
+        trigger: 'completionGained',
+        effects: [
+          {
+            kind: 'setState',
+            key: 'blaze',
+            mode: 'set',
+            value: { value: 1, eqn: 'max(blaze, floor(percentGained))' },
+          },
+        ],
+      },
+    ],
+  } as BuffDefinition,
+  // 0.7.7 Flame of the Azure Depths shape: poolSpent charges stored Qi at one
+  // point per percent of max pool, and the per-turn effect decays stored by 1.
+  azureDepths: {
+    name: 'Flame of the Azure Depths',
+    canStack: false,
+    initialState: { stored: '0', charge: '0' },
+    effects: [
+      {
+        kind: 'setState',
+        key: 'stored',
+        mode: 'set',
+        value: { value: 1, eqn: 'max(0, stored - 1)' },
+      },
+    ],
+    triggeredEffects: [
+      {
+        trigger: 'poolSpent',
+        effects: [
+          {
+            kind: 'setState',
+            key: 'charge',
+            mode: 'add',
+            value: { value: 1, eqn: 'amount / 1' },
+          },
+          {
+            kind: 'setState',
+            key: 'stored',
+            mode: 'add',
+            value: { value: 1, eqn: 'floor(charge * 100 / maxpool)' },
+          },
+          {
+            kind: 'setState',
+            key: 'charge',
+            mode: 'set',
+            value: {
+              value: 1,
+              eqn: 'charge - floor(charge * 100 / maxpool) * maxpool / 100',
+            },
+          },
+        ],
+      },
+    ],
+  } as BuffDefinition,
 };
 
-function trackedBuff(definitionKey: string, stacks: number): TrackedBuff {
+function trackedBuff(
+  definitionKey: string,
+  stacks: number,
+  internalState?: Record<string, number>,
+): TrackedBuff {
   const definition = BUFF_DEFINITIONS[definitionKey];
   if (!definition) throw new Error(`unknown buff fixture: ${definitionKey}`);
-  return { name: definition.name, stacks, definition };
+  return { name: definition.name, stacks, definition, internalState };
 }
 
 function buffMap(
-  entries: ReadonlyArray<[string, string, number]>,
+  entries: ReadonlyArray<
+    [string, string, number] | [string, string, number, Record<string, number>]
+  >,
 ): Map<string, TrackedBuff> {
   const map = new Map<string, TrackedBuff>();
-  for (const [key, definitionKey, stacks] of entries) {
-    map.set(key, trackedBuff(definitionKey, stacks));
+  for (const [key, definitionKey, stacks, internalState] of entries) {
+    map.set(key, trackedBuff(definitionKey, stacks, internalState));
   }
   return map;
 }
@@ -739,6 +829,11 @@ function buildScenario(spec: ScenarioSpec): DifferentialScenario {
             buffs: Array.from(next.buffs.entries()).map(([key, buff]) => ({
               key,
               stacks: buff.stacks,
+              internalState: Object.fromEntries(
+                Object.entries(buff.internalState ?? {}).sort(([a], [b]) =>
+                  a.localeCompare(b),
+                ),
+              ),
             })),
             items: Array.from(next.items.entries()).map(([key, count]) => ({
               key,
@@ -1081,6 +1176,68 @@ function effectMechanicScenarios(): ScenarioSpec[] {
       initialMaxStability: 60,
       maxToxicity: 100,
       buffs: buffMap([['false_fusion_ready', 'falseFusionReady', 2]]),
+      items,
+    }),
+    config: effectConfig(),
+    targetCompletion: 150,
+    targetPerfection: 110,
+    condition: 'neutral',
+  });
+
+  // 0.7.8 Illume Crucible: the seal forces max stability decay every action
+  // and drops every restoration, so the digest's stabilityPenalty is where a
+  // divergence would show.
+  specs.push({
+    name: 'effects-sealed-max-stability',
+    state: new CraftingState({
+      qi: 150,
+      stability: 40,
+      initialMaxStability: 60,
+      stabilityPenalty: 3,
+      maxToxicity: 100,
+      buffs: buffMap([['illume_crucible', 'illumeCrucible', 1]]),
+      items,
+    }),
+    config: effectConfig(),
+    targetCompletion: 150,
+    targetPerfection: 110,
+    condition: 'neutral',
+  });
+
+  // 0.7.7 True Bifang Flame: every completion application rewrites blaze via
+  // the tier-scaled percentGained, so the internalState digest is the parity
+  // surface here.
+  specs.push({
+    name: 'effects-bifang-blaze',
+    state: new CraftingState({
+      qi: 150,
+      stability: 46,
+      initialMaxStability: 60,
+      maxToxicity: 100,
+      buffs: buffMap([
+        ['true_bifang_flame', 'trueBifangFlame', 1, { blaze: 0 }],
+      ]),
+      items,
+    }),
+    config: effectConfig(),
+    targetCompletion: 150,
+    targetPerfection: 110,
+    condition: 'neutral',
+  });
+
+  // 0.7.7 Flame of the Azure Depths: poolSpent charges stored Qi from the
+  // action's cost and the per-turn effect decays stored by 1, with the charge
+  // remainder carrying across actions.
+  specs.push({
+    name: 'effects-azure-depths',
+    state: new CraftingState({
+      qi: 150,
+      stability: 46,
+      initialMaxStability: 60,
+      maxToxicity: 100,
+      buffs: buffMap([
+        ['azure_depths', 'azureDepths', 1, { stored: 2, charge: 0.5 }],
+      ]),
       items,
     }),
     config: effectConfig(),

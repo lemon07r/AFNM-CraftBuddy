@@ -61,6 +61,10 @@ struct Expectation {
 struct BuffExpectation {
     key: String,
     stacks: i32,
+    /// Trigger-written per-instance state (0.7.7+); compared per key with the
+    /// same tolerance as the scalar fields.
+    #[serde(default, rename = "internalState")]
+    internal_state: std::collections::BTreeMap<String, f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -301,7 +305,7 @@ fn diff_harmony(
 #[test]
 fn matches_the_typescript_simulator() {
     let corpus = parse_corpus();
-    assert_eq!(corpus.version, 2, "unexpected differential corpus version");
+    assert_eq!(corpus.version, 3, "unexpected differential corpus version");
     assert!(
         corpus.scenarios.len() >= 120,
         "differential corpus is suspiciously small"
@@ -468,6 +472,47 @@ fn matches_the_typescript_simulator() {
                             .map(|buff| (buff.key.clone(), buff.stacks))
                             .collect::<Vec<_>>(),
                     );
+                    // Trigger-written internal state (0.7.7+): compared per
+                    // buff and key with the scalar tolerance so a setState
+                    // divergence fails here instead of drifting silently.
+                    for (actual_buff, expected_buff) in
+                        next.buffs.iter().zip(expected.buffs.iter())
+                    {
+                        if actual_buff.key != expected_buff.key {
+                            break;
+                        }
+                        let actual_state: std::collections::BTreeMap<&String, f64> =
+                            actual_buff
+                                .internal_state
+                                .iter()
+                                .map(|(state_key, value)| (state_key, *value))
+                                .collect();
+                        for (state_key, expected_value) in &expected_buff.internal_state
+                        {
+                            let actual_value =
+                                actual_state.get(state_key).copied().unwrap_or(0.0);
+                            diff_field(
+                                &mut failures,
+                                &name,
+                                key,
+                                &format!(
+                                    "buffs.{}.internalState.{}",
+                                    actual_buff.key, state_key
+                                ),
+                                actual_value,
+                                *expected_value,
+                            );
+                        }
+                        for state_key in actual_state.keys() {
+                            if !expected_buff.internal_state.contains_key(*state_key) {
+                                failures.push(format!(
+                                    "{name}/{key}: buffs.{}.internalState.{state_key} \
+                                     present in Rust but not in TypeScript",
+                                    actual_buff.key
+                                ));
+                            }
+                        }
+                    }
                     diff_debug(
                         &mut failures,
                         &name,

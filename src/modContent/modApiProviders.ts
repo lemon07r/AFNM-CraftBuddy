@@ -55,7 +55,7 @@ export function findFirstFunction(
 }
 
 export function getModApiNextConditionResolver():
-  | ((progress: any) => any)
+  | ((progress: any, entity?: any) => any)
   | undefined {
   const modApi = (window as any)?.modAPI;
   return findFirstFunction(modApi, [
@@ -64,7 +64,7 @@ export function getModApiNextConditionResolver():
     ['Store', 'turnHandling', 'getNextCondition'],
     ['crafting', 'getNextCondition'],
     ['getNextCondition'],
-  ]) as ((progress: any) => any) | undefined;
+  ]) as ((progress: any, entity?: any) => any) | undefined;
 }
 
 export function getModApiCompletionBonusBuffKey(): string | undefined {

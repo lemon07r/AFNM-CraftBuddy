@@ -102,6 +102,8 @@ interface NativeTrackedBuff {
   name: string;
   stacks: number;
   definition?: BuffDefinition;
+  /** Trigger-written per-instance state (0.7.7+), e.g. True Bifang's blaze. */
+  internal_state?: Record<string, number>;
 }
 
 interface NativeItemStack {
@@ -526,7 +528,14 @@ function convertTrackedBuffs(
       key,
       name: tracked.name || key,
       stacks: Math.floor(tracked.stacks),
-      definition: tracked.definition,
+      definition: stripNullish(tracked.definition),
+      // Omit the key entirely when there is no state: `internal_state` is a
+      // plain map on the Rust side (not an Option), so a present-but-undefined
+      // value fails `serde_wasm_bindgen` deserialization of the whole input
+      // instead of falling back to `#[serde(default)]`.
+      ...(tracked.internalState
+        ? { internal_state: { ...tracked.internalState } }
+        : {}),
     });
   });
   return converted;

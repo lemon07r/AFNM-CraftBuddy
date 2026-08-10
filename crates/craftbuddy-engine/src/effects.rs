@@ -196,6 +196,25 @@ pub struct Effect {
     pub buff: Option<BuffDefinition>,
     #[serde(default)]
     pub condition: Option<EffectCondition>,
+    /// `setState` (0.7.7+): which key of the holding buff's `internal_state`
+    /// to write, the Scaling to evaluate, and 'set' (default) vs 'add'.
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub value: Option<Scaling>,
+}
+
+/// A `triggeredEffects` block (0.7.7+): effects run the moment a matching
+/// crafting event fires rather than once per action.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggeredEffectBlock {
+    #[serde(default)]
+    pub trigger: String,
+    #[serde(default, deserialize_with = "crate::null_default")]
+    pub effects: Vec<Effect>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -219,6 +238,18 @@ pub struct BuffDefinition {
     pub on_stabilize: Option<Vec<Effect>>,
     #[serde(default)]
     pub on_support: Option<Vec<Effect>>,
+    /// 0.7.7+: effect blocks fired by crafting events (poolSpent, ...).
+    #[serde(default)]
+    pub triggered_effects: Option<Vec<TriggeredEffectBlock>>,
+    /// 0.7.7+: eqns seeding the instance's `internal_state` on creation.
+    #[serde(default)]
+    pub initial_state: Option<BTreeMap<String, String>>,
+    /// 0.7.7+: max stability falls every action and cannot be restored.
+    #[serde(default)]
+    pub sealed_max_stability: Option<bool>,
+    /// 0.7.7+: rewrites upcoming-condition queue rolls while held.
+    #[serde(default)]
+    pub discordant_conditions: Option<f64>,
 }
 
 /// An active buff instance. Mirrors `TrackedBuff` in `src/optimizer/state.ts`.
@@ -238,6 +269,11 @@ pub struct ActiveBuff {
     pub stacks: i32,
     #[serde(default)]
     pub definition: Option<BuffDefinition>,
+    /// Trigger-written per-instance state (0.7.7+). Mirrors
+    /// `TrackedBuff.internalState` in `src/optimizer/state.ts`. BTreeMap keeps
+    /// iteration deterministic for the differential corpus.
+    #[serde(default)]
+    pub internal_state: BTreeMap<String, f64>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -1319,6 +1355,13 @@ pub fn apply_buff_stat_contributions(
             eval_vars.insert(normalized_key, buff.stacks as f64);
         }
         eval_vars.insert(buff.key.clone(), buff.stacks as f64);
+        // 0.7.7+ buffs scale off trigger-written internal state (e.g. True
+        // Bifang Flame's `scaling: "blaze"`); the keys share the eqn namespace.
+        for (state_key, state_value) in &buff.internal_state {
+            if state_value.is_finite() {
+                eval_vars.insert(state_key.clone(), *state_value);
+            }
+        }
 
         for (stat_key, scaling) in stats {
             let raw = evaluate_scaling_with_upgrades(Some(scaling), upgrades, &eval_vars, 0.0);
@@ -1650,6 +1693,203 @@ pub fn find_turbid_qi_buff_key(buffs: &[ActiveBuff]) -> Option<String> {
 // Buff collection mutation
 // ---------------------------------------------------------------------------
 
+/// Seed a freshly created buff's internal state from the definition's
+/// `initial_state` eqns (0.7.7+). Mirrors `seedBuffInternalState` in
+/// `src/optimizer/skills.ts`: the runtime evaluates the eqns against the
+/// crafting variables at creation time; unknown symbols resolve to 0.
+fn seed_internal_state(
+    definition: &BuffDefinition,
+    variables: Option<&Variables>,
+) -> BTreeMap<String, f64> {
+    let mut seeded = BTreeMap::new();
+    let Some(initial_state) = definition.initial_state.as_ref() else {
+        return seeded;
+    };
+    let empty;
+    let vars = match variables {
+        Some(vars) => vars,
+        None => {
+            empty = Variables::default();
+            &empty
+        }
+    };
+    for (state_key, eqn) in initial_state {
+        if state_key.is_empty() {
+            continue;
+        }
+        let value = eval_expression(eqn, vars);
+        seeded.insert(
+            state_key.clone(),
+            if value.is_finite() { value } else { 0.0 },
+        );
+    }
+    seeded
+}
+
+/// 0.7.8 Illume Crucible seal: while any held buff carries
+/// `sealed_max_stability`, max stability decays every action regardless of
+/// `noMaxStabilityLoss` and no effect can restore it (runtime `E7o`/`D7o`).
+fn has_sealed_max_stability_buff(buffs: &[ActiveBuff]) -> bool {
+    buffs.iter().any(|buff| {
+        buff.definition
+            .as_ref()
+            .and_then(|definition| definition.sealed_max_stability)
+            .unwrap_or(false)
+    })
+}
+
+/// 0.7.7+ Uncontrollable Flames (Flame of Discordance): the strongest
+/// `discordant_conditions` value across held buffs, 0 when none. Mirrors
+/// `getBuffDiscordantConditions` in `src/optimizer/skills.ts`.
+pub fn buff_discordant_conditions(buffs: &[ActiveBuff]) -> f64 {
+    buffs.iter().fold(0.0, |best, buff| {
+        buff.definition
+            .as_ref()
+            .and_then(|definition| definition.discordant_conditions)
+            .filter(|value| value.is_finite() && *value > best)
+            .unwrap_or(best)
+    })
+}
+
+/// Whether any held buff carries 0.7.7+ triggered effects (the runtime `_6`
+/// dispatcher). Mirrors `hasTriggeredEffectBuffs` in `src/optimizer/skills.ts`.
+fn has_triggered_effect_buffs(buffs: &[ActiveBuff]) -> bool {
+    buffs.iter().any(|buff| {
+        buff.definition
+            .as_ref()
+            .and_then(|definition| definition.triggered_effects.as_ref())
+            .map(|blocks| !blocks.is_empty())
+            .unwrap_or(false)
+    })
+}
+
+/// Runtime `O7o`: how much of a bar a single gain application moved through,
+/// measured in the 1.3x-inflated threshold tiers
+/// (`(tier(after) - tier(before)) * 100`). Mirrors
+/// `computeTriggerPercentGained` in `src/optimizer/skills.ts`.
+fn compute_trigger_percent_gained(gain: f64, bar_after: f64, bar_max: f64) -> f64 {
+    if gain <= 0.0 || bar_max <= 0.0 {
+        return 0.0;
+    }
+    let before = bonus_and_chance((bar_after - gain).max(0.0), bar_max);
+    let after = bonus_and_chance(bar_after.max(0.0), bar_max);
+    (after.guaranteed as f64 + after.bonus_chance
+        - (before.guaranteed as f64 + before.bonus_chance))
+        * 100.0
+}
+
+/// Fire a 0.7.7+ crafting trigger against every held buff with a matching
+/// `triggered_effects` block, applying their `setState` writes. Mirrors
+/// `dispatchBuffTriggers` in `src/optimizer/skills.ts`: later effects in a
+/// block read earlier writes, and only `setState` is valid inside triggered
+/// blocks (anything else would re-enter an effect pipeline the runtime keeps
+/// flat).
+#[allow(clippy::too_many_arguments)]
+fn dispatch_buff_triggers(
+    buffs: &mut BuffSet,
+    trigger: &str,
+    amount: f64,
+    percent_gained: f64,
+    action_vars: &Variables,
+    state: &EngineState,
+    upgrades: &UpgradeMap,
+    new_qi: f64,
+    qi_cap: f64,
+    new_toxicity: f64,
+    max_toxicity: f64,
+) {
+    if !amount.is_finite() || amount <= 0.0 {
+        return;
+    }
+    let keys: Vec<String> = buffs
+        .as_slice()
+        .iter()
+        .filter(|buff| {
+            buff.definition
+                .as_ref()
+                .and_then(|definition| definition.triggered_effects.as_ref())
+                .map(|blocks| blocks.iter().any(|block| block.trigger == trigger))
+                .unwrap_or(false)
+        })
+        .map(|buff| buff.key.clone())
+        .collect();
+
+    for key in keys {
+        let (stacks, mut working, matching) = {
+            let Some(owner) = buffs.get(&key) else {
+                continue;
+            };
+            let matching: Vec<Effect> = owner
+                .definition
+                .as_ref()
+                .and_then(|definition| definition.triggered_effects.as_ref())
+                .map(|blocks| {
+                    blocks
+                        .iter()
+                        .filter(|block| block.trigger == trigger)
+                        .flat_map(|block| block.effects.iter().cloned())
+                        .collect()
+                })
+                .unwrap_or_default();
+            (owner.stacks, owner.internal_state.clone(), matching)
+        };
+        let mut dirty = false;
+        for effect in &matching {
+            if effect.kind != "setState" {
+                continue;
+            }
+            let Some(state_key) = effect.key.as_ref().filter(|key| !key.is_empty()) else {
+                continue;
+            };
+            let mut scope = action_vars.clone();
+            scope.insert("pool".to_string(), new_qi);
+            scope.insert("maxpool".to_string(), qi_cap);
+            scope.insert("toxicity".to_string(), new_toxicity);
+            scope.insert("maxtoxicity".to_string(), max_toxicity);
+            scope.insert("poolCostFlat".to_string(), state.pool_cost_flat);
+            scope.insert(
+                "poolCostPercentage".to_string(),
+                state.pool_cost_percentage,
+            );
+            scope.insert(
+                "stabilityCostPercentage".to_string(),
+                state.stability_cost_percentage,
+            );
+            scope.insert("stacks".to_string(), stacks as f64);
+            scope.insert("amount".to_string(), amount);
+            scope.insert("percentGained".to_string(), percent_gained);
+            for (state_key, state_value) in &working {
+                scope.insert(state_key.clone(), *state_value);
+            }
+            let evaluation =
+                evaluate_effect_condition(effect.condition.as_ref(), state, &scope, stacks);
+            if !evaluation.met || evaluation.probability <= 0.0 {
+                continue;
+            }
+            let value = evaluate_scaling_with_upgrades(
+                effect.value.as_ref(),
+                upgrades,
+                &scope,
+                0.0,
+            );
+            if !value.is_finite() {
+                continue;
+            }
+            let previous = working.get(state_key).copied().unwrap_or(0.0);
+            let next = if effect.mode.as_deref() == Some("add") {
+                previous + value
+            } else {
+                value
+            };
+            working.insert(state_key.clone(), next);
+            dirty = true;
+        }
+        if dirty {
+            buffs.set_internal_state(&key, working);
+        }
+    }
+}
+
 /// Insertion-ordered buff collection, mirroring the JavaScript `Map` the
 /// TypeScript simulator threads through `applySkill`.
 pub struct BuffSet {
@@ -1667,6 +1907,17 @@ impl BuffSet {
 
     pub fn as_slice(&self) -> &[ActiveBuff] {
         &self.entries
+    }
+
+    pub fn get(&self, key: &str) -> Option<&ActiveBuff> {
+        self.index_of(key).map(|index| &self.entries[index])
+    }
+
+    /// Replace a buff's 0.7.7+ trigger-written internal state.
+    pub fn set_internal_state(&mut self, key: &str, state: BTreeMap<String, f64>) {
+        if let Some(index) = self.index_of(key) {
+            self.entries[index].internal_state = state;
+        }
     }
 
     fn index_of(&self, key: &str) -> Option<usize> {
@@ -1700,6 +1951,7 @@ impl BuffSet {
         &mut self,
         definition: Option<&BuffDefinition>,
         stacks_delta: f64,
+        seed_variables: Option<&Variables>,
     ) {
         let Some(definition) = definition else { return };
         if !stacks_delta.is_finite() {
@@ -1754,6 +2006,7 @@ impl BuffSet {
                 name: buff_key,
                 stacks: next,
                 definition: Some(definition.clone()),
+                internal_state: seed_internal_state(definition, seed_variables),
             });
         }
     }
@@ -2135,7 +2388,11 @@ pub fn calculate_skill_gains(
         let mut perfection_gain = 0.0;
         let mut stability_gain = 0.0;
         let mut toxicity_cleanse = 0.0;
-        let record_bars = needs_bar_contributions(config);
+        // 0.7.7+ triggered buff effects also consume per-application bar
+        // ordering (True Bifang Flame takes the max single-application
+        // percentGained).
+        let record_bars =
+            needs_bar_contributions(config) || has_triggered_effect_buffs(&state.buffs);
         let mut bar_contributions: Vec<BarContribution> = Vec::new();
 
         for effect in &skill.effects {
@@ -2438,25 +2695,39 @@ pub fn apply_skill_with_buffs(
         calculate_effective_action_costs(env, state, skill, condition_effects, active_buffs);
 
     let mut new_qi = clamp(state.qi - costs.qi_cost, 0.0, qi_cap);
+    // 0.7.7+ trigger amounts: the runtime fires `poolSpent` when the cost is
+    // paid and `poolRestored` when a restore lands, each with the actual delta.
+    let qi_spent_by_cost = (state.qi - new_qi).max(0.0);
     let has_explicit_pool_effect = skill.effects.iter().any(|effect| effect.kind == "pool");
+    let mut qi_restored_by_skill = 0.0;
     if !has_explicit_pool_effect && skill.restores_qi && skill.qi_restore > 0.0 {
+        let qi_before_restore = new_qi;
         new_qi = clamp(new_qi + skill.qi_restore, 0.0, qi_cap);
+        qi_restored_by_skill = (new_qi - qi_before_restore).max(0.0);
     }
 
     let initial_max = state.initial_max_stability;
+    // 0.7.8 Illume Crucible seal: forced decay + no restoration (runtime
+    // `(!i.noMaxStabilityLoss||E7o(e))&&t.stabilityPenalty++` and `D7o`).
+    let max_stability_sealed = has_sealed_max_stability_buff(active_buffs);
     let mut penalty = state.stability_penalty;
-    if consumes_turn && !skill.prevents_max_stability_decay {
+    if consumes_turn && (!skill.prevents_max_stability_decay || max_stability_sealed) {
         penalty += 1.0;
     }
     penalty = penalty.min(initial_max);
     let mut new_max_stability = initial_max - penalty;
     if skill.max_stability_change != 0.0 {
-        penalty = (penalty - skill.max_stability_change)
+        let effective_change = if max_stability_sealed && skill.max_stability_change > 0.0 {
+            0.0
+        } else {
+            skill.max_stability_change
+        };
+        penalty = (penalty - effective_change)
             .max(0.0)
             .min(initial_max);
         new_max_stability = initial_max - penalty;
     }
-    if skill.restores_max_stability_to_full {
+    if skill.restores_max_stability_to_full && !max_stability_sealed {
         penalty = 0.0;
         new_max_stability = initial_max;
     }
@@ -2622,7 +2893,7 @@ pub fn apply_skill_with_buffs(
                     &action_vars,
                     1.0,
                 ) * factor;
-                buffs.upsert_from_definition(effect.buff.as_ref(), stacks);
+                buffs.upsert_from_definition(effect.buff.as_ref(), stacks, Some(&action_vars));
             }
             "consumeBuff" => {
                 let buff_key = effect
@@ -2647,6 +2918,162 @@ pub fn apply_skill_with_buffs(
         }
     }
 
+    // 0.7.7+ triggered buff effects (the runtime `_6` dispatcher). The runtime
+    // fires triggers as each change lands - cost payment, technique
+    // applications, then per-turn buff effects - so dispatches run after the
+    // technique effects and the buff fold re-reads the mutated state.
+    let trigger_buffs_present = consumes_turn && has_triggered_effect_buffs(buffs.as_slice());
+    let mut running_completion = state.completion;
+    let mut running_perfection = state.perfection;
+
+    if trigger_buffs_present {
+        if qi_spent_by_cost > 0.0 {
+            dispatch_buff_triggers(
+                &mut buffs,
+                "poolSpent",
+                qi_spent_by_cost,
+                0.0,
+                &action_vars,
+                state,
+                &resolved.upgrades,
+                new_qi,
+                qi_cap,
+                new_toxicity,
+                config.max_toxicity,
+            );
+        }
+        if qi_restored_by_skill > 0.0 {
+            dispatch_buff_triggers(
+                &mut buffs,
+                "poolRestored",
+                qi_restored_by_skill,
+                0.0,
+                &action_vars,
+                state,
+                &resolved.upgrades,
+                new_qi,
+                qi_cap,
+                new_toxicity,
+                config.max_toxicity,
+            );
+        }
+        if technique_pool_delta > 0.0 {
+            dispatch_buff_triggers(
+                &mut buffs,
+                "poolRestored",
+                technique_pool_delta,
+                0.0,
+                &action_vars,
+                state,
+                &resolved.upgrades,
+                new_qi,
+                qi_cap,
+                new_toxicity,
+                config.max_toxicity,
+            );
+        } else if technique_pool_delta < 0.0 {
+            dispatch_buff_triggers(
+                &mut buffs,
+                "poolSpent",
+                -technique_pool_delta,
+                0.0,
+                &action_vars,
+                state,
+                &resolved.upgrades,
+                new_qi,
+                qi_cap,
+                new_toxicity,
+                config.max_toxicity,
+            );
+        }
+        if costs.stability_cost > 0.0 {
+            dispatch_buff_triggers(
+                &mut buffs,
+                "stabilitySpent",
+                costs.stability_cost.min(state.stability),
+                0.0,
+                &action_vars,
+                state,
+                &resolved.upgrades,
+                new_qi,
+                qi_cap,
+                new_toxicity,
+                config.max_toxicity,
+            );
+        }
+        if gains.stability > 0.0 {
+            dispatch_buff_triggers(
+                &mut buffs,
+                "stabilityRestored",
+                gains.stability,
+                0.0,
+                &action_vars,
+                state,
+                &resolved.upgrades,
+                new_qi,
+                qi_cap,
+                new_toxicity,
+                config.max_toxicity,
+            );
+        }
+        // Bar applications fire per application in runtime order; True Bifang
+        // Flame keys blaze on the largest single-application percentGained.
+        let trigger_contributions = if !gains.bar_contributions.is_empty() {
+            crate::scale_bar_contributions(
+                &gains.bar_contributions,
+                gains.completion,
+                gains.perfection,
+            )
+        } else {
+            crate::synthesize_bar_contributions(gains.completion, gains.perfection)
+        };
+        for contribution in &trigger_contributions {
+            if contribution.amount <= 0.0 {
+                continue;
+            }
+            if contribution.completion_bar {
+                let bar_after = running_completion + contribution.amount;
+                dispatch_buff_triggers(
+                    &mut buffs,
+                    "completionGained",
+                    contribution.amount,
+                    compute_trigger_percent_gained(
+                        contribution.amount,
+                        bar_after,
+                        target_completion,
+                    ),
+                    &action_vars,
+                    state,
+                    &resolved.upgrades,
+                    new_qi,
+                    qi_cap,
+                    new_toxicity,
+                    config.max_toxicity,
+                );
+                running_completion = bar_after;
+            } else {
+                let bar_after = running_perfection + contribution.amount;
+                // No 0.7.8 buff consumes `perfectionGained`; the perfection
+                // tier max is not threaded into the engine, so percentGained
+                // stays 0 until one does.
+                dispatch_buff_triggers(
+                    &mut buffs,
+                    "perfectionGained",
+                    contribution.amount,
+                    0.0,
+                    &action_vars,
+                    state,
+                    &resolved.upgrades,
+                    new_qi,
+                    qi_cap,
+                    new_toxicity,
+                    config.max_toxicity,
+                );
+                running_perfection = bar_after;
+            }
+        }
+    }
+
     let mut buff_completion = 0.0;
     let mut buff_perfection = 0.0;
     // Ordered buff bar contributions, appended after the technique's own effects:
@@ -2664,6 +3091,13 @@ pub fn apply_skill_with_buffs(
         // created while executing effects do not execute in the same turn.
         let snapshot = buffs.as_slice().to_vec();
         for owner in &snapshot {
+            // Triggered effects may have rewritten this buff's internal state
+            // already this action, so read the live entry, not the snapshot.
+            let Some(live) = buffs.get(&owner.key) else {
+                continue;
+            };
+            let live_stacks = live.stacks;
+            let live_internal_state = live.internal_state.clone();
             let Some(definition) = owner.definition.as_ref() else {
                 continue;
             };
@@ -2678,7 +3112,12 @@ pub fn apply_skill_with_buffs(
                 "stabilityCostPercentage".to_string(),
                 state.stability_cost_percentage,
             );
-            scaling_vars.insert("stacks".to_string(), owner.stacks as f64);
+            scaling_vars.insert("stacks".to_string(), live_stacks as f64);
+            // 0.7.7+ buffs read trigger-written internal state from their eqns
+            // (e.g. True Bifang Flame's per-action payout scaling on `blaze`).
+            for (state_key, state_value) in &live_internal_state {
+                scaling_vars.insert(state_key.clone(), *state_value);
+            }
 
             let mut run = |effects: &[Effect]| {
                 for effect in effects {
@@ -2707,6 +3146,30 @@ pub fn apply_skill_with_buffs(
                                     amount,
                                 });
                             }
+                            // Buff bar applications fire the same runtime
+                            // triggers as technique applications (e.g. Illume
+                            // Crucible's onStabilize completion feeds blaze).
+                            if trigger_buffs_present && amount > 0.0 {
+                                let bar_after = running_completion + amount;
+                                dispatch_buff_triggers(
+                                    &mut buffs,
+                                    "completionGained",
+                                    amount,
+                                    compute_trigger_percent_gained(
+                                        amount,
+                                        bar_after,
+                                        target_completion,
+                                    ),
+                                    &action_vars,
+                                    state,
+                                    &resolved.upgrades,
+                                    new_qi,
+                                    qi_cap,
+                                    new_toxicity,
+                                    config.max_toxicity,
+                                );
+                                running_completion = bar_after;
+                            }
                         }
                         "perfection" => {
                             buff_perfection += amount;
@@ -2716,9 +3179,68 @@ pub fn apply_skill_with_buffs(
                                     amount,
                                 });
                             }
+                            if trigger_buffs_present && amount > 0.0 {
+                                let bar_after = running_perfection + amount;
+                                dispatch_buff_triggers(
+                                    &mut buffs,
+                                    "perfectionGained",
+                                    amount,
+                                    0.0,
+                                    &action_vars,
+                                    state,
+                                    &resolved.upgrades,
+                                    new_qi,
+                                    qi_cap,
+                                    new_toxicity,
+                                    config.max_toxicity,
+                                );
+                                running_perfection = bar_after;
+                            }
                         }
-                        "stability" => buff_stability_delta += amount,
-                        "pool" => buff_pool_delta += amount,
+                        "stability" => {
+                            buff_stability_delta += amount;
+                            if trigger_buffs_present && amount != 0.0 {
+                                dispatch_buff_triggers(
+                                    &mut buffs,
+                                    if amount > 0.0 {
+                                        "stabilityRestored"
+                                    } else {
+                                        "stabilitySpent"
+                                    },
+                                    amount.abs(),
+                                    0.0,
+                                    &action_vars,
+                                    state,
+                                    &resolved.upgrades,
+                                    new_qi,
+                                    qi_cap,
+                                    new_toxicity,
+                                    config.max_toxicity,
+                                );
+                            }
+                        }
+                        "pool" => {
+                            buff_pool_delta += amount;
+                            if trigger_buffs_present && amount != 0.0 {
+                                dispatch_buff_triggers(
+                                    &mut buffs,
+                                    if amount > 0.0 {
+                                        "poolRestored"
+                                    } else {
+                                        "poolSpent"
+                                    },
+                                    amount.abs(),
+                                    0.0,
+                                    &action_vars,
+                                    state,
+                                    &resolved.upgrades,
+                                    new_qi,
+                                    qi_cap,
+                                    new_toxicity,
+                                    config.max_toxicity,
+                                );
+                            }
+                        }
                         "maxStability" => buff_max_stability_delta += amount,
                         // Runtime `changeToxicity` does `toxicity -= amount`, so a
                         // positive amount cleanses and a negative amount inflicts.
@@ -2731,7 +3253,11 @@ pub fn apply_skill_with_buffs(
                                 &scaling_vars,
                                 1.0,
                             ) * condition_factor;
-                            buffs.upsert_from_definition(effect.buff.as_ref(), stacks);
+                            buffs.upsert_from_definition(
+                                effect.buff.as_ref(),
+                                stacks,
+                                Some(&scaling_vars),
+                            );
                         }
                         "addStack" => {
                             let change = evaluate_scaling_with_upgrades(
@@ -2742,6 +3268,36 @@ pub fn apply_skill_with_buffs(
                             ) * condition_factor;
                             if change != 0.0 {
                                 buffs.adjust_existing(&owner.key, change);
+                            }
+                        }
+                        // 0.7.7+ per-instance state writes (Azure Depths'
+                        // per-action `stored = max(0, stored - 1)` decay lives
+                        // in `effects`).
+                        "setState" => {
+                            if let Some(state_key) =
+                                effect.key.as_ref().filter(|key| !key.is_empty())
+                            {
+                                let value = evaluate_scaling_with_upgrades(
+                                    effect.value.as_ref(),
+                                    &resolved.upgrades,
+                                    &scaling_vars,
+                                    0.0,
+                                );
+                                if value.is_finite() {
+                                    let mut next_state = buffs
+                                        .get(&owner.key)
+                                        .map(|buff| buff.internal_state.clone())
+                                        .unwrap_or_default();
+                                    let previous =
+                                        next_state.get(state_key).copied().unwrap_or(0.0);
+                                    let next = if effect.mode.as_deref() == Some("add") {
+                                        previous + value
+                                    } else {
+                                        value
+                                    };
+                                    next_state.insert(state_key.clone(), next);
+                                    buffs.set_internal_state(&owner.key, next_state);
+                                }
                             }
                         }
                         _ => {}
@@ -2791,7 +3347,12 @@ pub fn apply_skill_with_buffs(
     }
 
     if technique_max_stability_delta != 0.0 {
-        penalty = (penalty - technique_max_stability_delta)
+        let effective_delta = if max_stability_sealed && technique_max_stability_delta > 0.0 {
+            0.0
+        } else {
+            technique_max_stability_delta
+        };
+        penalty = (penalty - effective_delta)
             .max(0.0)
             .min(initial_max);
         let bound = initial_max - penalty;
@@ -2808,7 +3369,12 @@ pub fn apply_skill_with_buffs(
     new_qi = clamp(new_qi + buff_pool_delta, 0.0, qi_cap);
     new_toxicity = (new_toxicity + buff_toxicity_delta).max(0.0);
     if buff_max_stability_delta != 0.0 {
-        penalty = (penalty - buff_max_stability_delta)
+        let effective_delta = if max_stability_sealed && buff_max_stability_delta > 0.0 {
+            0.0
+        } else {
+            buff_max_stability_delta
+        };
+        penalty = (penalty - effective_delta)
             .max(0.0)
             .min(initial_max);
         let bound = initial_max - penalty;

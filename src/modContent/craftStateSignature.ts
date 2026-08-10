@@ -29,6 +29,8 @@ export type LiveCraftStateReading =
 export interface CraftStateBuffLike {
   readonly name?: string;
   readonly stacks?: number;
+  /** 0.7.7+ trigger-written per-instance state (blaze, stored, ...). */
+  readonly internalState?: Record<string, number>;
 }
 
 export interface CraftStateInventoryEntry {
@@ -169,9 +171,25 @@ function serializeBuffs(
   }
   return (
     buffs
-      .map(
-        (buff) => `${normalizeKey(buff?.name)}:${readNumber(buff?.stacks, 0)}`,
-      )
+      .map((buff) => {
+        const base = `${normalizeKey(buff?.name)}:${readNumber(buff?.stacks, 0)}`;
+        // Trigger-written buff state (0.7.7+) changes stat scaling without
+        // touching stacks, so a recommendation computed against one blaze /
+        // stored value must never be dispatched against another.
+        const internalState = buff?.internalState;
+        if (!internalState) {
+          return base;
+        }
+        const statePart = Object.keys(internalState)
+          .sort()
+          .map(
+            (stateKey) =>
+              `${stateKey}=${readNumber(internalState[stateKey], Number.NaN)}`,
+          )
+          .filter((entry) => !entry.endsWith('=NaN'))
+          .join(',');
+        return statePart ? `${base}{${statePart}}` : base;
+      })
       .sort()
       .join('|') || 'none'
   );
@@ -344,9 +362,23 @@ export function readLiveCraftStateSignature(
     ),
     buffs: readArray(player.buffs).map((entry) => {
       const buff = readRecord(entry);
+      const rawInternalState = readRecord(buff?.internalState);
+      const internalState: Record<string, number> = {};
+      if (rawInternalState) {
+        for (const [stateKey, stateValue] of Object.entries(
+          rawInternalState,
+        )) {
+          const numeric = readNumber(stateValue, Number.NaN);
+          if (Number.isFinite(numeric)) {
+            internalState[stateKey] = numeric;
+          }
+        }
+      }
       return {
         name: typeof buff?.name === 'string' ? buff.name : undefined,
         stacks: readNumber(buff?.stacks, 0),
+        internalState:
+          Object.keys(internalState).length > 0 ? internalState : undefined,
       };
     }),
     techniques: readArray(player.techniques).map((entry) => {

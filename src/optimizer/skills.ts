@@ -24,6 +24,8 @@ import {
   getConditionEffects,
   getBonusAndChance,
   evaluateScaling,
+  evalExpression,
+  CraftingBuffTrigger,
 } from './gameTypes';
 import {
   processHarmonyEffect,
@@ -690,6 +692,104 @@ function normalizeBuffName(name: string | undefined): string {
   return normalizeIdentifier(name);
 }
 
+/**
+ * Seed a freshly created buff's internal state from the definition's
+ * `initialState` eqns (0.7.7+). The runtime evaluates them against the
+ * crafting variables at creation time; unknown symbols resolve to 0.
+ */
+function seedBuffInternalState(
+  definition: BuffDefinition | undefined,
+  variables: ScalingVariables | undefined,
+): Record<string, number> | undefined {
+  const initialState = definition?.initialState;
+  if (!initialState) {
+    return undefined;
+  }
+  const seeded: Record<string, number> = {};
+  for (const [stateKey, eqn] of Object.entries(initialState)) {
+    if (!stateKey || typeof eqn !== 'string') {
+      continue;
+    }
+    // Unknown symbols resolve to 0 in the expression scope, so a missing
+    // variable set simply zeroes every reference.
+    const value = evalExpression(eqn, variables ?? ({} as ScalingVariables));
+    seeded[stateKey] = Number.isFinite(value) ? value : 0;
+  }
+  return Object.keys(seeded).length > 0 ? seeded : undefined;
+}
+
+/**
+ * 0.7.8 Illume Crucible seal: while any held buff carries
+ * `sealedMaxStability`, max stability decays every action regardless of
+ * `noMaxStabilityLoss` and no effect can restore it (runtime `E7o`/`D7o`).
+ */
+function hasSealedMaxStabilityBuff(
+  buffs: ReadonlyMap<string, { definition?: BuffDefinition }>,
+): boolean {
+  return Array.from(buffs.values()).some(
+    (buff) => buff.definition?.sealedMaxStability === true,
+  );
+}
+
+/**
+ * Whether any held buff carries 0.7.7+ triggered effects (the runtime `_6`
+ * dispatcher). Gates per-application trigger bookkeeping so crafts without
+ * trigger buffs allocate nothing extra.
+ */
+function hasTriggeredEffectBuffs(
+  buffs: ReadonlyMap<string, { definition?: BuffDefinition }>,
+): boolean {
+  return Array.from(buffs.values()).some(
+    (buff) => (buff.definition?.triggeredEffects?.length ?? 0) > 0,
+  );
+}
+
+/**
+ * 0.7.7+ Uncontrollable Flames (Flame of Discordance): the strongest
+ * `discordantConditions` value across held buffs, 0 when none. The runtime
+ * reads it off the entity's buffs when rolling the next condition.
+ */
+export function getBuffDiscordantConditions(
+  buffs: ReadonlyMap<string, { definition?: BuffDefinition }>,
+): number {
+  let discordance = 0;
+  for (const buff of Array.from(buffs.values())) {
+    const value = buff.definition?.discordantConditions;
+    if (
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      value > discordance
+    ) {
+      discordance = value;
+    }
+  }
+  return discordance;
+}
+
+/**
+ * Runtime `O7o`: how much of a bar a single gain application moved through,
+ * measured in the 1.3x-inflated threshold tiers
+ * (`(tier(after) - tier(before)) * 100`). True Bifang Flame stores
+ * `floor(percentGained)` blaze per `completionGained` trigger.
+ */
+function computeTriggerPercentGained(
+  gain: number,
+  barAfter: number,
+  barMax: number,
+): number {
+  if (gain <= 0 || barMax <= 0) {
+    return 0;
+  }
+  const before = getBonusAndChance(Math.max(0, barAfter - gain), barMax);
+  const after = getBonusAndChance(Math.max(0, barAfter), barMax);
+  return (
+    (after.guaranteed +
+      after.bonusChance -
+      (before.guaranteed + before.bonusChance)) *
+    100
+  );
+}
+
 function isDerivedForgeHeatBuff(
   state: CraftingState,
   config: OptimizerConfig | undefined,
@@ -747,7 +847,12 @@ function normalizeRuntimeCostPercentage(raw: number | undefined): number {
 
 type ActiveBuffMap = Map<
   string,
-  { name: string; stacks: number; definition?: BuffDefinition }
+  {
+    name: string;
+    stacks: number;
+    definition?: BuffDefinition;
+    internalState?: Record<string, number>;
+  }
 >;
 
 /**
@@ -1284,6 +1389,17 @@ function applyBuffStatContributions(
       evalVars[normalizedKey] = tracked.stacks;
     }
     evalVars[buffKey] = tracked.stacks;
+    // 0.7.7+ buffs scale off trigger-written internal state (e.g. True Bifang
+    // Flame's `scaling: 'blaze'`); the keys share the eqn namespace.
+    if (tracked.internalState) {
+      for (const [stateKey, stateValue] of Object.entries(
+        tracked.internalState,
+      )) {
+        if (typeof stateValue === 'number' && Number.isFinite(stateValue)) {
+          evalVars[stateKey] = stateValue;
+        }
+      }
+    }
 
     for (const [statKey, scaling] of Object.entries(definition.stats)) {
       if (!scaling) continue;
@@ -1779,7 +1895,14 @@ function buildPostCostStabilityFrame(
   );
 
   let stabilityPenaltyAfterSetup = state.stabilityPenalty;
-  if (consumesTurn && !skill.preventsMaxStabilityDecay) {
+
+  // 0.7.8 Illume Crucible seal, mirrored from `applySkill`.
+  const maxStabilitySealed = hasSealedMaxStabilityBuff(state.buffs);
+
+  if (
+    consumesTurn &&
+    (!skill.preventsMaxStabilityDecay || maxStabilitySealed)
+  ) {
     stabilityPenaltyAfterSetup++;
   }
   stabilityPenaltyAfterSetup = Math.min(
@@ -1790,14 +1913,18 @@ function buildPostCostStabilityFrame(
   let maxStabilityAfterSetup =
     state.initialMaxStability - stabilityPenaltyAfterSetup;
   if (skill.maxStabilityChange) {
+    const effectiveMaxStabilityChange =
+      maxStabilitySealed && skill.maxStabilityChange > 0
+        ? 0
+        : skill.maxStabilityChange;
     stabilityPenaltyAfterSetup = Math.min(
       state.initialMaxStability,
-      Math.max(0, stabilityPenaltyAfterSetup - skill.maxStabilityChange),
+      Math.max(0, stabilityPenaltyAfterSetup - effectiveMaxStabilityChange),
     );
     maxStabilityAfterSetup =
       state.initialMaxStability - stabilityPenaltyAfterSetup;
   }
-  if (skill.restoresMaxStabilityToFull) {
+  if (skill.restoresMaxStabilityToFull && !maxStabilitySealed) {
     stabilityPenaltyAfterSetup = 0;
     maxStabilityAfterSetup = state.initialMaxStability;
   }
@@ -2057,7 +2184,10 @@ export function calculateSkillGains(
     let perfectionGain = 0;
     let stabilityGain = 0;
     let toxicityCleanse = 0;
-    const recordBars = needsBarContributions(config);
+    // 0.7.7+ triggered buff effects also consume per-application bar ordering
+    // (True Bifang Flame takes the max single-application percentGained).
+    const recordBars =
+      needsBarContributions(config) || hasTriggeredEffectBuffs(state.buffs);
     const barContributions: BarContribution[] = [];
 
     for (const effect of skill.effects) {
@@ -2312,8 +2442,15 @@ export function calculateActionSurvivabilityFloor(
     config,
   );
 
+  // 0.7.8 Illume Crucible seal: forced decay + no restoration (runtime
+  // `E7o`/`D7o`), mirrored from `applySkill`.
+  const maxStabilitySealed = hasSealedMaxStabilityBuff(state.buffs);
+
   let newStabilityPenalty = state.stabilityPenalty;
-  if (consumesTurn && !skill.preventsMaxStabilityDecay) {
+  if (
+    consumesTurn &&
+    (!skill.preventsMaxStabilityDecay || maxStabilitySealed)
+  ) {
     newStabilityPenalty++;
   }
   newStabilityPenalty = Math.min(
@@ -2322,12 +2459,16 @@ export function calculateActionSurvivabilityFloor(
   );
 
   if (skill.maxStabilityChange) {
+    const effectiveMaxStabilityChange =
+      maxStabilitySealed && skill.maxStabilityChange > 0
+        ? 0
+        : skill.maxStabilityChange;
     newStabilityPenalty = Math.min(
       state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - skill.maxStabilityChange),
+      Math.max(0, newStabilityPenalty - effectiveMaxStabilityChange),
     );
   }
-  if (skill.restoresMaxStabilityToFull) {
+  if (skill.restoresMaxStabilityToFull && !maxStabilitySealed) {
     newStabilityPenalty = 0;
   }
 
@@ -2372,6 +2513,7 @@ export function calculateActionSurvivabilityFloor(
   const upsertBuffFromDefinition = (
     definition: BuffDefinition | undefined,
     stacksDelta: number,
+    seedVariables?: ScalingVariables,
   ): void => {
     if (!definition || !Number.isFinite(stacksDelta)) return;
     const delta = Math.floor(stacksDelta);
@@ -2414,6 +2556,7 @@ export function calculateActionSurvivabilityFloor(
         name: buffKey,
         stacks: Math.floor(nextStacks),
         definition,
+        internalState: seedBuffInternalState(definition, seedVariables),
       });
     }
   };
@@ -2720,7 +2863,7 @@ export function calculateActionSurvivabilityFloor(
               actionSuccessChance * conditionResult.probability,
             ) > 0
           ) {
-            upsertBuffFromDefinition(effect.buff, stacksToAdd);
+            upsertBuffFromDefinition(effect.buff, stacksToAdd, actionVars);
           }
           break;
         }
@@ -2860,7 +3003,7 @@ export function calculateActionSurvivabilityFloor(
             conditionResult.probability,
           ) > 0
         ) {
-          upsertBuffFromDefinition(effect.buff, stacksToAdd);
+          upsertBuffFromDefinition(effect.buff, stacksToAdd, scalingVars);
         }
         break;
       }
@@ -2905,6 +3048,17 @@ export function calculateActionSurvivabilityFloor(
         stabilityCostPercentage: state.stabilityCostPercentage,
         stacks: buff.stacks,
       };
+      // 0.7.7+ buffs read trigger-written internal state from their eqns
+      // (e.g. True Bifang Flame's per-action payout scaling on `blaze`).
+      if (buff.internalState) {
+        for (const [stateKey, stateValue] of Object.entries(
+          buff.internalState,
+        )) {
+          if (typeof stateValue === 'number' && Number.isFinite(stateValue)) {
+            scalingVars[stateKey] = stateValue;
+          }
+        }
+      }
 
       if (buff.definition.effects) {
         for (const effect of buff.definition.effects) {
@@ -2940,9 +3094,13 @@ export function calculateActionSurvivabilityFloor(
   }
 
   if (guaranteedTechniqueMaxStabilityDelta !== 0) {
+    const effectiveGuaranteedMaxStabilityDelta =
+      maxStabilitySealed && guaranteedTechniqueMaxStabilityDelta > 0
+        ? 0
+        : guaranteedTechniqueMaxStabilityDelta;
     newStabilityPenalty = Math.min(
       state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - guaranteedTechniqueMaxStabilityDelta),
+      Math.max(0, newStabilityPenalty - effectiveGuaranteedMaxStabilityDelta),
     );
     newMaxStability = state.initialMaxStability - newStabilityPenalty;
     if (newStability > newMaxStability) {
@@ -2956,9 +3114,13 @@ export function calculateActionSurvivabilityFloor(
   newQi = clampQi(newQi + buffPoolDelta);
   newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
   if (buffMaxStabilityDelta !== 0) {
+    const effectiveBuffMaxStabilityDelta =
+      maxStabilitySealed && buffMaxStabilityDelta > 0
+        ? 0
+        : buffMaxStabilityDelta;
     newStabilityPenalty = Math.min(
       state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - buffMaxStabilityDelta),
+      Math.max(0, newStabilityPenalty - effectiveBuffMaxStabilityDelta),
     );
     newMaxStability = state.initialMaxStability - newStabilityPenalty;
     if (newStability > newMaxStability) {
@@ -3195,6 +3357,7 @@ export function applySkill(
   conditionEffects: ConditionEffect[] = [],
   targetCompletion: number = 0,
   currentCondition?: string,
+  targetPerfection: number = 0,
 ): CraftingState | null {
   const maxToxicity = config.maxToxicity || 0;
   const resolvedActiveBuffs = getResolvedActiveBuffs(state, config);
@@ -3237,6 +3400,10 @@ export function applySkill(
 
   // Calculate new resource values
   let newQi = clampQi(state.qi - effectiveQiCost);
+  // 0.7.7+ trigger amounts: the runtime fires `poolSpent` when the cost is
+  // paid and `poolRestored` when a restore lands, each with the actual delta.
+  const qiSpentByCost = Math.max(0, state.qi - newQi);
+  let qiRestoredBySkill = 0;
   const hasExplicitPoolEffect =
     Array.isArray(skill.effects) &&
     skill.effects.some((effect) => effect?.kind === 'pool');
@@ -3246,7 +3413,9 @@ export function applySkill(
     skill.qiRestore &&
     skill.qiRestore > 0
   ) {
+    const qiBeforeRestore = newQi;
     newQi = clampQi(newQi + skill.qiRestore);
+    qiRestoredBySkill = Math.max(0, newQi - qiBeforeRestore);
   }
 
   // Handle max stability using game's penalty system:
@@ -3255,8 +3424,16 @@ export function applySkill(
   // 3. Apply any full restore effect
   let newStabilityPenalty = state.stabilityPenalty;
 
+  // 0.7.8 Illume Crucible seal: decay is forced every action and all
+  // restoration is dropped while a sealed buff is held (runtime
+  // `(!i.noMaxStabilityLoss||E7o(e))&&t.stabilityPenalty++` and `D7o`).
+  const maxStabilitySealed = hasSealedMaxStabilityBuff(state.buffs);
+
   // Standard max stability decay: increases penalty by 1 each turn unless skill prevents it
-  if (consumesTurn && !skill.preventsMaxStabilityDecay) {
+  if (
+    consumesTurn &&
+    (!skill.preventsMaxStabilityDecay || maxStabilitySealed)
+  ) {
     newStabilityPenalty++;
   }
 
@@ -3273,14 +3450,19 @@ export function applySkill(
   if (skill.maxStabilityChange) {
     // Negative changes to max stability increase the penalty
     // Positive changes decrease the penalty (restore max stability)
+    // A sealed max stability drops positive (restoring) changes entirely.
+    const effectiveMaxStabilityChange =
+      maxStabilitySealed && skill.maxStabilityChange > 0
+        ? 0
+        : skill.maxStabilityChange;
     newStabilityPenalty = Math.min(
       state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - skill.maxStabilityChange),
+      Math.max(0, newStabilityPenalty - effectiveMaxStabilityChange),
     );
     newMaxStability = state.initialMaxStability - newStabilityPenalty;
   }
 
-  if (skill.restoresMaxStabilityToFull) {
+  if (skill.restoresMaxStabilityToFull && !maxStabilitySealed) {
     newStabilityPenalty = 0;
     newMaxStability = state.initialMaxStability;
   }
@@ -3420,6 +3602,7 @@ export function applySkill(
   const upsertBuffFromDefinition = (
     definition: BuffDefinition | undefined,
     stacksDelta: number,
+    seedVariables?: ScalingVariables,
   ): void => {
     if (!definition || !Number.isFinite(stacksDelta)) return;
     const delta = Math.floor(stacksDelta);
@@ -3462,6 +3645,7 @@ export function applySkill(
         name: buffKey,
         stacks: Math.floor(nextStacks),
         definition,
+        internalState: seedBuffInternalState(definition, seedVariables),
       });
     }
   };
@@ -3536,6 +3720,85 @@ export function applySkill(
         Math.min(1, (skill.successChance ?? 1) + actionVars.successChanceBonus),
       );
 
+  // 0.7.7+ triggered buff effects (the runtime `_6` dispatcher). The runtime
+  // fires triggers as each change lands - cost payment, technique
+  // applications, then per-turn buff effects - so dispatches below run after
+  // the technique effects and the buff fold re-reads the mutated state.
+  const triggerBuffsPresent = consumesTurn && hasTriggeredEffectBuffs(newBuffs);
+  let runningCompletion = state.completion;
+  let runningPerfection = state.perfection;
+
+  const dispatchBuffTriggers = (
+    trigger: CraftingBuffTrigger,
+    amount: number,
+    percentGained: number = 0,
+  ): void => {
+    if (!consumesTurn || !Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+    for (const [buffKey, buff] of Array.from(newBuffs.entries())) {
+      const blocks = buff.definition?.triggeredEffects;
+      if (!blocks || blocks.length === 0) {
+        continue;
+      }
+      let working: Record<string, number> | undefined;
+      for (const block of blocks) {
+        if (block.trigger !== trigger) {
+          continue;
+        }
+        for (const effect of block.effects ?? []) {
+          // Only setState is valid inside triggered blocks; anything else
+          // would re-enter an effect pipeline the runtime keeps flat.
+          if (!effect || effect.kind !== 'setState' || !effect.key) {
+            continue;
+          }
+          const scope: ScalingVariables = {
+            ...actionVars,
+            pool: newQi,
+            maxpool: qiCap,
+            toxicity: newToxicity,
+            maxtoxicity: config.maxToxicity || 0,
+            poolCostFlat: state.poolCostFlat,
+            poolCostPercentage: state.poolCostPercentage,
+            stabilityCostPercentage: state.stabilityCostPercentage,
+            stacks: buff.stacks,
+            amount,
+            percentGained,
+            ...(working ?? buff.internalState ?? {}),
+          };
+          const conditionResult = evaluateEffectCondition(
+            effect.condition,
+            state,
+            scope,
+            buff.stacks,
+          );
+          if (!conditionResult.met || conditionResult.probability <= 0) {
+            continue;
+          }
+          const value = evaluateScalingWithMasteryUpgrades(
+            effect.value,
+            actionMasteryUpgrades,
+            scope,
+            0,
+          );
+          if (!Number.isFinite(value)) {
+            continue;
+          }
+          // Later effects in the same block read earlier writes (Azure
+          // Depths: `stored` reads the `charge` the previous effect updated).
+          const base = working ?? { ...(buff.internalState ?? {}) };
+          const previousValue = base[effect.key] ?? 0;
+          base[effect.key] =
+            effect.mode === 'add' ? previousValue + value : value;
+          working = base;
+        }
+      }
+      if (working) {
+        newBuffs.set(buffKey, { ...buff, internalState: working });
+      }
+    }
+  };
+
   let techniquePoolDelta = 0;
   let techniqueMaxStabilityDelta = 0;
   if (skill.effects && skill.effects.length > 0) {
@@ -3578,7 +3841,7 @@ export function applySkill(
               actionVars,
               1,
             ) * factor;
-          upsertBuffFromDefinition(effect.buff, stacksToAdd);
+          upsertBuffFromDefinition(effect.buff, stacksToAdd, actionVars);
           break;
         }
         case 'consumeBuff': {
@@ -3629,18 +3892,51 @@ export function applySkill(
         if (recordBarChanges && amount !== 0) {
           buffBarContributions.push({ bar: 'completion', amount });
         }
+        // Buff bar applications fire the same runtime triggers as technique
+        // applications (e.g. Illume Crucible's onStabilize completion feeds
+        // True Bifang Flame's blaze).
+        if (triggerBuffsPresent && amount > 0) {
+          const barAfter = runningCompletion + amount;
+          dispatchBuffTriggers(
+            'completionGained',
+            amount,
+            computeTriggerPercentGained(amount, barAfter, targetCompletion),
+          );
+          runningCompletion = barAfter;
+        }
         break;
       case 'perfection':
         buffPerfection += amount;
         if (recordBarChanges && amount !== 0) {
           buffBarContributions.push({ bar: 'perfection', amount });
         }
+        if (triggerBuffsPresent && amount > 0) {
+          const barAfter = runningPerfection + amount;
+          dispatchBuffTriggers(
+            'perfectionGained',
+            amount,
+            computeTriggerPercentGained(amount, barAfter, targetPerfection),
+          );
+          runningPerfection = barAfter;
+        }
         break;
       case 'stability':
         buffStabilityDelta += amount;
+        if (triggerBuffsPresent && amount !== 0) {
+          dispatchBuffTriggers(
+            amount > 0 ? 'stabilityRestored' : 'stabilitySpent',
+            Math.abs(amount),
+          );
+        }
         break;
       case 'pool':
         buffPoolDelta += amount;
+        if (triggerBuffsPresent && amount !== 0) {
+          dispatchBuffTriggers(
+            amount > 0 ? 'poolRestored' : 'poolSpent',
+            Math.abs(amount),
+          );
+        }
         break;
       case 'maxStability':
         buffMaxStabilityDelta += amount;
@@ -3661,7 +3957,7 @@ export function applySkill(
             scalingVars,
             1,
           ) * conditionFactor;
-        upsertBuffFromDefinition(effect.buff, stacksToAdd);
+        upsertBuffFromDefinition(effect.buff, stacksToAdd, scalingVars);
         break;
       }
       case 'addStack': {
@@ -3677,12 +3973,108 @@ export function applySkill(
         }
         break;
       }
+      case 'setState': {
+        // 0.7.7+ per-instance state writes (Azure Depths' per-action
+        // `stored = max(0, stored - 1)` decay lives in `effects`).
+        const stateKey = effect.key;
+        if (!stateKey) break;
+        const stateValue = evaluateScalingWithMasteryUpgrades(
+          effect.value,
+          actionMasteryUpgrades,
+          scalingVars,
+          0,
+        );
+        if (!Number.isFinite(stateValue)) break;
+        const owner = newBuffs.get(ownerBuffKey);
+        if (!owner) break;
+        const nextInternalState: Record<string, number> = {
+          ...(owner.internalState ?? {}),
+        };
+        const previousValue = nextInternalState[stateKey] ?? 0;
+        nextInternalState[stateKey] =
+          effect.mode === 'add'
+            ? previousValue + stateValue
+            : stateValue;
+        newBuffs.set(ownerBuffKey, {
+          ...owner,
+          internalState: nextInternalState,
+        });
+        break;
+      }
     }
   };
 
+  // Fire the cost/technique triggers before per-turn buff effects run,
+  // matching the runtime order (costs, technique effects, then buff effects).
+  if (triggerBuffsPresent) {
+    if (qiSpentByCost > 0) {
+      dispatchBuffTriggers('poolSpent', qiSpentByCost);
+    }
+    if (qiRestoredBySkill > 0) {
+      dispatchBuffTriggers('poolRestored', qiRestoredBySkill);
+    }
+    if (techniquePoolDelta > 0) {
+      dispatchBuffTriggers('poolRestored', techniquePoolDelta);
+    } else if (techniquePoolDelta < 0) {
+      dispatchBuffTriggers('poolSpent', -techniquePoolDelta);
+    }
+    if (effectiveStabilityCost > 0) {
+      dispatchBuffTriggers(
+        'stabilitySpent',
+        Math.min(state.stability, effectiveStabilityCost),
+      );
+    }
+    if (gains.stability > 0) {
+      dispatchBuffTriggers('stabilityRestored', gains.stability);
+    }
+    // Bar applications fire per application in runtime order; True Bifang
+    // Flame keys blaze on the largest single-application percentGained.
+    const triggerBarContributions =
+      gains.barContributions && gains.barContributions.length > 0
+        ? scaleBarContributions(
+            gains.barContributions,
+            gains.completion,
+            gains.perfection,
+          )
+        : synthesizeBarContributions(gains.completion, gains.perfection);
+    for (const contribution of triggerBarContributions) {
+      if (contribution.amount <= 0) {
+        continue;
+      }
+      if (contribution.bar === 'completion') {
+        const barAfter = runningCompletion + contribution.amount;
+        dispatchBuffTriggers(
+          'completionGained',
+          contribution.amount,
+          computeTriggerPercentGained(
+            contribution.amount,
+            barAfter,
+            targetCompletion,
+          ),
+        );
+        runningCompletion = barAfter;
+      } else {
+        const barAfter = runningPerfection + contribution.amount;
+        dispatchBuffTriggers(
+          'perfectionGained',
+          contribution.amount,
+          computeTriggerPercentGained(
+            contribution.amount,
+            barAfter,
+            targetPerfection,
+          ),
+        );
+        runningPerfection = barAfter;
+      }
+    }
+  }
+
   if (consumesTurn) {
     for (const [buffKey, buff] of Array.from(newBuffs.entries())) {
-      if (!buff.definition) continue;
+      // Triggered effects may have rewritten this buff's internal state
+      // already this action, so read the live entry, not the snapshot.
+      const liveBuff = newBuffs.get(buffKey);
+      if (!liveBuff?.definition) continue;
       const scalingVars: ScalingVariables = {
         ...actionVars,
         pool: newQi,
@@ -3692,28 +4084,39 @@ export function applySkill(
         poolCostFlat: state.poolCostFlat,
         poolCostPercentage: state.poolCostPercentage,
         stabilityCostPercentage: state.stabilityCostPercentage,
-        stacks: buff.stacks,
+        stacks: liveBuff.stacks,
       };
+      // 0.7.7+ buffs read trigger-written internal state from their eqns
+      // (e.g. True Bifang Flame's per-action payout scaling on `blaze`).
+      if (liveBuff.internalState) {
+        for (const [stateKey, stateValue] of Object.entries(
+          liveBuff.internalState,
+        )) {
+          if (typeof stateValue === 'number' && Number.isFinite(stateValue)) {
+            scalingVars[stateKey] = stateValue;
+          }
+        }
+      }
       // Execute per-turn effects
-      if (buff.definition.effects) {
-        for (const effect of buff.definition.effects) {
-          executeBuffEffect(effect, buffKey, buff, scalingVars);
+      if (liveBuff.definition.effects) {
+        for (const effect of liveBuff.definition.effects) {
+          executeBuffEffect(effect, buffKey, liveBuff, scalingVars);
         }
       }
       // Execute action-type-specific effects
       const actionEffects: BuffEffect[] | undefined =
         skill.type === 'fusion'
-          ? buff.definition.onFusion
+          ? liveBuff.definition.onFusion
           : skill.type === 'refine'
-            ? buff.definition.onRefine
+            ? liveBuff.definition.onRefine
             : skill.type === 'stabilize'
-              ? buff.definition.onStabilize
+              ? liveBuff.definition.onStabilize
               : skill.type === 'support'
-                ? buff.definition.onSupport
+                ? liveBuff.definition.onSupport
                 : undefined;
       if (actionEffects) {
         for (const effect of actionEffects) {
-          executeBuffEffect(effect, buffKey, buff, scalingVars);
+          executeBuffEffect(effect, buffKey, liveBuff, scalingVars);
         }
       }
     }
@@ -3763,9 +4166,14 @@ export function applySkill(
   }
 
   if (techniqueMaxStabilityDelta !== 0) {
+    // A sealed max stability drops positive (restoring) deltas entirely.
+    const effectiveTechniqueMaxStabilityDelta =
+      maxStabilitySealed && techniqueMaxStabilityDelta > 0
+        ? 0
+        : techniqueMaxStabilityDelta;
     newStabilityPenalty = Math.min(
       state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - techniqueMaxStabilityDelta),
+      Math.max(0, newStabilityPenalty - effectiveTechniqueMaxStabilityDelta),
     );
     const newMax = state.initialMaxStability - newStabilityPenalty;
     if (newStability > newMax) newStability = newMax;
@@ -3779,9 +4187,13 @@ export function applySkill(
   newQi = clampQi(newQi + buffPoolDelta);
   newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
   if (buffMaxStabilityDelta !== 0) {
+    const effectiveBuffMaxStabilityDelta =
+      maxStabilitySealed && buffMaxStabilityDelta > 0
+        ? 0
+        : buffMaxStabilityDelta;
     newStabilityPenalty = Math.min(
       state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - buffMaxStabilityDelta),
+      Math.max(0, newStabilityPenalty - effectiveBuffMaxStabilityDelta),
     );
     const newMax = state.initialMaxStability - newStabilityPenalty;
     if (newStability > newMax) newStability = newMax;
