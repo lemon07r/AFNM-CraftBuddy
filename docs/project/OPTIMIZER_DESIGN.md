@@ -126,14 +126,24 @@ Characteristics:
    extras conjunctively (`min` of the two bars), which plateaued at the target
    tier: one-sided perfection pushes earned nothing. Extras are gated on the
    target tier being secured (both margins `>= 1`), so they can never raise
-   the effective tier or trade off the binding bar, and they bank **guaranteed
-   bands only** in both live and terminal scoring — fractional bonus-roll EV
-   let band-fraction noise at the horizon override real strategy (buff setup
-   vs immediate progress) and is kept only as an analysis mode. The soft
-   overshoot penalty stays active in both modes: it is the only ranking
-   signal between two overshooting live lines. This is the
-   `overcraftAmbition` search setting below; when off, the legacy conjunctive
-   `min` term runs bit-identically.
+   the effective tier or trade off the binding bar, and they are bounded by
+   the finish flat: the runtime clamps both bars at the flat, so
+   `buildOutcomeBands` derives the extras ceiling from the flat's band count
+   even when the game exposes no explicit cap — overshoot the game could
+   never bank earns nothing. The two scoring horizons disagree on fractions
+   **on purpose**. Live (horizon) leaves bank **guaranteed bands only**:
+   fractional bonus-roll EV at the horizon let band-fraction noise override
+   real strategy (buff setup vs immediate progress). Terminal scoring prices
+   the fraction (`fractionalExtras: true` in `scoreFinishedOutcome`): once the
+   craft has actually resolved, each bar's bonus-roll chance is the runtime's
+   expected band count, so craft-ending lines that bank different partial
+   bands no longer collapse onto one identical score — before this, every
+   craft-ending action past the secured tier scored bit-identically and the
+   qi-spent tie-breaker could prefer a zero-gain ender over a refine banking
+   most of the next band. The soft overshoot penalty stays active in both
+   modes: it is the only ranking signal between two overshooting live lines.
+   This is the `overcraftAmbition` search setting below; when off, the legacy
+   conjunctive `min` term runs bit-identically.
 
 2. **Buff valuation** — expected future return while the target tier is unmet.
 3. **Resource value** — qi and stability as future turns of progress; tiny tie-breakers only once goals are met.
@@ -157,6 +167,8 @@ No legal skill is hard-filtered before evaluation. If a move class is mis-ordere
 ### Result contract
 
 `SearchResult` carries an `OutcomeProjection` populated by one `withOutcomeProjection` wrapper around `greedySearch` / `lookaheadSearch`: guaranteed tier, target tier, per-bar `{ value, bands, requiredBands, nextThreshold, pointsToNextBand }`, the binding bar, and `willAutoFinish`. Presentation code consumes this; it must never recompute a threshold. The field is optional so pre-0.7.5 replay fixtures still load.
+
+Published per-action gains (`expectedGains`) are derived from the **simulated post-action state** (`calculateRecommendationGains` diffs the projected state against the current one), so they include triggered buff procs — a direct technique readout understates proc-driven moves and once showed a craft-ending proc play as "+0/+0". Stability stays on the direct readout (its projection is a survival floor, not a promise). Reasoning for a craft-ending action says "Ends the craft" instead of advertising buffs "for next turns" that will never happen.
 
 ## Rust/WASM engine
 

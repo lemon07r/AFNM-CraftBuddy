@@ -101,9 +101,11 @@ export interface OutcomeBands {
   /** Best tier this craft can reach - the tier the search should aim at. */
   readonly targetTier: OutcomeTier;
   /**
-   * Band count at the game's completion cap, set only when the cap came from
-   * the game (not reconstructed from the tier requirement). Bounds overcraft
-   * extras; undefined means "no known cap", i.e. uncapped.
+   * Band count at the craft's completion ceiling. The runtime clamps both
+   * bars at the finish flats, so this is the band count at
+   * `completionFinishFlat` - the game's cap when it exposes one, otherwise
+   * the tier requirement reconstructed as the flat. Bounds overcraft extras;
+   * undefined only when the bar is not part of the craft (zero target).
    */
   readonly completionCapBandCount?: number;
   /** As `completionCapBandCount`, for perfection. */
@@ -208,30 +210,39 @@ export function buildOutcomeBands(params: OutcomeBandParams): OutcomeBands {
   const completionCap = params.maxCompletionCap;
   const perfectionCap = params.maxPerfectionCap;
 
+  const completionFinishFlat =
+    completionCap !== undefined && completionCap > 0
+      ? completionCap
+      : derivedCompletionFlat;
+  const perfectionFinishFlat =
+    perfectionCap !== undefined && perfectionCap > 0
+      ? perfectionCap
+      : derivedPerfectionFlat;
+
   return {
     completionTarget,
     perfectionTarget,
-    completionFinishFlat:
-      completionCap !== undefined && completionCap > 0
-        ? completionCap
-        : derivedCompletionFlat,
-    perfectionFinishFlat:
-      perfectionCap !== undefined && perfectionCap > 0
-        ? perfectionCap
-        : derivedPerfectionFlat,
+    completionFinishFlat,
+    perfectionFinishFlat,
     // The overcraft finish branch only exists when the caps run deeper than the
     // tier requirement, which is exactly when the recipe allows overcrafting.
     canOvercraft:
       completionCap !== undefined && completionCap > derivedCompletionFlat,
     hasSublimeOutcome,
     targetTier,
+    // The runtime clamps both bars at the finish flats (RUNTIME_EVIDENCE
+    // section 2), so the flat's band count is always the effective ceiling,
+    // whether the flat came from the game's cap or was reconstructed from
+    // the tier requirement. Falling back to the reconstructed flat matters:
+    // without it, cap-less configs would credit illusory overshoot the game
+    // can never bank. Undefined only when the bar is not part of the craft.
     completionCapBandCount:
-      completionCap !== undefined && completionCap > 0 && completionTarget > 0
-        ? getBonusAndChance(completionCap, completionTarget).guaranteed
+      completionFinishFlat > 0 && completionTarget > 0
+        ? getBonusAndChance(completionFinishFlat, completionTarget).guaranteed
         : undefined,
     perfectionCapBandCount:
-      perfectionCap !== undefined && perfectionCap > 0 && perfectionTarget > 0
-        ? getBonusAndChance(perfectionCap, perfectionTarget).guaranteed
+      perfectionFinishFlat > 0 && perfectionTarget > 0
+        ? getBonusAndChance(perfectionFinishFlat, perfectionTarget).guaranteed
         : undefined,
   };
 }
@@ -454,7 +465,8 @@ export interface OvercraftExtras {
   /**
    * Value-adding perfection bands past the target tier's requirement. The
    * stacks/quality reward scales per band with no cap of its own, so this is
-   * bounded only by the game's perfection cap when one is known.
+   * bounded only by the finish flat's band count (the game's cap, or the
+   * reconstructed tier-requirement flat the runtime clamps bars at).
    */
   readonly perfectionBands: number;
 }
@@ -469,12 +481,15 @@ export interface OvercraftExtras {
  * Returns zero on both bars while the tier is not secured, so extras can never
  * raise the effective tier or trade off the binding bar.
  *
- * Both live and terminal scoring bank guaranteed bands only (`fractional:
- * false`), so horizon leaves and finished states price overshoot identically.
- * The fractional mode (adds each bar's bonus-roll chance as a fraction of the
- * next band, i.e. the runtime's expected band count) is kept for analysis
- * tooling; it proved too noisy for search, where band-fraction artifacts
- * overrode real strategy.
+ * Live (horizon) scoring banks guaranteed bands only (`fractional: false`):
+ * band-fraction noise proved too noisy mid-search, where band-fraction
+ * artifacts overrode real strategy. Terminal scoring passes
+ * `fractional: true` — once the craft has actually resolved, each bar's
+ * bonus-roll chance is the runtime's expected band count and prices the
+ * final reward exactly. The margin gate above keeps fractional extras at
+ * zero until the target tier is secured on guaranteed bands, so the
+ * fractional mode can never make an early finish outrank a line that still
+ * secures the tier.
  */
 export function computeOvercraftExtras(
   outcome: OutcomeClassification,

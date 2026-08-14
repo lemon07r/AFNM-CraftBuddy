@@ -36,6 +36,7 @@ import {
   DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   SEARCH_GOAL_PRIORITY_BIAS_MAX,
 } from '../utils/searchGoalPriority';
+import { safeFloor } from '../utils/largeNumbers';
 import {
   evaluateScaling,
   getBonusAndChance,
@@ -2303,11 +2304,13 @@ function scoreState(
   // ── 1. conjunctive goal score (primary) ──────────────────────────────
   // Live search does not count the completion-only basic checkpoint toward
   // perfect/sublime targets (gate/balance already price completion).
-  // Overcraft extras bank guaranteed bands only, same as terminal scoring:
-  // fractional bonus-roll EV made band-fraction noise at the horizon decide
-  // between strategically different lines (e.g. buff setup vs immediate
-  // progress) and rewarded front-loading sub-band overshoot, neither of
-  // which the tier model can price honestly.
+  // Overcraft extras bank guaranteed bands only in live scoring: fractional
+  // bonus-roll EV made band-fraction noise at the horizon decide between
+  // strategically different lines (e.g. buff setup vs immediate progress)
+  // and rewarded front-loading sub-band overshoot, neither of which the
+  // tier model can price honestly. Terminal scoring makes the opposite
+  // trade-off on purpose (see scoreFinishedOutcome): once the craft has
+  // actually resolved, the bonus-roll fraction is the final expected reward.
   let score = computeConjunctiveGoalScore(
     outcome,
     bands,
@@ -2513,10 +2516,15 @@ function scoreState(
 /**
  * Score a finished/terminal craft outcome.
  *
- * Uses `classifyOutcome` on guaranteed bands only (no bonus-roll EV). Full EV
- * was found to make finishing beat live lines that could still secure the
- * missing bar. Order is strictly by banked tier first, then permanent
- * shortfall penalties so a live state with runway outranks a shallow finish.
+ * The tier comes from `classifyOutcome` on guaranteed bands only (no
+ * bonus-roll EV): full tier EV was found to make finishing beat live lines
+ * that could still secure the missing bar. Overcraft extras are different -
+ * they are zero until the tier is secured on guaranteed bands, and past that
+ * point the craft-end bonus roll pays each bar's bonusChance as a fraction
+ * of the next band's reward (RUNTIME_EVIDENCE section 12), so a finished
+ * state prices that fraction as expected value. Order is strictly by banked
+ * tier first, then permanent shortfall penalties so a live state with runway
+ * outranks a shallow finish.
  *
  * @param targetMultiplier - retained for compatibility/diagnostics only.
  */
@@ -2569,11 +2577,13 @@ function scoreFinishedOutcome(
   );
 
   // Finished crafts count the real runtime tier, including basic as a floor.
-  // Tier rank and extras both bank guaranteed bands only (no bonus-roll EV:
-  // overvaluing the roll made finishing beat live lines that could still
-  // secure the missing bar, and fractional extras let band-fraction noise
-  // override real strategy). Terminal extras therefore match the live
-  // horizon exactly.
+  // Tier rank banks guaranteed bands only: overvaluing the roll made
+  // finishing beat live lines that could still secure the missing bar.
+  // Extras, however, only exist once the tier is already secured, and at a
+  // terminal state the bonus-roll fraction *is* the final expected reward -
+  // pricing it is what stops every craft-ending line from collapsing onto
+  // one identical score. Live horizon leaves stay guaranteed-only (band-
+  // fraction noise must not steer strategy mid-search); see scoreState.
   let score = computeConjunctiveGoalScore(
     outcome,
     bands,
@@ -2584,7 +2594,7 @@ function scoreFinishedOutcome(
     completionWeight,
     perfectionWeight,
     { countBasicCheckpoint: true },
-    { enabled: overcraftAmbition, fractionalExtras: false },
+    { enabled: overcraftAmbition, fractionalExtras: true },
   );
 
   const totalTargetMagnitude = Math.max(
@@ -2631,6 +2641,7 @@ function calculateRecommendationGains(
   skill: SkillDefinition,
   config: OptimizerConfig,
   conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
+  simulatedState?: CraftingState | null,
 ): {
   expectedGains: GainPreview;
   immediateGains: GainPreview;
@@ -2657,10 +2668,26 @@ function calculateRecommendationGains(
     config,
   );
 
+  // The direct-effects readout misses what the full transition applies:
+  // triggered buff procs (e.g. Golden Path: Third Peak paying perfection on
+  // support actions) and other per-turn harmonics. When the search's
+  // simulated post-action state is at hand, publish the bar deltas it
+  // actually projects so the panel matches the "after one turn" projection
+  // instead of presenting a proc-heavy action as a 0-gain move. Stability
+  // stays on the direct readout - the state diff would conflate the action
+  // cost with restoration - and immediate gains keep their raw, non-EV
+  // meaning for the headline chips.
+  const expectedCompletion = simulatedState
+    ? safeFloor(Math.max(0, simulatedState.completion - state.completion))
+    : expected.completion;
+  const expectedPerfection = simulatedState
+    ? safeFloor(Math.max(0, simulatedState.perfection - state.perfection))
+    : expected.perfection;
+
   return {
     expectedGains: {
-      completion: expected.completion,
-      perfection: expected.perfection,
+      completion: expectedCompletion,
+      perfection: expectedPerfection,
       stability: expected.stability,
     },
     immediateGains: {
@@ -2947,6 +2974,12 @@ function rankRecommendations(
 
 /**
  * Generate reasoning text for why a skill is recommended.
+ *
+ * `gains` should be the projected (expected) gains so the text matches the
+ * panel's "Expected:" readout. When the action ends the craft
+ * (`options.endsCraft`), forward-looking buff rationale is suppressed - there
+ * are no "next turns" for a granted buff to help - and overshoot gains past
+ * the raw targets are still named, since they bank real bonus-roll value.
  */
 function generateReasoning(
   skill: SkillDefinition,
@@ -2954,11 +2987,13 @@ function generateReasoning(
   gains: { completion: number; perfection: number; stability: number },
   targetCompletion: number,
   targetPerfection: number,
+  options: { readonly endsCraft?: boolean } = {},
 ): string {
   if (isFinishAction(skill)) {
     return 'Best available option';
   }
 
+  const endsCraft = options.endsCraft === true;
   const reasons: string[] = [];
 
   // Check if we need stability
@@ -2978,8 +3013,9 @@ function generateReasoning(
     reasons.push('Intensity buff active - maximize completion');
   }
 
-  // Check if skill grants buff
-  if (skill.buffDuration > 0) {
+  // Check if skill grants buff - pointless to advertise when the craft ends
+  // with this action, since the buff would never trigger again.
+  if (!endsCraft && skill.buffDuration > 0) {
     if (skill.buffType === BuffType.CONTROL) {
       reasons.push('Grants control buff for next turns');
     } else if (skill.buffType === BuffType.INTENSITY) {
@@ -2987,16 +3023,22 @@ function generateReasoning(
     }
   }
 
-  // Check progress needs
+  // Check progress needs. Gains past the raw targets are overcraft value
+  // (deeper bands / craft-end bonus-roll progress), still worth naming.
   if (targetCompletion > 0 && targetPerfection > 0) {
-    const needsCompletion = state.completion < targetCompletion;
-    const needsPerfection = state.perfection < targetPerfection;
-
-    if (gains.completion > 0 && needsCompletion) {
-      reasons.push(`+${gains.completion} completion toward target`);
+    if (gains.completion > 0) {
+      reasons.push(
+        state.completion < targetCompletion
+          ? `+${gains.completion} completion toward target`
+          : `+${gains.completion} completion`,
+      );
     }
-    if (gains.perfection > 0 && needsPerfection) {
-      reasons.push(`+${gains.perfection} perfection toward target`);
+    if (gains.perfection > 0) {
+      reasons.push(
+        state.perfection < targetPerfection
+          ? `+${gains.perfection} perfection toward target`
+          : `+${gains.perfection} perfection`,
+      );
     }
   } else {
     if (gains.completion > 0) {
@@ -3005,6 +3047,10 @@ function generateReasoning(
     if (gains.perfection > 0) {
       reasons.push(`+${gains.perfection} perfection`);
     }
+  }
+
+  if (endsCraft) {
+    reasons.push('Ends the craft');
   }
 
   // Disciplined Touch special case
@@ -3539,7 +3585,13 @@ function runGreedySearch(
       : displayState;
 
     const { expectedGains, immediateGains, effectiveCosts } =
-      calculateRecommendationGains(state, skill, config, conditionEffects);
+      calculateRecommendationGains(
+        state,
+        skill,
+        config,
+        conditionEffects,
+        displayState,
+      );
     const terminalState = classifyTerminalState(
       newState,
       config,
@@ -3581,9 +3633,10 @@ function runGreedySearch(
     const reasoning = generateReasoning(
       skill,
       state,
-      immediateGains,
+      expectedGains,
       targetCompletion,
       targetPerfection,
+      { endsCraft: terminalState.isTerminal || endsByAutoFinish },
     );
 
     evaluatedMoves.push({
@@ -5192,6 +5245,14 @@ function runLookaheadSearch(
             cachedSkill,
             config,
             followUpConditionEffects,
+            applySkill(
+              stateAfterSkill,
+              cachedSkill,
+              config,
+              followUpConditionEffects,
+              targetCompletion,
+              conditionAtDepth,
+            ),
           );
         return {
           name: cachedSkill.name,
@@ -5236,6 +5297,7 @@ function runLookaheadSearch(
             followUpSkill,
             config,
             followUpConditionEffects,
+            fallbackCandidate.searchState,
           );
       return {
         name: followUpSkill.name,
@@ -5285,6 +5347,7 @@ function runLookaheadSearch(
             followUp,
             config,
             followUpConditionEffects,
+            nextState,
           );
       const followUpScore = evaluateFutureScoreAfterSkill(
         nextState,
@@ -5394,9 +5457,28 @@ function runLookaheadSearch(
         unsafeRecommendationKeys.add(skill.key);
       }
 
-      const { expectedGains, immediateGains, effectiveCosts } = isFinishAction(
+      const isFinish = isFinishAction(skill);
+      const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
+        newState,
+        normalizedCurrentCondition,
+        initialConditionQueue,
         skill,
-      )
+      );
+      const terminalState = isFinish
+        ? { isTerminal: false, isTerminalUnmet: false }
+        : classifyTerminalState(
+            newState,
+            config,
+            firstMoveConditionState.nextCondition,
+            modeCompGoal,
+            modePerfGoal,
+          );
+      const endsCraft =
+        isFinish ||
+        terminalState.isTerminal ||
+        stateWillAutoFinish(newState);
+
+      const { expectedGains, immediateGains, effectiveCosts } = isFinish
         ? {
             expectedGains: { ...ZERO_GAINS },
             immediateGains: { ...ZERO_GAINS },
@@ -5407,33 +5489,20 @@ function runLookaheadSearch(
             skill,
             config,
             currentConditionEffects,
+            newState,
           );
-      const reasoning = isFinishAction(skill)
+      const reasoning = isFinish
         ? generateFinishReasoning(candidate.projectedSuccessChance ?? 0)
         : generateReasoning(
             skill,
             state,
-            immediateGains,
+            expectedGains,
             targetCompletion,
             targetPerfection,
-          );
-      const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
-        newState,
-        normalizedCurrentCondition,
-        initialConditionQueue,
-        skill,
-      );
-      const terminalState = isFinishAction(skill)
-        ? { isTerminal: false, isTerminalUnmet: false }
-        : classifyTerminalState(
-            newState,
-            config,
-            firstMoveConditionState.nextCondition,
-            modeCompGoal,
-            modePerfGoal,
+            { endsCraft },
           );
 
-      const immediateScore = isFinishAction(skill)
+      const immediateScore = isFinish
         ? candidate.orderingScore
         : estimatePostMoveStateScore(
             newState,
@@ -5452,10 +5521,7 @@ function runLookaheadSearch(
         consumesBuff: skill.isDisciplinedTouch === true,
         followUpSkill: undefined,
         projectedSuccessChance: candidate.projectedSuccessChance,
-        endsCraft:
-          isFinishAction(skill) ||
-          terminalState.isTerminal ||
-          stateWillAutoFinish(newState),
+        endsCraft,
         requiresProbabilisticSurvival: candidate.requiresProbabilisticSurvival,
         ...terminalState,
       });
@@ -5933,6 +5999,14 @@ function runLookaheadSearch(
               secondSkill,
               config,
               secondConditionEffects,
+              applySkill(
+                stateAfterFirstMove,
+                secondSkill,
+                config,
+                secondConditionEffects,
+                targetCompletion,
+                firstMoveConditionState.nextCondition,
+              ),
             );
           topRec.followUpSkill = {
             name: secondSkill.name,

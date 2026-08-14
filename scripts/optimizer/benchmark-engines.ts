@@ -224,6 +224,12 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
 
 const FIXTURE_CONTRACTS: FixtureContract[] = [
   {
+    fixture: 'user-report-overcraft-endgame',
+    mustRecommendOneOf: ['focus'],
+    notes:
+      'Near-terminal overcraft endgame: Focus into Golden Path: First Peak banks ~2.4k more perfection than ending the craft immediately. Guards the regression where every craft-ending action scored bit-identically and the qi tie-breaker picked a zero-gain ender.',
+  },
+  {
     fixture: 'user-report-resonance-regression',
     mustNotRecommend: ['explosive_fusion'],
     mustRankBefore: [

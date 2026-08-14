@@ -1511,6 +1511,9 @@ describe('finish craft policy', () => {
   });
 
   it('scores fifth-tier sublime finish quality above a weaker early finish', () => {
+    // Caps at the fifth-band threshold give the deep finish real headroom;
+    // without caps the finish flat clamps the bars and both states would be
+    // unrepresentable in-game.
     const fifthTierThreshold = getThresholdForGuaranteedBonusCount(100, 5);
     const fourthTierThreshold = getThresholdForGuaranteedBonusCount(100, 4);
     const fifthTierState = new CraftingState({
@@ -1540,6 +1543,8 @@ describe('finish craft policy', () => {
       100,
       true,
       5,
+      fifthTierThreshold,
+      fifthTierThreshold,
     );
     const fourthTierScore = scoreFinishedOutcome(
       fourthTierState,
@@ -1547,6 +1552,8 @@ describe('finish craft policy', () => {
       100,
       true,
       5,
+      fifthTierThreshold,
+      fifthTierThreshold,
     );
 
     expect(fifthTierThreshold).toBeGreaterThan(fourthTierThreshold);
@@ -1720,7 +1727,14 @@ describe('finish craft policy', () => {
     );
   });
 
-  it('does not improve a finished target-tier score by padding more stats', () => {
+  it('prices padding past a secured finish as its bonus-roll fraction', () => {
+    // Perfect-tier finish (1 band each at 100/100) with deep overcraft caps,
+    // so the padded state's 40/130 progress into the second perfection band
+    // is real, unclamped headroom: the craft-end bonus roll pays that
+    // fraction as expected value, so at an equal step count it outscores the
+    // exact-band finish - but never a banked full band. (Without caps the
+    // finish flat *is* the clamp and no overshoot can exist.)
+    const deepCap = bandThreshold(100, 11);
     const finished = new CraftingState({
       qi: 80,
       stability: 30,
@@ -1730,19 +1744,52 @@ describe('finish craft policy', () => {
       step: 5,
     });
     const padded = new CraftingState({
-      qi: 50,
+      qi: 80,
       stability: 30,
       initialMaxStability: 60,
       completion: 100,
       perfection: 140,
-      step: 6,
+      step: 5,
+    });
+    const twoBand = new CraftingState({
+      qi: 80,
+      stability: 30,
+      initialMaxStability: 60,
+      completion: 100,
+      perfection: 230,
+      step: 5,
     });
 
-    const finishedScore = scoreFinishedOutcome(finished, 100, 100, false, 1);
-    const paddedScore = scoreFinishedOutcome(padded, 100, 100, false, 1);
+    const finishedScore = scoreFinishedOutcome(
+      finished,
+      100,
+      100,
+      false,
+      1,
+      deepCap,
+      deepCap,
+    );
+    const paddedScore = scoreFinishedOutcome(
+      padded,
+      100,
+      100,
+      false,
+      1,
+      deepCap,
+      deepCap,
+    );
+    const twoBandScore = scoreFinishedOutcome(
+      twoBand,
+      100,
+      100,
+      false,
+      1,
+      deepCap,
+      deepCap,
+    );
 
-    // Same perfect tier: leftover perfection cannot outrank the banked outcome.
-    expect(paddedScore).toBeLessThanOrEqual(finishedScore + 1e-6);
+    expect(paddedScore).toBeGreaterThan(finishedScore);
+    expect(paddedScore).toBeLessThan(twoBandScore);
   });
 
   it('finds a completion-rush then False Fusion payoff under an expression gate', () => {
@@ -2124,6 +2171,73 @@ describe('overcraft extras scoring', () => {
 
     // 3 extra perfection bands must outrank the bare 2-band sublime finish.
     expect(deepScore).toBeGreaterThan(shallowScore);
+  });
+
+  it('prices sub-band overshoot at a finished craft as bonus-roll EV', () => {
+    // The game rolls each bar's bonusChance at craft end and pays the extra
+    // band when it lands (RUNTIME_EVIDENCE section 12), so once the target
+    // tier is secured, progress toward the next band is real expected value
+    // at a terminal state. 80/169 into the third perfection band must beat
+    // the bare 2-band finish - but never a fully banked third band.
+    const bandedScore = scoreFinishedOutcome(
+      overcraftState(TWO_BANDS, TWO_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+    const paddedScore = scoreFinishedOutcome(
+      overcraftState(TWO_BANDS, TWO_BANDS + 80),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+    const fullBandScore = scoreFinishedOutcome(
+      overcraftState(TWO_BANDS, THREE_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+    );
+
+    expect(paddedScore).toBeGreaterThan(bandedScore);
+    expect(paddedScore).toBeLessThan(fullBandScore);
+  });
+
+  it('keeps finished-craft extras band-quantized when overcraft ambition is off', () => {
+    const bandedScore = scoreFinishedOutcome(
+      overcraftState(TWO_BANDS, TWO_BANDS),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+      undefined,
+      undefined,
+      false,
+    );
+    const paddedScore = scoreFinishedOutcome(
+      overcraftState(TWO_BANDS, TWO_BANDS + 80),
+      100,
+      100,
+      true,
+      2,
+      OVERCRAFT_CAP,
+      OVERCRAFT_CAP,
+      undefined,
+      undefined,
+      false,
+    );
+
+    expect(paddedScore).toBe(bandedScore);
   });
 
   it('values extra perfection bands unilaterally once the tier is secured', () => {
@@ -4436,6 +4550,10 @@ describe('scoreState (isolated)', () => {
   });
 
   it('should price overshoot beyond targets according to overcraft ambition', () => {
+    // Deep caps stand in for an overcraft-capable recipe: without caps the
+    // finish flat *is* the bar clamp (the game never lets bars past it), so
+    // no overshoot could exist to price.
+    const deepCap = bandThreshold(100, 11);
     const exact = new CraftingState({
       qi: 100,
       stability: 50,
@@ -4452,8 +4570,8 @@ describe('scoreState (isolated)', () => {
       completion: 150,
       perfection: 150,
     });
-    expect(scoreState(halfBand, 100, 100)).toBeLessThan(
-      scoreState(exact, 100, 100),
+    expect(scoreState(halfBand, 100, 100, false, 2, false, deepCap, deepCap)).toBeLessThan(
+      scoreState(exact, 100, 100, false, 2, false, deepCap, deepCap),
     );
     // A fully banked extra perfection band (230 = 2 bands at target 100) on
     // ONE bar is unilateral value — the game scales result stacks per band —
@@ -4465,8 +4583,8 @@ describe('scoreState (isolated)', () => {
       completion: 100,
       perfection: 230,
     });
-    expect(scoreState(over, 100, 100)).toBeGreaterThan(
-      scoreState(exact, 100, 100),
+    expect(scoreState(over, 100, 100, false, 2, false, deepCap, deepCap)).toBeGreaterThan(
+      scoreState(exact, 100, 100, false, 2, false, deepCap, deepCap),
     );
     // Ambition off keeps the legacy conjunctive behavior: a one-sided extra
     // band earns nothing (extras require both bars) and the overshoot is
@@ -4479,8 +4597,8 @@ describe('scoreState (isolated)', () => {
         false,
         2,
         false,
-        undefined,
-        undefined,
+        deepCap,
+        deepCap,
         undefined,
         undefined,
         false,
@@ -4493,8 +4611,8 @@ describe('scoreState (isolated)', () => {
         false,
         2,
         false,
-        undefined,
-        undefined,
+        deepCap,
+        deepCap,
         undefined,
         undefined,
         false,
@@ -4901,6 +5019,93 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.type).toBe('refine');
     expect(result.recommendation!.skill.key).toBe('focused_refine');
+  });
+
+  it('replays the overcraft endgame snapshot and ranks craft-ending lines by banked value (user report)', () => {
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-overcraft-endgame.snapshot.json',
+    );
+    // Recorded behavior: with the 2-band sublime gate secured and stability
+    // nearly gone, every craft-ending action scored identically (a four-way
+    // tie at 449505.45) because terminal scoring only banked *full* extra
+    // bands. The pick fell to tie-breakers and the panel presented the winner
+    // as a 0-gain "grants buff" move - the user read it as the mod refusing
+    // to push perfection past 200%.
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      'golden_path:_first_peak',
+    );
+    const recordedOutput = snapshot.output as
+      | {
+          recommendation?: { score?: number } | null;
+          alternatives?: Array<{ score?: number }>;
+          expectedFinalState?: { perfection?: number } | null;
+        }
+      | undefined;
+    const recordedTopScores = [
+      recordedOutput?.recommendation?.score,
+      ...(recordedOutput?.alternatives ?? []).map((alt) => alt.score),
+    ].slice(0, 4);
+    expect(new Set(recordedTopScores).size).toBe(1);
+
+    const input = getReplaySearchInput(snapshot);
+    const stableSearchConfig = {
+      ...input.searchConfig,
+      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 8000),
+      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 1500000),
+      useMonteCarloTreeSearch: false,
+    };
+
+    const result = lookaheadSearch(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as any,
+      stableSearchConfig,
+    );
+
+    expect(result.recommendation).not.toBeNull();
+    // Stability is 7, so the craft is ending - but the best line banks one
+    // more Golden Path: Third Peak support proc first (Focus, then Golden
+    // Path: First Peak) instead of ending a turn early. The recorded build
+    // ended immediately at 34,687 perfection; the replayed line must bank
+    // strictly more by the time the craft resolves.
+    expect(result.recommendation!.skill.key).toBe('focus');
+    expect(result.recommendation!.followUpSkill?.name).toBe(
+      'Golden Path: First Peak',
+    );
+    expect(result.expectedFinalState?.stability).toBe(0);
+    expect(result.expectedFinalState?.perfection ?? 0).toBeGreaterThan(
+      recordedOutput?.expectedFinalState?.perfection ?? 0,
+    );
+
+    // Terminal scores must no longer collapse onto one value: the craft-end
+    // bonus-roll fraction now separates craft-ending lines by the value they
+    // actually bank.
+    const allRecommendations = [
+      result.recommendation!,
+      ...result.alternativeSkills,
+    ];
+    const enders = allRecommendations.filter(
+      (recommendation) => recommendation.endsCraft,
+    );
+    expect(enders.length).toBeGreaterThan(1);
+    expect(
+      new Set(enders.map((recommendation) => recommendation.score)).size,
+    ).toBeGreaterThan(1);
+
+    // A craft-ending pick must own the ending in its published gains and
+    // reasoning: triggered procs included (no do-nothing "+0"), and no
+    // "grants buff for next turns" rationale for a move with no next turn.
+    const goldenPath = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === 'golden_path:_first_peak',
+    );
+    expect(goldenPath?.endsCraft).toBe(true);
+    expect(goldenPath?.expectedGains.perfection).toBeGreaterThan(0);
+    expect(goldenPath?.reasoning).toContain('Ends the craft');
+    expect(goldenPath?.reasoning).not.toContain('for next turns');
   });
 
   it('replays the user alchemical sequence snapshot and respects the refine-only harmony step', () => {

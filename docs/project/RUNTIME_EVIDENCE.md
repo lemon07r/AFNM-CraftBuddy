@@ -617,7 +617,7 @@ Recorded here so the evidence and its resolution stay together.
 | Auto-use loadout pairing (7) | No change: the game resolves the pairing before CraftBuddy reads state. The `(This Effect)` condition falls to the conservative "will fire" default. |
 | False Fusion rename (8) | Display-only; labels resolve through `techniqueDisplayName()` while internal keys keep using `name`. |
 | Cleanse never critted in crafting (9) | No change in either engine. |
-| Overcraft extras are unilateral (12) | `src/optimizer/search.ts` scores extra perfection and extra completion bands as two independent post-tier terms, mirrored in the Rust engine; the conjunctive tier gate itself is untouched. |
+| Overcraft extras are unilateral (12) | `src/optimizer/search.ts` scores extra perfection and extra completion bands as two independent post-tier terms, mirrored in the Rust engine; the conjunctive tier gate itself is untouched. Terminal scoring prices each bar's craft-end bonus-roll chance as expected value (the Rust engine enumerates the roll branches to the same effect); live horizon leaves bank guaranteed bands only. Extras are bounded by the finish flat's band count, since the runtime clamps bars there (section 2). |
 
 ---
 
