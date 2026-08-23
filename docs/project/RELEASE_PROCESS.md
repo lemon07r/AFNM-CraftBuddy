@@ -38,7 +38,7 @@ Bump the **minor** version for a game-version retarget that keeps the scoring ar
 
 A major or feature release gets `docs/project/RELEASE_NOTES_<version>.md` covering what changed, what was measured and rejected, and the limitations that genuinely remain. Follow the structure of the newest existing notes: frontmatter, a short framing intro, `## Changed` with `###` subsections, `## Known limitations`, `## Upgrading`.
 
-Mirror the player-facing subset into [`WORKSHOP_DESCRIPTION.md`](./WORKSHOP_DESCRIPTION.md) as a new `[h1]What's New in vX.Y.Z[/h1]` section placed **above** the previous one, so the Workshop page and the repository agree and the newest release reads first. Also refresh the "Updated for game version" line near the top when the release retargets the game.
+Mirror the player-facing subset into [`WORKSHOP_DESCRIPTION.md`](./WORKSHOP_DESCRIPTION.md)'s single rolling `[h1]What's New in vN[/h1]` section. Update that section in place for minor and patch releases instead of adding a separate block for every version; for the current major series, use `[h1]What's New in v6[/h1]`. Keep the full per-release history in `RELEASE_NOTES_<version>.md`. Also refresh the "Updated for game version" line near the top when the release retargets the game.
 
 When a release retargets the game version, `docs/project/RUNTIME_EVIDENCE.md` and `docs/project/ENGINE_PERFORMANCE.md` are updated **in place** — their filenames deliberately carry no version, so a new game build is a content edit rather than a rename.
 

@@ -44,7 +44,7 @@ Update both version strings together:
   ```bash
   bun -e 'const t=require("fs").readFileSync("docs/project/WORKSHOP_DESCRIPTION.md","utf8").trim();const b=t.startsWith("---")?t.slice(t.indexOf("\n---",3)+4).trim():t;console.log(b.length,"/ 8000")'
   ```
-  When a new version section pushes it over, condense the oldest `What's New` section rather than cutting feature copy - the full history lives in `docs/project/RELEASE_NOTES_*.md`.
+  Keep the rolling `What's New in v6` section concise rather than adding a separate block for every v6.x release; the full per-release history lives in `docs/project/RELEASE_NOTES_*.md`.
 
 ## Gotchas
 
