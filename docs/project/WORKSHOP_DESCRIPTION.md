@@ -25,12 +25,18 @@ CraftBuddy reads your live craft, simulates thousands of possible continuations,
 
 [hr][/hr]
 
+[h1]What's New in v6.4.0[/h1]
+[list]
+[*] [b]Ambition targets[/b] — optional Perfection Band Goal and Completion Band Ceiling settings let you aim for more stars while keeping completion at the band you want.
+[*] [b]Auto-mode reliability[/b] — auto mode now recovers and retries when the game quietly ignores an action, and coexists cleanly with your auto-use loadout.
+[/list]
+
+[hr][/hr]
+
 [h1]Highlights of the 6.x Series[/h1]
 The 6.x releases rebuilt CraftBuddy around one principle: play the craft the way the game actually scores it. Key highlights, all verified against the live game:
 
 [list]
-[*] [b]Ambition targets (v6.4)[/b] — two optional sliders ([b]Perfection Band Goal[/b] and [b]Completion Band Ceiling[/b]) let you aim for more stars than the tier needs or redirect excess completion effort into perfection. Both default to Auto.
-[*] [b]Auto-mode reliability (v6.4)[/b] — auto mode now reliably recovers and retries when the game quietly ignores an action, and coexists cleanly with your auto-use loadout.
 [*] [b]Accurate game mechanics[/b] — full simulation of all seven harmonies, 0.7.8 buffs (True Bifang Flame, Flame of the Azure Depths, Illume Crucible, discordant flames, Eccentric Decree), and conjunctive outcome tier gates with auto-finish timing.
 [*] [b]Overcraft scoring[/b] — extra bands past the target tier are scored per bar the way the game rewards them (stacks, quality, material refunds).
 [*] [b]High-performance search[/b] — multi-threaded background workers (up to ~4x explored lines) and instant return on stable crafts keep recommendations snappy without freezing the UI.
