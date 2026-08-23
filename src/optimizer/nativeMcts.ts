@@ -133,6 +133,16 @@ interface NativeMctsConfig {
    */
   overcraft_ambition?: boolean;
   /**
+   * Desired perfection bands ("stars"). Mirrors
+   * `SearchConfig.perfectionBandGoal`; 0 is auto in the engine.
+   */
+  perfection_band_goal?: number;
+  /**
+   * Completion band ceiling for overcraft extras. Mirrors
+   * `SearchConfig.completionBandCeiling`; 0 is auto in the engine.
+   */
+  completion_band_ceiling?: number;
+  /**
    * Config-level targets. Distinct from the input-level `target_completion` /
    * `target_perfection`: the config pair seeds the `maxcompletion` /
    * `maxperfection` scaling variables, while the input pair drives the
@@ -615,6 +625,8 @@ export function buildNativeMctsInput(params: {
   forecastedConditionTypes?: string[];
   goalPriorityBias?: number;
   overcraftAmbition?: boolean;
+  perfectionBandGoal?: number;
+  completionBandCeiling?: number;
   search?: NativeMctsSearchOptions;
 }): NativeMctsInput {
   const {
@@ -626,6 +638,8 @@ export function buildNativeMctsInput(params: {
     forecastedConditionTypes = [],
     goalPriorityBias = 0,
     overcraftAmbition = true,
+    perfectionBandGoal = 0,
+    completionBandCeiling = 0,
     search = {},
   } = params;
   // Item (pill/reagent) actions are part of the searchable action space: the
@@ -686,6 +700,8 @@ export function buildNativeMctsInput(params: {
       training_mode: config.trainingMode === true,
       goal_priority_bias: finiteNumber(goalPriorityBias),
       overcraft_ambition: overcraftAmbition,
+      perfection_band_goal: finiteNumber(perfectionBandGoal),
+      completion_band_ceiling: finiteNumber(completionBandCeiling),
       target_completion: finiteNumber(config.targetCompletion),
       target_perfection: finiteNumber(config.targetPerfection),
       pills_per_round: Math.max(
@@ -820,6 +836,8 @@ export function getNativeMctsPolicy(params: {
   forecastedConditionTypes?: string[];
   goalPriorityBias?: number;
   overcraftAmbition?: boolean;
+  perfectionBandGoal?: number;
+  completionBandCeiling?: number;
   search?: NativeMctsSearchOptions;
 }): NativeMctsPolicy | null {
   const nativeModule = loadNativeMctsModule();

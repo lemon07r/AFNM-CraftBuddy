@@ -27,7 +27,7 @@ Use this to prove the root cause before changing code.
 - Runtime boundary drift? Load `craftbuddy-runtime-integration` and inspect `src/modContent/*` plus `docs/project/INTEGRATION_MODAPI.md`.
 - Search/scoring drift? Load `craftbuddy-optimizer`, then check `docs/project/OPTIMIZER_DESIGN.md`, `search.test.ts`, and `craftSimulation.test.ts`.
 - UI/layout drift? Load `craftbuddy-ui-validation` and use the browser harness.
-- Auto-craft stalled? Check in this order: the dispatch-time verification result (`stale` recalculates, `unverifiable` pauses by design — a pause is often correct, not a bug), a native auto-use loadout downgrading the policy, the one-action bridge, and the observed state-advance latch.
+- Auto-craft stalled? Check in this order: the dispatch-time verification result (`stale` recalculates, `unverifiable` pauses by design — a pause is often correct, not a bug), a native auto-use loadout downgrading the policy, the one-action bridge, and the observed state-advance latch. Since 6.4.0 a missed state advance re-verifies, resumes or resends once, and otherwise leaves auto mode in a recoverable armed pause — an armed pause is a designed outcome, not a crash.
 - Cross-engine disagreement? Regenerate the differential corpus and run both sides before suspecting search; a bridge serialization gap (an explicit `null`, a dropped field) is more likely than a scoring bug.
 - Debug state needed? Use or extend `window.craftBuddyDebug`; keep exported replay snapshots parity-grade.
 

@@ -318,6 +318,19 @@ export interface SearchConfig {
    */
   overcraftAmbition?: boolean;
   /**
+   * Desired perfection bands ("stars"). 0/undefined is auto - the target
+   * tier's requirement is the goal, exactly as before. A higher value raises
+   * the effective perfection goal to that band's threshold so the search keeps
+   * working past the tier without touching the tier gates themselves.
+   */
+  perfectionBandGoal?: number;
+  /**
+   * Completion band ceiling. 0/undefined is auto. A higher value stops
+   * overcraft extras from paying for completion past that band, which is what
+   * redirects leftover effort into perfection.
+   */
+  completionBandCeiling?: number;
+  /**
    * Shared transposition table carried across the steps of a craft (see
    * `CrossStepSearchCache`). Entries are keyed by state/depth/condition and
    * assume the caller drops the table whenever the craft or any scoring input
@@ -363,6 +376,8 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   mctsExploration: 1.15,
   mctsMaxNodes: 5000,
   overcraftAmbition: true,
+  perfectionBandGoal: 0,
+  completionBandCeiling: 0,
 };
 
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
@@ -1855,6 +1870,8 @@ function deriveBandGoals(
   isSublimeCraft: boolean = false,
   maxCompletionCap?: number,
   maxPerfectionCap?: number,
+  perfectionBandGoal?: number,
+  completionBandCeiling?: number,
 ): BandGoals {
   const bands = buildOutcomeBands({
     targetCompletion,
@@ -1862,6 +1879,8 @@ function deriveBandGoals(
     isSublimeCraft,
     maxCompletionCap,
     maxPerfectionCap,
+    perfectionBandGoal,
+    completionBandCeiling,
   });
   const targetTier = bands.targetTier;
   const perfectReq = TIER_REQUIREMENTS.perfect;
@@ -1889,10 +1908,17 @@ function deriveBandGoals(
       : 0,
     maxCompletionCap,
   );
+  // User perfection ambition only ever *raises* the goal, and only above the
+  // tier requirement: the tier gate still comes from TIER_REQUIREMENTS, so
+  // asking for more stars adds work to chase rather than changing what counts
+  // as success. The cap clamp still applies - the game can never bank past it.
+  const ambitionPerfBands = bands.ambitionPerfectionBands;
+  const perfGoalBands =
+    ambitionPerfBands !== undefined && ambitionPerfBands > targetReq.perfection
+      ? ambitionPerfBands
+      : targetReq.perfection;
   const effectivePerfGoal = clampGoalByCap(
-    targetPerfection > 0
-      ? bandThreshold(targetPerfection, targetReq.perfection)
-      : 0,
+    targetPerfection > 0 ? bandThreshold(targetPerfection, perfGoalBands) : 0,
     maxPerfectionCap,
   );
 
@@ -2111,7 +2137,10 @@ function computeConjunctiveGoalScore(
   options: { readonly countBasicCheckpoint: boolean } = {
     countBasicCheckpoint: false,
   },
-  overcraft: { readonly enabled: boolean; readonly fractionalExtras: boolean } = {
+  overcraft: {
+    readonly enabled: boolean;
+    readonly fractionalExtras: boolean;
+  } = {
     enabled: false,
     fractionalExtras: false,
   },
@@ -2181,6 +2210,8 @@ function scoreState(
   ctx: ScoringContext = DEFAULT_SCORING_CONTEXT,
   goalPriorityBias: number = DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   overcraftAmbition: boolean = true,
+  perfectionBandGoal: number = 0,
+  completionBandCeiling: number = 0,
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
     return Math.min(state.completion, state.perfection);
@@ -2201,6 +2232,8 @@ function scoreState(
     isSublimeCraft,
     maxCompletionCap,
     maxPerfectionCap,
+    perfectionBandGoal,
+    completionBandCeiling,
   );
 
   const outcome = classifyOutcome(state, bands);
@@ -2539,6 +2572,8 @@ function scoreFinishedOutcome(
   ctx: ScoringContext = DEFAULT_SCORING_CONTEXT,
   goalPriorityBias: number = DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   overcraftAmbition: boolean = true,
+  perfectionBandGoal: number = 0,
+  completionBandCeiling: number = 0,
 ): number {
   if (targetCompletion === 0 && targetPerfection === 0) {
     return Math.min(state.completion, state.perfection);
@@ -2558,6 +2593,8 @@ function scoreFinishedOutcome(
     isSublimeCraft,
     maxCompletionCap,
     maxPerfectionCap,
+    perfectionBandGoal,
+    completionBandCeiling,
   );
 
   const outcome = classifyOutcome(state, bands);
@@ -2875,7 +2912,8 @@ function hasGuaranteedSafeStabilizeAction(
 
 // Structural aliases for the shared types; `CrossStepSearchCache` in
 // crossStepCache.ts hands one table across the steps of a craft.
-type TranspositionCacheEntry = import('./crossStepCache').TranspositionCacheEntry;
+type TranspositionCacheEntry =
+  import('./crossStepCache').TranspositionCacheEntry;
 type TranspositionCache = import('./crossStepCache').TranspositionCache;
 
 function computeScoreTieWindow(totalTargetMagnitude: number): number {
@@ -3361,6 +3399,8 @@ function runGreedySearch(
     isSublime,
     config.maxCompletion,
     config.maxPerfection,
+    cfg.perfectionBandGoal,
+    cfg.completionBandCeiling,
   );
   const {
     baseCompGoal,
@@ -3616,6 +3656,8 @@ function runGreedySearch(
             scoringCtx,
             cfg.goalPriorityBias,
             cfg.overcraftAmbition,
+            cfg.perfectionBandGoal,
+            cfg.completionBandCeiling,
           )
         : scoreState(
             newState,
@@ -3629,6 +3671,8 @@ function runGreedySearch(
             scoringCtx,
             cfg.goalPriorityBias,
             cfg.overcraftAmbition,
+            cfg.perfectionBandGoal,
+            cfg.completionBandCeiling,
           );
     const reasoning = generateReasoning(
       skill,
@@ -3798,6 +3842,8 @@ function runLookaheadSearch(
     isSublime,
     config.maxCompletion,
     config.maxPerfection,
+    cfg.perfectionBandGoal,
+    cfg.completionBandCeiling,
   );
   const {
     baseCompGoal,
@@ -3875,6 +3921,8 @@ function runLookaheadSearch(
       forecastedConditionTypes,
       goalPriorityBias: cfg.goalPriorityBias,
       overcraftAmbition: cfg.overcraftAmbition,
+      perfectionBandGoal: cfg.perfectionBandGoal,
+      completionBandCeiling: cfg.completionBandCeiling,
       search: {
         iterations: budgetedIterations,
         rolloutDepth: Math.min(depth, cfg.mctsRolloutDepth ?? depth),
@@ -3975,6 +4023,8 @@ function runLookaheadSearch(
         scoringCtx,
         cfg.goalPriorityBias,
         cfg.overcraftAmbition,
+        cfg.perfectionBandGoal,
+        cfg.completionBandCeiling,
       );
     }
 
@@ -3990,6 +4040,8 @@ function runLookaheadSearch(
       scoringCtx,
       cfg.goalPriorityBias,
       cfg.overcraftAmbition,
+      cfg.perfectionBandGoal,
+      cfg.completionBandCeiling,
     );
     const remainingCompletion = Math.max(
       0,
@@ -4497,7 +4549,7 @@ function runLookaheadSearch(
         currentConditionAtDepth,
         nextConditionQueueAtDepth,
         Math.max(0, remainingDepth - 1),
-        )?.bestMove ??
+      )?.bestMove ??
       null;
     if (cachedBestMoveKey) {
       const cachedIndex = filteredCandidates.findIndex(
@@ -4972,7 +5024,7 @@ function runLookaheadSearch(
           conditionAtDepth,
           conditionQueueAtDepth,
           remainingDepth,
-            )?.bestMove ??
+        )?.bestMove ??
         null;
       if (cachedBestMove) {
         if (cachedBestMove === FINISH_CRAFT_KEY) {
@@ -5218,7 +5270,7 @@ function runLookaheadSearch(
         conditionAtDepth,
         nextConditionQueueAtDepth,
         maxRemainingDepth,
-        )?.bestMove ??
+      )?.bestMove ??
       null;
     if (cachedBestMove) {
       if (cachedBestMove === FINISH_CRAFT_KEY) {
@@ -5474,9 +5526,7 @@ function runLookaheadSearch(
             modePerfGoal,
           );
       const endsCraft =
-        isFinish ||
-        terminalState.isTerminal ||
-        stateWillAutoFinish(newState);
+        isFinish || terminalState.isTerminal || stateWillAutoFinish(newState);
 
       const { expectedGains, immediateGains, effectiveCosts } = isFinish
         ? {
@@ -6132,6 +6182,7 @@ export function findBestSkill(
 export const __testing = {
   scoreState,
   scoreFinishedOutcome,
+  deriveBandGoals,
   calculateFinishSuccessChance,
   evaluateCraftEndOutcomeDistribution,
   evaluateHarmonySubsystemQuality,

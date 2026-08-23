@@ -306,6 +306,77 @@ describe('settings search budget', () => {
     expect(reloaded.preferredAutoModePolicy).toBe('fullActionSpace');
   });
 
+  it('defaults both ambition band settings to auto', () => {
+    const loaded = loadSettings();
+
+    expect(loaded.perfectionBandGoal).toBe(0);
+    expect(loaded.completionBandCeiling).toBe(0);
+    expect(DEFAULT_SETTINGS.perfectionBandGoal).toBe(0);
+    expect(DEFAULT_SETTINGS.completionBandCeiling).toBe(0);
+  });
+
+  it('persists and reloads the ambition band settings', () => {
+    const saved = saveSettings({
+      perfectionBandGoal: 4,
+      completionBandCeiling: 2,
+    });
+
+    expect(saved.perfectionBandGoal).toBe(4);
+    expect(saved.completionBandCeiling).toBe(2);
+
+    // Both are search settings, so a reload only keeps them once the
+    // search-defaults reset has already been applied for this version.
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
+
+    const reloaded = loadSettings();
+    expect(reloaded.perfectionBandGoal).toBe(4);
+    expect(reloaded.completionBandCeiling).toBe(2);
+  });
+
+  it('clamps and rounds out-of-range ambition band settings', () => {
+    storageData['craftbuddy_settings'] = JSON.stringify({
+      perfectionBandGoal: 99,
+      completionBandCeiling: -5,
+    });
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
+
+    const loaded = loadSettings();
+
+    expect(loaded.perfectionBandGoal).toBe(8);
+    expect(loaded.completionBandCeiling).toBe(0);
+  });
+
+  it('falls back to auto for non-numeric ambition band settings', () => {
+    storageData['craftbuddy_settings'] = JSON.stringify({
+      perfectionBandGoal: 'lots',
+      completionBandCeiling: null,
+    });
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
+
+    const loaded = loadSettings();
+
+    expect(loaded.perfectionBandGoal).toBe(0);
+    expect(loaded.completionBandCeiling).toBe(0);
+  });
+
+  it('threads the ambition band settings into the search config', () => {
+    saveSettings({ perfectionBandGoal: 3, completionBandCeiling: 2 });
+
+    const searchConfig = getSearchConfig();
+
+    expect(searchConfig.perfectionBandGoal).toBe(3);
+    expect(searchConfig.completionBandCeiling).toBe(2);
+  });
+
   it('falls back to the default auto mode policy for invalid stored values', () => {
     storageData['craftbuddy_settings'] = JSON.stringify({
       preferredAutoModePolicy: 'everything_everywhere',

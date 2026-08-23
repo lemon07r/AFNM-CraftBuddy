@@ -29,6 +29,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import {
+  AMBITION_BAND_MAX,
   CraftBuddySettings,
   EXPERIMENTAL_SEARCH_PRESET_BUDGETS,
   getSettings,
@@ -47,6 +48,7 @@ import {
   SEARCH_GOAL_PRIORITY_BIAS_MIN,
   SEARCH_GOAL_PRIORITY_BIAS_STEP,
 } from '../utils/searchGoalPriority';
+import { formatAmbitionBands } from './ambitionBands';
 import { colors } from './theme';
 import { FlexRow } from './components';
 import {
@@ -191,6 +193,20 @@ const OVERCRAFT_AMBITION_HELP: SettingHelpContent = {
   description:
     'Lets the optimizer keep crafting past the target tier for extra completion and perfection bands, matching the game rewards: more result stacks or quality per extra perfection band and material refunds per extra completion band.',
   note: 'On by default. Turn off to stop at the target tier as soon as it is secured.',
+};
+
+const PERFECTION_BAND_GOAL_HELP: SettingHelpContent = {
+  title: 'Perfection Band Goal',
+  description:
+    'Sets how many perfection bands (stars) the optimizer keeps working toward. Auto stops pushing perfection once the recipe outcome tier is secured; a higher goal makes the search keep investing turns in extra stars.',
+  note: 'Auto is the default. Each band is 1.3x wider than the last, so high goals only pay off on crafts with turns to spare.',
+};
+
+const COMPLETION_BAND_CEILING_HELP: SettingHelpContent = {
+  title: 'Completion Band Ceiling',
+  description:
+    'Stops the optimizer spending turns on completion past the chosen band. The target outcome tier stays reachable because the ceiling never drops below what the tier requires; it only trims extra overcraft completion.',
+  note: 'Auto is the default. Lower it to redirect leftover turns from material refunds toward perfection.',
 };
 
 const SEARCH_GOAL_PRIORITY_MARKS = [
@@ -558,6 +574,8 @@ export const SettingsPanel = memo(function SettingsPanel({
     | 'searchMaxNodes'
     | 'searchBeamWidth'
     | 'searchGoalPriorityBias'
+    | 'perfectionBandGoal'
+    | 'completionBandCeiling'
     | 'maxAlternatives';
   type SearchSettingKey =
     | 'lookaheadDepth'
@@ -566,6 +584,8 @@ export const SettingsPanel = memo(function SettingsPanel({
     | 'searchBeamWidth'
     | 'searchGoalPriorityBias'
     | 'overcraftAmbition'
+    | 'perfectionBandGoal'
+    | 'completionBandCeiling'
     | 'optimizerEngine'
     | 'searchThreads';
 
@@ -603,6 +623,8 @@ export const SettingsPanel = memo(function SettingsPanel({
     'searchBeamWidth',
     'searchGoalPriorityBias',
     'overcraftAmbition',
+    'perfectionBandGoal',
+    'completionBandCeiling',
     'optimizerEngine',
     'searchThreads',
   ];
@@ -1330,6 +1352,42 @@ export const SettingsPanel = memo(function SettingsPanel({
                       checked={settings.overcraftAmbition}
                       tooltip={OVERCRAFT_AMBITION_HELP}
                       onChange={handleOvercraftAmbitionChange}
+                    />
+
+                    <SliderSetting
+                      label="Perfection Band Goal"
+                      draftValue={draftSettings.perfectionBandGoal}
+                      min={0}
+                      max={AMBITION_BAND_MAX}
+                      step={1}
+                      tooltip={PERFECTION_BAND_GOAL_HELP}
+                      valueFormatter={formatAmbitionBands}
+                      hint="Auto stops once the recipe outcome tier is secured."
+                      tip="Raise it to keep chasing extra stars; the percentage is the perfection needed."
+                      onChange={(v) =>
+                        handleSliderDraftChange('perfectionBandGoal', v)
+                      }
+                      onCommit={(v) =>
+                        handleSliderCommit('perfectionBandGoal', v)
+                      }
+                    />
+
+                    <SliderSetting
+                      label="Completion Band Ceiling"
+                      draftValue={draftSettings.completionBandCeiling}
+                      min={0}
+                      max={AMBITION_BAND_MAX}
+                      step={1}
+                      tooltip={COMPLETION_BAND_CEILING_HELP}
+                      valueFormatter={formatAmbitionBands}
+                      hint="Auto lets overcraft completion run as far as the search likes."
+                      tip="Lower it to stop banking completion past that band and spend the turns elsewhere."
+                      onChange={(v) =>
+                        handleSliderDraftChange('completionBandCeiling', v)
+                      }
+                      onCommit={(v) =>
+                        handleSliderCommit('completionBandCeiling', v)
+                      }
                     />
                   </Box>
                 </SettingsGroup>

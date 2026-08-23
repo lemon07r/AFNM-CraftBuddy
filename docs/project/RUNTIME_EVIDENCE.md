@@ -4,7 +4,7 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.8-24a8210
-last_verified: 2026-08-09
+last_verified: 2026-08-23
 source_of_truth: installed AFNM 0.7.8 runtime bundle (scripts/installed-game-runtime.js)
 review_cycle_days: 90
 related_files:
@@ -615,7 +615,7 @@ Recorded here so the evidence and its resolution stay together.
 | Soulflame values are data (5) | No code change; the definition-driven buff path carries them. New values pinned in `runtimeParity.test.ts`. |
 | Complexity multipliers unchanged (6) | No change. The equipment-side harmony rebalance is outside CraftBuddy's model. |
 | Auto-use loadout pairing (7) | No change: the game resolves the pairing before CraftBuddy reads state. The `(This Effect)` condition falls to the conservative "will fire" default. |
-| False Fusion rename (8) | Display-only; labels resolve through `techniqueDisplayName()` while internal keys keep using `name`. |
+| False Fusion rename (8) | Display-only; labels resolve through `techniqueDisplayName()` while internal keys keep using `name`. Since 6.4.0 the auto-craft DOM fallback (`buildSearchAliases` in `src/modContent/autoCraftExecutor.ts`) indexes both spellings, because the in-game button carries the display name. |
 | Cleanse never critted in crafting (9) | No change in either engine. |
 | Overcraft extras are unilateral (12) | `src/optimizer/search.ts` scores extra perfection and extra completion bands as two independent post-tier terms, mirrored in the Rust engine; the conjunctive tier gate itself is untouched. Terminal scoring prices each bar's craft-end bonus-roll chance as expected value (the Rust engine enumerates the roll branches to the same effect); live horizon leaves bank guaranteed bands only. Extras are bounded by the finish flat's band count, since the runtime clamps bars there (section 2). |
 

@@ -12,6 +12,7 @@ import {
   OVERCRAFT_REFUND_MAX_BANDS,
   TIER_REQUIREMENTS,
   bandThreshold,
+  buildOutcomeBands,
   classifyOutcome,
   computeOvercraftExtras,
   deriveOutcomeBands,
@@ -303,9 +304,11 @@ describe('computeOvercraftExtras', () => {
       { completion: 230 - 1, perfection: 902, stability: 50 },
       overcraftBands,
     );
-    expect(computeOvercraftExtras(outcome, overcraftBands, {
-      fractional: true,
-    })).toEqual({ completionBands: 0, perfectionBands: 0 });
+    expect(
+      computeOvercraftExtras(outcome, overcraftBands, {
+        fractional: true,
+      }),
+    ).toEqual({ completionBands: 0, perfectionBands: 0 });
   });
 
   it('counts extra bands unilaterally once the tier is secured', () => {
@@ -384,5 +387,82 @@ describe('computeOvercraftExtras', () => {
       fractional: false,
     });
     expect(extras.perfectionBands).toBe(4 - 2);
+  });
+});
+
+/**
+ * Ambition settings (user-facing): `perfectionBandGoal` is a search goal and
+ * lives in `search.ts`; the completion ceiling is an extras bound and belongs
+ * here, in the single outcome authority.
+ */
+describe('ambition band settings', () => {
+  const DEEP_CAP = bandThreshold(100, 8);
+  const FIVE_BANDS = bandThreshold(100, 5); // 902
+
+  function ambitiousBands(completionBandCeiling: number) {
+    return buildOutcomeBands({
+      targetCompletion: 100,
+      targetPerfection: 100,
+      isSublimeCraft: true,
+      maxCompletionCap: DEEP_CAP,
+      maxPerfectionCap: DEEP_CAP,
+      completionBandCeiling,
+    });
+  }
+
+  function extrasAt(completionBandCeiling: number) {
+    const bands = ambitiousBands(completionBandCeiling);
+    const outcome = classifyOutcome(
+      { completion: FIVE_BANDS, perfection: FIVE_BANDS, stability: 50 },
+      bands,
+    );
+    return {
+      outcome,
+      extras: computeOvercraftExtras(outcome, bands, { fractional: false }),
+    };
+  }
+
+  it('treats 0 as auto and leaves overcraft extras untouched', () => {
+    const auto = extrasAt(0);
+    // Sublime needs 2 completion bands and the refund stops paying past 5.
+    expect(auto.extras.completionBands).toBe(OVERCRAFT_REFUND_MAX_BANDS - 2);
+    expect(auto.extras.perfectionBands).toBe(5 - 2);
+
+    const absent = buildOutcomeBands({
+      targetCompletion: 100,
+      targetPerfection: 100,
+      isSublimeCraft: true,
+      maxCompletionCap: DEEP_CAP,
+      maxPerfectionCap: DEEP_CAP,
+    });
+    expect(absent.ambitionCompletionCeilingBands).toBeUndefined();
+    expect(absent.ambitionPerfectionBands).toBeUndefined();
+  });
+
+  it('clamps overcraft completion extras at the requested ceiling', () => {
+    const capped = extrasAt(3);
+    expect(capped.extras.completionBands).toBe(3 - 2);
+    // Perfection is deliberately left uncapped - "more stars" is the point.
+    expect(capped.extras.perfectionBands).toBe(5 - 2);
+  });
+
+  it('keeps the target tier reachable when the ceiling is below its requirement', () => {
+    const under = extrasAt(1);
+    expect(under.outcome.tier).toBe('sublime');
+    // Never negative, and the tier requirement itself is never clamped away.
+    expect(under.extras.completionBands).toBe(0);
+    expect(under.extras.perfectionBands).toBe(5 - 2);
+  });
+
+  it('normalizes non-finite and negative ambition values to auto', () => {
+    const bands = buildOutcomeBands({
+      targetCompletion: 100,
+      targetPerfection: 100,
+      isSublimeCraft: true,
+      perfectionBandGoal: Number.NaN,
+      completionBandCeiling: -4,
+    });
+    expect(bands.ambitionPerfectionBands).toBeUndefined();
+    expect(bands.ambitionCompletionCeilingBands).toBeUndefined();
   });
 });

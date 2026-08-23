@@ -261,6 +261,32 @@ describe('autoCraftExecutor', () => {
     expect(waitButton.click).toHaveBeenCalledTimes(1);
   });
 
+  it('clicks the renamed technique button using its player-facing display name', () => {
+    const techniqueButton = new HTMLElementMock('Strive for Completion');
+    const rootElement = createRoot([techniqueButton]);
+
+    const executor = createDomAutoCraftExecutor({
+      getRootElement: () => rootElement as any,
+      isElementVisible: () => true,
+      isIgnoredElement: () => false,
+    });
+
+    executor.execute(
+      {
+        kind: 'skill',
+        actionName: 'False Fusion',
+        skill: {
+          name: 'False Fusion',
+          displayName: 'Strive for Completion',
+        } as any,
+        reason: 'Best completion move.',
+      },
+      buildExecutorSnapshot(),
+    );
+
+    expect(techniqueButton.click).toHaveBeenCalledTimes(1);
+  });
+
   describe('dispatch-time state verification', () => {
     function createStoreExecutor(dispatch: jest.Mock) {
       const rootElement = createRoot();

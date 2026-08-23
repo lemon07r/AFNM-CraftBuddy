@@ -209,6 +209,15 @@ struct EngineConfig {
     /// Defaults on, mirroring `DEFAULT_SEARCH_CONFIG.overcraftAmbition`.
     #[serde(default = "default_true")]
     overcraft_ambition: bool,
+    /// Desired perfection bands ("stars"). 0 is auto, mirroring
+    /// `DEFAULT_SEARCH_CONFIG.perfectionBandGoal`; the serde default keeps
+    /// older bridge payloads parsing.
+    #[serde(default)]
+    perfection_band_goal: f64,
+    /// Completion band ceiling for overcraft extras. 0 is auto, mirroring
+    /// `DEFAULT_SEARCH_CONFIG.completionBandCeiling`.
+    #[serde(default)]
+    completion_band_ceiling: f64,
     /// Config-level completion target. Seeds the `maxcompletion` scaling
     /// variable; the input-level `target_completion` drives the completion
     /// bonus. The TypeScript simulator reads them from two different places.
@@ -1313,6 +1322,8 @@ impl Engine {
             self.input.config.is_sublime_craft,
             self.input.config.max_completion,
             self.input.config.max_perfection,
+            self.input.config.perfection_band_goal,
+            self.input.config.completion_band_ceiling,
         )
     }
 
@@ -1326,6 +1337,15 @@ impl Engine {
                 _ => goal,
             }
         };
+        // User perfection ambition only ever *raises* the goal, and only above
+        // the tier requirement: the tier gate still comes from
+        // `tier_requirement`, so asking for more stars adds work to chase
+        // rather than changing what counts as success. Mirrors
+        // `deriveBandGoals` in `src/optimizer/search.ts`.
+        let perfection_goal_bands = match bands.ambition_perfection_bands {
+            Some(ambition) if ambition > target_req.perfection => ambition,
+            _ => target_req.perfection,
+        };
 
         Goals {
             mode_completion: clamp_by_cap(
@@ -1333,7 +1353,7 @@ impl Engine {
                 self.input.config.max_completion,
             ),
             mode_perfection: clamp_by_cap(
-                band_threshold(self.input.target_perfection, target_req.perfection),
+                band_threshold(self.input.target_perfection, perfection_goal_bands),
                 self.input.config.max_perfection,
             ),
             base_completion: clamp_by_cap(

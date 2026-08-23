@@ -33,6 +33,7 @@ import { bandThreshold, TIER_REQUIREMENTS } from '../optimizer/outcome';
 const {
   scoreState,
   scoreFinishedOutcome,
+  deriveBandGoals,
   calculateFinishSuccessChance,
   evaluateCraftEndOutcomeDistribution,
   evaluateHarmonySubsystemQuality,
@@ -2126,6 +2127,58 @@ describe('craft-end ladder modeling', () => {
   });
 });
 
+describe('ambition band goals', () => {
+  const DEEP_CAP = bandThreshold(100, 8);
+
+  function goalsFor(perfectionBandGoal: number, completionBandCeiling = 0) {
+    return deriveBandGoals(
+      100,
+      100,
+      true,
+      DEEP_CAP,
+      DEEP_CAP,
+      perfectionBandGoal,
+      completionBandCeiling,
+    );
+  }
+
+  it('leaves the effective perfection goal at the tier requirement on auto', () => {
+    const auto = goalsFor(0);
+    expect(auto.effectivePerfGoal).toBe(
+      bandThreshold(100, TIER_REQUIREMENTS.sublime.perfection),
+    );
+    expect(auto.bands.ambitionPerfectionBands).toBeUndefined();
+  });
+
+  it('raises the effective perfection goal to the requested band', () => {
+    const ambitious = goalsFor(4);
+    expect(ambitious.effectivePerfGoal).toBe(bandThreshold(100, 4));
+    // Tier gates and the completion goal are untouched: more stars is extra
+    // work to chase, not a different definition of success.
+    expect(ambitious.targetTier).toBe('sublime');
+    expect(ambitious.effectiveCompGoal).toBe(goalsFor(0).effectiveCompGoal);
+  });
+
+  it('never lowers the perfection goal below the tier requirement', () => {
+    // 1 band is under sublime's 2: the tier requirement still wins.
+    expect(goalsFor(1).effectivePerfGoal).toBe(goalsFor(0).effectivePerfGoal);
+  });
+
+  it('still clamps the raised goal at the game cap', () => {
+    const shallowCap = bandThreshold(100, 3);
+    const clamped = deriveBandGoals(
+      100,
+      100,
+      true,
+      shallowCap,
+      shallowCap,
+      6,
+      0,
+    );
+    expect(clamped.effectivePerfGoal).toBe(shallowCap);
+  });
+});
+
 describe('overcraft extras scoring', () => {
   // Deep-realm overcraft caps: 11 bands of width 100 per bar (runtime `nLa`),
   // so both bars have headroom far past the 2-band sublime requirement.
@@ -2472,14 +2525,21 @@ describe('cross-step transposition cache', () => {
 
     // Manual recalculates and re-dispatches of an unchanged state replay the
     // exact frontier the previous search already completed.
-    const warm = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
-      ...searchConfig,
-      transpositionCache: cache.tableFor(scope),
-    });
-
-    expect(warm.recommendation?.skill.key).toBe(
-      cold.recommendation?.skill.key,
+    const warm = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...searchConfig,
+        transpositionCache: cache.tableFor(scope),
+      },
     );
+
+    expect(warm.recommendation?.skill.key).toBe(cold.recommendation?.skill.key);
     expect(warm.searchMetrics!.crossStepHits ?? 0).toBeGreaterThan(0);
     expect(warm.searchMetrics!.nodesExplored).toBeLessThan(
       cold.searchMetrics!.nodesExplored,
@@ -2521,28 +2581,66 @@ describe('cross-step transposition cache', () => {
     // passes agree exactly with a table-free search, under both a tight
     // (truncating) and a generous budget.
     const tightBudget = { ...searchConfig, maxNodes: 80, timeBudgetMs: 2000 };
-    const warmTight = lookaheadSearch(next!, config, 100, 100, 6, 'neutral', forecast, {
-      ...tightBudget,
-      transpositionCache: cache.tableFor(scope),
-    });
-    const controlTight = lookaheadSearch(next!, config, 100, 100, 6, 'neutral', forecast, {
-      ...tightBudget,
-    });
+    const warmTight = lookaheadSearch(
+      next!,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...tightBudget,
+        transpositionCache: cache.tableFor(scope),
+      },
+    );
+    const controlTight = lookaheadSearch(
+      next!,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...tightBudget,
+      },
+    );
     expect(warmTight.recommendation).not.toBeNull();
     expect(controlTight.recommendation).not.toBeNull();
     expect(controlTight.searchMetrics!.crossStepHits ?? 0).toBe(0);
 
-    const warmFull = lookaheadSearch(next!, config, 100, 100, 6, 'neutral', forecast, {
-      ...searchConfig,
-      transpositionCache: cache.tableFor(scope),
-    });
-    const controlFull = lookaheadSearch(next!, config, 100, 100, 6, 'neutral', forecast, {
-      ...searchConfig,
-    });
+    const warmFull = lookaheadSearch(
+      next!,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...searchConfig,
+        transpositionCache: cache.tableFor(scope),
+      },
+    );
+    const controlFull = lookaheadSearch(
+      next!,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...searchConfig,
+      },
+    );
     expect(warmFull.recommendation?.skill.key).toBe(
       controlFull.recommendation?.skill.key,
     );
-    expect(warmFull.recommendation?.score).toBe(controlFull.recommendation?.score);
+    expect(warmFull.recommendation?.score).toBe(
+      controlFull.recommendation?.score,
+    );
   });
 
   it('carries completed shallow passes into a later deeper search of the same state', () => {
@@ -2553,25 +2651,52 @@ describe('cross-step transposition cache', () => {
     // A shallow, budget-truncated search still publishes its completed
     // passes; a later deeper search of the same state reuses them instead of
     // re-expanding those frontier nodes.
-    const shallow = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
-      ...searchConfig,
-      maxNodes: 40,
-      transpositionCache: cache.tableFor(scope),
-    });
+    const shallow = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...searchConfig,
+        maxNodes: 40,
+        transpositionCache: cache.tableFor(scope),
+      },
+    );
     expect(shallow.recommendation).not.toBeNull();
     expect(cache.size).toBeGreaterThan(0);
 
     // Under a truncating budget both searches spend the whole budget, so the
     // reuse shows up as cross-step hits, not fewer nodes.
-    const warmCapped = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
-      ...searchConfig,
-      maxNodes: 80,
-      transpositionCache: cache.tableFor(scope),
-    });
-    const controlCapped = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
-      ...searchConfig,
-      maxNodes: 80,
-    });
+    const warmCapped = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...searchConfig,
+        maxNodes: 80,
+        transpositionCache: cache.tableFor(scope),
+      },
+    );
+    const controlCapped = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...searchConfig,
+        maxNodes: 80,
+      },
+    );
     expect(warmCapped.searchMetrics!.crossStepHits ?? 0).toBeGreaterThan(0);
     expect(controlCapped.searchMetrics!.crossStepHits ?? 0).toBe(0);
     expect(warmCapped.recommendation?.skill.key).toBe(
@@ -2580,13 +2705,31 @@ describe('cross-step transposition cache', () => {
 
     // Under a generous budget the collapsed shallow passes are worth real
     // node savings, and the completed passes still agree exactly.
-    const warm = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
-      ...searchConfig,
-      transpositionCache: cache.tableFor(scope),
-    });
-    const control = lookaheadSearch(state0, config, 100, 100, 6, 'neutral', forecast, {
-      ...searchConfig,
-    });
+    const warm = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...searchConfig,
+        transpositionCache: cache.tableFor(scope),
+      },
+    );
+    const control = lookaheadSearch(
+      state0,
+      config,
+      100,
+      100,
+      6,
+      'neutral',
+      forecast,
+      {
+        ...searchConfig,
+      },
+    );
     expect(warm.searchMetrics!.crossStepHits ?? 0).toBeGreaterThan(0);
     expect(warm.searchMetrics!.nodesExplored).toBeLessThan(
       control.searchMetrics!.nodesExplored,
@@ -3185,9 +3328,11 @@ describe('tutorial regression scenarios', () => {
     // valid multi-turn line; the old refine-first expectation came from the
     // inflated 17× multiplier goal model. Lock the meaningful behaviour:
     // stay alive, keep refine in the plan, and do not collapse to finish.
-    expect(['forceful_stabilize', 'invasive_refine', 'invasive_fusion']).toContain(
-      result.recommendation!.skill.key,
-    );
+    expect([
+      'forceful_stabilize',
+      'invasive_refine',
+      'invasive_fusion',
+    ]).toContain(result.recommendation!.skill.key);
     expect(result.recommendation!.skill.actionKind).not.toBe('finish');
     expect(forcefulStabilize).toBeDefined();
     expect(forcefulStabilize!.immediateGains.stability).toBe(24);
@@ -3199,9 +3344,7 @@ describe('tutorial regression scenarios', () => {
     );
     // Progress toward the binding bar must appear early in the rotation.
     const rotation = result.optimalRotation ?? [];
-    expect(
-      rotation.some((name) => /refine|fusion/i.test(name)),
-    ).toBe(true);
+    expect(rotation.some((name) => /refine|fusion/i.test(name))).toBe(true);
   });
 });
 
@@ -4570,7 +4713,9 @@ describe('scoreState (isolated)', () => {
       completion: 150,
       perfection: 150,
     });
-    expect(scoreState(halfBand, 100, 100, false, 2, false, deepCap, deepCap)).toBeLessThan(
+    expect(
+      scoreState(halfBand, 100, 100, false, 2, false, deepCap, deepCap),
+    ).toBeLessThan(
       scoreState(exact, 100, 100, false, 2, false, deepCap, deepCap),
     );
     // A fully banked extra perfection band (230 = 2 bands at target 100) on
@@ -4583,7 +4728,9 @@ describe('scoreState (isolated)', () => {
       completion: 100,
       perfection: 230,
     });
-    expect(scoreState(over, 100, 100, false, 2, false, deepCap, deepCap)).toBeGreaterThan(
+    expect(
+      scoreState(over, 100, 100, false, 2, false, deepCap, deepCap),
+    ).toBeGreaterThan(
       scoreState(exact, 100, 100, false, 2, false, deepCap, deepCap),
     );
     // Ambition off keeps the legacy conjunctive behavior: a one-sided extra
@@ -5100,7 +5247,8 @@ describe('scoreState (isolated)', () => {
     // reasoning: triggered procs included (no do-nothing "+0"), and no
     // "grants buff for next turns" rationale for a move with no next turn.
     const goldenPath = allRecommendations.find(
-      (recommendation) => recommendation.skill.key === 'golden_path:_first_peak',
+      (recommendation) =>
+        recommendation.skill.key === 'golden_path:_first_peak',
     );
     expect(goldenPath?.endsCraft).toBe(true);
     expect(goldenPath?.expectedGains.perfection).toBeGreaterThan(0);

@@ -8,6 +8,7 @@ A mod for **Ascend From Nine Mountains** that calculates and displays the recomm
 - Expected completion/perfection/stability gain preview
 - Effective qi/stability cost preview (current + follow-up), condition/buff/harmony aware
 - Projected outcome tier with per-bar band progress and the bar that is blocking the next tier
+- Optional ambition targets: ask for more perfection bands, or cap how far completion is worth pushing
 - Alternative action suggestions
 - Lookahead search with presets and manual performance controls
 - Condition forecast awareness and probabilistic branching beyond forecast queue
@@ -17,7 +18,7 @@ A mod for **Ascend From Nine Mountains** that calculates and displays the recomm
 - Large-number-safe parsing and formatting for late-game values
 - Snapshot export for bug reports and replayable optimizer debugging
 
-Built for game version **0.7.6**.
+Built for game version **0.7.8**.
 
 ![CraftBuddy Workshop Preview](pictures/workshop_preview.png)
 
@@ -67,10 +68,15 @@ Crafts finish on their own once both bars are far enough along, so CraftBuddy te
 - `Search Max Nodes` (`1,000-5,000,000`, default `1,000,000`)
 - `Search Beam Width` (`3-20`, default `5`)
 - `Goal Priority` (completion ↔ perfection, default balanced)
+- `Push Extra Bands` (default on; off stops at the target tier)
+- `Perfection Band Goal` (`0-8`, default `0` = Auto): aim for more perfection bands than the target tier requires
+- `Completion Band Ceiling` (`0-8`, default `0` = Auto): stop scoring completion past this band
 - engine selector (`Legacy` default, `Experimental` Rust/WASM assistance)
 - display controls (rotation/final state/conditions/alternatives)
 
 If you are unsure, use a preset. Presets overwrite all four search sliders together and keep them in safer ratios.
+
+The two ambition targets are goals, not gates: `0` is Auto and reproduces the previous behaviour exactly, the perfection goal only ever raises what the search works toward, and the completion ceiling can never drop below what the target tier requires. Both sliders read `Auto` at `0` and otherwise show the band count with the approximate share of target it needs (`2 (~230%)`), because bands widen by 1.3x each. Outcome tiers, band thresholds and auto-finish are unchanged — see `docs/project/OPTIMIZER_DESIGN.md`.
 
 Depth, time, nodes, and beam width are coupled search-budget controls: pushing one much higher than the others can waste search and sometimes reduce recommendation quality. Search stops when either the time budget or node budget is hit first, and exact results vary somewhat by craft complexity and machine speed because the time budget is wall-clock based. Manual slider changes apply when you release the slider.
 
@@ -138,7 +144,7 @@ Output zip: `builds/afnm-craftbuddy.zip`
 - Optimizer (`src/optimizer/*`, behind a single `index.ts` facade) simulates candidate actions and runs lookahead search.
 - `src/optimizer/outcome.ts` is the single authority for band thresholds, outcome tiers, and the auto-finish predicate.
 - Search combines deterministic simulation with expected-value modeling for probabilistic outcomes, plus a guaranteed survivability floor so a craft is never bet on a recovery proc.
-- A Rust/WASM engine (`crates/craftbuddy-engine/`) models the same mechanics and supplies a search prior; parity is proven by a differential corpus of 71 scenarios and 1,543 transitions.
+- A Rust/WASM engine (`crates/craftbuddy-engine/`) models the same mechanics and supplies a search prior; parity is proven by a differential corpus of 137 scenarios and 1,471 transitions.
 - UI (`src/ui/*`) renders the recommendation, outcome rows, and alternatives.
 
 ## Technical notes
@@ -164,7 +170,7 @@ CraftBuddy prefers direct game data when available and uses documented fallback 
 ## Documentation
 
 - Authoritative project docs: `docs/project/`
-- Latest release notes: `docs/project/RELEASE_NOTES_6.1.0.md`
+- Latest release notes: `docs/project/RELEASE_NOTES_6.4.0.md`
 - Dev API request tracking: `docs/dev-requests/`
 - Curated AFNM reference subset: `docs/reference/`
 - Agent entrypoint: `docs/project/START_HERE_FOR_AGENTS.md`

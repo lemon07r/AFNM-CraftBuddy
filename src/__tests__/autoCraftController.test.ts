@@ -409,7 +409,7 @@ describe('autoCraftController', () => {
     expect(controller.getUiState().armed).toBe(false);
   });
 
-  it('stops with an error if the live state does not advance after execution', async () => {
+  it('resends the action once and then pauses instead of erroring when the live state never advances', async () => {
     const controller = createHarness();
 
     controller.arm();
@@ -420,8 +420,91 @@ describe('autoCraftController', () => {
     jest.advanceTimersByTime(5000);
     await Promise.resolve();
 
-    expect(controller.getUiState().phase).toBe('error');
-    expect(controller.getUiState().armed).toBe(false);
+    expect(executed).toHaveLength(2);
+    expect(controller.getUiState().phase).toBe('waiting_for_state');
+
+    jest.advanceTimersByTime(5000);
+    await Promise.resolve();
+
+    expect(executed).toHaveLength(2);
+    expect(controller.getUiState().phase).toBe('armed');
+    expect(controller.getUiState().armed).toBe(true);
+  });
+
+  it('continues the run when the live signature already advanced by the time the wait expires', async () => {
+    const controller = createHarness();
+    let dispatched = false;
+
+    controller.arm();
+    controller.sync(
+      buildSnapshot({
+        verifyRevision: () =>
+          dispatched
+            ? { kind: 'stale', changed: ['buffs'] }
+            : { kind: 'match' },
+      }),
+    );
+
+    jest.advanceTimersByTime(100);
+    await Promise.resolve();
+    dispatched = true;
+
+    jest.advanceTimersByTime(5000);
+    await Promise.resolve();
+
+    const state = controller.getUiState();
+    expect(executed).toHaveLength(1);
+    expect(state.phase).toBe('armed');
+    expect(state.armed).toBe(true);
+    expect(state.tone).not.toBe('error');
+    expect(state.statusTitle).toBe('Resyncing');
+  });
+
+  it('resends the awaited action exactly once when the live signature proves nothing landed', async () => {
+    const controller = createHarness();
+
+    controller.arm();
+    controller.sync(
+      buildSnapshot({ verifyRevision: () => ({ kind: 'match' }) }),
+    );
+
+    jest.advanceTimersByTime(100);
+    await Promise.resolve();
+
+    expect(executed).toHaveLength(1);
+
+    jest.advanceTimersByTime(5000);
+    await Promise.resolve();
+
+    expect(executed).toHaveLength(2);
+    expect(executed[1].actionName).toBe('Simple Fusion');
+    expect(controller.getUiState().armed).toBe(true);
+  });
+
+  it('degrades to a recoverable pause when the resent action is also refused', async () => {
+    const controller = createHarness();
+
+    controller.arm();
+    controller.sync(
+      buildSnapshot({ verifyRevision: () => ({ kind: 'match' }) }),
+    );
+
+    jest.advanceTimersByTime(100);
+    await Promise.resolve();
+
+    jest.advanceTimersByTime(5000);
+    await Promise.resolve();
+    jest.advanceTimersByTime(5000);
+    await Promise.resolve();
+
+    const state = controller.getUiState();
+    expect(executed).toHaveLength(2);
+    expect(state.phase).toBe('armed');
+    expect(state.armed).toBe(true);
+    expect(state.tone).toBe('warning');
+    expect(state.statusTitle).toBe('Auto mode paused');
+    expect(state.statusDetail).toContain('Simple Fusion');
+    expect(state.statusDetail).not.toContain('auto-use loadout');
   });
 
   it('does not time out when the live state advances synchronously during execution', async () => {

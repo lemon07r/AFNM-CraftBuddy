@@ -4,14 +4,14 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.8-24a8210
-last_verified: 2026-08-09
-source_of_truth: Steam Workshop item 3661729323, package.json, src/settings/index.ts, src/optimizer/search.ts, crates/craftbuddy-engine/*
+last_verified: 2026-08-23
+source_of_truth: Steam Workshop item 3661729323, package.json, src/settings/index.ts, src/optimizer/search.ts, src/optimizer/outcome.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
   - docs/project/RELEASE_PROCESS.md
+  - docs/project/RELEASE_NOTES_6.4.0.md
+  - docs/project/RELEASE_NOTES_6.3.1.md
   - docs/project/RELEASE_NOTES_6.2.0.md
-  - docs/project/RELEASE_NOTES_6.1.0.md
-  - docs/project/RELEASE_NOTES_6.0.0.md
   - docs/project/OPTIMIZER_DESIGN.md
   - scripts/workshop-upload.ts
 ---
@@ -26,18 +26,15 @@ CraftBuddy reads your live craft, simulates thousands of possible continuations,
 [hr][/hr]
 
 [h1]Highlights of the 6.x Series[/h1]
-The 6.x releases rebuilt CraftBuddy around one principle: play the craft the way the game actually scores it. The most noteworthy changes, all verified against the live game:
+The 6.x releases rebuilt CraftBuddy around one principle: play the craft the way the game actually scores it. Key highlights, all verified against the live game:
 
 [list]
-[*] [b]Harmonies done properly[/b] — all seven harmony types are simulated, each one's complexity multiplier applied to your real targets, with harmony progress (Enhancing Echo attunement, Eccentric Decree's focused bar) kept faithfully between turns.
-[*] [b]A new outcome model[/b] — plays for the outcome tier you can actually reach and shows its work: projected tier, band progress per bar, auto-finish timing, and setup turns for gated techniques.
-[*] [b]Overcraft pays what the game pays[/b] — extra bands past the target tier are scored per bar, the way the game grants them (more stacks, higher quality, material refunds). The [b]Push Extra Bands[/b] toggle restores the old stop-at-tier behaviour.
-[*] [b]The newest buffs, simulated exactly[/b] — True Bifang Flame's blaze, Flame of the Azure Depths' stored Qi, Illume Crucible's sealed max stability, and the discordant-condition flames all behave in the optimizer precisely as they do in 0.7.7/0.7.8, including Eccentric Decree's per-burst scoring and its latest rebalance.
-[*] [b]The search runs in the background[/b] — recommendations compute on background workers, so the game UI stays responsive. The [b]Search Threads[/b] setting splits the search across 2 or 4 workers (or Auto): same 2-second budget, up to ~4x the explored lines.
-[*] [b]Stable crafts answer instantly[/b] — once the best move stops changing, CraftBuddy returns it instead of burning the full budget; some mid-craft turns finish 30x sooner, and recalcs on an unchanged craft are near-instant.
-[*] [b]Two engines, one answer[/b] — the optional Rust/WASM engine models the same mechanics as the main engine, runs [b]1.90x[/b] faster than before, and is kept honest by a transition-for-transition parity corpus replayed on every change.
-[*] [b]Auto-use aware[/b] — auto mode respects your crafting auto-use loadout instead of double-spending pills.
-[*] [b]Fixes that matter[/b] — gated techniques (like Focused Fusion) are no longer recommended without their required buff, and harmony progress is no longer forgotten on re-reads.
+[*] [b]Ambition targets (v6.4)[/b] — two optional sliders ([b]Perfection Band Goal[/b] and [b]Completion Band Ceiling[/b]) let you aim for more stars than the tier needs or redirect excess completion effort into perfection. Both default to Auto.
+[*] [b]Auto-mode reliability (v6.4)[/b] — auto mode now reliably recovers and retries when the game quietly ignores an action, and coexists cleanly with your auto-use loadout.
+[*] [b]Accurate game mechanics[/b] — full simulation of all seven harmonies, 0.7.8 buffs (True Bifang Flame, Flame of the Azure Depths, Illume Crucible, discordant flames, Eccentric Decree), and conjunctive outcome tier gates with auto-finish timing.
+[*] [b]Overcraft scoring[/b] — extra bands past the target tier are scored per bar the way the game rewards them (stacks, quality, material refunds).
+[*] [b]High-performance search[/b] — multi-threaded background workers (up to ~4x explored lines) and instant return on stable crafts keep recommendations snappy without freezing the UI.
+[*] [b]Dual engines[/b] — optional Rust/WASM engine runs 1.90x faster with verified transition-for-transition mechanics parity.
 [/list]
 
 [hr][/hr]
@@ -102,6 +99,14 @@ For advanced users. These four sliders are coupled — pushing one far above the
 [*] [b]Search Beam Width[/b]
 [/list]
 Search stops as soon as either the time budget or the node budget is reached. Results vary with craft complexity and machine speed, since the time budget is wall-clock based.
+
+[h2]Ambition Targets[/h2]
+Both are set in bands ("stars"), and both are [b]Auto[/b] by default — Auto is exactly the previous behaviour, where the outcome tier you are aiming at decides everything.
+[list]
+[*] [b]Perfection Band Goal[/b] — ask for more perfection bands than your target tier actually requires. Only ever raises the goal; the game's own tier requirements and the recipe's cap still apply, so this cannot cost you the tier.
+[*] [b]Completion Band Ceiling[/b] — stop rewarding completion past the band you pick, so leftover effort goes into perfection instead. The target tier always stays reachable: the ceiling can never drop below what the tier needs.
+[/list]
+[b]Why bars "stop" around 200%:[/b] band widths grow by 1.3x each, so the bands land at roughly 100% / 230% / 399% / 619% / 904% of the recipe target. Sublime needs two bands on both bars — about 230% — and once that is banked the craft has met its gate. If you want to push further, that is what these two targets are for.
 
 [h2]Display Options[/h2]
 Toggle predicted rotation, final state estimates, upcoming conditions and alternative actions independently.

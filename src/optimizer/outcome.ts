@@ -110,6 +110,20 @@ export interface OutcomeBands {
   readonly completionCapBandCount?: number;
   /** As `completionCapBandCount`, for perfection. */
   readonly perfectionCapBandCount?: number;
+  /**
+   * User ambition: how many perfection bands ("stars") the player asked the
+   * optimizer to chase. `undefined` is auto - the tier requirement decides,
+   * which is the pre-ambition behaviour. Normalized by `buildOutcomeBands`;
+   * never recompute it from raw settings elsewhere.
+   */
+  readonly ambitionPerfectionBands?: number;
+  /**
+   * User ambition: the completion band count past which the player does not
+   * want any more investment ("keep completion at 200%"). `undefined` is
+   * auto. Only bounds overcraft *extras* - the target tier's completion
+   * requirement always stays reachable.
+   */
+  readonly ambitionCompletionCeilingBands?: number;
 }
 
 export interface OutcomeClassification {
@@ -185,6 +199,25 @@ export interface OutcomeBandParams {
   isSublimeCraft?: boolean;
   maxCompletionCap?: number;
   maxPerfectionCap?: number;
+  /** Desired perfection bands; `0`/absent/non-finite means auto. */
+  perfectionBandGoal?: number;
+  /** Completion band ceiling for extras; `0`/absent/non-finite means auto. */
+  completionBandCeiling?: number;
+}
+
+/**
+ * Normalize a user ambition band count.
+ *
+ * Both ambition settings use `0` as "auto", so anything that is not a finite
+ * positive number collapses to `undefined` and leaves the pre-ambition
+ * behaviour untouched.
+ */
+function normalizeAmbitionBands(value: number | undefined): number | undefined {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return undefined;
+  }
+  return Math.floor(numeric);
 }
 
 /**
@@ -244,6 +277,10 @@ export function buildOutcomeBands(params: OutcomeBandParams): OutcomeBands {
       perfectionFinishFlat > 0 && perfectionTarget > 0
         ? getBonusAndChance(perfectionFinishFlat, perfectionTarget).guaranteed
         : undefined,
+    ambitionPerfectionBands: normalizeAmbitionBands(params.perfectionBandGoal),
+    ambitionCompletionCeilingBands: normalizeAmbitionBands(
+      params.completionBandCeiling,
+    ),
   };
 }
 
@@ -513,11 +550,18 @@ export function computeOvercraftExtras(
     outcome.perfectionBands +
     (options.fractional ? Math.max(0, outcome.perfectionBonusChance) : 0);
 
-  const completionCeiling = Math.min(
-    bands.completionCapBandCount ?? Number.POSITIVE_INFINITY,
-    bands.hasSublimeOutcome
-      ? OVERCRAFT_REFUND_MAX_BANDS
-      : completionRequired,
+  // The user ceiling folds in as just another bound on completion extras, but
+  // it can never sink below the target tier's own requirement: the tier has to
+  // stay reachable, and clamping under it would price a secured tier as if it
+  // had overshot. Perfection extras are deliberately left uncapped - "more
+  // stars" is the whole point of the ambition pair.
+  const completionCeiling = Math.max(
+    completionRequired,
+    Math.min(
+      bands.completionCapBandCount ?? Number.POSITIVE_INFINITY,
+      bands.hasSublimeOutcome ? OVERCRAFT_REFUND_MAX_BANDS : completionRequired,
+      bands.ambitionCompletionCeilingBands ?? Number.POSITIVE_INFINITY,
+    ),
   );
   const perfectionCeiling =
     bands.perfectionCapBandCount ?? Number.POSITIVE_INFINITY;

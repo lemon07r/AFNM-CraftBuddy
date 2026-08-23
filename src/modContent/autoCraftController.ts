@@ -26,6 +26,14 @@ const STATE_ADVANCE_TIMEOUT_MS = 4500;
 const NATIVE_SETTLE_TIMEOUT_MS = 1500;
 /** How many native consumptions may be observed before giving up on the turn. */
 const MAX_NATIVE_SETTLE_OBSERVATIONS = 4;
+/**
+ * How many times a single awaited action may be re-sent.
+ *
+ * Bounded at one: a re-send is only ever safe because the live signature proved
+ * nothing landed, and looping on that proof is how a laggy frame turns into a
+ * stream of duplicate inputs.
+ */
+const MAX_STATE_ADVANCE_RETRIES = 1;
 /** How long to wait before re-checking a craft state that could not be read. */
 const PAUSE_RETRY_MS = 750;
 
@@ -388,7 +396,9 @@ export function createAutoCraftController({
   let scheduledExecutionFingerprint: string | null = null;
   let awaitingFingerprint: string | null = null;
   let awaitingRequest: AutoCraftExecutionRequest | null = null;
+  let awaitingSnapshot: AutoCraftRuntimeSnapshot | null = null;
   let awaitingStep: number | null = null;
+  let awaitingRetries = 0;
   let nativeSettleObservations = 0;
   let waitingTimeoutHandle: unknown = null;
   let pauseRetryHandle: unknown = null;
@@ -439,7 +449,9 @@ export function createAutoCraftController({
   const clearAwaitingState = () => {
     awaitingFingerprint = null;
     awaitingRequest = null;
+    awaitingSnapshot = null;
     awaitingStep = null;
+    awaitingRetries = 0;
     nativeSettleObservations = 0;
   };
 
@@ -482,6 +494,7 @@ export function createAutoCraftController({
 
   const startAwaitingStateAdvance = (executionFingerprint: string) => {
     awaitingFingerprint = executionFingerprint;
+    awaitingRetries = 0;
     nativeSettleObservations = 0;
     cancelWaitingTimeout();
   };
@@ -607,6 +620,168 @@ export function createAutoCraftController({
     });
   };
 
+  /**
+   * The action landed, but no snapshot carrying it reached `sync()` in time.
+   *
+   * Buff-only support techniques are the common case: the live signature has
+   * already moved while CraftBuddy is still holding the pre-action snapshot, so
+   * erroring out here would kill a healthy run. The executed fingerprint stays
+   * marked as scheduled, which stops a lagging snapshot from re-dispatching the
+   * action that just landed.
+   */
+  const resumeAfterLateStateAdvance = (
+    request: AutoCraftExecutionRequest,
+    changed: readonly string[],
+  ) => {
+    const settledFingerprint = awaitingFingerprint;
+    cancelWaitingTimeout();
+    clearAwaitingState();
+    scheduledExecutionFingerprint = settledFingerprint;
+
+    if (uiState.stopRequested) {
+      finalizeStoppedState('stopped', 'neutral', 'Auto mode off', stopReason);
+      return;
+    }
+
+    setUiState({
+      phase: 'armed',
+      tone: 'active',
+      statusTitle: 'Resyncing',
+      statusDetail: `${request.actionName} already changed the live craft${
+        changed.length > 0 ? ` (${changed.join(', ')})` : ''
+      }; auto mode is resyncing and continuing.`,
+      lastActionName: request.actionName,
+      isRunning: false,
+      canStop: true,
+    });
+
+    if (lastSnapshot) {
+      controller.sync(lastSnapshot);
+    }
+  };
+
+  /**
+   * The game refused the action twice, so automation steps back instead of dying.
+   *
+   * Auto mode stays armed but idle on the fingerprint it could not move, so the
+   * player can act manually, stop, or simply let the next real state change
+   * resume the run - no restart required.
+   */
+  const pauseAfterRejectedAction = (request: AutoCraftExecutionRequest) => {
+    const rejectedFingerprint = awaitingFingerprint;
+    cancelWaitingTimeout();
+    clearAwaitingState();
+    scheduledExecutionFingerprint = rejectedFingerprint;
+
+    if (uiState.stopRequested) {
+      finalizeStoppedState('stopped', 'neutral', 'Auto mode off', stopReason);
+      return;
+    }
+
+    setUiState({
+      phase: 'armed',
+      tone: 'warning',
+      statusTitle: 'Auto mode paused',
+      statusDetail: `The game did not accept ${request.actionName}, even after auto mode sent it again. Auto mode is paused on this state and resumes as soon as the craft changes.`,
+      lastActionName: request.actionName,
+      isRunning: false,
+      canStop: true,
+    });
+  };
+
+  /**
+   * Re-send an action the live signature proves never landed.
+   *
+   * Only ever reached with a `match` verification in hand, so this cannot double
+   * up on an action the game already accepted.
+   */
+  const retryAwaitedAction = async (
+    request: AutoCraftExecutionRequest,
+    executionFingerprint: string,
+  ) => {
+    const retrySnapshot = awaitingSnapshot;
+    if (!retrySnapshot || !uiState.armed) {
+      pauseAfterRejectedAction(request);
+      return;
+    }
+
+    awaitingRetries += 1;
+
+    setUiState({
+      phase: uiState.stopRequested ? 'stop_requested' : 'executing',
+      tone: uiState.stopRequested ? 'warning' : 'active',
+      statusTitle: uiState.stopRequested
+        ? 'Stopping after current action'
+        : 'Resending action',
+      statusDetail: uiState.stopRequested
+        ? stopReason
+        : `The game never registered ${request.actionName}, so auto mode is sending it once more.`,
+      lastActionName: request.actionName,
+      isRunning: true,
+      canStop: true,
+    });
+
+    try {
+      await executor.execute(request, retrySnapshot);
+      waitForStateAdvance(request, executionFingerprint);
+    } catch (error) {
+      cancelWaitingTimeout();
+      clearAwaitingState();
+
+      if (error instanceof StaleCraftStateError) {
+        handleStaleCraftState(error.changed);
+        return;
+      }
+      if (error instanceof UnverifiableCraftStateError) {
+        handleUnverifiableCraftState(error.reason);
+        return;
+      }
+
+      const message =
+        error instanceof Error ? error.message : String(error ?? 'Unknown');
+      finalizeStoppedState('error', 'error', 'Auto mode error', message);
+    }
+  };
+
+  /**
+   * Decide what a silent wait actually means before touching the run.
+   *
+   * The wait timer only proves that no snapshot arrived, not that the action
+   * failed, so the live signature is read one last time: a changed signature
+   * means the action landed, an unchanged one means a single re-send is safe,
+   * and an unreadable one proves nothing and must never be retried.
+   */
+  const handleStateAdvanceTimeout = (
+    request: AutoCraftExecutionRequest,
+    executionFingerprint: string,
+  ) => {
+    waitingTimeoutHandle = null;
+
+    if (awaitingFingerprint !== executionFingerprint) {
+      return;
+    }
+
+    const verification = awaitingSnapshot
+      ? verifySnapshotState(awaitingSnapshot)
+      : MATCHED_STATE_VERIFICATION;
+
+    if (verification.kind === 'stale') {
+      resumeAfterLateStateAdvance(request, verification.changed);
+      return;
+    }
+    if (verification.kind === 'unverifiable') {
+      pauseAfterRejectedAction(request);
+      return;
+    }
+
+    if (awaitingRetries < MAX_STATE_ADVANCE_RETRIES) {
+      void retryAwaitedAction(request, executionFingerprint);
+      return;
+    }
+
+    pauseAfterRejectedAction(request);
+  };
+
   const waitForStateAdvance = (
     request: AutoCraftExecutionRequest,
     executionFingerprint: string,
@@ -615,13 +790,9 @@ export function createAutoCraftController({
       return;
     }
 
+    cancelWaitingTimeout();
     waitingTimeoutHandle = schedule(() => {
-      finalizeStoppedState(
-        'error',
-        'error',
-        'Auto mode error',
-        `${request.actionName} did not change the live craft state in time. Auto mode stopped to avoid duplicate inputs.`,
-      );
+      handleStateAdvanceTimeout(request, executionFingerprint);
     }, STATE_ADVANCE_TIMEOUT_MS);
 
     setUiState({
@@ -687,6 +858,7 @@ export function createAutoCraftController({
     const executionSnapshot = lastSnapshot;
     startAwaitingStateAdvance(executionFingerprint);
     awaitingRequest = request;
+    awaitingSnapshot = executionSnapshot;
     awaitingStep =
       typeof executionSnapshot.craftStep === 'number'
         ? executionSnapshot.craftStep

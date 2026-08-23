@@ -1,3 +1,4 @@
+import { techniqueDisplayName } from '../optimizer';
 import {
   resolveSnapshotNativeAutoUse,
   verifySnapshotState,
@@ -176,11 +177,14 @@ function buildSearchAliases(request: AutoCraftExecutionRequest): string[] {
 
   if (request.skill?.name) {
     aliases.add(request.skill.name);
+    // The button carries the player-facing label, which 0.7.6 renames away from
+    // the internal name, so the DOM fallback needs both spellings.
+    aliases.add(techniqueDisplayName(request.skill));
   }
 
-  return Array.from(aliases)
-    .map((alias) => normalizeText(alias))
-    .filter(Boolean);
+  return Array.from(
+    new Set(Array.from(aliases).map((alias) => normalizeText(alias))),
+  ).filter(Boolean);
 }
 
 function scoreSearchText(searchText: string, aliases: string[]): number {

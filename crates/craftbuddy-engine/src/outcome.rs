@@ -78,6 +78,14 @@ pub struct OutcomeBands {
     pub completion_cap_band_count: Option<i32>,
     /// As `completion_cap_band_count`, for perfection.
     pub perfection_cap_band_count: Option<i32>,
+    /// User ambition: how many perfection bands ("stars") the player asked the
+    /// optimizer to chase. `None` is auto — the tier requirement decides,
+    /// which is the pre-ambition behaviour.
+    pub ambition_perfection_bands: Option<i32>,
+    /// User ambition: the completion band count past which the player does not
+    /// want any more investment. `None` is auto. Only bounds overcraft
+    /// *extras* — the target tier's completion requirement stays reachable.
+    pub ambition_completion_ceiling_bands: Option<i32>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -118,12 +126,26 @@ pub fn band_threshold(band_width: f64, band_count: i32) -> f64 {
     total.floor()
 }
 
+/// Normalize a user ambition band count.
+///
+/// Both ambition settings use `0` as "auto", so anything that is not a finite
+/// positive number collapses to `None` and leaves the pre-ambition behaviour
+/// untouched.
+fn normalize_ambition_bands(value: f64) -> Option<i32> {
+    if !value.is_finite() || value <= 0.0 {
+        return None;
+    }
+    Some(value.floor() as i32)
+}
+
 pub fn build_outcome_bands(
     target_completion: f64,
     target_perfection: f64,
     is_sublime_craft: bool,
     max_completion_cap: Option<f64>,
     max_perfection_cap: Option<f64>,
+    perfection_band_goal: f64,
+    completion_band_ceiling: f64,
 ) -> OutcomeBands {
     let completion_target = target_completion.max(0.0);
     let perfection_target = target_perfection.max(0.0);
@@ -172,6 +194,8 @@ pub fn build_outcome_bands(
         } else {
             None
         },
+        ambition_perfection_bands: normalize_ambition_bands(perfection_band_goal),
+        ambition_completion_ceiling_bands: normalize_ambition_bands(completion_band_ceiling),
     }
 }
 
@@ -245,6 +269,11 @@ pub fn compute_overcraft_extras(
             0.0
         };
 
+    // The user ceiling folds in as just another bound on completion extras, but
+    // it can never sink below the target tier's own requirement: the tier has
+    // to stay reachable, and clamping under it would price a secured tier as if
+    // it had overshot. Perfection extras are deliberately left uncapped —
+    // "more stars" is the whole point of the ambition pair.
     let completion_ceiling = bands
         .completion_cap_band_count
         .unwrap_or(i32::MAX)
@@ -252,7 +281,9 @@ pub fn compute_overcraft_extras(
             OVERCRAFT_REFUND_MAX_BANDS
         } else {
             completion_required
-        });
+        })
+        .min(bands.ambition_completion_ceiling_bands.unwrap_or(i32::MAX))
+        .max(completion_required);
     let perfection_ceiling = bands.perfection_cap_band_count.unwrap_or(i32::MAX);
 
     OvercraftExtras {
@@ -422,7 +453,7 @@ mod tests {
     /// sublime tier while perfection is a band short.
     #[test]
     fn sublime_requires_two_bands_on_both_bars() {
-        let bands = build_outcome_bands(100.0, 80.0, true, None, None);
+        let bands = build_outcome_bands(100.0, 80.0, true, None, None, 0.0, 0.0);
         let over_completed = classify_outcome(1000.0, 100.0, 50.0, &bands);
         assert_eq!(over_completed.tier, OutcomeTier::Perfect);
         assert!(over_completed.completion_margin >= 1.0);
@@ -434,7 +465,7 @@ mod tests {
 
     #[test]
     fn zero_completion_bands_is_a_failed_craft() {
-        let bands = build_outcome_bands(100.0, 80.0, false, None, None);
+        let bands = build_outcome_bands(100.0, 80.0, false, None, None, 0.0, 0.0);
         assert_eq!(
             classify_outcome(50.0, 500.0, 50.0, &bands).tier,
             OutcomeTier::Failed
@@ -443,9 +474,33 @@ mod tests {
 
     #[test]
     fn auto_finish_fires_once_both_flats_are_met() {
-        let bands = build_outcome_bands(100.0, 80.0, false, None, None);
+        let bands = build_outcome_bands(100.0, 80.0, false, None, None, 0.0, 0.0);
         assert!(!will_auto_finish(99.0, 80.0, 50.0, &bands, None));
         assert!(will_auto_finish(100.0, 80.0, 50.0, &bands, None));
         assert!(will_auto_finish(0.0, 0.0, 0.0, &bands, None));
+    }
+
+    /// The completion ceiling must clamp overcraft completion extras without
+    /// ever making the target tier unreachable, and auto must stay unchanged.
+    #[test]
+    fn completion_band_ceiling_clamps_overcraft_extras() {
+        let auto = build_outcome_bands(100.0, 80.0, true, Some(1000.0), Some(1000.0), 0.0, 0.0);
+        let outcome = classify_outcome(400.0, 300.0, 50.0, &auto);
+        let auto_extras = compute_overcraft_extras(&outcome, &auto, false);
+        assert!(auto_extras.completion_bands > 0.0);
+
+        let capped = build_outcome_bands(100.0, 80.0, true, Some(1000.0), Some(1000.0), 0.0, 2.0);
+        let capped_outcome = classify_outcome(400.0, 300.0, 50.0, &capped);
+        let capped_extras = compute_overcraft_extras(&capped_outcome, &capped, false);
+        assert_eq!(capped_extras.completion_bands, 0.0);
+        assert_eq!(capped_extras.perfection_bands, auto_extras.perfection_bands);
+
+        // A ceiling under the tier requirement must not break the tier: the
+        // extras simply stay at zero rather than going negative.
+        let under = build_outcome_bands(100.0, 80.0, true, Some(1000.0), Some(1000.0), 0.0, 1.0);
+        let under_outcome = classify_outcome(400.0, 300.0, 50.0, &under);
+        assert_eq!(under_outcome.tier, OutcomeTier::Sublime);
+        let under_extras = compute_overcraft_extras(&under_outcome, &under, false);
+        assert_eq!(under_extras.completion_bands, 0.0);
     }
 }

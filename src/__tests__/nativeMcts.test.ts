@@ -372,6 +372,32 @@ describe('native MCTS bridge', () => {
     expect(withState.state.buffs[0]?.internal_state).toEqual({ blaze: 25 });
   });
 
+  it('serializes the ambition band settings onto the wire', () => {
+    const ambitious = nativeMctsTesting.buildNativeMctsInput({
+      state: new CraftingState({ qi: 100, stability: 60 }),
+      config: createConfig(),
+      targetCompletion: 100,
+      targetPerfection: 80,
+      perfectionBandGoal: 4,
+      completionBandCeiling: 2,
+    });
+
+    expect(ambitious.config.perfection_band_goal).toBe(4);
+    expect(ambitious.config.completion_band_ceiling).toBe(2);
+
+    // Omitted means auto, and auto is 0 on the wire so old engines and new
+    // payloads agree on the pre-ambition behaviour.
+    const auto = nativeMctsTesting.buildNativeMctsInput({
+      state: new CraftingState({ qi: 100, stability: 60 }),
+      config: createConfig(),
+      targetCompletion: 100,
+      targetPerfection: 80,
+    });
+
+    expect(auto.config.perfection_band_goal).toBe(0);
+    expect(auto.config.completion_band_ceiling).toBe(0);
+  });
+
   it('honors low explicit MCTS budgets for short searches', () => {
     const input = nativeMctsTesting.buildNativeMctsInput({
       state: new CraftingState({ qi: 100, stability: 60 }),

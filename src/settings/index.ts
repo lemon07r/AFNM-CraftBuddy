@@ -52,6 +52,18 @@ export interface CraftBuddySettings {
    * optimizer stops at the tier, matching the pre-6.2 behavior.
    */
   overcraftAmbition: boolean;
+  /**
+   * Desired perfection bands ("stars"). `0` (default) is auto: the reachable
+   * tier's requirement decides. Anything higher keeps the search working
+   * toward that many perfection bands without moving the tier gates.
+   */
+  perfectionBandGoal: number;
+  /**
+   * Completion band ceiling. `0` (default) is auto. Anything higher stops the
+   * optimizer from investing in completion past that many bands, so leftover
+   * effort goes into perfection instead.
+   */
+  completionBandCeiling: number;
   /** Optimizer engine mode. Legacy is the default; experimental enables native MCTS policy guidance. */
   optimizerEngine: OptimizerEngine;
   /**
@@ -88,9 +100,7 @@ export function resolveSearchThreadCount(
   return Math.max(1, Math.min(Math.floor(numeric) - 2, 4));
 }
 
-function normalizeSearchThreadCount(
-  value: unknown,
-): SearchThreadCount {
+function normalizeSearchThreadCount(value: unknown): SearchThreadCount {
   return value === 1 || value === 2 || value === 'auto' || value === 4
     ? value
     : DEFAULT_SETTINGS.searchThreads;
@@ -143,10 +153,7 @@ export type SearchPresetId =
 
 export type SearchPresetBudget = Pick<
   CraftBuddySettings,
-  | 'lookaheadDepth'
-  | 'searchTimeBudgetMs'
-  | 'searchMaxNodes'
-  | 'searchBeamWidth'
+  'lookaheadDepth' | 'searchTimeBudgetMs' | 'searchMaxNodes' | 'searchBeamWidth'
 >;
 
 export interface OptimizerEngineOption {
@@ -255,6 +262,13 @@ export const EXPERIMENTAL_SEARCH_PRESET_BUDGETS: Record<
   },
 };
 
+/**
+ * Upper bound for both ambition band settings. The band ladder compounds by
+ * `BAND_GROWTH_RATIO`, so eight bands is already far past anything the game
+ * can bank; the clamp only exists to keep a stored value sane.
+ */
+export const AMBITION_BAND_MAX = 8;
+
 const EXPERIMENTAL_MCTS_ITERATIONS = 250;
 const EXPERIMENTAL_MCTS_MAX_NODES = 5000;
 const EXPERIMENTAL_MCTS_MIN_ROLLOUT_DEPTH = 8;
@@ -268,11 +282,15 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   | 'searchBeamWidth'
   | 'searchGoalPriorityBias'
   | 'overcraftAmbition'
+  | 'perfectionBandGoal'
+  | 'completionBandCeiling'
   | 'optimizerEngine'
 > = {
   ...LEGACY_SEARCH_PRESET_BUDGETS.fast,
   searchGoalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   overcraftAmbition: true,
+  perfectionBandGoal: 0,
+  completionBandCeiling: 0,
   optimizerEngine: DEFAULT_OPTIMIZER_ENGINE,
 };
 
@@ -365,6 +383,20 @@ function normalizeSettings(
       typeof settings.overcraftAmbition === 'boolean'
         ? settings.overcraftAmbition
         : DEFAULT_SETTINGS.overcraftAmbition,
+    // 0 is "auto" for both ambition knobs, which is also the fallback: an
+    // absent or garbage value must never silently start steering the search.
+    perfectionBandGoal: clampInteger(
+      settings.perfectionBandGoal,
+      0,
+      AMBITION_BAND_MAX,
+      DEFAULT_SETTINGS.perfectionBandGoal,
+    ),
+    completionBandCeiling: clampInteger(
+      settings.completionBandCeiling,
+      0,
+      AMBITION_BAND_MAX,
+      DEFAULT_SETTINGS.completionBandCeiling,
+    ),
     optimizerEngine:
       settings.optimizerEngine === 'experimental'
         ? 'experimental'
@@ -557,6 +589,8 @@ export function getSearchConfig(): {
   beamWidth: number;
   goalPriorityBias: number;
   overcraftAmbition: boolean;
+  perfectionBandGoal: number;
+  completionBandCeiling: number;
   useMonteCarloTreeSearch: boolean;
   mctsIterations?: number;
   mctsRolloutDepth?: number;
@@ -585,6 +619,8 @@ export function getSearchConfig(): {
     beamWidth: currentSettings.searchBeamWidth,
     goalPriorityBias: currentSettings.searchGoalPriorityBias,
     overcraftAmbition: currentSettings.overcraftAmbition,
+    perfectionBandGoal: currentSettings.perfectionBandGoal,
+    completionBandCeiling: currentSettings.completionBandCeiling,
     useMonteCarloTreeSearch,
     ...mctsConfig,
   };

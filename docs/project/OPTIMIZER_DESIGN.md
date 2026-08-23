@@ -4,7 +4,7 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+last_verified: 2026-08-23
 source_of_truth: src/optimizer/outcome.ts, src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/index.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*, src/settings/index.ts
 review_cycle_days: 30
 related_files:
@@ -47,6 +47,8 @@ sublime = 2 completion bands AND 2 perfection bands   (recipe must have a sublim
 ```
 
 `deriveOutcomeBands(config)` derives the widths, the auto-finish flats and the recipe's reachable `targetTier`; `classifyOutcome(state, bands)` returns the guaranteed tier, per-bar band counts and margins, and which bar is blocking.
+
+Because widths compound by `BAND_GROWTH_RATIO` (`1.3`), the band boundaries land at roughly **100% / 230% / 399% / 619% / 904%** of the recipe target. Sublime's two-band gate is the ~230% mark players read as the optimizer "stopping around 200%".
 
 Consequences that must not be re-litigated with weights:
 
@@ -143,7 +145,9 @@ Characteristics:
    most of the next band. The soft overshoot penalty stays active in both
    modes: it is the only ranking signal between two overshooting live lines.
    This is the `overcraftAmbition` search setting below; when off, the legacy
-   conjunctive `min` term runs bit-identically.
+   conjunctive `min` term runs bit-identically. The user
+   `completionBandCeiling` folds in here as one more bound on the completion
+   ceiling (see *Ambition targets*), never below the tier's own requirement.
 
 2. **Buff valuation** — expected future return while the target tier is unmet.
 3. **Resource value** — qi and stability as future turns of progress; tiny tie-breakers only once goals are met.
@@ -172,7 +176,7 @@ Published per-action gains (`expectedGains`) are derived from the **simulated po
 
 ## Rust/WASM engine
 
-The Rust engine models the **same searchable action space** as TypeScript — generic buffs, effect trees, mastery, Soulflame, toxicity, item actions — and shares the conjunctive outcome model via `crates/craftbuddy-engine/src/outcome.rs`. Parity is proven by a 134-scenario / 1,432-transition differential corpus (`docs/project/MECHANICS_PARITY.md`).
+The Rust engine models the **same searchable action space** as TypeScript — generic buffs, effect trees, mastery, Soulflame, toxicity, item actions — and shares the conjunctive outcome model via `crates/craftbuddy-engine/src/outcome.rs`. Parity is proven by a 137-scenario / 1,471-transition differential corpus (`docs/project/MECHANICS_PARITY.md`).
 
 Its role in a search is still a **root policy prior**, by design:
 
@@ -191,6 +195,34 @@ TypeScript remains the differential oracle and the fallback when WASM is unavail
 - Balanced is mathematically neutral: weights follow remaining-work need share.
 - The bias shifts the same weight function used by live scoring and craft-end scoring, so it steers real search rather than a UI-only heuristic. It cannot override a band gate — a tier still needs both bars.
 
+## Ambition targets
+
+`perfectionBandGoal` and `completionBandCeiling` let the player state how far
+past the tier requirement a craft should be played. Both use `0` as **auto**,
+which is the pre-6.4 behaviour bit-for-bit: `normalizeAmbitionBands` collapses
+anything non-finite or `<= 0` to `undefined`, and `src/settings/index.ts`
+clamps a stored value to `AMBITION_BAND_MAX` (`8`).
+
+They enter in exactly three places, all inside the outcome authority or the
+function that consumes it:
+
+| Entry point | Effect |
+| --- | --- |
+| `buildOutcomeBands` (`outcome.ts`) | normalizes both values onto the bands object as `ambitionPerfectionBands` / `ambitionCompletionCeilingBands`. Thresholds, flats and cap band counts are derived exactly as before. |
+| `deriveBandGoals` (`search.ts`) | raises the effective perfection goal to `bandThreshold(targetPerfection, goal)` when the requested band count exceeds `TIER_REQUIREMENTS[targetTier].perfection`, still passed through `clampGoalByCap`. It can only raise, never lower. |
+| `computeOvercraftExtras` (`outcome.ts`) | bounds completion extras by `Math.max(completionRequired, Math.min(capBandCount, sublime ? 5 : required, userCeiling))`, so extra completion past the chosen band stops earning score while the target tier stays reachable. Perfection extras stay uncapped — more stars is the point of the pair. |
+
+What these settings deliberately do **not** touch: tier classification,
+`TIER_REQUIREMENTS`, band thresholds and `willAutoFinish`. They change the goal
+the search works toward, not the game's outcome tiers, and `outcome.ts` remains
+the single authority for every threshold. No scoring constant moved for them.
+
+Rust parity is full: `EngineConfig` (`crates/craftbuddy-engine/src/lib.rs`)
+carries `perfection_band_goal` / `completion_band_ceiling` with serde defaults,
+mirrored in `build_outcome_bands`, `compute_overcraft_extras` and `goals()` in
+`outcome.rs`. The wire fields are snake_case, written by
+`src/optimizer/nativeMcts.ts`.
+
 ## Determinism expectations
 
 For a fixed state, config and budget the recommendation is deterministic; `differential_tests::mcts_search_is_deterministic` asserts that directly on the Rust side over all corpus scenarios.
@@ -207,6 +239,8 @@ Because lookahead is bounded by wall clock, node cap, beam width and iterative d
 - `searchBeamWidth` (`3-20`, default `5`)
 - `searchGoalPriorityBias` (default `0`)
 - `overcraftAmbition` ("Push Extra Bands", default **on**)
+- `perfectionBandGoal` ("Perfection Band Goal", `0-8`, default `0` = auto)
+- `completionBandCeiling` ("Completion Band Ceiling", `0-8`, default `0` = auto)
 
 `overcraftAmbition` switches the extras term between the unilateral
 runtime-faithful model (on) and the legacy conjunctive `min` (off); see the

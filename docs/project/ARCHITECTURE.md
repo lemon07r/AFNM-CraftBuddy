@@ -4,7 +4,7 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+last_verified: 2026-08-23
 source_of_truth: src/mod.ts, src/modContent/*, src/optimizer/*, crates/craftbuddy-engine/*, src/ui/*, src/settings/*, src/utils/*
 review_cycle_days: 30
 related_files:
@@ -77,7 +77,7 @@ Four rules define the shape:
 | `hotkeys.ts` | panel/compact/snapshot keyboard shortcuts |
 | `nativeAutoUse.ts` | the native crafting auto-use contract: loadout status, covered items, and a projection mirroring the runtime slot selector |
 | `craftStateSignature.ts` | canonical live-craft signature, its diff, and the monotonic `craftStateRevision` |
-| `autoCraftController.ts` | auto-mode state machine: arming, policy resolution, settle/wait phases, recalculate-vs-pause decisions |
+| `autoCraftController.ts` | auto-mode state machine: arming, policy resolution, settle/wait phases, state-advance timeout recovery, recalculate-vs-retry-vs-pause decisions |
 | `autoCraftExecutor.ts` | the dispatch bridge, including dispatch-time state verification and execution-path selection |
 | `autoCraftErrors.ts` | typed failures: `StaleCraftStateError`, `UnverifiableCraftStateError`, `NativeAutoUseConflictError`, `NativeAutoUseUnreachableError` |
 | `replaySnapshot.ts` | replay snapshot serialization for bug reports and regression fixtures |
@@ -134,6 +134,8 @@ Presentation logic that needs testing goes into `src/utils/*` with a plain Jest 
 7. Repeat on craft-state change.
 
 Auto mode adds one hard rule: **verify at dispatch time**. The executor re-reads the live signature immediately before acting; a mismatch recalculates (`StaleCraftStateError`), an unreadable state pauses (`UnverifiableCraftStateError`), and nothing is dispatched in either case.
+
+The same verification decides what a silent wait means *after* dispatch. When no snapshot carrying the executed action arrives before `STATE_ADVANCE_TIMEOUT_MS`, the controller re-reads the live signature rather than erroring out: a changed signature means the action landed and the run resumes (`resumeAfterLateStateAdvance`, with the executed fingerprint pinned so a lagging snapshot cannot re-dispatch it), an unchanged signature means the action never landed and is resent exactly once (`MAX_STATE_ADVANCE_RETRIES = 1`), and an unreadable signature proves nothing and is never retried. A second failure, or an unverifiable state, degrades to a **recoverable armed pause** (`pauseAfterRejectedAction`): auto mode stays armed but idle on the fingerprint it could not move, so the next real craft change resumes it without a restart. Auto mode only reaches a terminal error state for genuine execution failures.
 
 ## Dependency direction
 

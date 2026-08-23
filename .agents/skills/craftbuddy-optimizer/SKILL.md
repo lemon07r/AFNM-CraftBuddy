@@ -5,7 +5,7 @@ description: CraftBuddy optimizer/search/MCTS workflow. Activate for changes to 
 
 # CraftBuddy Optimizer
 
-Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN.md` remains the detailed source of truth; this skill is the action checklist. Modelled game version: AFNM **0.7.6**.
+Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN.md` remains the detailed source of truth; this skill is the action checklist. Modelled game version: AFNM **0.7.8**.
 
 ## Activate When
 
@@ -80,9 +80,10 @@ Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN
 6. **Never send an explicit `null` across the Rust bridge**: one `null` on a non-optional field fails the whole payload and silently disables the prior. `nativeMcts.test.ts` guards this.
 7. **Do not re-attempt measured dead ends**: compact Rust state with mutate/undo (clone is 4.7% of a transition) and the packed numeric cache key (1.0-1.4% of the budget) were both rejected with data. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
 8. **Never tune a constant to make a benchmark contract pass.** Contracts change only with recorded runtime-oracle evidence.
-9. **Eccentric Decree scores per bar change, not once per turn**: 0.7.6 moved its state machine out of end-of-turn `processEffect` into an `onBarChange` hook fired inside every `applyCompletion`/`applyPerfection`, so one turn can award several `+5`/`-5` harmony steps and flip the focused bar part-way through. `processEccentricDecree` in `src/optimizer/harmony.ts` is an ordered fold over `BarChangeEvent[]`, mirrored over `BarChange` in the Rust engine; event order is part of the mechanic, so keep both folds identical and regenerate the differential corpus after any change.
+9. **Eccentric Decree scores per bar change, not once per turn**: 0.7.6 moved its state machine out of end-of-turn `processEffect` into an `onBarChange` hook fired inside every `applyCompletion`/`applyPerfection`, so one turn can award several harmony steps (+5 focused, -15 stray since 0.7.8) and flip the focused bar part-way through. `processEccentricDecree` in `src/optimizer/harmony.ts` is an ordered fold over `BarChangeEvent[]`, mirrored over `BarChange` in the Rust engine; event order is part of the mechanic, so keep both folds identical and regenerate the differential corpus after any change.
 10. **`needsBarContributions()` is a live gate, not dead code**: bar-change events are collected only when the craft's harmony is `eccentricDecree`. Leave the gate in `src/optimizer/skills.ts` and `needs_bar_contributions()` in `crates/craftbuddy-engine/src/effects.rs` alone; it keeps every other harmony allocation-free.
 11. **Internal names and display names differ**: key `false_fusion` / internal `name` `False Fusion` displays as "Strive for Completion". Search, caches, tests and fixtures key on `name`; only user-facing strings go through `techniqueDisplayName()` (exported from `src/optimizer/index.ts`).
+12. **Band targets are user-settable since 6.4.0**: `perfectionBandGoal` and `completionBandCeiling` (`0` = auto, clamped to 8) enter only through `buildOutcomeBands`, `deriveBandGoals` (raises the perfection goal, never lowers it) and `computeOvercraftExtras` (bounds completion extras, never below the tier requirement). They move the goal the search works toward, not the outcome model: `TIER_REQUIREMENTS`, band thresholds, tier classification and `willAutoFinish` stay untouched, and both fields must stay mirrored in the Rust `EngineConfig` as snake_case.
 
 ## References
 
