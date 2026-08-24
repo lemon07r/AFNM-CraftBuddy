@@ -5,7 +5,7 @@ description: CraftBuddy runtime integration workflow. Activate for src/modConten
 
 # CraftBuddy Runtime Integration
 
-`src/modContent/index.ts` and neighboring modules are the only boundary between AFNM runtime objects and the optimizer/UI. Target runtime: AFNM **0.7.8**.
+`src/modContent/index.ts` and neighboring modules are the only boundary between AFNM runtime objects and the optimizer/UI. Target runtime: AFNM **0.7.9**.
 
 Reach the optimizer only through `src/optimizer/index.ts`. If something is missing from the barrel, add it there rather than importing a submodule.
 
@@ -29,7 +29,7 @@ Do not scatter fallback logic into optimizer/UI modules. Centralize drift-prone 
 
 ## Runtime Essentials
 
-1. **Harmony is player-selected.** Read it from live craft state in `craftingContext.ts`; `recipe.harmonyTypeOverride` is the forced case. The `itemTypeToHarmonyType` ModAPI utility was removed by the game and is still absent in 0.7.8 (`hasItemTypeToHarmonyType` is false) — do not reintroduce item-kind inference. When the selection cannot be read, treat harmony data as missing (forge heat is the one verified-mirror exception). Sublime targets are scaled by the harmony's complexity multiplier (forge 1.2, alchemical 1.2, inscription 0.9, resonance 1.3, formless 1.5, enhancingEcho 1.3, eccentricDecree 1).
+1. **Harmony is player-selected.** Read it from live craft state in `craftingContext.ts`; `recipe.harmonyTypeOverride` is the forced case. The `itemTypeToHarmonyType` ModAPI utility was removed by the game and is still absent in 0.7.9 (`hasItemTypeToHarmonyType` is false) — do not reintroduce item-kind inference. When the selection cannot be read, treat harmony data as missing (forge heat is the one verified-mirror exception). Sublime targets are scaled by the harmony's complexity multiplier (forge 1.2, alchemical 1.2, inscription 0.9, resonance 1.3, formless 1.5, enhancingEcho 1.3, eccentricDecree 1).
 2. **Native crafting auto-use is a pre-technique hook.** The game applies `player.player.currentCraftingAutoUseLoadout.slots` immediately before every technique dispatch. That read path is unchanged in 0.7.6, which only pairs a crafting loadout with its auto-use loadout through `craftingLoadout.craftingAutoUseLoadoutId` and resolves it before CraftBuddy reads state. `nativeAutoUse.ts` mirrors the selector; covered items leave the action space and `fullActionSpace` degrades to techniques + finish with a visible reason. Never let CraftBuddy consume an item the loadout covers.
 3. **Execution path is a correctness decision.** With a loadout active, execute the technique through the in-game control so the hook runs, and stop (`NativeAutoUseUnreachableError`) rather than dispatching around it. With no loadout, the direct `crafting/executeTechnique` dispatch is preferred: equivalent for the craft and more precise than DOM matching.
 4. **There is no manual finish.** The craft resolves itself when `willAutoFinish` holds. `Wait` is a real technique costing 10 stability, so it is never a stand-in for "finish now". Say "will auto-finish" in any copy.

@@ -210,6 +210,22 @@ export interface BuffDefinition {
    */
   sealedMaxStability?: boolean;
   /**
+   * Lifts the achievable perfection/completion cap by this many threshold
+   * steps while held (0.7.9+, e.g. the reworked Purifying Flame). The game
+   * computes it once per craft and threads it into `getMaxCompletion` /
+   * `getMaxPerfection` as `maxStepsBoost`; modContent sums it from live buffs
+   * and passes it through, so the optimizer sees the raised cap directly and
+   * never reads this field itself.
+   */
+  bonusMaximumQuality?: Scaling;
+  /**
+   * Awards bonus quality stars on the finished item when the craft reaches the
+   * maximum possible tier (0.7.9+). Quality stars are a finished-item property,
+   * not an in-progress bar, so the optimizer does not simulate this; kept for
+   * type parity with the runtime buff payload.
+   */
+  bonusQuality?: Scaling;
+  /**
    * Rewrites upcoming-condition queue rolls while held (0.7.7+): each slot
    * comes up non-Balanced with this chance (0-1) instead of following the
    * usual drift. The highest value across held buffs wins.

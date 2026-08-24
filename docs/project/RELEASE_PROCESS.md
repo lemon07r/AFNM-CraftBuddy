@@ -3,7 +3,7 @@ title: Release Process
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.8-24a8210
+game_version: 0.7.9-b8ef246
 last_verified: 2026-08-23
 source_of_truth: package.json, scripts/workshop-upload.ts, scripts/installed-game-runtime.js, .github/workflows/release.yml, ../ModUploader-AFNM/package.json, ../ModUploader-AFNM/electron/main/cli.ts
 review_cycle_days: 30

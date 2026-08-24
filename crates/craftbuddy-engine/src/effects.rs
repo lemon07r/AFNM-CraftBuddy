@@ -250,6 +250,21 @@ pub struct BuffDefinition {
     /// 0.7.7+: rewrites upcoming-condition queue rolls while held.
     #[serde(default)]
     pub discordant_conditions: Option<f64>,
+    /// 0.7.9+: raises the achievable quality cap by extra threshold steps
+    /// (e.g. the reworked Purifying Flame). Deliberately not simulated here:
+    /// the boost is summed at the modContent boundary (`computeMaxStepsBoost`)
+    /// and reaches the engine as an already-raised completion/perfection cap,
+    /// so consuming it again would double-count. Kept so the 0.7.9 buff payload
+    /// deserializes verbatim.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub bonus_maximum_quality: Option<Scaling>,
+    /// 0.7.9+: bonus quality stars awarded on a max-tier finish. A finished-item
+    /// property that cannot change turn-to-turn play, so it is not simulated;
+    /// kept for payload parity.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub bonus_quality: Option<Scaling>,
 }
 
 /// An active buff instance. Mirrors `TrackedBuff` in `src/optimizer/state.ts`.

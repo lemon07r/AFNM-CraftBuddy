@@ -3162,7 +3162,19 @@ describe('tutorial regression scenarios', () => {
       perfection: 10,
     };
     const forecast = ['positive', 'veryPositive', 'neutral'];
-    const searchConfig = { timeBudgetMs: 700, maxNodes: 200000, beamWidth: 10 };
+    // This asserts exact score equality between two searches, so neither budget
+    // may bind: this frontier completes at depth 8 after ~821 expanded nodes, so
+    // both runs explore it identically and the comparison is exact. The budget
+    // used to be 700ms of wall clock, which truncated the frontier whenever the
+    // machine was loaded — the suite runs several heavy files in parallel — and
+    // the two runs then truncated at different points and reported different
+    // scores. Keep both budgets far above what the frontier needs, per the same
+    // rule that moved the depth perf contracts off wall clock.
+    const searchConfig = {
+      timeBudgetMs: 60000,
+      maxNodes: 200000,
+      beamWidth: 10,
+    };
 
     const zeroPercentState = new CraftingState({
       ...baseState,

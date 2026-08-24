@@ -129,6 +129,7 @@ import {
   buildKnownCraftingTechniqueNameMap,
   resolveLiveCraftingTechnique,
 } from './techniqueResolution';
+import { computeMaxStepsBoost } from './qualityCap';
 import {
   copyTextToClipboard,
   downloadTextFile,
@@ -1470,6 +1471,7 @@ function updateProgressCapsFromModApi(
   recipe: RecipeItem | undefined,
   recipeStats: CraftingRecipeStats | undefined,
   realm: string | undefined,
+  entity?: CraftingEntity,
 ): void {
   if (!recipe || !recipeStats || !realm) {
     return;
@@ -1483,8 +1485,22 @@ function updateProgressCapsFromModApi(
     return;
   }
 
+  // 0.7.9+: buffs like the reworked Purifying Flame carry `bonusMaximumQuality`,
+  // which raises the achievable quality cap by extra threshold steps. The game
+  // threads that bonus into `getMaxCompletion`/`getMaxPerfection` via the
+  // `maxStepsBoost` argument, so the optimizer must pass the same boost or it
+  // under-predicts the cap for those crafts. Sum each held buff's contribution
+  // the way the runtime does (`getMaxStepsBoost`). Older builds ignore the extra
+  // argument, and a boost of 0 is the pre-0.7.9 call, so this is safe either way.
+  const maxStepsBoost = computeMaxStepsBoost(entity?.buffs, entity?.stats);
+
   try {
-    const maxCompletion = modUtils.getMaxCompletion(recipe, recipeStats, realm);
+    const maxCompletion = modUtils.getMaxCompletion(
+      recipe,
+      recipeStats,
+      realm,
+      maxStepsBoost,
+    );
     const completionCap =
       extractCapCandidate(maxCompletion, [
         'flat',
@@ -1498,7 +1514,12 @@ function updateProgressCapsFromModApi(
       maxCompletionCap = completionCap;
     }
 
-    const maxPerfection = modUtils.getMaxPerfection(recipe, recipeStats, realm);
+    const maxPerfection = modUtils.getMaxPerfection(
+      recipe,
+      recipeStats,
+      realm,
+      maxStepsBoost,
+    );
     const perfectionCap =
       extractCapCandidate(maxPerfection, [
         'flat',
@@ -1556,7 +1577,12 @@ function buildConfigFromEntity(
   const entityMaxToxicity = stats?.maxtoxicity || 0;
 
   if (recipe && recipeStats) {
-    updateProgressCapsFromModApi(recipe, recipeStats, entity.realm as string);
+    updateProgressCapsFromModApi(
+      recipe,
+      recipeStats,
+      entity.realm as string,
+      entity,
+    );
   }
 
   const skills = [
@@ -3010,6 +3036,7 @@ function pollCraftingState(): void {
         recipe,
         recipeStats as CraftingRecipeStats,
         entity.realm as string,
+        entity,
       );
       // Calculate current max stability from recipeStats.stability - progressState.stabilityPenalty
       const stabilityPenalty = (progress as any).stabilityPenalty || 0;
@@ -3263,6 +3290,10 @@ try {
           recipeStats as CraftingRecipeStats,
           (lastEntity?.realm as string | undefined) ||
             ((recipe as any)?.realm as string | undefined),
+          // This hook fires before the craft entity exists, so the newest
+          // entity we have is the last one seen. Its buffs are the best
+          // available basis for the cap boost; a fresh craft simply has none.
+          lastEntity ?? undefined,
         );
         applyCapTargetFallbacks({
           recipe: recipe as RecipeItem | undefined,
@@ -4209,6 +4240,7 @@ function processCraftingState(craftingState: any): void {
       recipe,
       recipeStats as CraftingRecipeStats,
       entity?.realm as string | undefined,
+      entity ?? undefined,
     );
 
     // Calculate current max stability from recipeStats.stability - progressState.stabilityPenalty

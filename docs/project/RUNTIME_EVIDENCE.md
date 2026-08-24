@@ -3,9 +3,9 @@ title: Runtime Evidence
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.8-24a8210
+game_version: 0.7.9-b8ef246
 last_verified: 2026-08-23
-source_of_truth: installed AFNM 0.7.8 runtime bundle (scripts/installed-game-runtime.js)
+source_of_truth: installed AFNM 0.7.9 runtime bundle (scripts/installed-game-runtime.js)
 review_cycle_days: 90
 related_files:
   - docs/project/MECHANICS_PARITY.md
@@ -26,7 +26,7 @@ related_files:
 # Runtime Evidence
 
 Verbatim findings extracted from the **installed** AFNM runtime, currently
-**0.7.8-24a8210**. The runtime is the sole authority here: where a tooltip, a
+**0.7.9-b8ef246**. The runtime is the sole authority here: where a tooltip, a
 patch note, or an earlier CraftBuddy note disagrees with the code below, the code
 below wins.
 
@@ -44,11 +44,13 @@ bun run runtime:extract                     # unpacks app.asar into tmp/installe
 bun run runtime:grep -- "<pattern>"         # searches the extracted bundle
 ```
 
-`runtime:oracle` reports `gameVersion: 0.7.8-24a8210`, extracted to
-`tmp/installed-game-runtime/1168651333-1786309913280/`. The 0.7.6 findings below
+`runtime:oracle` reports `gameVersion: 0.7.9-b8ef246`, extracted to
+`tmp/installed-game-runtime/1172235715-1787523522327/`. The 0.7.6 findings below
 were produced by diffing the 0.7.6 build (`1172405719-1785155522026/`) against
 `0.7.5-d764178` (`1170135731-1784964316349/`); the 0.7.7/0.7.8 findings
-(section 14) were verified directly on the current extraction.
+(section 14) were verified against the 0.7.8 build (`1168651333-1786309913280/`),
+and the 0.7.9 findings (section 15) diff that 0.7.8 build against the current
+extraction.
 
 The two crafting-relevant chunks are `dist-electron/Game.js` (~4.5 MB) and
 `dist-electron/_rolldown_dynamic_import_helper.js`, which grew from ~12.8 MB in
@@ -886,5 +888,130 @@ Harmony and Qi Pool") and the runtime agree.
   inscription 0.9, resonance 1.3, formless 1.5, echo 1.3, decree 1.0) and
   Formless Way's starting harmony of 33.
 - Reagent toxicity gating.
+
+## 15. The 0.7.9 crafting changes (Insight rework, Purifying Flame, Forge Compression)
+
+Verified 2026-08-23 by diffing the 0.7.8 build (`1168651333-1786309913280/`)
+against the first installed 0.7.9 build, `0.7.9-de5da56`
+(`1172083670-1787487937177/`), both from
+`dist-electron/_rolldown_dynamic_import_helper.js`. Re-verified 2026-08-24
+against the current `0.7.9-b8ef246` hotfix build
+(`1172235715-1787523522327/`), where every payload and formula below is
+unchanged. Minified identifiers differ between builds; the values below are the
+0.7.9 payloads.
+
+### 15.1 Technique data is read live, so renames/overhauls auto-adopt
+
+CraftBuddy never hardcodes a technique roster: `convertGameTechniques` consumes
+`entity.techniques` (resolved through `craftingTechniqueFromKnown` when
+available) each craft. 0.7.9 kept every technique's public shape
+(`name/icon/poolCost/stabilityCost/successChance/cooldown/effects/type/realm/upgradeMasteries`),
+so the overhauled Insight techniques, the two new ones, and the Forge
+Compression rework are picked up without a code change. 121 technique payloads
+differ between builds, but almost all of that is minified-helper renames plus
+new `upgradeMasteries` entries; the optimizer already reads both live.
+
+### 15.2 Insight package buffed
+
+The `Insight` buff's per-stack control rose from `.1` to `.15`:
+
+```js
+// 0.7.8
+stats:{control:{value:.1,stat:`control`,scaling:`stacks`},poolCostPercentage:{value:140,stat:void 0}}
+// 0.7.9
+stats:{control:{value:.15,stat:`control`,scaling:`stacks`},poolCostPercentage:{value:140,stat:void 0}}
+```
+
+Two new techniques join the package (definitions are read live):
+
+```js
+// Perfected Understanding — coreFormation support, 25 pool / 5 stability, cd 5
+effects:[{kind:`createBuff`,buff:Insight,stacks:{value:1,stat:void 0,eqn:`floor(perfectionPercentage / 100) * 2`}}]
+// Sustained Revelation — lifeFlourishing support, 25 pool / 5 stability, cd 8, requires 5 Insight
+effects:[{kind:`createBuff`,buff:SustainedRevelation,stacks:{value:5,stat:void 0}}]
+// Sustained Revelation buff (maxStacks 5): on refine, +.08 perfection per Insight stack, then -1 stack
+onRefine:[{kind:`perfection`,amount:{value:.08,stat:`control`,scaling:Insight.name,upgradeKey:`perfection`}},{kind:`addStack`,stacks:{value:-1,stat:void 0}}]
+```
+
+`Insightful Refinement` was **removed** from the game (the "removed crafting
+actions" fix filters it from the roster). The remaining Insight techniques
+(`Insightful Finale`, `Insightful Restoration`, `Seek Insight`) are unchanged in
+mechanics — `Seek Insight` costs 16 pool (was 20) and grants `.9` perfection
+(was `.7`); the others only changed mastery-builder helper names.
+
+### 15.3 Purifying Flame reworked: hidden potential → quality cap
+
+0.7.8 granted `bonusHiddenPotential:{value:F.indexOf(e)-3}` per realm. 0.7.9
+replaces that with a per-realm `Purity` buff carrying `bonusMaximumQuality`
+(raises the quality cap) and `bonusQuality` (bonus stars on a max-tier finish):
+
+```js
+// 0.7.9 — Wmi is the per-realm Purity buff map, P is the realm order array
+P=[`mundane`,`bodyForging`,`meridianOpening`,`qiCondensation`,`coreFormation`,`pillarCreation`,`lifeFlourishing`,`worldShaping`,`innerGenesis`,`soulAscension`]
+Wmi=P.map(e=>{let t=P.indexOf(e)>=P.indexOf(`pillarCreation`),n=P.indexOf(e)>=P.indexOf(`lifeFlourishing`);
+  return{name:`Purity (${F[e]})`,canStack:!1,stats:void 0,effects:[],stacks:1,displayLocation:`none`,
+    bonusMaximumQuality:{value:t?2:1,stat:void 0},
+    bonusQuality:n?{value:1,stat:void 0}:void 0,realm:e}})
+```
+
+So `bonusMaximumQuality` is **2** for realms ≥ pillarCreation else **1**, and
+`bonusQuality` is **1** for realms ≥ lifeFlourishing else absent. The base
+flame's stats are unchanged (`{pool:0,control:-.3,intensity:-.55}, maxpool:-60`).
+
+**Cap wiring.** The game computes the cap once per craft and threads the bonus
+through `getMaxCompletion`/`getMaxPerfection` as a new optional `maxStepsBoost`
+argument. Its `getMaxStepsBoost(entity.buffs)` sums each buff's floored
+`bonusMaximumQuality`, evaluating each with `eqn` stripped and `stacks` **pinned
+to 1** — a `stacks`-scaled bonus is therefore *not* multiplied by the held stack
+count. Each extra step stretches the bar by one more 1.3x-scaled threshold:
+
+```js
+// runtime getMaxStepsBoost equivalent
+jvi=e=>{let t=0;for(let n of e.buffs??[])if(n.bonusMaximumQuality){let r=Hl({...n.bonusMaximumQuality,eqn:void 0},{...e.stats,stacks:1},1);t+=Math.floor(r)}return t}
+```
+
+CraftBuddy mirrors this in `computeMaxStepsBoost`
+(`src/modContent/qualityCap.ts`) and passes it as
+the 4th argument to `getMaxCompletion`/`getMaxPerfection`, so the optimizer sees
+the raised cap directly. `bonusQuality` only adds stars to the finished item on
+a max-tier finish — it is not an in-progress bar, so the optimizer does not
+simulate it.
+
+### 15.4 Forge Compression reworked
+
+0.7.8 granted 8 stacks of a buff that added `.3` completion per Pressure stack
+then drained one. 0.7.9 replaces it with a 5-stack buff driven by a
+`stackGained.Pressure` trigger and new `pressureStacks`/`completion` masteries:
+
+```js
+// 0.7.9 Forge Compression technique (lifeFlourishing support, 50 pool / 8 stability, cd 10)
+effects:[{kind:`createBuff`,buff:SKr,stacks:{value:5,stat:void 0,upgradeKey:`stacks`}}]
+upgradeMasteries:{stacks:gd(`stacks`,`resplendent`,`Forge Compression`,2),
+  pressureStacks:ld(`pressureStacks`,`incandescent`,...),
+  completion:pd(`completion`,`empowered`)}
+// buff: on any action lose a stack; on Pressure gain, +1 Pressure and +.3 completion
+triggeredEffects:[{trigger:`stackGained.${Pressure.name}`,effects:[
+  {kind:`createBuff`,buff:Pressure,stacks:{value:1,stat:void 0,upgradeKey:`pressureStacks`}},
+  {kind:`completion`,amount:{value:.3,stat:`intensity`,upgradeKey:`completion`}}]}]
+```
+
+The `stackGained.<buff>` dynamic trigger family is new in 0.7.9
+(`stackGainedTrigger`/`stackLostTrigger` helpers); the optimizer's
+triggered-effect dispatch already handles string triggers.
+
+### 15.5 New cauldrons
+
+Two new cauldrons appear in 0.7.9: **Discernment Cauldron** and **Hundredfold
+Lens Cauldron**. Cauldrons are not modeled by the optimizer (they are equipment
+the game applies before the craft starts), so no code change is needed.
+
+### 15.6 Verified unchanged in 0.7.9
+
+- `getMaxCompletion`/`getMaxPerfection` still return `{flat, percentage}`; the
+  only signature change is the optional 4th `maxStepsBoost` argument.
+- The seven harmony complexity multipliers and the conjunctive outcome-tier
+  gates are unchanged; `src/optimizer/outcome.ts` remains the band authority.
+- Buff `internalState`, `sealedMaxStability`, and `discordantConditions` are
+  unchanged.
 
 <!-- prettier-ignore-end -->

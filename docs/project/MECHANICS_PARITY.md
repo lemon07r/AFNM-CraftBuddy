@@ -3,8 +3,8 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.8-24a8210
-last_verified: 2026-08-09
+game_version: 0.7.9-b8ef246
+last_verified: 2026-08-23
 source_of_truth: src/optimizer/outcome.ts, src/optimizer/skills.ts, src/optimizer/harmony.ts, src/optimizer/harmonyRegistry.ts, src/optimizer/gameTypes.ts, src/optimizer/state.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, src/modContent/harmonyState.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
@@ -16,9 +16,9 @@ related_files:
 
 # Mechanics Parity Status
 
-Which AFNM **0.7.8** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
+Which AFNM **0.7.9** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
 
-Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` holds the extracted runtime source, currently for build `0.7.8-24a8210`.
+Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` holds the extracted runtime source, currently for build `0.7.9-b8ef246`.
 
 ## How parity is proven
 
@@ -78,6 +78,18 @@ Everything else in 0.7.6 needed no model change: the Fallen Soulflame nerf is da
 
 Verified unchanged, so no model change: Turbid Qi (first stack at step 100, then every 3 steps, granted after the step bump), all seven harmony complexity multipliers, Formless Way's starting harmony of 33, and reagent toxicity gating.
 
+## The 0.7.9 changes: quality caps can be raised, and the Insight package was overhauled
+
+0.7.9 reworked Purifying Flame and the crafting Insight package. The extracted runtime source is in `docs/project/RUNTIME_EVIDENCE.md` section 15. Only one of these needed a model change; the rest arrives through the live technique read.
+
+| Mechanic | Runtime behaviour | CraftBuddy model |
+| --- | --- | --- |
+| `bonusMaximumQuality` (reworked Purifying Flame) | A held buff raises the achievable quality cap by extra threshold steps (+2 at pillarCreation and above, +1 below), each step stretching the bar by one more 1.3x-scaled threshold. The runtime sums it with `getMaxStepsBoost(entity.buffs)` and threads it into `getMaxCompletion`/`getMaxPerfection` as the optional 4th `maxStepsBoost` argument | `computeMaxStepsBoost()` in `src/modContent/qualityCap.ts` mirrors the sum exactly — `eqn` stripped, `stacks` pinned to 1 so a `stacks`-scaled bonus is not multiplied by the held count, each buff floored individually — and passes it to both cap getters, so `maxCompletionCap`/`maxPerfectionCap` — and every band, tier gate and auto-finish decision derived from them — see the real ceiling. A boost of `0` reproduces the pre-0.7.9 call exactly |
+| `bonusQuality` (reworked Purifying Flame) | Awards bonus quality stars on the finished item when the craft reaches the maximum possible tier | **Not simulated by design**: a finished-item property that cannot change turn-to-turn play, like the `bonusHiddenPotential` it replaced. Typed on both engines' `BuffDefinition` for payload parity |
+| Insight package overhaul | Insight control `.1`→`.15` per stack; new Perfected Understanding (`floor(perfectionPercentage / 100) * 2` Insight) and Sustained Revelation (5 stacks, each converting a refine into `+.08` perfection per Insight stack); Insightful Refinement removed; Seek Insight 16 pool / `.9` perfection | no model change — `convertGameTechniques` resolves the roster live every craft, and the payload shape was unchanged |
+| Forge Compression rework | Rebuilt around a `stackGained.Pressure` trigger with new `pressureStacks`/`completion` masteries; 0.7.9 also added the dynamic `stackGained.<buff>` / `stackLost.<buff>` trigger family | no model change — triggered-effect dispatch already accepts string triggers, and masteries are read live |
+| New cauldrons, extra core formation masteries | Two new cauldrons (Discernment, Hundredfold Lens); more crafting actions carry masteries | no model change — cauldrons are pre-craft equipment, and mastery data is read live per technique |
+
 ## 0.7.5 model changes
 
 These are the semantics that changed with the 0.7.5 harmony rework and still hold in 0.7.6. Older CraftBuddy notes describing the opposite are wrong and have been removed.
@@ -116,6 +128,7 @@ Transition and formula layer (`src/optimizer/skills.ts`, `gameTypes.ts`, `state.
 - generic active buffs with full definitions: stat contributions, per-turn effects, action-type effects (`onFusion` / `onRefine` / `onStabilize` / `onSupport`), expression gates, stack consumption. Definition-driven buffs such as False Fusion (displayed as "Strive for Completion" since 0.7.6) and Fallen Soulflame fragments flow through this path — there are no per-skill special cases, which is why the 0.7.6 Soulflame re-balance needed no code change
 - stateful buffs (0.7.7+): per-instance `internalState` seeded from `initialState`, `triggeredEffects` on the six crafting triggers with `amount`/`percentGained` in scope, and `setState` writes visible to later effects in the same block — True Bifang Flame and Flame of the Azure Depths flow through this path with no per-buff code
 - `sealedMaxStability` (0.7.8): forced per-action max-stability decay and full restoration block while an Illume Crucible-style buff is held
+- `bonusMaximumQuality` (0.7.9): cap-raising buffs are summed at the modContent boundary and threaded into the game's own cap getters as `maxStepsBoost`, so the raised ceiling reaches the band model without the optimizer recomputing a threshold
 - `discordantConditions` (0.7.7+): the stay-neutral gate applied at the generated-condition distribution, in search, the forecast queue, and the live `getNextCondition` fallback
 - dynamic max-pool buff evaluation for `% maxpool` restores with qi-cap clamping
 - active-buff definition hydration from skill payloads when a runtime snapshot omits definitions

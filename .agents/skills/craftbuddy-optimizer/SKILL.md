@@ -5,7 +5,7 @@ description: CraftBuddy optimizer/search/MCTS workflow. Activate for changes to 
 
 # CraftBuddy Optimizer
 
-Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN.md` remains the detailed source of truth; this skill is the action checklist. Modelled game version: AFNM **0.7.8**.
+Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN.md` remains the detailed source of truth; this skill is the action checklist. Modelled game version: AFNM **0.7.9**.
 
 ## Activate When
 
