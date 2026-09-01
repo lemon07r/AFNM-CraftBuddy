@@ -3,8 +3,8 @@ title: Mod API Integration
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
 source_of_truth: src/modContent/index.ts, src/modContent/craftingStoreState.ts, src/modContent/craftingContext.ts, src/modContent/harmonyState.ts, src/modContent/nativeAutoUse.ts, src/modContent/craftStateSignature.ts, src/modContent/autoCraftExecutor.ts
 review_cycle_days: 30
 related_files:

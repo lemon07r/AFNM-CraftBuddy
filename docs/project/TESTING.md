@@ -3,8 +3,8 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
 source_of_truth: src/__tests__/*, crates/craftbuddy-engine/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
 review_cycle_days: 30
 related_files:
@@ -20,7 +20,7 @@ related_files:
 
 See `AGENTS.md` for the compact command list. Key commands:
 
-- `bun run test` — full suite, currently **828 tests across 31 suites** (slow: `craftSimulation.test.ts` alone is ~290 s)
+- `bun run test` — full suite, currently **929 tests across 35 suites** (slow: `craftSimulation.test.ts` alone is ~230 s)
 - `bun run wasm:test` — Rust unit, effect-parity, and differential-corpus tests
 - `bun run wasm:build` — compile the Rust engine and generate the inline WASM module
 - `bun run optimizer:differential-corpus` — regenerate the cross-engine corpus

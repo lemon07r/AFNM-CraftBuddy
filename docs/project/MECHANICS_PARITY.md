@@ -3,8 +3,8 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.9-b8ef246
-last_verified: 2026-08-23
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
 source_of_truth: src/optimizer/outcome.ts, src/optimizer/skills.ts, src/optimizer/harmony.ts, src/optimizer/harmonyRegistry.ts, src/optimizer/gameTypes.ts, src/optimizer/state.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, src/modContent/harmonyState.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
@@ -16,9 +16,9 @@ related_files:
 
 # Mechanics Parity Status
 
-Which AFNM **0.7.9** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
+Which AFNM **0.7.10** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
 
-Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` holds the extracted runtime source, currently for build `0.7.9-b8ef246`.
+Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` holds the extracted runtime source, currently for build `0.7.10-9bf9078`.
 
 ## How parity is proven
 
@@ -31,7 +31,7 @@ Authority order: installed runtime bundle → tests → this document. When they
 
 The corpus is schema v3 and covers **137 scenarios / 1,471 transitions**, with `expected` asserting qi, stability, stability penalty, completion, perfection, toxicity, harmony, step, completion bonus, cooldowns, the active-buff set (including per-buff `internalState`), `items`, `consumedPillsThisTurn`, and a `harmonyData` digest. Regenerate with `bun run optimizer:differential-corpus`; never hand-edit the JSON.
 
-The wider suites report **888 Jest tests across 33 suites** and **69 passing Rust tests** (plus 3 `#[ignore]`d profiling tests).
+The wider suites report **929 Jest tests across 35 suites** and **70 passing Rust tests** (plus 3 `#[ignore]`d profiling tests).
 
 ## The 0.7.6 change: Eccentric Decree scores per bar application
 
@@ -90,6 +90,17 @@ Verified unchanged, so no model change: Turbid Qi (first stack at step 100, then
 | Forge Compression rework | Rebuilt around a `stackGained.Pressure` trigger with new `pressureStacks`/`completion` masteries; 0.7.9 also added the dynamic `stackGained.<buff>` / `stackLost.<buff>` trigger family | no model change — triggered-effect dispatch already accepts string triggers, and masteries are read live |
 | New cauldrons, extra core formation masteries | Two new cauldrons (Discernment, Hundredfold Lens); more crafting actions carry masteries | no model change — cauldrons are pre-craft equipment, and mastery data is read live per technique |
 
+## The 0.7.10 change: Completion Bonus becomes a Perfection Boost stat
+
+0.7.10 replaced the high-completion bonus's per-stack control with a new percentage stat. The extracted runtime source is in `docs/project/RUNTIME_EVIDENCE.md` section 16.
+
+| Mechanic | Runtime behaviour | CraftBuddy model |
+| --- | --- | --- |
+| New boost stats | Four crafting stats join the registry — `completionBoost`, `perfectionBoost`, `stabilityBoost`, `qiBoost` — defaulting to `0` and formatted as percentages | `ScalingVariables`/`ScalingVars` carry all four on every evaluation, sourced from entity stats so any future buff or stat that grants them flows through the generic fold with no further code |
+| Completion Bonus buff payload | Still a synthetic `"Completion Bonus"` buff re-created after every action with `stacks = getBonusAndChance(completion).guaranteed - 1`, but its payload is now `perfectionBoost: { value: 10, scaling: 'stacks' }` instead of `control: { value: .1, scaling: 'stacks' }` | the buff's own stat is **skipped during the generic buff-stat fold** (`COMPLETION_BONUS_BUFF_KEY` guard) and re-added as `perfectionBoost = completionBonus × 10` from the tracked stack count, so the stacks-to-boost mapping is exact even mid-turn when the runtime has not yet rebuilt its buff |
+| Application point | The four appliers (`Yas`/`Xas`/`Gas`/`Zas`) floor the gain after the expected-crit multiplier, then apply `gain * (1 + boost / 100)` with a second floor — **positive amounts only** | `applyGainBoost` / `apply_gain_boost` wrap every completion, perfection, stability-restoration and pool-restore application in both engines, including `qiRestore`, technique `pool` effects, and buff-per-turn paths; costs and max-stability changes are untouched, matching the runtime |
+| Cost/limit sides | Boosts never touch costs, max-stability evolution, discordant gates, or harmony scoring | confirmed unchanged; no code outside the four gain appliers reads them |
+
 ## 0.7.5 model changes
 
 These are the semantics that changed with the 0.7.5 harmony rework and still hold in 0.7.6. Older CraftBuddy notes describing the opposite are wrong and have been removed.
@@ -129,6 +140,7 @@ Transition and formula layer (`src/optimizer/skills.ts`, `gameTypes.ts`, `state.
 - stateful buffs (0.7.7+): per-instance `internalState` seeded from `initialState`, `triggeredEffects` on the six crafting triggers with `amount`/`percentGained` in scope, and `setState` writes visible to later effects in the same block — True Bifang Flame and Flame of the Azure Depths flow through this path with no per-buff code
 - `sealedMaxStability` (0.7.8): forced per-action max-stability decay and full restoration block while an Illume Crucible-style buff is held
 - `bonusMaximumQuality` (0.7.9): cap-raising buffs are summed at the modContent boundary and threaded into the game's own cap getters as `maxStepsBoost`, so the raised ceiling reaches the band model without the optimizer recomputing a threshold
+- crafting boost stats (0.7.10): `completionBoost`, `perfectionBoost`, `stabilityBoost` and `qiBoost` multiply their respective gains after crit with a per-step floor, and the Completion Bonus buff's `+10 perfectionBoost` per stack is folded from the tracked stack count rather than re-read from the game-built payload
 - `discordantConditions` (0.7.7+): the stay-neutral gate applied at the generated-condition distribution, in search, the forecast queue, and the live `getNextCondition` fallback
 - dynamic max-pool buff evaluation for `% maxpool` restores with qi-cap clamping
 - active-buff definition hydration from skill payloads when a runtime snapshot omits definitions

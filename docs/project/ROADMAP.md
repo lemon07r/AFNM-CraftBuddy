@@ -3,8 +3,8 @@ title: Roadmap
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
 source_of_truth: src/optimizer/*, src/modContent/*, docs/dev-requests/STATUS.md, docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md
 review_cycle_days: 30
 related_files:
@@ -15,7 +15,7 @@ related_files:
 
 # Roadmap
 
-Priorities against the current target, AFNM **0.7.6**. Anything the 0.7.5 rework settled is recorded in `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md` and is not a roadmap item.
+Priorities against the current target, AFNM **0.7.10**. Anything the 0.7.5 rework settled is recorded in `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md` and is not a roadmap item.
 
 ## Active priorities
 

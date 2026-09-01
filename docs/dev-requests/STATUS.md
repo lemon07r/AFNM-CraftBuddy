@@ -3,8 +3,8 @@ title: API Request Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
 source_of_truth: docs/dev-requests/API_EXPOSURE_REQUESTS.md
 review_cycle_days: 30
 related_files:
@@ -16,7 +16,7 @@ related_files:
 
 # API Request Status
 
-Verified against the installed AFNM **0.7.6** runtime (`0.7.6-7c586da`). Extraction details are in `docs/project/RUNTIME_EVIDENCE.md`.
+Verified against the installed AFNM **0.7.10** runtime (`0.7.10-9bf9078`); the API surface below is unchanged since 0.7.6 except where a later entry says otherwise. Extraction details are in `docs/project/RUNTIME_EVIDENCE.md`.
 
 ## 0.7.6 API changes
 

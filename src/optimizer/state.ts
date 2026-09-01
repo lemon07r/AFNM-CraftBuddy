@@ -488,7 +488,7 @@ export class CraftingState implements CraftingStateData {
     const poolCostKey = this.poolCostPercentage;
     const stabCostKey = this.stabilityCostPercentage;
 
-    // Include completion bonus (affects control via +10% per stack)
+    // Include completion bonus stacks (0.7.10: +10 Perfection Boost each)
     const compBonusKey = this.completionBonus;
 
     // Include initial max stability + harmony fields to avoid cache collisions between
@@ -587,11 +587,10 @@ export function buildScalingVariables(
   baseIntensity: number,
   maxPool: number,
 ): ScalingVariables {
-  // Apply completion bonus to control (+10% per stack)
-  const controlWithBonus = baseControl * (1 + state.completionBonus * 0.1);
-
+  // 0.7.10: Completion Bonus no longer scales control; it grants +10
+  // Perfection Boost per stack, applied to positive perfection gains.
   return {
-    control: state.getControl(controlWithBonus),
+    control: state.getControl(baseControl),
     intensity: state.getIntensity(baseIntensity),
     critchance: state.critChance,
     critmultiplier: state.critMultiplier,
@@ -607,5 +606,9 @@ export function buildScalingVariables(
     stabilityCostPercentage: state.stabilityCostPercentage,
     successChanceBonus: state.successChanceBonus,
     stacks: 0, // Set per-buff when evaluating buff effects
+    completionBoost: 0,
+    perfectionBoost: state.completionBonus * 10,
+    stabilityBoost: 0,
+    qiBoost: 0,
   };
 }

@@ -3,8 +3,8 @@ title: Optimizer Engine Findings
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
 source_of_truth: crates/craftbuddy-engine/*, src/optimizer/nativeMcts.ts, src/optimizer/search.ts, src/settings/index.ts, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 30
 related_files:
@@ -16,7 +16,7 @@ related_files:
 
 # Optimizer Engine Findings
 
-What is actually true about the Rust/WASM engine, current target AFNM **0.7.6**, and which candidate improvements have already been measured and rejected. Read this before proposing engine work.
+What is actually true about the Rust/WASM engine, current target AFNM **0.7.10**, and which candidate improvements have already been measured and rejected. Read this before proposing engine work.
 
 Raw measurements, reproduction commands and the profiling harness live in `docs/project/ENGINE_PERFORMANCE.md`. This file is the decision record.
 

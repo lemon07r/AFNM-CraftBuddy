@@ -6,7 +6,7 @@
  *
  * Key fixes validated:
  * 1. Critical hit formula (excess crit > 100% converts to bonus at 1:3 ratio)
- * 2. Completion bonus system (+10% control per bonus tier)
+ * 2. Completion bonus system (+10 Perfection Boost per stack since 0.7.10)
  * 3. Condition effects for different recipe types
  * 4. Stability penalty system (max stability = initial - penalty)
  * 5. Stack-based buff scaling
@@ -139,23 +139,56 @@ describe('Game-Accurate Mechanics', () => {
       expect(result4.guaranteed).toBe(3);
     });
 
-    it('should provide control bonus based on completion bonus stacks', () => {
-      const baseControl = 100;
+    it('should map completion bonus stacks to Perfection Boost (0.7.10)', () => {
+      // 0.7.10: the Completion Bonus buff now grants +10 Perfection Boost per
+      // stack instead of the old +10% control per stack. The optimizer feeds
+      // that through `perfectionBoost`, which scales positive perfection
+      // applications: floor(gain * (1 + boost / 100)) after the crit roll.
+      const boosted = (...args: Parameters<typeof calculateSkillGains>) =>
+        calculateSkillGains(...args).perfection;
 
-      // No completion bonus
+      const baseConfig: OptimizerConfig = {
+        ...DEFAULT_CONFIG,
+        baseControl: 100,
+        baseIntensity: 0,
+      };
+      const skill: SkillDefinition = {
+        name: 'Cycling Refine',
+        key: 'cycling_refine',
+        qiCost: 10,
+        stabilityCost: 10,
+        baseCompletionGain: 0,
+        basePerfectionGain: 0.75,
+        stabilityGain: 0,
+        maxStabilityChange: 0,
+        buffType: BuffType.INTENSITY,
+        buffDuration: 2,
+        buffMultiplier: 1.4,
+        type: 'refine',
+        scalesWithControl: true,
+        preventsMaxStabilityDecay: false,
+      };
+
+      // No stacks: 0.75 * 100 = 75 perfection.
       const state0 = new CraftingState({ completionBonus: 0 });
-      const controlWith0 = baseControl * (1 + state0.completionBonus * 0.1);
-      expect(controlWith0).toBeCloseTo(100, 5);
+      expect(boosted(state0, skill, baseConfig)).toBe(75);
 
-      // 1 stack = +10% control
+      // 1 stack = +10% perfection: 75 * 1.1 = 82.5 -> floor 82.
       const state1 = new CraftingState({ completionBonus: 1 });
-      const controlWith1 = baseControl * (1 + state1.completionBonus * 0.1);
-      expect(controlWith1).toBeCloseTo(110, 5);
+      expect(boosted(state1, skill, baseConfig)).toBe(82);
 
-      // 3 stacks = +30% control
+      // 3 stacks = +30% perfection: 75 * 1.3 = 97.5 -> floor 97.
       const state3 = new CraftingState({ completionBonus: 3 });
-      const controlWith3 = baseControl * (1 + state3.completionBonus * 0.1);
-      expect(controlWith3).toBeCloseTo(130, 5);
+      expect(boosted(state3, skill, baseConfig)).toBe(97);
+
+      // Control is untouched by the stacks since 0.7.10.
+      expect(
+        calculateSkillGains(
+          new CraftingState({ completionBonus: 3 }),
+          skill,
+          baseConfig,
+        ).perfection,
+      ).toBe(97);
     });
   });
 

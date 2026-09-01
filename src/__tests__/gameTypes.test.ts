@@ -21,6 +21,10 @@ const testVariables: ScalingVariables = {
   stabilityCostPercentage: 100,
   successChanceBonus: 0,
   stacks: 0,
+  completionBoost: 0,
+  perfectionBoost: 0,
+  stabilityBoost: 0,
+  qiBoost: 0,
 };
 
 describe('evalExpression', () => {

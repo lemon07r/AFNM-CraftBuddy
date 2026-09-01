@@ -3,9 +3,9 @@ title: Runtime Evidence
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.9-b8ef246
-last_verified: 2026-08-23
-source_of_truth: installed AFNM 0.7.9 runtime bundle (scripts/installed-game-runtime.js)
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
+source_of_truth: installed AFNM 0.7.10 runtime bundle (scripts/installed-game-runtime.js)
 review_cycle_days: 90
 related_files:
   - docs/project/MECHANICS_PARITY.md
@@ -26,7 +26,7 @@ related_files:
 # Runtime Evidence
 
 Verbatim findings extracted from the **installed** AFNM runtime, currently
-**0.7.9-b8ef246**. The runtime is the sole authority here: where a tooltip, a
+**0.7.10-9bf9078**. The runtime is the sole authority here: where a tooltip, a
 patch note, or an earlier CraftBuddy note disagrees with the code below, the code
 below wins.
 
@@ -44,13 +44,14 @@ bun run runtime:extract                     # unpacks app.asar into tmp/installe
 bun run runtime:grep -- "<pattern>"         # searches the extracted bundle
 ```
 
-`runtime:oracle` reports `gameVersion: 0.7.9-b8ef246`, extracted to
-`tmp/installed-game-runtime/1172235715-1787523522327/`. The 0.7.6 findings below
+`runtime:oracle` reports `gameVersion: 0.7.10-9bf9078`, extracted to
+`tmp/installed-game-runtime/1182767661-1788139699386/`. The 0.7.6 findings below
 were produced by diffing the 0.7.6 build (`1172405719-1785155522026/`) against
 `0.7.5-d764178` (`1170135731-1784964316349/`); the 0.7.7/0.7.8 findings
 (section 14) were verified against the 0.7.8 build (`1168651333-1786309913280/`),
-and the 0.7.9 findings (section 15) diff that 0.7.8 build against the current
-extraction.
+the 0.7.9 findings (section 15) diff that 0.7.8 build against the 0.7.9 build
+(`1172235715-1787523522327/`), and the 0.7.10 findings (section 16) diff that
+0.7.9 build against the current extraction.
 
 The two crafting-relevant chunks are `dist-electron/Game.js` (~4.5 MB) and
 `dist-electron/_rolldown_dynamic_import_helper.js`, which grew from ~12.8 MB in
@@ -1013,5 +1014,87 @@ the game applies before the craft starts), so no code change is needed.
   gates are unchanged; `src/optimizer/outcome.ts` remains the band authority.
 - Buff `internalState`, `sealedMaxStability`, and `discordantConditions` are
   unchanged.
+
+## 16. The 0.7.10 crafting change: Completion Bonus becomes a Perfection Boost stat
+
+Verified 2026-09-01 by diffing the 0.7.9 build (`1172235715-1787523522327/`)
+against `0.7.10-9bf9078` (`1182767661-1788139699386/`), both from
+`dist-electron/_rolldown_dynamic_import_helper.js` plus the ModAPI export table
+in `dist-electron/Game.js`. Minified identifiers below are the 0.7.10 build's.
+
+### 16.1 Four new crafting boost stats
+
+0.7.10 adds four stats to the crafting stat registry, alongside
+`poolCostPercentage` & friends, with display names and a default of `0` on the
+crafted-entity payload:
+
+```js
+`poolCostFlat`,`completionBoost`,`perfectionBoost`,`stabilityBoost`,`qiBoost`
+completionBoost:`Completion Boost`,perfectionBoost:`Perfection Boost`,stabilityBoost:`Stability Boost`,qiBoost:`Qi Boost`
+{...poolCostFlat:0,completionBoost:0,perfectionBoost:0,stabilityBoost:0,qiBoost:0,buffs:[],...}
+```
+
+All four are registered in the percentage-stat set. Tooltip copy: Completion /
+Perfection Boost "increase(s) [the] gains percentage", Stability Boost
+"increases stability restoration by a percentage", Qi Boost "increases qi pool
+[restoration]".
+
+### 16.2 The Completion Bonus buff now grants `perfectionBoost`, not control
+
+The high-completion bonus is still a synthetic buff named `gos` = `"Completion
+Bonus"`, still re-created after every action with `stacks` =
+`getBonusAndChance(completion).guaranteed - 1`. Only its payload changed:
+
+```js
+// 0.7.9 (Rns/gos site)
+...,stacks:...guaranteed-1,icon:e.image,effects:[],animations:[],canStack:!0,onFusion:[],
+onRefine:[],displayLocation:`none`,stats:{control:{value:.1,stat:`control`,scaling:`stacks`}}},...e.buffs])...
+// 0.7.10
+let f=Nb(t.completion,n.recipeStats.completion);e.buffs=e.buffs.filter(e=>e.name!==gos),
+f.guaranteed>1&&(e.buffs=[{name:gos,stacks:f.guaranteed-1,icon:e.image,effects:[],animations:[],
+canStack:!0,onFusion:[],onRefine:[],displayLocation:`none`,
+stats:{perfectionBoost:{value:10,stat:void 0,scaling:`stacks`}}},...e.buffs]),...
+```
+
+So each completion band past the first grants **+10 Perfection Boost** instead
+of the old +.1 control multiplier fraction per stack.
+
+### 16.3 Where the boosts apply: the four bar/stat appliers
+
+Each bar/stat application helper reads its boost once and folds it into the
+gain *after* the expected-crit multiplier, with each step floored, and only on
+**positive** amounts — a loss goes through untouched:
+
+```js
+Yas=(e,t,n,r,...)=>{let u=t.perfectionBoost??0;if(e<0){r.perfection+=e;...}
+  else{let o=xyi(t.critchance,t.critmultiplier,t.overcrit);
+       e=Math.floor(e*o.multiplier),u&&(e=Math.floor(e*(1+u/100)));...}}
+```
+
+`Xas` (completion) reads `t.completionBoost`, `Gas` (stability) reads
+`t.stabilityBoost` on its restoration branch, and `Zas` (pool) reads
+`r.qiBoost` on restores, identically. Nothing else accepts these boosts: cost
+paths, max-stability changes, and harmony scoring are untouched by them.
+
+### 16.4 ModAPI surface unchanged
+
+The ModAPI export table in `Game.js` still maps
+`completionBonusBuffName: Ope` (an alias into the helper chunk), and
+`afnm-types` 0.7.10 still declares it as `completionBonusBuffName: string`
+under `utils`. CraftBuddy's extraction accepts both the new
+`perfectionBoost`-of-10-scaled-by-stacks signature and the legacy control one,
+so the stack count survives across a mixed-install window; the measured stacks
+then come from `getBonusAndChance(completion).guaranteed - 1` either way.
+
+### 16.5 Verified unchanged in 0.7.10
+
+- Craft termination is still `stability <= 0` or both bars reaching the
+  (possibly boosted) flats — `Lyi`,`Fyi`,`Iyi`,`jyi` match the 0.7.9 shape.
+- `getMaxCompletion`/`getMaxPerfection` retain the 0.7.9 optional 4th
+  `maxStepsBoost` argument; the Purifying Flame `Purity` payload is unchanged.
+- The seven harmony complexity multipliers, conjunctive outcome tiers, buff
+  `internalState`/`triggeredEffects`, `sealedMaxStability`, and
+  `discordantConditions` are unchanged.
+- `hasItemTypeToHarmonyType` remains `false` in the runtime oracle.
 
 <!-- prettier-ignore-end -->

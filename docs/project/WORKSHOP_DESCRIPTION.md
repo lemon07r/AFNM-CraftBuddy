@@ -3,14 +3,14 @@ title: Workshop Description
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.9-b8ef246
-last_verified: 2026-08-23
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
 source_of_truth: Steam Workshop item 3661729323, package.json, src/settings/index.ts, src/optimizer/search.ts, src/optimizer/outcome.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
   - docs/project/RELEASE_PROCESS.md
+  - docs/project/RELEASE_NOTES_6.6.0.md
   - docs/project/RELEASE_NOTES_6.5.0.md
-  - docs/project/RELEASE_NOTES_6.4.0.md
   - docs/project/RELEASE_NOTES_6.3.1.md
   - docs/project/OPTIMIZER_DESIGN.md
   - scripts/workshop-upload.ts
@@ -21,7 +21,7 @@ related_files:
 
 CraftBuddy reads your live craft, simulates thousands of possible continuations, and tells you the best next action — and [i]why[/i]. No spreadsheets, no memorised rotations, no wasted materials.
 
-[b]Updated for game version 0.7.9.[/b]
+[b]Updated for game version 0.7.10.[/b]
 
 [hr][/hr]
 
@@ -29,10 +29,10 @@ CraftBuddy reads your live craft, simulates thousands of possible continuations,
 The v6 releases rebuilt CraftBuddy around one principle: play the craft the way the game actually scores it. Key highlights, all verified against the live game:
 
 [list]
-[*] [b]0.7.9 ready[/b] — the reworked Purifying Flame's raised quality cap is now read correctly instead of planning against the old ceiling, and the overhauled Insight package is picked up live.
+[*] [b]0.7.10 ready[/b] — Completion Bonus is now planned as the game's Perfection Boost stat, so overcraft payoffs and gated-buff rotations are priced the way the patch plays them.
 [*] [b]Ambition targets[/b] — optional Perfection Band Goal and Completion Band Ceiling settings let you aim for more stars while keeping completion at the band you want.
 [*] [b]Auto-mode reliability[/b] — auto mode now recovers and retries when the game quietly ignores an action, and coexists cleanly with your auto-use loadout.
-[*] [b]Accurate game mechanics[/b] — full simulation of all seven harmonies, 0.7.9 buffs (Purifying Flame quality caps, Illume Crucible, discordant flames, Eccentric Decree, the reworked Insight package), and conjunctive outcome tier gates with auto-finish timing.
+[*] [b]Accurate game mechanics[/b] — full simulation of all seven harmonies, 0.7.10 buffs (Perfection Boost, Purifying Flame quality caps, Illume Crucible, discordant flames, Eccentric Decree, the reworked Insight package), and conjunctive outcome tier gates with auto-finish timing.
 [*] [b]Overcraft scoring[/b] — extra bands past the target tier are scored per bar the way the game rewards them (stacks, quality, material refunds).
 [*] [b]High-performance search[/b] — multi-threaded background workers (up to ~4x explored lines) and instant return on stable crafts keep recommendations snappy without freezing the UI.
 [*] [b]Dual engines[/b] — optional Rust/WASM engine runs 1.90x faster with verified transition-for-transition mechanics parity.

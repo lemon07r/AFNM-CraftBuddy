@@ -3,8 +3,8 @@ title: Docs Governance
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
 source_of_truth: package.json, scripts/docs/*
 review_cycle_days: 30
 related_files:

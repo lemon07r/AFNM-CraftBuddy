@@ -1278,6 +1278,18 @@ pub fn build_technique_scaling_base(
     );
     variables.insert("successChanceBonus".to_string(), state.success_chance_bonus);
     variables.insert("stacks".to_string(), 0.0);
+    // 0.7.10 crafting boost stats. `perfectionBoost` derives from the
+    // Completion Bonus stacks (+10 per stack) tracked on the state; the buff
+    // itself is excluded from the generic stat fold below to avoid
+    // double-counting. The other boosts only exist if a buff grants them,
+    // which the generic fold below then adds.
+    variables.insert("completionBoost".to_string(), 0.0);
+    variables.insert(
+        "perfectionBoost".to_string(),
+        state.completion_bonus as f64 * 10.0,
+    );
+    variables.insert("stabilityBoost".to_string(), 0.0);
+    variables.insert("qiBoost".to_string(), 0.0);
     variables.insert("completion".to_string(), state.completion);
     variables.insert("perfection".to_string(), state.perfection);
     insert_progress_percentages(&mut variables, &completion_info, &perfection_info);
@@ -1357,15 +1369,23 @@ pub fn apply_buff_stat_contributions(
             continue;
         };
 
-        let mut eval_vars = variables.clone();
-        eval_vars.insert("stacks".to_string(), buff.stacks as f64);
-        let normalized_key = normalize_identifier(if !definition.name.is_empty() {
+        // 0.7.10: the Completion Bonus buff's `perfectionBoost` stat is already
+        // derived from `state.completion_bonus` in the scaling base; folding it
+        // here as well would double-count the boost.
+        let fold_key = normalize_identifier(if !definition.name.is_empty() {
             &definition.name
         } else if !buff.name.is_empty() {
             &buff.name
         } else {
             &buff.key
         });
+        if fold_key == COMPLETION_BONUS_BUFF_KEY {
+            continue;
+        }
+
+        let mut eval_vars = variables.clone();
+        eval_vars.insert("stacks".to_string(), buff.stacks as f64);
+        let normalized_key = fold_key;
         if !normalized_key.is_empty() {
             eval_vars.insert(normalized_key, buff.stacks as f64);
         }
@@ -1505,10 +1525,7 @@ pub fn build_pre_mastery_action_variables(
     upgrades: &UpgradeMap,
 ) -> Variables {
     let mut base = build_technique_scaling_base(state, config, active_buffs);
-    base.insert(
-        "control".to_string(),
-        config.base_control * (1.0 + state.completion_bonus as f64 * 0.1),
-    );
+    base.insert("control".to_string(), config.base_control);
     base.insert("intensity".to_string(), config.base_intensity);
     base.insert("critchance".to_string(), state.crit_chance);
     base.insert("critmultiplier".to_string(), state.crit_multiplier);
@@ -1568,10 +1585,7 @@ pub fn effective_max_pool(
     }
 
     let mut base = build_technique_scaling_base(state, config, active_buffs);
-    base.insert(
-        "control".to_string(),
-        config.base_control * (1.0 + state.completion_bonus as f64 * 0.1),
-    );
+    base.insert("control".to_string(), config.base_control);
     base.insert("intensity".to_string(), config.base_intensity);
     base.insert("critchance".to_string(), state.crit_chance);
     base.insert("critmultiplier".to_string(), state.crit_multiplier);
@@ -1672,6 +1686,10 @@ fn build_buff_definition_lookup(skills: &[EngineSkill]) -> FxHashMap<String, Buf
 const TURBID_QI_FIRST_STEP: i32 = 100;
 const TURBID_QI_STEP_INTERVAL: i32 = 3;
 const TURBID_QI_BUFF_KEY: &str = "turbid_qi";
+
+/// Normalized key of the runtime's `Completion Bonus` buff. Its stats are
+/// folded from `state.completion_bonus` instead of the generic buff-stat path.
+const COMPLETION_BONUS_BUFF_KEY: &str = "completion_bonus";
 
 pub fn grants_turbid_qi_stack(next_step: i32) -> bool {
     next_step >= TURBID_QI_FIRST_STEP && next_step % TURBID_QI_STEP_INTERVAL == 0
@@ -2151,6 +2169,16 @@ pub fn safe_floor(value: f64) -> f64 {
     value.floor()
 }
 
+/// 0.7.10 boost application (runtime applyCompletion/applyPerfection/
+/// applyStability/applyPool): floors `amount * (1 + boost / 100)` for positive
+/// applications only. `boost` is a percentage stat (10 = +10%).
+fn apply_gain_boost(amount: f64, boost: f64) -> f64 {
+    if amount <= 0.0 || boost == 0.0 || !boost.is_finite() {
+        return amount;
+    }
+    safe_floor(amount * (1.0 + boost / 100.0))
+}
+
 fn clamp(value: f64, min: f64, max: f64) -> f64 {
     if max < min {
         return min;
@@ -2343,8 +2371,14 @@ fn calculate_disciplined_touch_gains(
     );
     let _ = state;
     SkillGains {
-        completion: safe_floor(completion_gain * crit),
-        perfection: safe_floor(perfection_gain * crit),
+        completion: safe_floor(apply_gain_boost(
+            completion_gain * crit,
+            get_variable_value(&effective, "completionBoost"),
+        )),
+        perfection: safe_floor(apply_gain_boost(
+            perfection_gain * crit,
+            get_variable_value(&effective, "perfectionBoost"),
+        )),
         stability: 0.0,
         toxicity_cleanse: 0.0,
         // Disciplined Touch bypasses the effect tree in both engines, so it cannot
@@ -2461,15 +2495,31 @@ pub fn calculate_skill_gains(
             }
         }
 
+        // 0.7.10: boost stats multiply positive gains after the crit
+        // multiplier, matching the runtime apply* helpers.
         let completion_with_crit = if completion_gain > 0.0 {
-            completion_gain * crit_factor
+            apply_gain_boost(
+                completion_gain * crit_factor,
+                get_variable_value(&scaling_vars, "completionBoost"),
+            )
         } else {
             completion_gain
         };
         let perfection_with_crit = if perfection_gain > 0.0 {
-            perfection_gain * crit_factor
+            apply_gain_boost(
+                perfection_gain * crit_factor,
+                get_variable_value(&scaling_vars, "perfectionBoost"),
+            )
         } else {
             perfection_gain
+        };
+        let stability_gain_boosted = if stability_gain > 0.0 {
+            apply_gain_boost(
+                stability_gain,
+                get_variable_value(&scaling_vars, "stabilityBoost"),
+            )
+        } else {
+            stability_gain
         };
 
         return SkillGains {
@@ -2485,7 +2535,7 @@ pub fn calculate_skill_gains(
                 config.max_perfection,
                 expected_factor,
             ),
-            stability: safe_floor(stability_gain * expected_factor),
+            stability: safe_floor(stability_gain_boosted * expected_factor),
             toxicity_cleanse: safe_floor(toxicity_cleanse * expected_factor),
             bar_contributions,
         };
@@ -2531,18 +2581,41 @@ pub fn calculate_skill_gains(
 
     SkillGains {
         completion: expected_progress_gain(
-            completion_gain * crit_factor,
+            if completion_gain > 0.0 {
+                apply_gain_boost(
+                    completion_gain * crit_factor,
+                    get_variable_value(&scaling_vars, "completionBoost"),
+                )
+            } else {
+                completion_gain * crit_factor
+            },
             state.completion,
             config.max_completion,
             expected_factor,
         ),
         perfection: expected_progress_gain(
-            perfection_gain * crit_factor,
+            if perfection_gain > 0.0 {
+                apply_gain_boost(
+                    perfection_gain * crit_factor,
+                    get_variable_value(&scaling_vars, "perfectionBoost"),
+                )
+            } else {
+                perfection_gain * crit_factor
+            },
             state.perfection,
             config.max_perfection,
             expected_factor,
         ),
-        stability: safe_floor(stability_gain * expected_factor),
+        stability: safe_floor(
+            if stability_gain > 0.0 {
+                apply_gain_boost(
+                    stability_gain,
+                    get_variable_value(&scaling_vars, "stabilityBoost"),
+                )
+            } else {
+                stability_gain
+            } * expected_factor,
+        ),
         toxicity_cleanse: safe_floor(toxicity_cleanse * expected_factor),
         // The scalar summary has no per-effect ordering, matching the TypeScript
         // legacy path, so Eccentric Decree falls back to a single end-of-turn delta.
@@ -2717,7 +2790,17 @@ pub fn apply_skill_with_buffs(
     let mut qi_restored_by_skill = 0.0;
     if !has_explicit_pool_effect && skill.restores_qi && skill.qi_restore > 0.0 {
         let qi_before_restore = new_qi;
-        new_qi = clamp(new_qi + skill.qi_restore, 0.0, qi_cap);
+        // 0.7.10: pool restores go through the runtime's applyPool, which
+        // applies the Qi Boost stat to positive amounts.
+        new_qi = clamp(
+            new_qi
+                + apply_gain_boost(
+                    skill.qi_restore,
+                    get_variable_value(&resolved.variables, "qiBoost"),
+                ),
+            0.0,
+            qi_cap,
+        );
         qi_restored_by_skill = (new_qi - qi_before_restore).max(0.0);
     }
 
@@ -2886,12 +2969,19 @@ pub fn apply_skill_with_buffs(
         }
         match effect.kind.as_str() {
             "pool" => {
-                technique_pool_delta += evaluate_scaling_with_upgrades(
+                // Runtime routes positive pool effects through applyPool, which
+                // applies the 0.7.10 Qi Boost stat to the restored amount.
+                let pool_amount = evaluate_scaling_with_upgrades(
                     effect.amount.as_ref(),
                     &resolved.upgrades,
                     &action_vars,
                     0.0,
                 ) * factor;
+                technique_pool_delta += if pool_amount > 0.0 {
+                    apply_gain_boost(pool_amount, get_variable_value(&action_vars, "qiBoost"))
+                } else {
+                    pool_amount
+                };
             }
             "maxStability" => {
                 technique_max_stability_delta += evaluate_scaling_with_upgrades(
@@ -3146,12 +3236,23 @@ pub fn apply_skill_with_buffs(
                         continue;
                     }
                     let condition_factor = evaluation.probability;
-                    let amount = evaluate_scaling_with_upgrades(
+                    let raw_amount = evaluate_scaling_with_upgrades(
                         effect.amount.as_ref(),
                         &resolved.upgrades,
                         &scaling_vars,
                         0.0,
                     ) * condition_factor;
+                    // 0.7.10: the runtime pipes every bar/resource application
+                    // through appliers that scale positive amounts by the
+                    // matching boost stat.
+                    let boost = match effect.kind.as_str() {
+                        "completion" => get_variable_value(&scaling_vars, "completionBoost"),
+                        "perfection" => get_variable_value(&scaling_vars, "perfectionBoost"),
+                        "stability" => get_variable_value(&scaling_vars, "stabilityBoost"),
+                        "pool" => get_variable_value(&scaling_vars, "qiBoost"),
+                        _ => 0.0,
+                    };
+                    let amount = apply_gain_boost(raw_amount, boost);
                     match effect.kind.as_str() {
                         "completion" => {
                             buff_completion += amount;
@@ -3355,6 +3456,9 @@ pub fn apply_skill_with_buffs(
         }
     }
 
+    // Update Completion Bonus stacks. 0.7.10: the buff grants +10 Perfection
+    // Boost per stack (pre-0.7.10 it was +10% control), applied in the
+    // scaling base via `perfectionBoost`.
     let mut completion_bonus = state.completion_bonus;
     if consumes_turn && target_completion > 0.0 {
         let bonus = bonus_and_chance(new_completion, target_completion);

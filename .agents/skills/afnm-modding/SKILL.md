@@ -5,7 +5,7 @@ description: CraftBuddy orientation for Ascend From Nine Mountains mod work. Act
 
 # AFNM-CraftBuddy Orientation
 
-Use this as the entry skill for CraftBuddy work. It routes to narrower skills and keeps always-loaded context small. Target game version: AFNM **0.7.9**.
+Use this as the entry skill for CraftBuddy work. It routes to narrower skills and keeps always-loaded context small. Target game version: AFNM **0.7.10**.
 
 ## Activate When
 
@@ -56,7 +56,7 @@ Use this as the entry skill for CraftBuddy work. It routes to narrower skills an
 2. **`disable_steam` breaks Workshop mods if left behind**: live testing must delete the sentinel after launch testing.
 3. **Search fixes need regression proof**: recommendation changes should have simulation/replay tests, not just tuned constants.
 4. **Wall-clock budgets are machine-dependent**: assert completed depth/frontier or node-budget behavior, not one machine's partial frontier.
-5. **The 0.7.5 rework set the fundamentals, still true in 0.7.9**: harmony is player-selected across seven types with complexity multipliers, outcome tiers are conjunctive band gates, there is no manual Finish Craft, and the game applies its own crafting auto-use loadout before every technique. Any note saying otherwise predates 0.7.5.
+5. **The 0.7.5 rework set the fundamentals, still true in 0.7.10**: harmony is player-selected across seven types with complexity multipliers, outcome tiers are conjunctive band gates, there is no manual Finish Craft, and the game applies its own crafting auto-use loadout before every technique. Any note saying otherwise predates 0.7.5.
 6. **Thresholds live in one place**: never recompute a band, tier or auto-finish check outside `src/optimizer/outcome.ts`.
 7. **Harmony no longer always resolves once per turn**: since 0.7.6, Eccentric Decree scores per individual bar change (`onBarChange`), so one turn can award several harmony steps (+5 focused, -15 stray since 0.7.8) and switch its focused bar mid-turn. Model it as an ordered fold over bar-change events, and leave the `needsBarContributions()` / `needs_bar_contributions()` gate alone — it is a live allocation guard, not dead code.
 8. **Display names diverge from internal names**: key `false_fusion`, internal `name` `False Fusion`, shown to players as "Strive for Completion". User-facing strings must go through `techniqueDisplayName()` (from `src/optimizer/index.ts`); keys, lookups and tests keep using `name`. The auto-craft DOM click fallback is the one place that needs both spellings, since the button carries the display name.
@@ -64,6 +64,7 @@ Use this as the entry skill for CraftBuddy work. It routes to narrower skills an
 10. **Auto mode recovers instead of dying**: an unobserved state advance re-reads the live signature, resumes if the action landed, resends once if it did not, and otherwise degrades to a recoverable armed pause. Any note claiming auto mode hard-errors on a missed state advance predates 6.4.0.
 11. **Quality caps take a boost argument since 0.7.9**: buffs can carry `bonusMaximumQuality` (the reworked Purifying Flame does), which raises the achievable cap by extra threshold steps. `getMaxCompletion`/`getMaxPerfection` take it as an optional 4th `maxStepsBoost` argument; `computeMaxStepsBoost()` in `src/modContent/qualityCap.ts` sums it from live buffs, with `eqn` stripped and `stacks` pinned to 1 exactly as the runtime fold does. Never call those getters with three arguments again — that silently reads the unboosted cap, and every `updateProgressCapsFromModApi` call site must pass the entity or it clobbers a boosted cap with an unboosted one. The paired `bonusQuality` only adds stars to the finished item and is deliberately not simulated.
 12. **The technique roster is read live, so patch reworks are free**: 0.7.9 overhauled the Insight package (Insight control `.1`→`.15`, new Perfected Understanding / Sustained Revelation, removed Insightful Refinement, rebuilt Forge Compression) and CraftBuddy adopted all of it without a code change. Do not hardcode technique data to "fix" a patch; check `convertGameTechniques` first.
+13. **Completion Bonus is a Perfection Boost source since 0.7.10**: the synthetic `"Completion Bonus"` buff now grants `perfectionBoost: { value: 10, scaling: 'stacks' }` instead of `.1` control per stack, and the game added four percent stats — `completionBoost`, `perfectionBoost`, `stabilityBoost`, `qiBoost` — that floor the gain after crit and multiply by `1 + boost/100` on positive amounts only. Both engines seed `perfectionBoost = completionBonus x 10` and skip the buff during the generic stat fold; never let both paths add it. Costs and harmony scoring never see the boosts.
 
 ## References
 
@@ -73,6 +74,6 @@ Use this as the entry skill for CraftBuddy work. It routes to narrower skills an
 - `docs/project/RUNTIME_EVIDENCE.md` — verified runtime behaviour
 - `docs/project/RELEASE_NOTES_6.3.0.md` — the 0.7.8 retarget
 - `docs/project/RELEASE_NOTES_6.1.0.md` — the 0.7.6 retarget (historical)
-- `docs/project/RELEASE_NOTES_6.5.0.md` — latest release: the 0.7.9 retarget and the Purifying Flame quality-cap fix
+- `docs/project/RELEASE_NOTES_6.6.0.md` — latest release: the 0.7.10 retarget and the Perfection Boost rework
 - `docs/project/RELEASE_NOTES_6.4.0.md` — ambition targets and auto-mode recovery (historical)
 - `docs/project/RELEASE_NOTES_6.0.0.md` — what the 0.7.5 rework changed (historical)

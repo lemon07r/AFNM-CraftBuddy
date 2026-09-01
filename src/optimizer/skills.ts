@@ -866,6 +866,24 @@ const TURBID_QI_FIRST_STEP = 100;
 const TURBID_QI_STEP_INTERVAL = 3;
 const TURBID_QI_BUFF_KEY = 'turbid_qi';
 
+/**
+ * Normalized key of the runtime's `Completion Bonus` buff. Its stats are
+ * folded from `state.completionBonus` instead of the generic buff-stat path.
+ */
+const COMPLETION_BONUS_BUFF_KEY = 'completion_bonus';
+
+/**
+ * 0.7.10 boost application (runtime applyCompletion/applyPerfection/
+ * applyStability/applyPool): floors `amount * (1 + boost / 100)` for positive
+ * applications only. `boost` is a percentage stat (10 = +10%).
+ */
+function applyGainBoost(amount: number, boost: number): number {
+  if (amount <= 0 || boost === 0 || !Number.isFinite(boost)) {
+    return amount;
+  }
+  return safeFloor(safeMultiply(amount, 1 + boost / 100));
+}
+
 function grantsTurbidQiStack(nextStep: number): boolean {
   return (
     Number.isFinite(nextStep) &&
@@ -1319,6 +1337,14 @@ function buildTechniqueScalingBase(
     ),
     successChanceBonus: state.successChanceBonus,
     stacks: 0,
+    // 0.7.10 crafting boost stats. `perfectionBoost` is derived from the
+    // Completion Bonus stacks (+10 per stack) tracked on the state; the buff
+    // itself is excluded from the generic stat fold below to avoid
+    // double-counting (the runtime re-derives both from the same progress).
+    completionBoost: 0,
+    perfectionBoost: state.completionBonus * 10,
+    stabilityBoost: 0,
+    qiBoost: 0,
     completion: state.completion,
     perfection: state.perfection,
     ...buildProgressPercentageVariables(completionInfo, perfectionInfo),
@@ -1381,6 +1407,15 @@ function applyBuffStatContributions(
   activeBuffs.forEach((tracked, buffKey) => {
     const definition = tracked.definition;
     if (!definition?.stats) return;
+    // 0.7.10: the Completion Bonus buff's `perfectionBoost` stat is already
+    // derived from `state.completionBonus` in the scaling base; folding it
+    // here as well would double-count the boost.
+    if (
+      normalizeBuffName(definition.name || tracked.name || buffKey) ===
+      COMPLETION_BONUS_BUFF_KEY
+    ) {
+      return;
+    }
     const evalVars: ScalingVariables = { ...vars, stacks: tracked.stacks };
     const normalizedKey = normalizeBuffName(
       definition.name || tracked.name || buffKey,
@@ -1446,7 +1481,7 @@ function getEffectiveMaxPool(
   const baseVars = buildTechniqueScalingVariables(
     state,
     config,
-    config.baseControl * (1 + state.completionBonus * 0.1),
+    config.baseControl,
     config.baseIntensity,
     state.critChance,
     state.critMultiplier,
@@ -1701,7 +1736,7 @@ function buildPreMasteryActionVariables(
   const baseVars = buildTechniqueScalingVariables(
     state,
     config,
-    config.baseControl * (1 + state.completionBonus * 0.1),
+    config.baseControl,
     config.baseIntensity,
     state.critChance,
     state.critMultiplier,
@@ -2028,8 +2063,18 @@ export function calculateDisciplinedTouchGains(
     : 1;
 
   return {
-    completion: safeFloor(safeMultiply(completionGain, critMultiplier)),
-    perfection: safeFloor(safeMultiply(perfectionGain, critMultiplier)),
+    completion: safeFloor(
+      applyGainBoost(
+        safeMultiply(completionGain, critMultiplier),
+        effectiveVars.completionBoost,
+      ),
+    ),
+    perfection: safeFloor(
+      applyGainBoost(
+        safeMultiply(perfectionGain, critMultiplier),
+        effectiveVars.perfectionBoost,
+      ),
+    ),
     stability: 0,
   };
 }
@@ -2259,10 +2304,26 @@ export function calculateSkillGains(
       }
     }
 
+    // 0.7.10: boost stats multiply positive gains after the crit multiplier,
+    // matching the runtime apply* helpers.
     const completionWithCrit =
-      completionGain > 0 ? completionGain * critFactor : completionGain;
+      completionGain > 0
+        ? applyGainBoost(
+            completionGain * critFactor,
+            scalingVars.completionBoost,
+          )
+        : completionGain;
     const perfectionWithCrit =
-      perfectionGain > 0 ? perfectionGain * critFactor : perfectionGain;
+      perfectionGain > 0
+        ? applyGainBoost(
+            perfectionGain * critFactor,
+            scalingVars.perfectionBoost,
+          )
+        : perfectionGain;
+    const stabilityGainBoosted =
+      stabilityGain > 0
+        ? applyGainBoost(stabilityGain, scalingVars.stabilityBoost)
+        : stabilityGain;
 
     return {
       completion: expectedProgressGain(
@@ -2277,7 +2338,7 @@ export function calculateSkillGains(
         config.maxPerfection,
         expectedFactor,
       ),
-      stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
+      stability: safeFloor(safeMultiply(stabilityGainBoosted, expectedFactor)),
       toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),
       barContributions,
     };
@@ -2324,18 +2385,35 @@ export function calculateSkillGains(
 
   return {
     completion: expectedProgressGain(
-      safeMultiply(completionGain, critFactor),
+      completionGain > 0
+        ? applyGainBoost(
+            safeMultiply(completionGain, critFactor),
+            scalingVars.completionBoost,
+          )
+        : safeMultiply(completionGain, critFactor),
       state.completion,
       config.maxCompletion,
       expectedFactor,
     ),
     perfection: expectedProgressGain(
-      safeMultiply(perfectionGain, critFactor),
+      perfectionGain > 0
+        ? applyGainBoost(
+            safeMultiply(perfectionGain, critFactor),
+            scalingVars.perfectionBoost,
+          )
+        : safeMultiply(perfectionGain, critFactor),
       state.perfection,
       config.maxPerfection,
       expectedFactor,
     ),
-    stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
+    stability: safeFloor(
+      safeMultiply(
+        stabilityGain > 0
+          ? applyGainBoost(stabilityGain, scalingVars.stabilityBoost)
+          : stabilityGain,
+        expectedFactor,
+      ),
+    ),
     toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),
   };
 }
@@ -3388,6 +3466,50 @@ export function applySkill(
   // Calculate gains BEFORE applying buffs from this skill
   const gains = calculateSkillGains(state, skill, config, conditionEffects);
 
+  // Action-level scaling variables (carry the 0.7.10 boost stats). Pure over
+  // the pre-action state, so they are built up front and shared by the cost
+  // restore, technique effects, and buff effects below.
+  const harmonyMods = getHarmonyStatModifiers(
+    state.harmonyData,
+    config.craftingType,
+  );
+  let preMasteryActionVars = buildPreMasteryActionVariables(
+    state,
+    config,
+    conditionEffects,
+    harmonyMods,
+  );
+  let resolvedActionMastery = resolveMasteryBonuses(
+    state,
+    skill,
+    preMasteryActionVars,
+  );
+  if (hasMasteryUpgrades(resolvedActionMastery.upgrades)) {
+    preMasteryActionVars = buildPreMasteryActionVariables(
+      state,
+      config,
+      conditionEffects,
+      harmonyMods,
+      resolvedActionMastery.upgrades,
+    );
+    resolvedActionMastery = resolveMasteryBonuses(
+      state,
+      skill,
+      preMasteryActionVars,
+    );
+  }
+
+  const mastery = resolvedActionMastery.bonuses;
+  const actionMasteryUpgrades = resolvedActionMastery.upgrades;
+  const actionVars = {
+    ...preMasteryActionVars,
+  };
+  actionVars.control *= 1 + (mastery.controlBonus || 0);
+  actionVars.intensity *= 1 + (mastery.intensityBonus || 0);
+  actionVars.critchance += mastery.critChanceBonus || 0;
+  actionVars.critmultiplier += mastery.critMultiplierBonus || 0;
+  actionVars.successChanceBonus += mastery.successChanceBonus || 0;
+
   const effectiveCosts = calculateEffectiveActionCosts(
     state,
     skill,
@@ -3414,7 +3536,11 @@ export function applySkill(
     skill.qiRestore > 0
   ) {
     const qiBeforeRestore = newQi;
-    newQi = clampQi(newQi + skill.qiRestore);
+    // 0.7.10: pool restores go through the runtime's applyPool, which applies
+    // the Qi Boost stat to positive amounts.
+    newQi = clampQi(
+      newQi + applyGainBoost(skill.qiRestore, actionVars.qiBoost),
+    );
     qiRestoredBySkill = Math.max(0, newQi - qiBeforeRestore);
   }
 
@@ -3672,47 +3798,6 @@ export function applySkill(
     }
   };
 
-  const harmonyMods = getHarmonyStatModifiers(
-    state.harmonyData,
-    config.craftingType,
-  );
-  let preMasteryActionVars = buildPreMasteryActionVariables(
-    state,
-    config,
-    conditionEffects,
-    harmonyMods,
-  );
-  let resolvedActionMastery = resolveMasteryBonuses(
-    state,
-    skill,
-    preMasteryActionVars,
-  );
-  if (hasMasteryUpgrades(resolvedActionMastery.upgrades)) {
-    preMasteryActionVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      harmonyMods,
-      resolvedActionMastery.upgrades,
-    );
-    resolvedActionMastery = resolveMasteryBonuses(
-      state,
-      skill,
-      preMasteryActionVars,
-    );
-  }
-
-  const mastery = resolvedActionMastery.bonuses;
-  const actionMasteryUpgrades = resolvedActionMastery.upgrades;
-  const actionVars = {
-    ...preMasteryActionVars,
-  };
-  actionVars.control *= 1 + (mastery.controlBonus || 0);
-  actionVars.intensity *= 1 + (mastery.intensityBonus || 0);
-  actionVars.critchance += mastery.critChanceBonus || 0;
-  actionVars.critmultiplier += mastery.critMultiplierBonus || 0;
-  actionVars.successChanceBonus += mastery.successChanceBonus || 0;
-
   const actionSuccessChance = isItemAction
     ? 1
     : Math.max(
@@ -3815,15 +3900,22 @@ export function applySkill(
       if (factor <= 0) continue;
 
       switch (effect.kind) {
-        case 'pool':
-          techniquePoolDelta +=
+        case 'pool': {
+          // Runtime routes positive pool effects through applyPool, which
+          // applies the 0.7.10 Qi Boost stat to the restored amount.
+          const poolAmount =
             evaluateScalingWithMasteryUpgrades(
               effect.amount,
               actionMasteryUpgrades,
               actionVars,
               0,
             ) * factor;
+          techniquePoolDelta +=
+            poolAmount > 0
+              ? applyGainBoost(poolAmount, actionVars.qiBoost)
+              : poolAmount;
           break;
+        }
         case 'maxStability':
           techniqueMaxStabilityDelta +=
             evaluateScalingWithMasteryUpgrades(
@@ -3879,13 +3971,27 @@ export function applySkill(
       return;
     }
     const conditionFactor = conditionResult.probability;
-    const amount =
+    // 0.7.10: the runtime pipes every bar/resource application through
+    // appliers that scale positive amounts by the matching boost stat
+    // (completionBoost / perfectionBoost / stabilityBoost / qiBoost).
+    const rawAmount =
       evaluateScalingWithMasteryUpgrades(
         effect.amount,
         actionMasteryUpgrades,
         scalingVars,
         0,
       ) * conditionFactor;
+    const boostForKind =
+      effect.kind === 'completion'
+        ? scalingVars.completionBoost
+        : effect.kind === 'perfection'
+          ? scalingVars.perfectionBoost
+          : effect.kind === 'stability'
+            ? scalingVars.stabilityBoost
+            : effect.kind === 'pool'
+              ? scalingVars.qiBoost
+              : 0;
+    const amount = applyGainBoost(rawAmount, boostForKind);
     switch (effect.kind) {
       case 'completion':
         buffCompletion += amount;
@@ -4157,7 +4263,9 @@ export function applySkill(
     newPerfection = Math.min(newPerfection, config.maxPerfection);
   }
 
-  // Update completion bonus (game mechanic: +10% control per guaranteed bonus tier)
+  // Update Completion Bonus stacks. 0.7.10: the buff now grants +10
+  // Perfection Boost per stack (pre-0.7.10 it was +10% control per stack),
+  // applied in the scaling base above via `perfectionBoost`.
   let newCompletionBonus = state.completionBonus;
   if (consumesTurn && targetCompletion > 0) {
     const bonusInfo = getBonusAndChance(newCompletion, targetCompletion);

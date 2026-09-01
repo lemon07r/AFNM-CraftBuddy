@@ -1885,7 +1885,11 @@ describe('finish craft policy', () => {
       perfection: 120,
     });
 
-    const result = lookaheadSearch(state, config, 100, 100, 5, 'neutral', [], {
+    // 0.7.10 note: Completion Bonus now grants +10 Perfection Boost per
+    // stack instead of control, which lifts plain refines over the gated
+    // False Fusion buff at exactly 5 steps (the lines tie). The payoff shows
+    // with one more refine in the plan, so the search runs 6 deep.
+    const result = lookaheadSearch(state, config, 100, 100, 6, 'neutral', [], {
       beamWidth: 8,
       timeBudgetMs: 4000,
       maxNodes: 200000,

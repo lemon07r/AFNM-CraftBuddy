@@ -516,6 +516,12 @@ export function extractCompletionBonusStacks(
         key === 'completion_bonus' ||
         (key.includes('completion') && key.includes('bonus'));
 
+      // 0.7.10 signature: the runtime's `Completion Bonus` buff grants
+      // +10 perfectionBoost per stack (pre-0.7.10 it was +0.1 control per
+      // stack). Match either so states captured before the patch still parse.
+      const boostStat = (buff as any)?.stats?.perfectionBoost;
+      const boostValue = Number(boostStat?.value ?? NaN);
+      const boostScaling = String(boostStat?.scaling ?? '').toLowerCase();
       const controlStat = (buff as any)?.stats?.control;
       const controlValue = Number(controlStat?.value ?? NaN);
       const controlScaling = String(controlStat?.scaling ?? '').toLowerCase();
@@ -525,13 +531,22 @@ export function extractCompletionBonusStacks(
         !(buff as any)?.onRefine?.length &&
         !(buff as any)?.onStabilize?.length &&
         !(buff as any)?.onSupport?.length;
-      const isControlStacksSignature =
+      const isPerfectionBoostStacksSignature =
+        Number.isFinite(boostValue) &&
+        Math.abs(boostValue - 10) < 1e-6 &&
+        boostScaling === 'stacks' &&
+        hasNoActionBlocks;
+      const isLegacyControlStacksSignature =
         Number.isFinite(controlValue) &&
         Math.abs(controlValue - 0.1) < 1e-6 &&
         controlScaling === 'stacks' &&
         hasNoActionBlocks;
 
-      if (isNamedCompletionBonus || isControlStacksSignature) {
+      if (
+        isNamedCompletionBonus ||
+        isPerfectionBoostStacksSignature ||
+        isLegacyControlStacksSignature
+      ) {
         const normalizedStacks = Math.max(0, Math.floor(stacks));
         stacksFromBuff =
           stacksFromBuff === undefined

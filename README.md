@@ -18,7 +18,7 @@ A mod for **Ascend From Nine Mountains** that calculates and displays the recomm
 - Large-number-safe parsing and formatting for late-game values
 - Snapshot export for bug reports and replayable optimizer debugging
 
-Built for game version **0.7.9**.
+Built for game version **0.7.10**.
 
 ![CraftBuddy Workshop Preview](pictures/workshop_preview.png)
 
@@ -170,7 +170,7 @@ CraftBuddy prefers direct game data when available and uses documented fallback 
 ## Documentation
 
 - Authoritative project docs: `docs/project/`
-- Latest release notes: `docs/project/RELEASE_NOTES_6.5.0.md`
+- Latest release notes: `docs/project/RELEASE_NOTES_6.6.0.md`
 - Dev API request tracking: `docs/dev-requests/`
 - Curated AFNM reference subset: `docs/reference/`
 - Agent entrypoint: `docs/project/START_HERE_FOR_AGENTS.md`

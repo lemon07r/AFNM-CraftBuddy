@@ -3,8 +3,8 @@ title: Optimizer Next Steps Handoff
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.6-7c586da
-last_verified: 2026-07-28
+game_version: 0.7.10-9bf9078
+last_verified: 2026-09-01
 source_of_truth: src/optimizer/*, crates/craftbuddy-engine/*, src/__tests__/*, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 30
 related_files:
@@ -16,7 +16,7 @@ related_files:
 
 # Optimizer Next Steps Handoff
 
-Baseline for the next agent working on recommendation accuracy or speed, current target AFNM **0.7.6**. It records what the 0.7.5 rework settled, so no one re-derives it, and what is genuinely still open.
+Baseline for the next agent working on recommendation accuracy or speed, current target AFNM **0.7.10**. It records what the 0.7.5 rework settled, so no one re-derives it, and what is genuinely still open.
 
 ## Start here
 
@@ -82,7 +82,7 @@ Still missing, if someone wants it: a debug-only per-layer score breakdown (`win
 # iterating
 bun run jest src/__tests__/search.test.ts
 bun run jest src/__tests__/outcome.test.ts src/__tests__/outcomeProjection.test.ts
-bun run jest src/__tests__/craftSimulation.test.ts       # slowest suite, ~290 s
+bun run jest src/__tests__/craftSimulation.test.ts       # slowest suite, ~230 s
 
 # before claiming done
 bun run typecheck && bun run test

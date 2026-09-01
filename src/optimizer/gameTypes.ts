@@ -440,6 +440,18 @@ export interface ScalingVariables {
   stabilityCostPercentage: number;
   successChanceBonus: number;
   stacks: number;
+  /**
+   * 0.7.10 crafting boost stats (percent). Applied, in order, after the crit
+   * multiplier to positive applications of the matching bar: the runtime
+   * floors `gain * (1 + boost / 100)` per applied gain (applyCompletion /
+   * applyPerfection / applyStability / applyPool), never on negative amounts.
+   * Only `perfectionBoost` has a data source in 0.7.10: the Completion Bonus
+   * buff grants +10 per stack, replacing the pre-0.7.10 control buff.
+   */
+  completionBoost: number;
+  perfectionBoost: number;
+  stabilityBoost: number;
+  qiBoost: number;
   [key: string]: number;
 }
 
