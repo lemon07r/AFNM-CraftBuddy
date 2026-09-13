@@ -169,6 +169,9 @@ export function applyDerivedNativeVariableAliases(
 ): void {
   const { buffs, harmonyData } = params;
 
+  const buffTypeCounts = new Map<string, number>();
+  const buffTypeUnique = new Map<string, Set<string>>();
+
   buffs?.forEach((tracked, buffKey) => {
     if (!Number.isFinite(tracked.stacks) || tracked.stacks <= 0) {
       return;
@@ -187,6 +190,33 @@ export function applyDerivedNativeVariableAliases(
     if (normalizedName && !(normalizedName in variables)) {
       variables[normalizedName] = tracked.stacks;
     }
+
+    const buffType = tracked.buffType ?? tracked.definition?.buffType;
+    if (typeof buffType === 'string' && buffType.trim()) {
+      const sanitizedType = normalizeNativeVariableKey(buffType);
+      if (sanitizedType) {
+        buffTypeCounts.set(
+          sanitizedType,
+          (buffTypeCounts.get(sanitizedType) ?? 0) + tracked.stacks,
+        );
+        let uniqueSet = buffTypeUnique.get(sanitizedType);
+        if (!uniqueSet) {
+          uniqueSet = new Set();
+          buffTypeUnique.set(sanitizedType, uniqueSet);
+        }
+        uniqueSet.add(rawName || buffKey);
+      }
+    }
+  });
+
+  buffTypeCounts.forEach((totalStacks, key) => {
+    if (!(key in variables)) {
+      variables[key] = totalStacks;
+    }
+    const uniqueKey = `unique_${key}`;
+    if (!(uniqueKey in variables)) {
+      variables[uniqueKey] = buffTypeUnique.get(key)?.size ?? 0;
+    }
   });
 
   const forgeHeat = harmonyData?.forgeWorks?.heat;
@@ -194,6 +224,12 @@ export function applyDerivedNativeVariableAliases(
     const heat = clampForgeHeat(forgeHeat);
     variables.Heat = heat;
     variables.heat = heat;
+  }
+
+  const cadenceChain = harmonyData?.captivatingCadence?.chain;
+  if (typeof cadenceChain === 'number' && Number.isFinite(cadenceChain)) {
+    if (!('cadence' in variables)) variables.cadence = cadenceChain;
+    if (!('Cadence' in variables)) variables.Cadence = cadenceChain;
   }
 
   const additionalData = harmonyData?.additionalData;

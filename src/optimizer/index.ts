@@ -170,6 +170,7 @@ export type {
   ResonanceData,
   EnhancingEchoData,
   EccentricDecreeData,
+  CaptivatingCadenceData,
   Scaling,
   ScalingVariables,
   ConditionEffect,

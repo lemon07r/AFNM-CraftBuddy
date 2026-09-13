@@ -45,6 +45,8 @@ function cloneHarmonyData(hd: HarmonyData): HarmonyData {
   // subsystem field by field.
   if (hd.enhancingEcho) clone.enhancingEcho = { ...hd.enhancingEcho };
   if (hd.eccentricDecree) clone.eccentricDecree = { ...hd.eccentricDecree };
+  if (hd.captivatingCadence)
+    clone.captivatingCadence = { ...hd.captivatingCadence };
   if (hd.additionalData !== undefined) {
     clone.additionalData = JSON.parse(
       JSON.stringify(hd.additionalData),
@@ -103,6 +105,7 @@ export enum BuffType {
 export interface TrackedBuff {
   name: string;
   stacks: number;
+  buffType?: string;
   /** Full buff definition for effect processing */
   definition?: BuffDefinition;
   /**

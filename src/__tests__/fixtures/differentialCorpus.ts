@@ -34,6 +34,7 @@ import type {
   BuffDefinition,
   HarmonyData,
   HarmonyType,
+  TechniqueType,
 } from '../../optimizer/gameTypes';
 import { HARMONY_TYPES } from '../../optimizer/harmonyRegistry';
 
@@ -79,6 +80,9 @@ export interface DifferentialHarmonyDigest {
   decreeFocusedBar: string | null;
   decreeLastCompletion: number | null;
   decreeLastPerfection: number | null;
+  cadenceLastAction: string | null;
+  cadenceChain: number | null;
+  cadenceLastOutcome: string | null;
 }
 
 /** Fields both engines must agree on after a single transition. */
@@ -131,8 +135,11 @@ export interface DifferentialCorpus {
  * 3 added `internalState` to the buff digest and the 0.7.7/0.7.8 buff
  * scenarios (sealed max stability, triggered setState effects) that exercise
  * it.
+ *
+ * 4 added `captivatingCadence` fields to the harmony digest and cadence
+ * scenarios.
  */
-export const DIFFERENTIAL_CORPUS_VERSION = 3;
+export const DIFFERENTIAL_CORPUS_VERSION = 4;
 
 /**
  * Deterministic 32-bit LCG.
@@ -226,6 +233,14 @@ function harmonyDataFor(harmonyType: HarmonyType): HarmonyData {
         focusedBar: 'completion',
         lastCompletion: 40,
         lastPerfection: 30,
+      };
+      break;
+    case 'captivatingCadence':
+      data.captivatingCadence = {
+        lastAction: 'fusion',
+        chain: 2,
+        lastOutcome: 'build',
+        pulseKey: 2,
       };
       break;
     case 'formless':
@@ -787,6 +802,9 @@ function digestHarmonyData(
     decreeFocusedBar: data?.eccentricDecree?.focusedBar ?? null,
     decreeLastCompletion: data?.eccentricDecree?.lastCompletion ?? null,
     decreeLastPerfection: data?.eccentricDecree?.lastPerfection ?? null,
+    cadenceLastAction: data?.captivatingCadence?.lastAction ?? null,
+    cadenceChain: data?.captivatingCadence?.chain ?? null,
+    cadenceLastOutcome: data?.captivatingCadence?.lastOutcome ?? null,
   };
 }
 
@@ -1558,6 +1576,96 @@ function effectMechanicScenarios(): ScenarioSpec[] {
         buffs: buffMap([['lingering_warmth', 'lingeringWarmth', 2]]),
       }),
       config: decreeConfig(decreeCase.overrides),
+      targetCompletion: 150,
+      targetPerfection: 110,
+      condition: 'neutral',
+    });
+  }
+
+  const cadenceSkills: SkillDefinition[] = [
+    skill({
+      name: 'Twin Fusion',
+      key: 'twin_fusion',
+      qiCost: 14,
+      stabilityCost: 5,
+      type: 'fusion',
+      scalesWithIntensity: false,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      effects: [
+        { kind: 'completion', amount: { value: 6, stat: 'intensity' } },
+      ],
+    }),
+    skill({
+      name: 'Trailing Polish',
+      key: 'trailing_polish',
+      qiCost: 13,
+      stabilityCost: 4,
+      type: 'refine',
+      scalesWithIntensity: false,
+      baseCompletionGain: 0,
+      basePerfectionGain: 0,
+      effects: [
+        { kind: 'perfection', amount: { value: 3, stat: 'control' } },
+      ],
+    }),
+  ];
+
+  const cadenceConfig = (overrides: Partial<OptimizerConfig> = {}) =>
+    config({
+      skills: cadenceSkills,
+      craftingType: 'captivatingCadence',
+      isSublimeCraft: true,
+      maxToxicity: 100,
+      targetCompletion: 150,
+      targetPerfection: 110,
+      ...overrides,
+    });
+
+  const cadenceCases: ReadonlyArray<{
+    readonly suffix: string;
+    readonly cadence: {
+      lastAction?: TechniqueType;
+      chain: number;
+      lastOutcome?: 'build' | 'break';
+    };
+  }> = [
+    {
+      suffix: 'initial',
+      cadence: { chain: 0 },
+    },
+    {
+      suffix: 'build',
+      cadence: { lastAction: 'fusion', chain: 2, lastOutcome: 'build' },
+    },
+    {
+      suffix: 'break-candidate',
+      cadence: { lastAction: 'fusion', chain: 3, lastOutcome: 'build' },
+    },
+  ];
+
+  for (const cadenceCase of cadenceCases) {
+    specs.push({
+      name: `cadence-${cadenceCase.suffix}`,
+      state: new CraftingState({
+        qi: 180,
+        stability: 48,
+        initialMaxStability: 60,
+        maxToxicity: 100,
+        completion: 40,
+        perfection: 30,
+        harmony: 20,
+        harmonyData: {
+          captivatingCadence: { ...cadenceCase.cadence },
+          recommendedTechniqueTypes: cadenceCase.cadence.lastAction
+            ? (['fusion', 'refine', 'stabilize', 'support'].filter(
+                (t) => t !== cadenceCase.cadence.lastAction,
+              ) as TechniqueType[])
+            : [],
+        },
+        buffs: buffMap([['lingering_warmth', 'lingeringWarmth', 2]]),
+      }),
+      config: cadenceConfig(),
       targetCompletion: 150,
       targetPerfection: 110,
       condition: 'neutral',

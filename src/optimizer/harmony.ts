@@ -25,6 +25,7 @@ import {
   ResonanceData,
   EnhancingEchoData,
   EccentricDecreeData,
+  CaptivatingCadenceData,
   getBonusAndChance,
 } from './gameTypes';
 import { FORMLESS_HARMONY } from './harmonyRegistry';
@@ -758,6 +759,76 @@ function processEccentricDecree(
 }
 
 // ============================================================
+// Captivating Cadence (0.7.11+)
+// ============================================================
+
+const CADENCE_ALL_TYPES: readonly TechniqueType[] = [
+  'fusion',
+  'refine',
+  'stabilize',
+  'support',
+];
+
+function processCaptivatingCadence(
+  harmonyData: HarmonyData,
+  techniqueType: TechniqueType,
+): HarmonyEffectResult {
+  const current = harmonyData.captivatingCadence ?? {
+    lastAction: undefined,
+    chain: 0,
+  };
+
+  let chain = current.chain;
+  let harmonyDelta = 0;
+  let stabilityPenaltyDelta = 0;
+  let lastOutcome: 'build' | 'break';
+
+  if (current.lastAction !== undefined && current.lastAction === techniqueType) {
+    chain = 0;
+    lastOutcome = 'break';
+    harmonyDelta = -50;
+    stabilityPenaltyDelta = 1;
+  } else {
+    chain += 1;
+    lastOutcome = 'build';
+    if (chain > 1) {
+      harmonyDelta = 3 * chain;
+    }
+  }
+
+  const stackBonus = chain * 0.02;
+  const statModifiers: HarmonyStatModifiers = {
+    ...DEFAULT_MODIFIERS,
+    controlMultiplier: 1 + stackBonus,
+    intensityMultiplier: 1 + stackBonus,
+  };
+
+  const nextCadence: CaptivatingCadenceData = {
+    lastAction: techniqueType,
+    chain,
+    lastOutcome,
+    pulseKey: (current.pulseKey ?? 0) + 1,
+  };
+
+  const recommendedTechniqueTypes = CADENCE_ALL_TYPES.filter(
+    (t) => t !== techniqueType,
+  );
+
+  return {
+    harmonyData: {
+      ...harmonyData,
+      captivatingCadence: nextCadence,
+      recommendedTechniqueTypes,
+    },
+    harmonyDelta,
+    statModifiers,
+    stabilityDelta: 0,
+    poolDelta: 0,
+    stabilityPenaltyDelta,
+  };
+}
+
+// ============================================================
 // Public API
 // ============================================================
 
@@ -791,6 +862,8 @@ export function processHarmonyEffect(
       return processEnhancingEcho(harmonyData, techniqueType);
     case 'eccentricDecree':
       return processEccentricDecree(harmonyData, context);
+    case 'captivatingCadence':
+      return processCaptivatingCadence(harmonyData, techniqueType);
     default:
       return {
         harmonyData,
@@ -842,6 +915,13 @@ export function initHarmonyData(harmonyType: HarmonyType): HarmonyData {
         lastPerfection: 0,
       };
       base.recommendedTechniqueTypes = ['fusion'];
+      break;
+    case 'captivatingCadence':
+      base.captivatingCadence = {
+        lastAction: undefined,
+        chain: 0,
+      };
+      base.recommendedTechniqueTypes = [];
       break;
   }
 
@@ -909,6 +989,15 @@ export function getHarmonyStatModifiers(
       const focusedBar =
         harmonyData.eccentricDecree?.focusedBar ?? 'completion';
       return getEccentricDecreeStatModifiers(focusedBar);
+    }
+    case 'captivatingCadence': {
+      const chain = harmonyData.captivatingCadence?.chain ?? 0;
+      const stackBonus = chain * 0.02;
+      return {
+        ...DEFAULT_MODIFIERS,
+        controlMultiplier: 1 + stackBonus,
+        intensityMultiplier: 1 + stackBonus,
+      };
     }
     case 'formless':
     case 'enhancingEcho':

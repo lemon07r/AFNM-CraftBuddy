@@ -64,7 +64,7 @@ These filenames are intentionally version-free: each carries its targeted build 
 - `docs/project/ENGINE_PERFORMANCE.md` — engine measurements, the profiling harness, and the optimizations rejected with data.
 - `docs/project/OPTIMIZER_ENGINE_FINDINGS.md` — engine decision record.
 - `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md` — what is settled vs open.
-- `docs/project/RELEASE_NOTES_6.6.0.md` — the current 0.7.10 retarget; earlier notes (`6.5.0` → 0.7.9, `6.1.0` → 0.7.6, `6.0.0` → 0.7.5) are historical.
+- `docs/project/RELEASE_NOTES_6.7.0.md` — the current 0.7.12 retarget; earlier notes (`6.6.0` → 0.7.10, `6.5.0` → 0.7.9, `6.1.0` → 0.7.6, `6.0.0` → 0.7.5) are historical.
 
 ## Context rules
 

@@ -209,6 +209,7 @@ interface NativeHarmonyData {
   resonance?: NativeResonanceData;
   enhancing_echo?: NativeEnhancingEchoData;
   eccentric_decree?: NativeEccentricDecreeData;
+  captivating_cadence?: NativeCaptivatingCadenceData;
   recommended_technique_types: string[];
   alchemical_reaction_modifiers?: NativeHarmonyStatModifiers;
 }
@@ -227,6 +228,13 @@ interface NativeEccentricDecreeData {
   focused_bar: string;
   last_completion: number;
   last_perfection: number;
+}
+
+interface NativeCaptivatingCadenceData {
+  last_action?: TechniqueType;
+  chain: number;
+  pulse_key?: number;
+  last_outcome?: string;
 }
 
 interface NativeAlchemicalArtsData {
@@ -482,6 +490,14 @@ function convertHarmonyData(
           focused_bar: harmonyData.eccentricDecree.focusedBar,
           last_completion: harmonyData.eccentricDecree.lastCompletion,
           last_perfection: harmonyData.eccentricDecree.lastPerfection,
+        }
+      : undefined,
+    captivating_cadence: harmonyData?.captivatingCadence
+      ? {
+          last_action: harmonyData.captivatingCadence.lastAction,
+          chain: harmonyData.captivatingCadence.chain,
+          pulse_key: harmonyData.captivatingCadence.pulseKey,
+          last_outcome: harmonyData.captivatingCadence.lastOutcome,
         }
       : undefined,
     recommended_technique_types: [

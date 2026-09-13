@@ -39,6 +39,7 @@ export const HARMONY_TYPES: readonly HarmonyType[] = [
   'formless',
   'enhancingEcho',
   'eccentricDecree',
+  'captivatingCadence',
 ];
 
 /** Harmony value Formless Way holds for the whole craft (runtime `dRa`). */
@@ -133,6 +134,14 @@ const DEFINITIONS: Readonly<Record<HarmonyType, HarmonyDefinition>> = {
     id: 'eccentricDecree',
     name: 'Eccentric Decree',
     complexityMultiplier: 1,
+    startingHarmony: 0,
+    modifiesActionCosts: false,
+    pinsHarmony: false,
+  },
+  captivatingCadence: {
+    id: 'captivatingCadence',
+    name: 'Captivating Cadence',
+    complexityMultiplier: 1.5,
     startingHarmony: 0,
     modifiesActionCosts: false,
     pinsHarmony: false,

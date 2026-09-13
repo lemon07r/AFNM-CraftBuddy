@@ -342,6 +342,8 @@ struct HarmonyData {
     #[serde(default)]
     eccentric_decree: Option<EccentricDecreeData>,
     #[serde(default)]
+    captivating_cadence: Option<CaptivatingCadenceData>,
+    #[serde(default)]
     recommended_technique_types: Vec<String>,
     #[serde(default)]
     alchemical_reaction_modifiers: Option<HarmonyStatModifiers>,
@@ -387,6 +389,18 @@ impl Default for EccentricDecreeData {
             last_perfection: 0.0,
         }
     }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct CaptivatingCadenceData {
+    #[serde(default)]
+    last_action: Option<String>,
+    #[serde(default)]
+    chain: i32,
+    #[serde(default)]
+    pulse_key: Option<i32>,
+    #[serde(default)]
+    last_outcome: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -1767,6 +1781,19 @@ fn get_harmony_stat_modifiers(
                 .map(|decree| decree.focused_bar.as_str())
                 .unwrap_or("completion"),
         ),
+        "captivatingCadence" => {
+            let chain = harmony_data
+                .captivating_cadence
+                .as_ref()
+                .map(|c| c.chain)
+                .unwrap_or(0);
+            let bonus = chain as f64 * 0.02;
+            HarmonyStatModifiers {
+                control_multiplier: 1.0 + bonus,
+                intensity_multiplier: 1.0 + bonus,
+                ..HarmonyStatModifiers::default()
+            }
+        }
         // Formless Way grants no stat modifiers; Enhancing Echo only scales
         // action costs, resolved by `get_harmony_cost_multipliers`.
         _ => HarmonyStatModifiers::default(),
@@ -1787,6 +1814,7 @@ fn process_harmony_effect(
         "formless" => process_formless(harmony_data),
         "enhancingEcho" => process_enhancing_echo(harmony_data, technique_type),
         "eccentricDecree" => process_eccentric_decree(harmony_data, context),
+        "captivatingCadence" => process_captivating_cadence(harmony_data, technique_type),
         _ => HarmonyEffectResult {
             modifiers: HarmonyStatModifiers::default(),
             harmony_delta: 0.0,
@@ -1951,6 +1979,60 @@ fn process_eccentric_decree(
         stability_delta: 0.0,
         pool_delta,
         stability_penalty_delta: 0.0,
+    }
+}
+
+fn process_captivating_cadence(
+    harmony_data: &mut HarmonyData,
+    technique_type: &str,
+) -> HarmonyEffectResult {
+    let mut cadence = harmony_data.captivating_cadence.clone().unwrap_or_default();
+    let technique = normalize_technique_type(technique_type);
+
+    let mut harmony_delta = 0.0;
+    let mut stability_penalty_delta = 0.0;
+    let last_outcome;
+
+    if cadence.last_action.as_deref() == Some(&technique) {
+        cadence.chain = 0;
+        last_outcome = "break";
+        harmony_delta = -50.0;
+        stability_penalty_delta = 1.0;
+    } else {
+        cadence.chain += 1;
+        last_outcome = "build";
+        if cadence.chain > 1 {
+            harmony_delta = (3 * cadence.chain) as f64;
+        }
+    }
+
+    let stack_bonus = cadence.chain as f64 * 0.02;
+    let modifiers = HarmonyStatModifiers {
+        control_multiplier: 1.0 + stack_bonus,
+        intensity_multiplier: 1.0 + stack_bonus,
+        ..HarmonyStatModifiers::default()
+    };
+
+    cadence.last_action = Some(technique.clone());
+    cadence.last_outcome = Some(last_outcome.to_string());
+    cadence.pulse_key = Some(cadence.pulse_key.unwrap_or(0) + 1);
+
+    const CADENCE_ALL_TYPES: [&str; 4] = ["fusion", "refine", "stabilize", "support"];
+    harmony_data.recommended_technique_types = CADENCE_ALL_TYPES
+        .iter()
+        .filter(|&&t| t != technique)
+        .map(|&t| t.to_string())
+        .collect();
+
+    harmony_data.captivating_cadence = Some(cadence);
+
+    HarmonyEffectResult {
+        modifiers,
+        harmony_delta,
+        harmony_override: None,
+        stability_delta: 0.0,
+        pool_delta: 0.0,
+        stability_penalty_delta,
     }
 }
 
@@ -3329,4 +3411,62 @@ mod tests {
         assert_eq!(outcomes[0].threshold, 100.0);
         assert_eq!(outcomes[1].threshold, 230.0);
     }
+
+    #[test]
+    fn captivating_cadence_builds_and_breaks_chain() {
+        let mut data = HarmonyData::default();
+
+        // Turn 1: Initial action starts chain at 1 (no harmony gain).
+        let res1 = process_harmony_effect(
+            &mut data,
+            "captivatingCadence",
+            "fusion",
+            HarmonyProcessContext::default(),
+        );
+        assert_eq!(res1.harmony_delta, 0.0);
+        assert_eq!(res1.stability_penalty_delta, 0.0);
+        assert!((res1.modifiers.control_multiplier - 1.02).abs() < 1e-6);
+        assert!((res1.modifiers.intensity_multiplier - 1.02).abs() < 1e-6);
+        let cad1 = data.captivating_cadence.as_ref().unwrap();
+        assert_eq!(cad1.chain, 1);
+        assert_eq!(cad1.last_action.as_deref(), Some("fusion"));
+        assert_eq!(cad1.last_outcome.as_deref(), Some("build"));
+        assert_eq!(
+            data.recommended_technique_types,
+            vec!["refine", "stabilize", "support"]
+        );
+
+        // Turn 2: Different action increments chain to 2 (+6 harmony).
+        let res2 = process_harmony_effect(
+            &mut data,
+            "captivatingCadence",
+            "refine",
+            HarmonyProcessContext::default(),
+        );
+        assert_eq!(res2.harmony_delta, 6.0);
+        assert_eq!(res2.stability_penalty_delta, 0.0);
+        assert!((res2.modifiers.control_multiplier - 1.04).abs() < 1e-6);
+        assert!((res2.modifiers.intensity_multiplier - 1.04).abs() < 1e-6);
+        let cad2 = data.captivating_cadence.as_ref().unwrap();
+        assert_eq!(cad2.chain, 2);
+        assert_eq!(cad2.last_action.as_deref(), Some("refine"));
+        assert_eq!(cad2.last_outcome.as_deref(), Some("build"));
+
+        // Turn 3: Repeating same action breaks chain (-50 harmony, +1 stability penalty).
+        let res3 = process_harmony_effect(
+            &mut data,
+            "captivatingCadence",
+            "refine",
+            HarmonyProcessContext::default(),
+        );
+        assert_eq!(res3.harmony_delta, -50.0);
+        assert_eq!(res3.stability_penalty_delta, 1.0);
+        assert!((res3.modifiers.control_multiplier - 1.0).abs() < 1e-6);
+        assert!((res3.modifiers.intensity_multiplier - 1.0).abs() < 1e-6);
+        let cad3 = data.captivating_cadence.as_ref().unwrap();
+        assert_eq!(cad3.chain, 0);
+        assert_eq!(cad3.last_action.as_deref(), Some("refine"));
+        assert_eq!(cad3.last_outcome.as_deref(), Some("break"));
+    }
 }
+

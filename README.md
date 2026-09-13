@@ -170,7 +170,7 @@ CraftBuddy prefers direct game data when available and uses documented fallback 
 ## Documentation
 
 - Authoritative project docs: `docs/project/`
-- Latest release notes: `docs/project/RELEASE_NOTES_6.6.0.md`
+- Latest release notes: `docs/project/RELEASE_NOTES_6.7.0.md`
 - Dev API request tracking: `docs/dev-requests/`
 - Curated AFNM reference subset: `docs/reference/`
 - Agent entrypoint: `docs/project/START_HERE_FOR_AGENTS.md`

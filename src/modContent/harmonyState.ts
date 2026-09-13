@@ -64,6 +64,9 @@ function cloneHarmonyData(harmonyData: HarmonyData): HarmonyData {
   if (harmonyData.eccentricDecree) {
     clone.eccentricDecree = { ...harmonyData.eccentricDecree };
   }
+  if (harmonyData.captivatingCadence) {
+    clone.captivatingCadence = { ...harmonyData.captivatingCadence };
+  }
   if (harmonyData.additionalData !== undefined) {
     clone.additionalData = JSON.parse(
       JSON.stringify(harmonyData.additionalData),
@@ -186,6 +189,19 @@ function seedEccentricDecreeData(
   };
 }
 
+function seedCaptivatingCadenceData(harmonyData: HarmonyData): HarmonyData {
+  if (harmonyData.captivatingCadence) {
+    return harmonyData;
+  }
+  return {
+    ...harmonyData,
+    captivatingCadence: {
+      lastAction: undefined,
+      chain: 0,
+    },
+  };
+}
+
 export function hydrateHarmonyData(params: {
   isSublimeCraft: boolean;
   craftingType?: HarmonyType | null;
@@ -223,11 +239,14 @@ export function hydrateHarmonyData(params: {
       };
     }
     const cloned = cloneHarmonyData(progressHarmonyData);
+    let seeded = cloned;
+    if (craftingType === 'eccentricDecree') {
+      seeded = seedEccentricDecreeData(cloned, completion, perfection);
+    } else if (craftingType === 'captivatingCadence') {
+      seeded = seedCaptivatingCadenceData(cloned);
+    }
     return {
-      harmonyData:
-        craftingType === 'eccentricDecree'
-          ? seedEccentricDecreeData(cloned, completion, perfection)
-          : cloned,
+      harmonyData: seeded,
       source: 'progressState',
     };
   }

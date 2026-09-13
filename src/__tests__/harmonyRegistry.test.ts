@@ -28,10 +28,11 @@ const EXPECTED_COMPLEXITY: Record<HarmonyType, number> = {
   formless: 1.5,
   enhancingEcho: 1.3,
   eccentricDecree: 1,
+  captivatingCadence: 1.5,
 };
 
 describe('harmony registry', () => {
-  it('exposes all seven harmony types', () => {
+  it('exposes all eight harmony types', () => {
     expect(HARMONY_TYPES).toEqual([
       'forge',
       'alchemical',
@@ -40,6 +41,7 @@ describe('harmony registry', () => {
       'formless',
       'enhancingEcho',
       'eccentricDecree',
+      'captivatingCadence',
     ]);
   });
 
@@ -97,6 +99,7 @@ describe('harmony registry', () => {
       expect(applyComplexityMultiplier(175, 'inscription', true)).toBe(158);
       expect(applyComplexityMultiplier(175, 'resonance', true)).toBe(228);
       expect(applyComplexityMultiplier(175, 'eccentricDecree', true)).toBe(175);
+      expect(applyComplexityMultiplier(175, 'captivatingCadence', true)).toBe(263);
     });
 
     it('only applies to sublime crafts', () => {

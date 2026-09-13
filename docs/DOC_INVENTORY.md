@@ -3,7 +3,7 @@ title: Documentation Inventory
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-09-01
+last_verified: 2026-09-13
 source_of_truth: repository markdown file inventory
 review_cycle_days: 30
 related_files:
@@ -12,19 +12,19 @@ related_files:
 
 # Documentation Inventory
 
-Generated on: 2026-09-01
+Generated on: 2026-09-13
 
 ## Summary
 
 | Category | Count |
 |---|---|
-| project | 23 |
+| project | 24 |
 | dev-request | 2 |
 | project-meta | 1 |
 | history | 0 |
 | reference | 20 |
 | root-or-other | 14 |
-| total | 60 |
+| total | 61 |
 
 ## Authoritative Docs
 
@@ -49,6 +49,7 @@ Generated on: 2026-09-01
 | `docs/project/RELEASE_NOTES_6.4.0.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/RELEASE_NOTES_6.5.0.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/RELEASE_NOTES_6.6.0.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
+| `docs/project/RELEASE_NOTES_6.7.0.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/RELEASE_PROCESS.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/ROADMAP.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |
 | `docs/project/RUNTIME_EVIDENCE.md` | project | active | true | craftbuddy-maintainers | keep-authoritative |

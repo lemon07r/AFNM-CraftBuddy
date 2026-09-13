@@ -41,7 +41,8 @@ export type HarmonyType =
   | 'resonance'
   | 'formless'
   | 'enhancingEcho'
-  | 'eccentricDecree';
+  | 'eccentricDecree'
+  | 'captivatingCadence';
 
 /**
  * Scaling definition matching game's Scaling type.
@@ -178,6 +179,7 @@ export interface BuffStats {
  */
 export interface BuffDefinition {
   name: string;
+  buffType?: string;
   icon?: string;
   canStack: boolean;
   maxStacks?: number;
@@ -400,6 +402,25 @@ export interface EccentricDecreeData {
 }
 
 /**
+ * Captivating Cadence sub-system data (0.7.11+).
+ *
+ * Changing action types builds a cadence chain: the first action starts the
+ * chain, subsequent non-repeating actions award 3 * chain harmony and +2%
+ * control and intensity per chain point. Repeating the previous action type
+ * breaks the chain, losing 50 harmony and 1 max stability.
+ */
+export interface CaptivatingCadenceData {
+  /** Type of the previous action. */
+  lastAction?: TechniqueType;
+  /** Current consecutive non-repeating chain count. */
+  chain: number;
+  /** UI animation counter. */
+  pulseKey?: number;
+  /** Last action outcome for diagnostics. */
+  lastOutcome?: 'build' | 'break';
+}
+
+/**
  * Harmony type data for sublime crafts.
  * Matches game's HarmonyData structure with sub-system specific data.
  *
@@ -412,6 +433,7 @@ export interface HarmonyData {
   resonance?: ResonanceData;
   enhancingEcho?: EnhancingEchoData;
   eccentricDecree?: EccentricDecreeData;
+  captivatingCadence?: CaptivatingCadenceData;
   recommendedTechniqueTypes: TechniqueType[];
   /**
    * Optional extensible payload used by some harmony systems.

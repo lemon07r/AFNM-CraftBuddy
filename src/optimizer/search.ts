@@ -1807,6 +1807,15 @@ function evaluateHarmonySubsystemQuality(
     return quality;
   }
 
+  if (harmonyData.captivatingCadence) {
+    const mods = getHarmonyStatModifiers(harmonyData, 'captivatingCadence');
+    return evaluateGenericHarmonyModifierQuality(
+      mods,
+      completionPriorityShare,
+      perfectionPriorityShare,
+    );
+  }
+
   return 0;
 }
 

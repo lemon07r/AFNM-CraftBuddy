@@ -93,6 +93,9 @@ struct HarmonyDigest {
     decree_focused_bar: Option<String>,
     decree_last_completion: Option<f64>,
     decree_last_perfection: Option<f64>,
+    cadence_last_action: Option<String>,
+    cadence_chain: Option<i32>,
+    cadence_last_outcome: Option<String>,
 }
 
 fn parse_corpus() -> Corpus {
@@ -300,12 +303,38 @@ fn diff_harmony(
         decree.map(|data| data.last_perfection),
         expected.decree_last_perfection,
     );
+
+    let cadence = actual.captivating_cadence.as_ref();
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.cadenceLastAction",
+        cadence.and_then(|data| data.last_action.clone()),
+        expected.cadence_last_action.clone(),
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.cadenceChain",
+        cadence.map(|data| data.chain),
+        expected.cadence_chain,
+    );
+    diff_debug(
+        failures,
+        scenario,
+        skill_key,
+        "harmonyData.cadenceLastOutcome",
+        cadence.and_then(|data| data.last_outcome.clone()),
+        expected.cadence_last_outcome.clone(),
+    );
 }
 
 #[test]
 fn matches_the_typescript_simulator() {
     let corpus = parse_corpus();
-    assert_eq!(corpus.version, 3, "unexpected differential corpus version");
+    assert_eq!(corpus.version, 4, "unexpected differential corpus version");
     assert!(
         corpus.scenarios.len() >= 120,
         "differential corpus is suspiciously small"

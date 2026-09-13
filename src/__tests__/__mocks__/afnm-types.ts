@@ -13,4 +13,12 @@ export interface CraftingState {}
 export interface CraftingTechnique {}
 export interface HarmonyTypeConfig {}
 
-export type RecipeHarmonyType = 'forge' | 'alchemical' | 'inscription' | 'resonance';
+export type RecipeHarmonyType =
+  | 'forge'
+  | 'alchemical'
+  | 'inscription'
+  | 'resonance'
+  | 'formless'
+  | 'enhancingEcho'
+  | 'eccentricDecree'
+  | 'captivatingCadence';

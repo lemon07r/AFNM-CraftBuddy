@@ -1407,12 +1407,18 @@ function applyBuffStatContributions(
   activeBuffs.forEach((tracked, buffKey) => {
     const definition = tracked.definition;
     if (!definition?.stats) return;
-    // 0.7.10: the Completion Bonus buff's `perfectionBoost` stat is already
-    // derived from `state.completionBonus` in the scaling base; folding it
-    // here as well would double-count the boost.
+    // Completion Bonus, Inscription, and Captivating Cadence buffs are simulated
+    // through state-level tracking and getHarmonyStatModifiers; folding their raw
+    // buff stats here would double-count their multipliers when attached to an
+    // in-progress craft entity.
+    const normalizedBuff = normalizeBuffName(
+      definition.name || tracked.name || buffKey,
+    );
     if (
-      normalizeBuffName(definition.name || tracked.name || buffKey) ===
-      COMPLETION_BONUS_BUFF_KEY
+      normalizedBuff === COMPLETION_BONUS_BUFF_KEY ||
+      normalizedBuff === 'inscription' ||
+      normalizedBuff === 'captivating_cadence' ||
+      normalizedBuff === 'captivating_cadence_chain'
     ) {
       return;
     }

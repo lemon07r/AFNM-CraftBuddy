@@ -1083,3 +1083,115 @@ describe('Harmony integration with applySkill', () => {
     expect(gainsSweet.completion).toBeGreaterThan(gainsBad.completion);
   });
 });
+
+// ============================================================
+// Captivating Cadence
+// ============================================================
+
+describe('Captivating Cadence', () => {
+  it('initializes with chain 0 and empty recommended technique types', () => {
+    const hd = initHarmonyData('captivatingCadence');
+    expect(hd.captivatingCadence?.chain).toBe(0);
+    expect(hd.captivatingCadence?.lastAction).toBeUndefined();
+    expect(hd.recommendedTechniqueTypes).toEqual([]);
+  });
+
+  it('builds chain on non-repeating actions and awards harmony for chain > 1', () => {
+    let hd = initHarmonyData('captivatingCadence');
+
+    // Turn 1: Starts chain at 1 (no harmony delta on initial step)
+    const res1 = processHarmonyEffect(hd, 'captivatingCadence', 'fusion');
+    expect(res1.harmonyDelta).toBe(0);
+    expect(res1.stabilityPenaltyDelta).toBe(0);
+    expect(res1.statModifiers.controlMultiplier).toBeCloseTo(1.02);
+    expect(res1.statModifiers.intensityMultiplier).toBeCloseTo(1.02);
+    expect(res1.harmonyData.captivatingCadence?.chain).toBe(1);
+    expect(res1.harmonyData.captivatingCadence?.lastAction).toBe('fusion');
+    expect(res1.harmonyData.captivatingCadence?.lastOutcome).toBe('build');
+    expect(res1.harmonyData.recommendedTechniqueTypes).toEqual([
+      'refine',
+      'stabilize',
+      'support',
+    ]);
+
+    hd = res1.harmonyData;
+
+    // Turn 2: Different action increments chain to 2 (+6 harmony)
+    const res2 = processHarmonyEffect(hd, 'captivatingCadence', 'refine');
+    expect(res2.harmonyDelta).toBe(6);
+    expect(res2.stabilityPenaltyDelta).toBe(0);
+    expect(res2.statModifiers.controlMultiplier).toBeCloseTo(1.04);
+    expect(res2.statModifiers.intensityMultiplier).toBeCloseTo(1.04);
+    expect(res2.harmonyData.captivatingCadence?.chain).toBe(2);
+    expect(res2.harmonyData.captivatingCadence?.lastAction).toBe('refine');
+    expect(res2.harmonyData.captivatingCadence?.lastOutcome).toBe('build');
+    expect(res2.harmonyData.recommendedTechniqueTypes).toEqual([
+      'fusion',
+      'stabilize',
+      'support',
+    ]);
+
+    hd = res2.harmonyData;
+
+    // Turn 3: Different action increments chain to 3 (+9 harmony)
+    const res3 = processHarmonyEffect(hd, 'captivatingCadence', 'stabilize');
+    expect(res3.harmonyDelta).toBe(9);
+    expect(res3.harmonyData.captivatingCadence?.chain).toBe(3);
+    expect(res3.harmonyData.captivatingCadence?.lastAction).toBe('stabilize');
+    expect(res3.statModifiers.controlMultiplier).toBeCloseTo(1.06);
+  });
+
+  it('breaks chain and applies penalty on repeating action', () => {
+    let hd = initHarmonyData('captivatingCadence');
+    const res1 = processHarmonyEffect(hd, 'captivatingCadence', 'fusion');
+    hd = res1.harmonyData;
+    expect(hd.captivatingCadence?.chain).toBe(1);
+
+    // Repeating 'fusion' breaks chain
+    const res2 = processHarmonyEffect(hd, 'captivatingCadence', 'fusion');
+    expect(res2.harmonyDelta).toBe(-50);
+    expect(res2.stabilityPenaltyDelta).toBe(1);
+    expect(res2.statModifiers.controlMultiplier).toBeCloseTo(1.0);
+    expect(res2.statModifiers.intensityMultiplier).toBeCloseTo(1.0);
+    expect(res2.harmonyData.captivatingCadence?.chain).toBe(0);
+    expect(res2.harmonyData.captivatingCadence?.lastAction).toBe('fusion');
+    expect(res2.harmonyData.captivatingCadence?.lastOutcome).toBe('break');
+  });
+
+  it('applies cadence harmony effects through applySkill', () => {
+    const config: OptimizerConfig = {
+      ...DEFAULT_CONFIG,
+      craftingType: 'captivatingCadence',
+      isSublimeCraft: true,
+      baseControl: 10,
+      baseIntensity: 10,
+    };
+
+    const initialHd = initHarmonyData('captivatingCadence');
+    const state0 = new CraftingState({
+      qi: 100,
+      stability: 50,
+      initialMaxStability: 60,
+      harmony: 0,
+      harmonyData: initialHd,
+    });
+
+    const fusionSkill = makeSkill('fusion');
+    const state1 = applySkill(state0, fusionSkill, config);
+    expect(state1).not.toBeNull();
+    expect(state1!.harmony).toBe(0);
+    expect(state1!.harmonyData?.captivatingCadence?.chain).toBe(1);
+    // 1 natural decay
+    expect(state1!.stabilityPenalty).toBe(1);
+    expect(state1!.maxStability).toBe(59);
+
+    // Repeating fusion breaks chain and penalizes stability (+1 natural decay + 1 cadence penalty)
+    const state2 = applySkill(state1!, fusionSkill, config);
+    expect(state2).not.toBeNull();
+    expect(state2!.harmony).toBe(-50);
+    expect(state2!.harmonyData?.captivatingCadence?.chain).toBe(0);
+    expect(state2!.stabilityPenalty).toBe(3);
+    expect(state2!.maxStability).toBe(57);
+  });
+});
+

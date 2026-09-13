@@ -1759,6 +1759,7 @@ function updateRecommendation(
     {
       name: string;
       stacks: number;
+      buffType?: string;
       definition?: any;
       internalState?: Record<string, number>;
     }
@@ -1787,6 +1788,7 @@ function updateRecommendation(
         extractedBuffs.set(key, {
           name: buff?.name || key,
           stacks,
+          buffType: (buff as any)?.buffType,
           definition: {
             ...(buff as any),
             effects: (buff as any)?.effects ?? [],

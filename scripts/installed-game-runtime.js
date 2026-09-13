@@ -44,16 +44,24 @@ function extractRuntime(asarPath, extractDir) {
   fs.rmSync(extractDir, { recursive: true, force: true });
   fs.mkdirSync(extractDir, { recursive: true });
 
-  const result = childProcess.spawnSync(
-    'npx',
-    ['-y', '@electron/asar', 'extract', asarPath, extractDir],
-    {
-      stdio: 'inherit',
-      cwd: ROOT,
-    },
-  );
+  const asar = require('@electron/asar');
+  const list = asar.listPackage(asarPath);
+  for (const f of list) {
+    if (f === '/package.json' || f.startsWith('/dist-electron/')) {
+      if (f.match(/\.(png|webp|jpg|jpeg|ogg|mp3|wav|webm|otf|ttf)$/i)) continue;
+      const rel = f.replace(/^\//, '');
+      const out = path.join(extractDir, rel);
+      try {
+        const buf = asar.extractFile(asarPath, rel);
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        fs.writeFileSync(out, buf);
+      } catch {
+        // directory or non-extractable entry
+      }
+    }
+  }
 
-  if (result.status !== 0) {
+  if (!fs.existsSync(marker)) {
     fail(`Failed to extract installed game runtime from ${asarPath}`);
   }
 
