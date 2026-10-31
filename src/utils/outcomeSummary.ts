@@ -131,6 +131,11 @@ export interface OutcomeSummary {
   readonly bindingLabel: string;
   readonly autoFinish: AutoFinishSummaryRow;
   readonly harmony: HarmonySummaryRow | null;
+  readonly requestedGoals?: {
+    readonly completionLabel: string;
+    readonly perfectionLabel: string;
+    readonly status: string;
+  };
 }
 
 export interface OutcomeSummaryInput {
@@ -312,9 +317,37 @@ export function buildOutcomeSummary(
   const onTarget = tierRank(projection.tier) >= tierRank(projection.targetTier);
   const canPromoteOnBonus =
     tierRank(projection.optimisticTier) > tierRank(projection.tier);
+  const requested = projection.requestedGoals;
+  const requestedLabel = (
+    label: string,
+    actual: number,
+    target: { target: number; bands: number; bonusChance: number },
+  ): string =>
+    `${label}: ${formatValue(actual)} / ${formatValue(target.target)} (${target.bands}${target.bonusChance > 0 ? '+' : ''} bands)`;
 
   return {
     tier: projection.tier,
+    requestedGoals: requested
+      ? {
+          completionLabel: requestedLabel(
+            'Completion',
+            projection.completion.value,
+            requested.completion,
+          ),
+          perfectionLabel: requestedLabel(
+            'Perfection',
+            projection.perfection.value,
+            requested.perfection,
+          ),
+          status: requested.attained
+            ? requested.needsResolution
+              ? 'Selected goals reached; craft still active'
+              : 'Selected goals reached'
+            : projection.willAutoFinish
+              ? 'Selected goals not reached'
+              : 'Working toward selected goals',
+        }
+      : undefined,
     tierLabel,
     targetTier: projection.targetTier,
     targetTierLabel,

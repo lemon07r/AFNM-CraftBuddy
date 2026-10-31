@@ -4,8 +4,9 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.6-7c586da
-last_verified: 2026-07-27
-source_of_truth: git history on main, package.json, src/optimizer/harmony.ts, src/optimizer/skills.ts, src/modContent/harmonyState.ts, crates/craftbuddy-engine/*
+last_verified: 2026-10-29
+source_of_truth: git tag v6.1.0 at 11e9d6c6cc8ecbf013681230c7074c2e86ade309
+review_scope: Historical upstream narrative compared with the tagged record; runtime, test and benchmark claims are not revalidated as current behavior
 review_cycle_days: 90
 related_files:
   - docs/project/RUNTIME_EVIDENCE.md
@@ -17,6 +18,8 @@ related_files:
 ---
 
 # Release Notes 6.1.0
+
+Historical upstream release record. Reviewed against `v6.1.0` on 2026-10-29; the contents matched that tagged record. The narrative below describes that release, not the current local fork.
 
 CraftBuddy retargeted to AFNM **0.7.6** (`0.7.6-7c586da`). This is a minor version, not a rework: the 6.0.0 outcome and scoring architecture is unchanged. 0.7.6 contains exactly **one** crafting mechanics change that CraftBuddy has to model — Eccentric Decree now scores per bar application — plus a data-driven Fallen Soulflame re-balance that needed no code change at all.
 

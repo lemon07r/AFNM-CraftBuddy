@@ -108,22 +108,22 @@ describe('settings search budget', () => {
     );
   });
 
-  it('defaults to legacy engine and enables bounded native MCTS only for experimental engine', () => {
+  it('migrates retired experimental settings without enabling MCTS or resetting budgets', () => {
+    loadSettings();
+    saveSettings({ optimizerEngine: 'experimental', searchTimeBudgetMs: 4500 });
     expect(loadSettings().optimizerEngine).toBe('legacy');
     expect(getSearchConfig().useMonteCarloTreeSearch).toBe(false);
-
-    const experimental = saveSettings({ optimizerEngine: 'experimental' });
-
-    expect(experimental.optimizerEngine).toBe('experimental');
-    expect(getSearchConfig().useMonteCarloTreeSearch).toBe(true);
-    expect(getSearchConfig().mctsIterations).toBe(250);
-    expect(getSearchConfig().mctsRolloutDepth).toBe(12);
-    expect(getSearchConfig().mctsMaxNodes).toBe(5000);
-
-    saveSettings(EXPERIMENTAL_SEARCH_PRESET_BUDGETS.max);
-
-    expect(getSearchConfig().timeBudgetMs).toBe(4000);
-    expect(getSearchConfig().mctsRolloutDepth).toBe(16);
+    expect(getSearchConfig().mctsIterations).toBeUndefined();
+    expect(getSearchConfig().timeBudgetMs).toBe(4500);
+    storageData['craftbuddy_settings'] = JSON.stringify({
+      optimizerEngine: 'experimental',
+      searchTimeBudgetMs: 3200,
+    });
+    expect(loadSettings().optimizerEngine).toBe('legacy');
+    expect(getSearchConfig().timeBudgetMs).toBe(3200);
+    expect(JSON.parse(storageData['craftbuddy_settings']).optimizerEngine).toBe(
+      'legacy',
+    );
   });
 
   it('normalizes unknown optimizer engine values back to legacy', () => {
@@ -244,7 +244,7 @@ describe('settings search budget', () => {
     expect(reloaded.searchMaxNodes).toBe(5000000);
     expect(reloaded.searchBeamWidth).toBe(12);
     expect(reloaded.searchGoalPriorityBias).toBe(SEARCH_GOAL_PRIORITY_BIAS_MAX);
-    expect(reloaded.optimizerEngine).toBe('experimental');
+    expect(reloaded.optimizerEngine).toBe('legacy');
   });
 
   it('migrates the legacy guaranteed-completion toggle to full completion bias', () => {

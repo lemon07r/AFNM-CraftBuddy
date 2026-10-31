@@ -64,7 +64,7 @@ export interface CraftBuddySettings {
    * effort goes into perfection instead.
    */
   completionBandCeiling: number;
-  /** Optimizer engine mode. Legacy is the default; experimental enables native MCTS policy guidance. */
+  /** Compatibility key: persisted engine values migrate to legacy; production always uses the constrained planner. */
   optimizerEngine: OptimizerEngine;
   /**
    * Search worker threads. 1 (default) keeps the current single-worker
@@ -165,6 +165,7 @@ export interface OptimizerEngineOption {
 
 export const DEFAULT_OPTIMIZER_ENGINE: OptimizerEngine = 'legacy';
 
+/** Historical option metadata for reference clients; no longer selectable in production. */
 export const OPTIMIZER_ENGINE_OPTIONS: OptimizerEngineOption[] = [
   {
     id: 'legacy',
@@ -264,15 +265,10 @@ export const EXPERIMENTAL_SEARCH_PRESET_BUDGETS: Record<
 
 /**
  * Upper bound for both ambition band settings. The band ladder compounds by
- * `BAND_GROWTH_RATIO`, so eight bands is already far past anything the game
- * can bank; the clamp only exists to keep a stored value sane.
+ * `BAND_GROWTH_RATIO`. Actual reachable caps vary by recipe/realm; the planner
+ * clips these requested band counts to the live caps.
  */
 export const AMBITION_BAND_MAX = 8;
-
-const EXPERIMENTAL_MCTS_ITERATIONS = 250;
-const EXPERIMENTAL_MCTS_MAX_NODES = 5000;
-const EXPERIMENTAL_MCTS_MIN_ROLLOUT_DEPTH = 8;
-const EXPERIMENTAL_MCTS_MAX_ROLLOUT_DEPTH = 16;
 
 export const DEFAULT_SEARCH_SETTINGS: Pick<
   CraftBuddySettings,
@@ -397,10 +393,7 @@ function normalizeSettings(
       AMBITION_BAND_MAX,
       DEFAULT_SETTINGS.completionBandCeiling,
     ),
-    optimizerEngine:
-      settings.optimizerEngine === 'experimental'
-        ? 'experimental'
-        : DEFAULT_SETTINGS.optimizerEngine,
+    optimizerEngine: DEFAULT_OPTIMIZER_ENGINE,
     searchThreads: normalizeSearchThreadCount(settings.searchThreads),
     preferredAutoModePolicy: normalizeAutoCraftPolicy(
       settings.preferredAutoModePolicy,
@@ -450,7 +443,10 @@ export function loadSettings(): CraftBuddySettings {
       currentSettings = { ...DEFAULT_SETTINGS };
     }
 
-    let settingsChanged = false;
+    // Persist the retired engine migration without resetting custom budgets.
+    let settingsChanged = Boolean(
+      stored && JSON.parse(stored).optimizerEngine === 'experimental',
+    );
 
     const needsSearchReset =
       storage?.getItem(SEARCH_DEFAULTS_RESET_VERSION_KEY) !==
@@ -597,21 +593,7 @@ export function getSearchConfig(): {
   mctsMaxNodes?: number;
   transpositionCache?: import('../optimizer/crossStepCache').TranspositionCache;
 } {
-  const useMonteCarloTreeSearch =
-    currentSettings.optimizerEngine === 'experimental';
-  const mctsConfig = useMonteCarloTreeSearch
-    ? {
-        mctsIterations: EXPERIMENTAL_MCTS_ITERATIONS,
-        mctsRolloutDepth: Math.max(
-          EXPERIMENTAL_MCTS_MIN_ROLLOUT_DEPTH,
-          Math.min(
-            EXPERIMENTAL_MCTS_MAX_ROLLOUT_DEPTH,
-            Math.round(currentSettings.lookaheadDepth / 4),
-          ),
-        ),
-        mctsMaxNodes: EXPERIMENTAL_MCTS_MAX_NODES,
-      }
-    : {};
+  const useMonteCarloTreeSearch = false;
 
   return {
     timeBudgetMs: currentSettings.searchTimeBudgetMs,
@@ -622,7 +604,6 @@ export function getSearchConfig(): {
     perfectionBandGoal: currentSettings.perfectionBandGoal,
     completionBandCeiling: currentSettings.completionBandCeiling,
     useMonteCarloTreeSearch,
-    ...mctsConfig,
   };
 }
 

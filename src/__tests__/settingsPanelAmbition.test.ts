@@ -46,7 +46,7 @@ describe('ambition band formatting', () => {
 describe('settings panel ambition controls', () => {
   it('renders both ambition sliders with their help tooltips', () => {
     expect(PANEL_SOURCE).toContain('label="Perfection Band Goal"');
-    expect(PANEL_SOURCE).toContain('label="Completion Band Ceiling"');
+    expect(PANEL_SOURCE).toContain('label="Completion Band Goal"');
     expect(PANEL_SOURCE).toContain('tooltip={PERFECTION_BAND_GOAL_HELP}');
     expect(PANEL_SOURCE).toContain('tooltip={COMPLETION_BAND_CEILING_HELP}');
     expect(PANEL_SOURCE).toContain(

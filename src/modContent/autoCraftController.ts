@@ -97,6 +97,8 @@ export interface AutoCraftExecutionRequest {
   actionName: string;
   skill?: SkillDefinition;
   reason: string;
+  /** Unmodelled immediate action outcomes, distinct from search-horizon uncertainty. */
+  transitionUnresolvedProbability?: number;
 }
 
 /**
@@ -247,47 +249,38 @@ function resolveActionPlan(
     // craft no longer needs.
     return {
       kind: 'stop',
-      phase: 'completed',
-      tone: 'success',
-      title: 'Craft will auto-finish',
-      detail:
-        'The craft has reached the point where the game resolves it automatically, so auto mode stopped instead of spending another turn.',
+      phase: snapshot.result.targetsMet ? 'completed' : 'stopped',
+      tone: snapshot.result.targetsMet ? 'success' : 'warning',
+      title: snapshot.result.targetsMet
+        ? 'Crafting goals reached'
+        : 'Craft ended below the goals',
+      detail: snapshot.result.targetsMet
+        ? 'The game is resolving the craft with both configured goals reached. Auto mode stopped.'
+        : 'The game is resolving the craft before both configured goals were reached. Auto mode stopped without spending another turn.',
     };
   }
 
   if (snapshot.result.targetsMet) {
-    if (isPolicyAllowed(policy, 'finish')) {
-      return {
-        kind: 'execute',
-        request: {
-          kind: 'finish',
-          actionName: 'Finish Craft',
-          reason: 'Targets are already met.',
-        },
-        title: 'Finish Craft',
-        detail: 'Targets are met. Auto mode is finishing the craft.',
-      };
-    }
     return {
       kind: 'stop',
-      phase: 'unsupported',
+      phase: 'completed',
       tone: 'success',
-      title: 'Manual finish required',
+      title: 'Crafting goals reached',
       detail:
-        'Targets are met, but the current auto policy does not finish crafts automatically.',
+        'Both configured goals are reached. Auto mode stopped without spending stability on a synthetic finish action.',
     };
   }
 
   const recommendation = snapshot.result.recommendation;
   if (!recommendation) {
-    if (snapshot.result.isTerminal) {
+    if (snapshot.result.isTerminal || !snapshot.isCalculating) {
       return {
         kind: 'stop',
         phase: 'stopped',
         tone: 'warning',
         title: 'Auto mode stopped',
         detail:
-          'No valid actions remain. Check stability, qi, or finish the craft manually.',
+          'No verified next action is available for both configured goals. Auto mode stopped; recalculate after changing the craft state, settings, or auto-use rules.',
       };
     }
     return {
@@ -301,6 +294,16 @@ function resolveActionPlan(
   }
 
   const actionKind = resolveExecutionKind(recommendation.skill);
+  if ((recommendation.planning?.transitionUnresolvedProbability ?? 0) > 1e-9) {
+    return {
+      kind: 'stop',
+      phase: 'unsupported',
+      tone: 'warning',
+      title: 'Action outcome could not be verified',
+      detail:
+        'The next action includes unmodelled effects or native auto-use conditions. Auto mode stopped before risking the craft.',
+    };
+  }
   if (
     actionKind === 'item' &&
     isCoveredByNativeAutoUse(nativeAutoUse, recommendation.skill.itemName)
@@ -376,6 +379,8 @@ function resolveActionPlan(
       actionName: recommendation.skill.name,
       skill: recommendation.skill,
       reason: recommendation.reasoning,
+      transitionUnresolvedProbability:
+        recommendation.planning?.transitionUnresolvedProbability,
     },
     title: actionKind === 'finish' ? 'Finish Craft' : recommendation.skill.name,
     detail: recommendation.reasoning,

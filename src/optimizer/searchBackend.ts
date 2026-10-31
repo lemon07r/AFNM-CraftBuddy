@@ -25,6 +25,7 @@
  */
 
 import { CraftingState, type CraftingStateData } from './state';
+import { comparePlanningValues } from './constrainedPlanner';
 import type { OptimizerConfig } from './skills';
 import {
   findBestSkill,
@@ -281,6 +282,13 @@ function compareMergedCandidates(
   a: SkillRecommendation,
   b: SkillRecommendation,
 ): number {
+  if (a.planning && b.planning)
+    return (
+      comparePlanningValues(a.planning, b.planning) ||
+      a.skill.key.localeCompare(b.skill.key)
+    );
+  if (a.requiresProbabilisticSurvival !== b.requiresProbabilisticSurvival)
+    return a.requiresProbabilisticSurvival ? 1 : -1;
   if (b.score !== a.score) {
     return b.score - a.score;
   }
@@ -288,6 +296,14 @@ function compareMergedCandidates(
 }
 
 function recomputeQualityRatings(candidates: SkillRecommendation[]): void {
+  if (candidates.every((c) => c.planning)) {
+    candidates.forEach((c, i) => {
+      c.qualityRating = Math.round(
+        (100 * (candidates.length - i)) / candidates.length,
+      );
+    });
+    return;
+  }
   if (candidates.length === 0) {
     return;
   }
@@ -303,8 +319,9 @@ function recomputeQualityRatings(candidates: SkillRecommendation[]): void {
 /**
  * Reassemble the per-partition results into one result. Deterministic given
  * the same partials: candidates from every partition are pooled, deduped by
- * skill key, sorted by score with a key tiebreak, and quality ratings are
- * recomputed over the merged range (they are relative to the candidate set).
+ * skill key and ordered by planning safety (legacy results use score), with
+ * relative quality ratings recomputed over the merged set. Incomplete root
+ * coverage keeps the entire result paused, even if another partition has a pick.
  */
 export function mergePartitionedResults(
   partials: readonly SearchResult[],
@@ -313,9 +330,28 @@ export function mergePartitionedResults(
     return partials[0];
   }
 
+  const incompleteRoot = partials.some(
+    (partial) =>
+      partial.rootEvaluation?.complete === false ||
+      partial.blockedReasons?.some((reason) => reason.reason === 'budget'),
+  );
+  const rootEvaluation =
+    incompleteRoot || partials.some((partial) => partial.rootEvaluation)
+      ? {
+          complete: !incompleteRoot,
+          evaluatedSkillKeys: Array.from(
+            new Set(
+              partials.flatMap(
+                (partial) => partial.rootEvaluation?.evaluatedSkillKeys ?? [],
+              ),
+            ),
+          ).sort(),
+        }
+      : undefined;
+
   const pooled = new Map<string, SkillRecommendation>();
   let winningPartial: SearchResult | undefined;
-  let bestScore = -Infinity;
+  let bestCandidate: SkillRecommendation | undefined;
   for (const partial of partials) {
     const candidates = [
       ...(partial.recommendation ? [partial.recommendation] : []),
@@ -323,11 +359,14 @@ export function mergePartitionedResults(
     ];
     for (const candidate of candidates) {
       const existing = pooled.get(candidate.skill.key);
-      if (!existing || candidate.score > existing.score) {
+      if (!existing || compareMergedCandidates(candidate, existing) < 0) {
         pooled.set(candidate.skill.key, candidate);
       }
-      if (candidate.score > bestScore) {
-        bestScore = candidate.score;
+      if (
+        !bestCandidate ||
+        compareMergedCandidates(candidate, bestCandidate) < 0
+      ) {
+        bestCandidate = candidate;
         winningPartial = partial;
       }
     }
@@ -339,7 +378,7 @@ export function mergePartitionedResults(
   const merged = pooledCandidates.sort(compareMergedCandidates);
   recomputeQualityRatings(merged);
 
-  const anyCandidates = merged.length > 0;
+  const anyCandidates = !incompleteRoot && merged.length > 0;
   const nodesExplored = partials.reduce(
     (sum, partial) => sum + (partial.searchMetrics?.nodesExplored ?? 0),
     0,
@@ -359,18 +398,47 @@ export function mergePartitionedResults(
   const referencePartial = winningPartial ?? partials[0];
 
   return {
-    recommendation: merged[0] ?? null,
-    alternativeSkills: merged.slice(1),
+    recommendation: incompleteRoot ? null : (merged[0] ?? null),
+    alternativeSkills: incompleteRoot ? [] : merged.slice(1),
     isTerminal:
       !anyCandidates && partials.every((partial) => partial.isTerminal),
-    targetsMet: partials.some((partial) => partial.targetsMet),
+    targetsMet:
+      !incompleteRoot && partials.some((partial) => partial.targetsMet),
+    rootEvaluation,
     outcomeProjection: referencePartial?.outcomeProjection,
     blockedReasons: anyCandidates
       ? undefined
-      : referencePartial?.blockedReasons,
-    optimalRotation: referencePartial?.optimalRotation,
-    optimalRotationLabels: referencePartial?.optimalRotationLabels,
-    expectedFinalState: referencePartial?.expectedFinalState,
+      : Array.from(
+          new Map(
+            [
+              ...partials.flatMap((partial) => partial.blockedReasons ?? []),
+              ...(incompleteRoot
+                ? [
+                    {
+                      skillName: 'Planner',
+                      reason: 'budget' as const,
+                      details:
+                        'At least one worker did not finish its assigned root actions; automatic execution remains paused.',
+                    },
+                  ]
+                : []),
+            ].map((reason) => [
+              JSON.stringify([reason.reason, reason.skillName, reason.details]),
+              reason,
+            ]),
+          ).entries(),
+        )
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([, reason]) => reason),
+    optimalRotation: incompleteRoot
+      ? undefined
+      : referencePartial?.optimalRotation,
+    optimalRotationLabels: incompleteRoot
+      ? undefined
+      : referencePartial?.optimalRotationLabels,
+    expectedFinalState: incompleteRoot
+      ? undefined
+      : referencePartial?.expectedFinalState,
     searchMetrics: {
       nodesExplored,
       cacheHits,

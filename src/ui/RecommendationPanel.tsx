@@ -1522,6 +1522,49 @@ const OutcomeSection = memo(function OutcomeSection({
         )}
       </Typography>
 
+      {summary.requestedGoals && (
+        <Box
+          data-testid="outcome-requested-goals"
+          sx={{
+            mt: 0.65,
+            pt: 0.55,
+            borderTop: `1px solid ${colors.borderSubtle}`,
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{
+              display: 'block',
+              color: colors.gold,
+              fontWeight: 700,
+              fontSize: '0.62rem',
+            }}
+          >
+            {summary.requestedGoals.status}
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              display: 'block',
+              color: colors.textSecondary,
+              fontSize: '0.62rem',
+            }}
+          >
+            {summary.requestedGoals.completionLabel}
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              display: 'block',
+              color: colors.textSecondary,
+              fontSize: '0.62rem',
+            }}
+          >
+            {summary.requestedGoals.perfectionLabel}
+          </Typography>
+        </Box>
+      )}
+
       {summary.autoFinish.active && !compact && (
         <Typography
           data-testid="outcome-auto-finish-detail"
@@ -2122,6 +2165,21 @@ const BlockedReasonsSection = memo(function BlockedReasonsSection({
     string,
     { icon: React.ReactNode; color: string; label: string }
   > = {
+    unresolved: {
+      icon: <ShieldIcon sx={{ fontSize: 14 }} />,
+      color: colors.stability,
+      label: 'Safety check incomplete',
+    },
+    dominated: {
+      icon: <ShieldIcon sx={{ fontSize: 14 }} />,
+      color: colors.stability,
+      label: 'No useful recovery',
+    },
+    budget: {
+      icon: <TimerIcon sx={{ fontSize: 14 }} />,
+      color: colors.textSecondary,
+      label: 'Search budget exhausted',
+    },
     qi: {
       icon: <WaterDropIcon sx={{ fontSize: 14 }} />,
       color: colors.perfection,
@@ -2838,20 +2896,20 @@ export function RecommendationPanel({
           />
 
           {/* Optimal rotation preview */}
-          {showOptimalRotation && (result.optimalRotationLabels ??
-            result.optimalRotation) && (
-            <RotationSection
-              rotation={
-                result.optimalRotationLabels ?? result.optimalRotation ?? []
-              }
-              maxDisplay={
-                compactMode
-                  ? Math.min(maxRotationDisplay, 4)
-                  : maxRotationDisplay
-              }
-              compact={compactMode}
-            />
-          )}
+          {showOptimalRotation &&
+            (result.optimalRotationLabels ?? result.optimalRotation) && (
+              <RotationSection
+                rotation={
+                  result.optimalRotationLabels ?? result.optimalRotation ?? []
+                }
+                maxDisplay={
+                  compactMode
+                    ? Math.min(maxRotationDisplay, 4)
+                    : maxRotationDisplay
+                }
+                compact={compactMode}
+              />
+            )}
 
           {/* Expected final state */}
           {showExpectedFinalState && result.expectedFinalState && (

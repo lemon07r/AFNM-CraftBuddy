@@ -3,8 +3,9 @@ title: Release Notes 6.0.0
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-last_verified: 2026-07-26
-source_of_truth: git history on main, package.json, src/optimizer/outcome.ts, src/modContent/nativeAutoUse.ts, crates/craftbuddy-engine/*
+last_verified: 2026-10-29
+source_of_truth: git tag v6.0.0 at f4738571f0e804dedfde5d0178e40b00ee833b0d
+review_scope: Historical upstream narrative compared with the tagged record; runtime, test and benchmark claims are not revalidated as current behavior
 review_cycle_days: 90
 related_files:
   - docs/project/MECHANICS_PARITY.md
@@ -15,6 +16,8 @@ related_files:
 ---
 
 # Release Notes 6.0.0
+
+Historical upstream release record. Reviewed against `v6.0.0` on 2026-10-29; the only pre-existing difference was the renamed runtime-evidence link in the metadata. The narrative below describes that release, not the current local fork.
 
 CraftBuddy rebuilt for AFNM **0.7.5**. This is a major version because the harmony model, the scoring architecture and the terminal-state semantics all changed incompatibly with 5.x — the same reason `v5.0.0` was a major bump for the ModAPI adoption.
 

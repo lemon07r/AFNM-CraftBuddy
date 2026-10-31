@@ -66,7 +66,10 @@ describe('Forge Works', () => {
   });
 
   it('should decrease heat by 1 for non-fusion actions', () => {
-    const hd: HarmonyData = { forgeWorks: { heat: 5 }, recommendedTechniqueTypes: [] };
+    const hd: HarmonyData = {
+      forgeWorks: { heat: 5 },
+      recommendedTechniqueTypes: [],
+    };
     const result = processHarmonyEffect(hd, 'forge', 'refine');
     expect(result.harmonyData.forgeWorks?.heat).toBe(4);
 
@@ -89,17 +92,26 @@ describe('Forge Works', () => {
   });
 
   it('should clamp heat to [0, 10]', () => {
-    const hdLow: HarmonyData = { forgeWorks: { heat: 0 }, recommendedTechniqueTypes: [] };
+    const hdLow: HarmonyData = {
+      forgeWorks: { heat: 0 },
+      recommendedTechniqueTypes: [],
+    };
     const result = processHarmonyEffect(hdLow, 'forge', 'refine');
     expect(result.harmonyData.forgeWorks?.heat).toBe(0);
 
-    const hdHigh: HarmonyData = { forgeWorks: { heat: 9 }, recommendedTechniqueTypes: [] };
+    const hdHigh: HarmonyData = {
+      forgeWorks: { heat: 9 },
+      recommendedTechniqueTypes: [],
+    };
     const result2 = processHarmonyEffect(hdHigh, 'forge', 'fusion');
     expect(result2.harmonyData.forgeWorks?.heat).toBe(10);
   });
 
   it('should give +10 harmony in sweet spot (4-6)', () => {
-    const hd: HarmonyData = { forgeWorks: { heat: 3 }, recommendedTechniqueTypes: [] };
+    const hd: HarmonyData = {
+      forgeWorks: { heat: 3 },
+      recommendedTechniqueTypes: [],
+    };
     // fusion: heat 3+2=5 (sweet spot)
     const result = processHarmonyEffect(hd, 'forge', 'fusion');
     expect(result.harmonyData.forgeWorks?.heat).toBe(5);
@@ -107,18 +119,27 @@ describe('Forge Works', () => {
   });
 
   it('should give -10 harmony in suboptimal zones (2-3, 7-9)', () => {
-    const hd: HarmonyData = { forgeWorks: { heat: 3 }, recommendedTechniqueTypes: [] };
+    const hd: HarmonyData = {
+      forgeWorks: { heat: 3 },
+      recommendedTechniqueTypes: [],
+    };
     // refine: heat 3-1=2 (suboptimal)
     const result = processHarmonyEffect(hd, 'forge', 'refine');
     expect(result.harmonyDelta).toBe(-10);
   });
 
   it('should give -20 harmony at extremes (0, 10)', () => {
-    const hd0: HarmonyData = { forgeWorks: { heat: 0 }, recommendedTechniqueTypes: [] };
+    const hd0: HarmonyData = {
+      forgeWorks: { heat: 0 },
+      recommendedTechniqueTypes: [],
+    };
     const result0 = processHarmonyEffect(hd0, 'forge', 'refine');
     expect(result0.harmonyDelta).toBe(-20);
 
-    const hd9: HarmonyData = { forgeWorks: { heat: 9 }, recommendedTechniqueTypes: [] };
+    const hd9: HarmonyData = {
+      forgeWorks: { heat: 9 },
+      recommendedTechniqueTypes: [],
+    };
     const result10 = processHarmonyEffect(hd9, 'forge', 'fusion');
     expect(result10.harmonyData.forgeWorks?.heat).toBe(10);
     expect(result10.harmonyDelta).toBe(-20);
@@ -127,7 +148,8 @@ describe('Forge Works', () => {
   it('should apply stat modifiers based on heat', () => {
     // Sweet spot: +50% control and intensity
     const sweet = getHarmonyStatModifiers(
-      { forgeWorks: { heat: 5 }, recommendedTechniqueTypes: [] }, 'forge'
+      { forgeWorks: { heat: 5 }, recommendedTechniqueTypes: [] },
+      'forge',
     );
     expect(sweet.controlMultiplier).toBe(1.5);
     expect(sweet.intensityMultiplier).toBe(1.5);
@@ -146,48 +168,63 @@ describe('Forge Works', () => {
 
     // With no recorded prior buff there is nothing to carry over.
     const heat1Unknown = getHarmonyStatModifiers(
-      { forgeWorks: { heat: 1 }, recommendedTechniqueTypes: [] }, 'forge'
+      { forgeWorks: { heat: 1 }, recommendedTechniqueTypes: [] },
+      'forge',
     );
     expect(heat1Unknown.controlMultiplier).toBe(1);
     expect(heat1Unknown.intensityMultiplier).toBe(1);
 
     // Low zone (2-3): -50% control
     const low = getHarmonyStatModifiers(
-      { forgeWorks: { heat: 2 }, recommendedTechniqueTypes: [] }, 'forge'
+      { forgeWorks: { heat: 2 }, recommendedTechniqueTypes: [] },
+      'forge',
     );
     expect(low.controlMultiplier).toBe(0.5);
     expect(low.intensityMultiplier).toBe(1);
 
     // High zone (7-9): -50% intensity
     const high = getHarmonyStatModifiers(
-      { forgeWorks: { heat: 8 }, recommendedTechniqueTypes: [] }, 'forge'
+      { forgeWorks: { heat: 8 }, recommendedTechniqueTypes: [] },
+      'forge',
     );
     expect(high.controlMultiplier).toBe(1);
     expect(high.intensityMultiplier).toBe(0.5);
 
     // Extreme 0: -1000% control
     const ext0 = getHarmonyStatModifiers(
-      { forgeWorks: { heat: 0 }, recommendedTechniqueTypes: [] }, 'forge'
+      { forgeWorks: { heat: 0 }, recommendedTechniqueTypes: [] },
+      'forge',
     );
     expect(ext0.controlMultiplier).toBe(-9);
 
     // Extreme 10: -1000% intensity
     const ext10 = getHarmonyStatModifiers(
-      { forgeWorks: { heat: 10 }, recommendedTechniqueTypes: [] }, 'forge'
+      { forgeWorks: { heat: 10 }, recommendedTechniqueTypes: [] },
+      'forge',
     );
     expect(ext10.intensityMultiplier).toBe(-9);
   });
 
   it('should recommend fusion when heat <= 4, else non-fusion', () => {
-    const hd4: HarmonyData = { forgeWorks: { heat: 3 }, recommendedTechniqueTypes: [] };
+    const hd4: HarmonyData = {
+      forgeWorks: { heat: 3 },
+      recommendedTechniqueTypes: [],
+    };
     const r4 = processHarmonyEffect(hd4, 'forge', 'refine');
     // heat=2, recommend fusion
     expect(r4.harmonyData.recommendedTechniqueTypes).toEqual(['fusion']);
 
-    const hd6: HarmonyData = { forgeWorks: { heat: 4 }, recommendedTechniqueTypes: [] };
+    const hd6: HarmonyData = {
+      forgeWorks: { heat: 4 },
+      recommendedTechniqueTypes: [],
+    };
     const r6 = processHarmonyEffect(hd6, 'forge', 'fusion');
     // heat=6, recommend non-fusion
-    expect(r6.harmonyData.recommendedTechniqueTypes).toEqual(['refine', 'support', 'stabilize']);
+    expect(r6.harmonyData.recommendedTechniqueTypes).toEqual([
+      'refine',
+      'support',
+      'stabilize',
+    ]);
   });
 });
 
@@ -209,7 +246,10 @@ describe('Alchemical Arts', () => {
 
     result = processHarmonyEffect(result.harmonyData, 'alchemical', 'fusion');
     // sorted: fusion, refine
-    expect(result.harmonyData.alchemicalArts?.charges).toEqual(['fusion', 'refine']);
+    expect(result.harmonyData.alchemicalArts?.charges).toEqual([
+      'fusion',
+      'refine',
+    ]);
   });
 
   it('should grant +20 harmony for valid combo', () => {
@@ -220,7 +260,11 @@ describe('Alchemical Arts', () => {
     const result = processHarmonyEffect(hd, 'alchemical', 'support');
     expect(result.harmonyDelta).toBe(20);
     expect(result.harmonyData.alchemicalArts?.charges).toEqual([]);
-    expect(result.harmonyData.alchemicalArts?.lastCombo).toEqual(['fusion', 'refine', 'support']);
+    expect(result.harmonyData.alchemicalArts?.lastCombo).toEqual([
+      'fusion',
+      'refine',
+      'support',
+    ]);
   });
 
   it('should apply correct buff for fusion+refine+stabilize combo (critchance)', () => {
@@ -230,7 +274,10 @@ describe('Alchemical Arts', () => {
     const result = processHarmonyEffect(hd, 'alchemical', 'stabilize');
     expect(result.harmonyDelta).toBe(20);
     expect(result.statModifiers.critChanceBonus).toBe(25);
-    const persistent = getHarmonyStatModifiers(result.harmonyData, 'alchemical');
+    const persistent = getHarmonyStatModifiers(
+      result.harmonyData,
+      'alchemical',
+    );
     expect(persistent.critChanceBonus).toBe(25);
   });
 
@@ -242,7 +289,10 @@ describe('Alchemical Arts', () => {
     const result = processHarmonyEffect(hd, 'alchemical', 'fusion');
     expect(result.harmonyDelta).toBe(-20);
     expect(result.statModifiers.controlMultiplier).toBe(0.75);
-    const persistent = getHarmonyStatModifiers(result.harmonyData, 'alchemical');
+    const persistent = getHarmonyStatModifiers(
+      result.harmonyData,
+      'alchemical',
+    );
     expect(persistent.controlMultiplier).toBe(0.75);
   });
 
@@ -271,7 +321,7 @@ describe('Inscribed Patterns', () => {
   it('should initialize with full block', () => {
     const hd = initHarmonyData('inscription');
     expect(hd.inscribedPatterns?.currentBlock.sort()).toEqual(
-      [...INSCRIBED_PATTERN_BLOCK].sort()
+      [...INSCRIBED_PATTERN_BLOCK].sort(),
     );
     expect(hd.inscribedPatterns?.stacks).toBe(0);
   });
@@ -282,7 +332,9 @@ describe('Inscribed Patterns', () => {
     expect(result.harmonyDelta).toBe(10);
     expect(result.harmonyData.inscribedPatterns?.stacks).toBe(1);
     // Block should have one fewer 'fusion'
-    expect(result.harmonyData.inscribedPatterns?.currentBlock).not.toContain('fusion');
+    expect(result.harmonyData.inscribedPatterns?.currentBlock).not.toContain(
+      'fusion',
+    );
   });
 
   it('should penalize invalid action: -20 harmony, stacks halved, +1 stabilityPenalty, -25 pool', () => {
@@ -314,7 +366,7 @@ describe('Inscribed Patterns', () => {
     expect(result.harmonyData.inscribedPatterns?.completedBlocks).toBe(1);
     expect(result.harmonyData.inscribedPatterns?.stacks).toBe(5);
     expect(result.harmonyData.inscribedPatterns?.currentBlock.sort()).toEqual(
-      [...INSCRIBED_PATTERN_BLOCK].sort()
+      [...INSCRIBED_PATTERN_BLOCK].sort(),
     );
   });
 
@@ -911,8 +963,9 @@ describe('Harmony integration with applySkill', () => {
       expect(baseline!.harmony).toBe(5);
       // +5 focused, -15 stray.
       expect(next!.harmony).toBe(-10);
-      // The stray application's Qi Pool loss reaches the next state.
-      expect(next!.qi).toBe(baseline!.qi - 15);
+      // Spending precedes turn cleanup. The baseline alone already caps its
+      // over-cap starting pool, so subtracting from it would double-count loss.
+      expect(next!.qi).toBe(Math.min(config.maxQi, state.qi - 15));
     });
 
     it('scores a buff-driven stray advance after the technique resolves', () => {
@@ -953,7 +1006,7 @@ describe('Harmony integration with applySkill', () => {
       expect(baseline!.harmony).toBe(5);
       // +5 for the focused technique effect, -15/-15 for the buff's stray advance.
       expect(next!.harmony).toBe(-10);
-      expect(next!.qi).toBe(baseline!.qi - 15);
+      expect(next!.qi).toBe(Math.min(config.maxQi, withoutBuff.qi - 15));
     });
   });
 
@@ -1075,7 +1128,11 @@ describe('Harmony integration with applySkill', () => {
     });
 
     const fusionSkill = makeSkill('fusion');
-    const gainsSweet = calculateSkillGains(stateSweet, fusionSkill, forgeConfig);
+    const gainsSweet = calculateSkillGains(
+      stateSweet,
+      fusionSkill,
+      forgeConfig,
+    );
     const gainsBad = calculateSkillGains(stateBad, fusionSkill, forgeConfig);
 
     // Sweet spot should have ~50% more completion than default
@@ -1194,4 +1251,3 @@ describe('Captivating Cadence', () => {
     expect(state2!.maxStability).toBe(57);
   });
 });
-

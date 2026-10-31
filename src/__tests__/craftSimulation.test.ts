@@ -16,6 +16,8 @@ import {
   OptimizerConfig,
   DEFAULT_SKILLS,
   applySkill,
+  applySkillOutcomes,
+  getAvailableSkills,
   getConditionEffectsForConfig,
   isTerminalState,
 } from '../optimizer/skills';
@@ -744,6 +746,7 @@ describe('craft simulation — finish craft policy', () => {
       baseControl: 1,
       skills: [stabilize, riskyFusion, riskyRefine],
       isSublimeCraft: true,
+      craftingType: 'formless',
       targetMultiplier: 2,
       maxCompletion: 200,
       maxPerfection: 200,
@@ -754,6 +757,8 @@ describe('craft simulation — finish craft policy', () => {
       initialMaxStability: 40,
       completion: 100,
       perfection: 100,
+      harmony: 33,
+      harmonyData: { recommendedTechniqueTypes: [] },
     });
 
     const sim = simulateCraft(state, config, 200, 200, ['neutral'], 2, 4);
@@ -1642,12 +1647,12 @@ describe('craft simulation — sublime crafts', () => {
     const neutralOnly: CraftingConditionType[] = ['neutral'];
 
     // Pass scaled targets (200/200) to the simulation loop so it doesn't
-    // stop at base targets.  The search is time-budgeted, so on slower
-    // machines each turn explores less deeply and convergence needs more
-    // turns; give this deep craft generous turn and per-turn budgets so the
-    // contract checks the model, not machine speed.
+    // stop at base targets. Keep the helper's existing node cap, but use a
+    // generous time guard so concurrent test load cannot silently replace a
+    // completed search pass with a shallower policy. This checks the model,
+    // not whether every turn can finish within one wall-clock second.
     const sim = simulateCraft(state, config, 200, 200, neutralOnly, 90, 6, {
-      timeBudgetMs: 1000,
+      timeBudgetMs: 120000,
     });
     expect(sim.craftDied).toBe(false);
     expect(sim.targetsMet).toBe(true);
@@ -1768,18 +1773,21 @@ describe('craft simulation — sublime crafts', () => {
     expect(zeroHeatRefines).toBe(0);
   });
 
-  it('should keep the full skyfall bow replay on a safe non-fusion line until forge heat recovers', () => {
+  it('keeps the skyfall bow replay alive across worst immediate branches while progressing', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'skyfall-bow-heat-regression.snapshot.json',
     );
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      // The 1,500-node probe follows the same stabilize/refine/fusion line as
-      // 6,000 nodes per turn. Compare fixed frontiers instead of whichever
-      // frontier a 12s deadline happens to reach under Jest.
-      timeBudgetMs: 120000,
-      maxNodes: 1500,
+      // This regression concerns the original sublime request, not a new goal
+      // at every maximum. Bind on work and assert branch safety rather than a
+      // technique sequence inherited from the former EV scorer.
+      timeBudgetMs: 60000,
+      maxNodes: 100,
+      completionBandCeiling: 2,
+      perfectionBandGoal: 2,
+      overcraftAmbition: false,
     };
     let state = input.state;
     const conditionTimeline: CraftingConditionType[] = [
@@ -1812,35 +1820,37 @@ describe('craft simulation — sublime crafts', () => {
       chosenKeys.push(skill.key);
       chosenTypes.push(skill.type);
 
-      if (turn < 2) {
-        expect(skill.type).not.toBe('fusion');
-      }
-
-      const nextState = applySkill(
+      const distribution = applySkillOutcomes(
         state,
         skill,
         input.config,
         getConditionEffectsForConfig(input.config, currentCondition),
         input.targetCompletion,
         currentCondition,
+        input.targetPerfection,
       );
-
-      expect(nextState).not.toBeNull();
-      expect(nextState!.stability).toBeGreaterThan(0);
-      state = nextState!;
+      expect(distribution.unresolvedProbability).toBe(0);
+      expect(distribution.outcomes.length).toBeGreaterThan(0);
+      expect(
+        distribution.outcomes.every((outcome) => outcome.state.stability > 0),
+      ).toBe(true);
+      // Follow an actual least-stability/least-progress outcome, not an
+      // averaged state that may never occur in the game.
+      state = [...distribution.outcomes].sort(
+        (a, b) =>
+          a.state.stability - b.state.stability ||
+          a.state.completion +
+            a.state.perfection -
+            b.state.completion -
+            b.state.perfection,
+      )[0].state;
+      expect(state.harmonyData?.forgeWorks?.heat).toBeGreaterThan(0);
+      expect(state.harmonyData?.forgeWorks?.heat).toBeLessThan(10);
     }
 
-    // This 0.7.12-era capture now opens with stabilization: 0.7.17 recomputes
-    // technique variables after masteries, and new buff names survive the turn
-    // (RUNTIME_EVIDENCE §17.3; G:540571-540575,540622-540640,540937,541143).
-    // Forceful Stabilize retains Heightening (25%); Invasive Refine now reaches
-    // 1,907 rather than 1,617 perfection, and Delayed Refine stays at one stack
-    // rather than ticking to two. Preserve the safe non-fusion recovery contract,
-    // not the obsolete refine opener or a particular technique variant.
-    expect(chosenTypes[0]).toBe('stabilize');
-    expect(chosenTypes[1]).not.toBe('fusion');
-    expect(state.harmonyData?.forgeWorks?.heat).toBeLessThanOrEqual(6);
-    expect(chosenTypes[2]).toBe('fusion');
+    expect(state.completion + state.perfection).toBeGreaterThan(
+      input.state.completion + input.state.perfection,
+    );
   });
 
   it('should not recommend Focused Fusion without a Focus buff (user report)', () => {
@@ -2080,7 +2090,7 @@ describe('craft simulation — sublime crafts', () => {
     }
   });
 
-  it('should keep forge heat above collapse while continuing a sublime craft after base success is secured', () => {
+  it('exposes unavoidable ending risk after the critical forge replay takes its low roll', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'forge-heat-runway-step-2.snapshot.json',
     );
@@ -2092,47 +2102,93 @@ describe('craft simulation — sublime crafts', () => {
       input.forecastConditions as CraftingConditionType[],
       state.harmony,
     );
-    const chosenTypes: string[] = [];
+    const settings = {
+      ...input.searchConfig,
+      maxNodes: 100,
+      timeBudgetMs: 60000,
+      completionBandCeiling: 2,
+      perfectionBandGoal: 2,
+      overcraftAmbition: false,
+    };
+    const result = findBestSkill(
+      state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      currentCondition,
+      forecast,
+      settings,
+    );
+    expect(result.recommendation).not.toBeNull();
+    const first = applySkillOutcomes(
+      state,
+      result.recommendation!.skill,
+      input.config,
+      getConditionEffectsForConfig(input.config, currentCondition),
+      input.targetCompletion,
+      currentCondition,
+      input.targetPerfection,
+    );
+    expect(first.unresolvedProbability).toBe(0);
+    expect(first.outcomes.every((outcome) => outcome.state.stability > 0)).toBe(
+      true,
+    );
+    state = [...first.outcomes].sort(
+      (a, b) => a.state.stability - b.state.stability,
+    )[0].state;
+    currentCondition = forecast[0] || 'neutral';
+    forecast = normalizeForecastConditionQueue(
+      currentCondition,
+      forecast.slice(1),
+      state.harmony,
+    );
 
-    for (let turn = 0; turn < 2; turn++) {
-      const result = findBestSkill(
-        state,
-        input.config,
-        input.targetCompletion,
-        input.targetPerfection,
-        false,
-        input.lookaheadDepth,
-        currentCondition,
-        forecast,
-        input.searchConfig,
-      );
-
-      expect(result.recommendation).not.toBeNull();
-      const skill = result.recommendation!.skill;
-      chosenTypes.push(skill.type);
-
-      const nextState = applySkill(
+    // The observed low roll leaves1 stability/6 Qi. Unlike the former EV
+    // continuation, there is no guaranteed heat-recovery action from here.
+    const safeAlternatives = getAvailableSkills(
+      state,
+      input.config,
+      currentCondition,
+    ).filter((skill) => {
+      const distribution = applySkillOutcomes(
         state,
         skill,
         input.config,
         getConditionEffectsForConfig(input.config, currentCondition),
         input.targetCompletion,
         currentCondition,
+        input.targetPerfection,
       );
-
-      expect(nextState).not.toBeNull();
-      state = nextState!;
-      currentCondition = forecast[0] || 'neutral';
-      forecast = normalizeForecastConditionQueue(
-        currentCondition,
-        forecast.slice(1),
-        state.harmony,
+      return (
+        distribution.unresolvedProbability === 0 &&
+        distribution.outcomes.length > 0 &&
+        distribution.outcomes.every((outcome) => outcome.state.stability > 0)
       );
+    });
+    expect(safeAlternatives).toEqual([]);
+    const next = findBestSkill(
+      state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      currentCondition,
+      forecast,
+      settings,
+    );
+    // Pausing is acceptable; if a gamble is exposed, it must not masquerade as
+    // a guaranteed continuation and automation must retain its risk metadata.
+    if (next.recommendation) {
+      expect(next.recommendation.requiresProbabilisticSurvival).toBe(true);
+      expect(
+        next.recommendation.planning!.prematureEndProbability,
+      ).toBeGreaterThan(0);
+      expect(
+        next.recommendation.planning!.goalProbabilityLowerBound,
+      ).toBeLessThan(1);
     }
-
-    expect(snapshot.output?.recommendation?.skill?.key).toBe('focus');
-    expect(chosenTypes[0]).toBe('fusion');
-    expect(state.harmonyData?.forgeWorks?.heat).toBeGreaterThanOrEqual(3);
-    expect(state.harmony).toBeGreaterThan(0);
   });
 });

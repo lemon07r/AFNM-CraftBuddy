@@ -53,7 +53,8 @@ function extractRuntime(asarPath, extractDir) {
       const rel = f.replace(/^\//, '');
       const out = path.join(extractDir, rel);
       try {
-        const buf = asar.extractFile(asarPath, rel);
+        // ASAR lookup uses the host separator, including nested Windows paths.
+        const buf = asar.extractFile(asarPath, path.normalize(rel));
         fs.mkdirSync(path.dirname(out), { recursive: true });
         fs.writeFileSync(out, buf);
       } catch {

@@ -2,8 +2,9 @@
 //!
 //! These cover each mechanic in isolation. Cross-engine agreement is proven
 //! separately by `differential_tests.rs` against the checked-in corpus; both
-//! layers are needed, because a unit test can be wrong in the same way on both
-//! sides while a corpus case cannot.
+//! layers are useful, but agreement can preserve a shared defect. The corpus
+//! is generated from TypeScript, not the game; native-derived resource fixtures
+//! provide separate evidence for the production discrete simulator.
 
 use super::effects::*;
 use super::*;
@@ -78,6 +79,75 @@ fn apply_0717(
         ConditionEffectSummary::default(),
         100.0,
     )
+}
+
+#[test]
+fn stability_payment_debt_survives_until_end_of_turn() {
+    let mut state = base_state();
+    state.stability = 1.0;
+    state.buffs = serde_json::from_value(json!([{
+        "key": "restore", "name": "Restore", "stacks": 1,
+        "internal_state": { "paid": 0 },
+        "definition": { "name": "Restore", "canStack": false,
+            "effects": [{ "kind": "stability", "amount": { "value": 7.0 } }],
+            "triggeredEffects": [{ "trigger": "stabilitySpent", "effects": [
+                { "kind": "setState", "key": "paid", "mode": "set",
+                    "value": { "value": 1, "eqn": "amount" } }
+            ] }] }
+    }]))
+    .unwrap();
+    let subject = skill(merge(
+        minimal_skill("spend"),
+        json!({ "stability_cost": 10.0 }),
+    ));
+    let next = apply_0717(&state, subject, &base_config()).unwrap();
+    // Runtime: 1 - 10 + 7 = -2, then clamp once. The former early clamp gave 7.
+    assert_eq!(next.stability, 0.0);
+    assert_eq!(next.buffs[0].internal_state.get("paid"), Some(&10.0));
+}
+
+#[test]
+fn stability_excess_survives_until_harmony_and_final_cap() {
+    let mut state = base_state();
+    state.stability = 59.0;
+    state.harmony_data = serde_json::from_value(json!({
+        "recommended_technique_types": [],
+        "resonance": { "resonance": "fusion", "strength": 1,
+            "pending_count": 0 }
+    }))
+    .unwrap();
+    let mut config = base_config();
+    config.is_sublime_craft = true;
+    config.crafting_type = Some("resonance".to_string());
+    let subject = skill(merge(
+        minimal_skill("restore"),
+        json!({
+            "effects": [{ "kind": "stability", "amount": { "value": 20.0 } }]
+        }),
+    ));
+    let next = apply_0717(&state, subject, &config).unwrap();
+    // 59 + 20 - 3 resonance loss = 76; decay lowers the final cap to 59.
+    // Clamping before resonance would incorrectly leave 57.
+    assert_eq!(next.stability, 59.0);
+    assert_eq!(next.stability_penalty, 1.0);
+}
+
+#[test]
+fn mastery_stability_excess_survives_until_real_action_payment() {
+    let mut state = base_state();
+    state.stability = 59.0;
+    let subject = skill(merge(
+        minimal_skill("mastery_restore"),
+        json!({
+            "stability_cost": 10.0,
+            "mastery_entries": [{ "kind": "effect", "effects": [
+                { "kind": "stability", "amount": { "value": 20.0 } }
+            ] }]
+        }),
+    ));
+    let next = apply_0717(&state, subject, &base_config()).unwrap();
+    // Mastery is part of the same action: 59 + 20 - 10, then final cap 59.
+    assert_eq!(next.stability, 59.0);
 }
 
 #[test]
@@ -1163,6 +1233,59 @@ fn technique_pool_and_max_stability_effects_apply() {
 // ---------------------------------------------------------------------------
 // Buffs
 // ---------------------------------------------------------------------------
+
+#[test]
+fn pool_caps_apply_to_each_change_and_not_to_spending() {
+    let mut config = base_config();
+    config.max_qi = 100.0;
+    for (initial_qi, effects, expected) in [
+        (
+            95.0,
+            json!([{ "kind": "pool", "amount": { "value": 20 } }, { "kind": "pool", "amount": { "value": -10 } }]),
+            90.0,
+        ),
+        (110.0, json!([]), 95.0),
+        (
+            110.0,
+            json!([{ "kind": "pool", "amount": { "value": 0 } }]),
+            90.0,
+        ),
+    ] {
+        let mut state = base_state();
+        state.qi = initial_qi;
+        let cost = if initial_qi == 95.0 { 10.0 } else { 5.0 };
+        if initial_qi > 100.0 {
+            state.buffs = serde_json::from_value(json!([{
+                "key": "drain", "name": "Drain", "stacks": 1,
+                "definition": { "name": "Drain", "canStack": false,
+                    "effects": [{ "kind": "pool", "amount": { "value": -10 } }] }
+            }]))
+            .unwrap();
+        }
+        let subject = skill(merge(
+            minimal_skill("pool_probe"),
+            json!({ "qi_cost": cost, "effects": effects }),
+        ));
+        let next = apply_0717(&state, subject, &config).expect("pool probe is available");
+        assert_eq!(next.qi, expected);
+    }
+}
+
+#[test]
+fn buff_pool_effects_keep_capped_restore_then_spend_order() {
+    let mut config = base_config();
+    config.max_qi = 100.0;
+    let mut state = base_state();
+    state.qi = 95.0;
+    state.buffs = serde_json::from_value(json!([{
+        "key": "pool_probe", "name": "Pool Probe", "stacks": 1,
+        "definition": { "name": "Pool Probe", "canStack": false,
+            "effects": [{ "kind": "pool", "amount": { "value": 20 } }, { "kind": "pool", "amount": { "value": -10 } }] }
+    }])).unwrap();
+    let subject = skill(merge(minimal_skill("pool_probe"), json!({ "qi_cost": 10 })));
+    let next = apply_0717(&state, subject, &config).expect("pool probe is available");
+    assert_eq!(next.qi, 90.0);
+}
 
 #[test]
 fn create_buff_respects_stack_and_max_stack_rules() {

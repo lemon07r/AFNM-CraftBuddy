@@ -15,7 +15,13 @@ import {
   unionOverlayRects,
   type OverlayRectLike,
 } from '../../src/utils/overlayLayout';
-import { type HarmonyType } from '../../src/optimizer';
+import {
+  type HarmonyType,
+  CraftingState,
+  DEFAULT_CONFIG,
+  findBestSkill,
+  bandThreshold,
+} from '../../src/optimizer';
 
 resetSettings();
 
@@ -187,6 +193,38 @@ const legacyFixtureResult = {
 
 function buildFixtureResult(state: string): unknown {
   switch (state) {
+    case 'outcome-goals':
+    case 'outcome-goals-met': {
+      const value = state === 'outcome-goals-met' ? bandThreshold(100, 8) : 100;
+      const projected = findBestSkill(
+        new CraftingState({
+          qi: 100,
+          stability: 30,
+          initialMaxStability: 60,
+          completion: value,
+          perfection: value,
+        }),
+        {
+          ...DEFAULT_CONFIG,
+          skills: [],
+          targetCompletion: 100,
+          targetPerfection: 100,
+          maxCompletion: 3000,
+          maxPerfection: 3000,
+        },
+        100,
+        100,
+        false,
+        1,
+        'neutral',
+        [],
+        { completionBandCeiling: 8, perfectionBandGoal: 8 },
+      );
+      return {
+        ...fixtureResult,
+        outcomeProjection: projected.outcomeProjection,
+      };
+    }
     case 'outcome-setup':
       return setupFixtureResult;
     case 'outcome-autofinish':
@@ -443,12 +481,24 @@ function Harness() {
           ? null
           : (buildFixtureResult(harnessState) as any)
       }
-      currentCompletion={20}
-      currentPerfection={10}
-      targetCompletion={60}
-      targetPerfection={60}
-      maxCompletionCap={60}
-      maxPerfectionCap={60}
+      currentCompletion={
+        harnessState === 'outcome-goals-met'
+          ? bandThreshold(100, 8)
+          : harnessState === 'outcome-goals'
+            ? 100
+            : 20
+      }
+      currentPerfection={
+        harnessState === 'outcome-goals-met'
+          ? bandThreshold(100, 8)
+          : harnessState === 'outcome-goals'
+            ? 100
+            : 10
+      }
+      targetCompletion={harnessState.startsWith('outcome-goals') ? 100 : 60}
+      targetPerfection={harnessState.startsWith('outcome-goals') ? 100 : 60}
+      maxCompletionCap={harnessState.startsWith('outcome-goals') ? 3000 : 60}
+      maxPerfectionCap={harnessState.startsWith('outcome-goals') ? 3000 : 60}
       currentStability={30}
       currentMaxStability={57}
       targetStability={60}
@@ -468,7 +518,7 @@ function Harness() {
       onAutoModeArm={() => {}}
       onAutoModeStop={() => {}}
       onAutoModePolicyChange={() => {}}
-      version="6.8.0"
+      version="6.9.0"
     />
   );
 

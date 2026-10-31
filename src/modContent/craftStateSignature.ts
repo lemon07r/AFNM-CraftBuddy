@@ -60,6 +60,10 @@ export interface CraftStateSignatureInput {
   readonly harmony: number;
   readonly harmonyData: unknown;
   readonly consumedPills: number;
+  /** Definitions and stats that can change without advancing the craft. */
+  readonly mechanics?: unknown;
+  /** Native pre-technique item configuration and its relevant inventory. */
+  readonly nativeAutoUse?: unknown;
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
@@ -91,9 +95,8 @@ function normalizeKey(value: unknown): string {
  * digest identically, whatever order the runtime happened to build them in.
  */
 export function serializeCanonicalValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return 'none';
-  }
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
   if (Array.isArray(value)) {
     return `[${value.map(serializeCanonicalValue).join(',')}]`;
   }
@@ -101,13 +104,16 @@ export function serializeCanonicalValue(value: unknown): string {
     const record = value as Record<string, unknown>;
     const entries = Object.keys(record)
       .sort()
-      .map((key) => `${key}=${serializeCanonicalValue(record[key])}`);
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${serializeCanonicalValue(record[key])}`,
+      );
     return `{${entries.join(',')}}`;
   }
   if (typeof value === 'number') {
-    return Number.isFinite(value) ? String(value) : 'nan';
+    return `number:${Object.is(value, -0) ? '-0' : String(value)}`;
   }
-  return String(value);
+  return `${typeof value}:${JSON.stringify(String(value))}`;
 }
 
 /**
@@ -248,6 +254,8 @@ export function buildCraftStateSignature(
     `techniques:${serializeTechniqueRoster(input.techniques)}`,
     `buffs:${serializeBuffs(input.buffs)}`,
     `items:${serializeQuickAccessInventory(input.quickAccess, input.inventory)}`,
+    `mechanics:${encodeURIComponent(serializeCanonicalValue(input.mechanics))}`,
+    `nativeAutoUse:${encodeURIComponent(serializeCanonicalValue(input.nativeAutoUse))}`,
   ].join(';');
 }
 
@@ -341,6 +349,38 @@ export function readLiveCraftStateSignature(
   const recipeStats = readRecord(crafting.recipeStats);
   const stabilityPenalty = readNumber(progressState.stabilityPenalty, 0);
   const targetStability = readNumber(recipeStats?.stability, 0);
+  const owner = readRecord(readRecord(state.player)?.player);
+  const autoUse = readRecord(owner?.currentCraftingAutoUseLoadout);
+  const autoUseItemNames = new Set(
+    readArray(autoUse?.slots)
+      .map((slot) => readRecord(slot)?.item)
+      .filter((name): name is string => typeof name === 'string'),
+  );
+  const inventory = readArray(readRecord(state.inventory)?.items);
+
+  // Animation/tooltip updates do not change mechanics. Keeping them out avoids
+  // cancelling a valid calculation while its preceding action animates.
+  const definition = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(definition);
+    const record = readRecord(value);
+    if (!record) return value;
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(record)) {
+      if (
+        [
+          'animations',
+          'messages',
+          'justClicked',
+          'tooltip',
+          'description',
+          'icon',
+        ].includes(key)
+      )
+        continue;
+      result[key] = definition(entry);
+    }
+    return result;
+  };
 
   const signature = buildCraftStateSignature({
     step: readNumber(progressState.step, 0),
@@ -365,9 +405,7 @@ export function readLiveCraftStateSignature(
       const rawInternalState = readRecord(buff?.internalState);
       const internalState: Record<string, number> = {};
       if (rawInternalState) {
-        for (const [stateKey, stateValue] of Object.entries(
-          rawInternalState,
-        )) {
+        for (const [stateKey, stateValue] of Object.entries(rawInternalState)) {
           const numeric = readNumber(stateValue, Number.NaN);
           if (Number.isFinite(numeric)) {
             internalState[stateKey] = numeric;
@@ -400,7 +438,30 @@ export function readLiveCraftStateSignature(
     }),
     harmony: readNumber(progressState.harmony, 0),
     harmonyData: progressState.harmonyTypeData ?? null,
-    consumedPills: readNumber(progressState.consumedPills, 0),
+    consumedPills: readNumber(crafting.consumedPills, 0),
+    mechanics: {
+      stats: player.stats,
+      realm: player.realm,
+      buffs: definition(player.buffs),
+      techniques: definition(player.techniques),
+      recipeStats: definition(recipeStats),
+      trainingMode: crafting.trainingMode,
+      lastActionType: progressState.lastActionType,
+      effectTracking: progressState.effectTracking,
+      actionTracking: progressState.actionTracking,
+      pillTracking: progressState.pillTracking,
+      companion: definition(
+        readRecord(state.gameEvent)?.craftingTeamUpOverride ??
+          readRecord(readRecord(state.game)?.gameEvent)?.craftingTeamUpOverride,
+      ),
+    },
+    nativeAutoUse: {
+      enabled: owner?.craftingAutoUseEnabled !== false,
+      slots: autoUse?.slots,
+      inventory: inventory.filter((entry) =>
+        autoUseItemNames.has(String(readRecord(entry)?.name ?? '')),
+      ),
+    },
   });
 
   return { ok: true, signature, step: readNumber(progressState.step, 0) };

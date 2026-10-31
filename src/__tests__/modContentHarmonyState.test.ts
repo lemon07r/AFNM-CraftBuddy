@@ -1,4 +1,5 @@
 import { BuffType, CraftingState } from '../optimizer/state';
+import { comparePlanningValues } from '../optimizer/constrainedPlanner';
 import {
   findBestSkill,
   lookaheadSearch,
@@ -1189,9 +1190,14 @@ describe('integration regression - forge heat parity', () => {
     ]);
     expect(result.recommendation?.skill.type).not.toBe('fusion');
     expect(explosiveFusionRecommendation).toBeDefined();
-    expect(result.recommendation!.score).toBeGreaterThan(
-      explosiveFusionRecommendation!.score,
-    );
+    expect(result.recommendation!.planning).toBeDefined();
+    expect(explosiveFusionRecommendation!.planning).toBeDefined();
+    expect(
+      comparePlanningValues(
+        result.recommendation!.planning!,
+        explosiveFusionRecommendation!.planning!,
+      ),
+    ).toBeLessThan(0);
 
     const nextState = applySkill(
       state,
@@ -1636,7 +1642,7 @@ describe('integration regression - forge heat parity', () => {
 });
 
 describe('user report replay regressions', () => {
-  it('prefers refine over fusion or stabilize in the first supplied replay', () => {
+  it('pauses the first supplied replay because active buff definitions were not captured', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'user-report-pattern-step-1.snapshot.json',
     );
@@ -1658,10 +1664,22 @@ describe('user report replay regressions', () => {
       stableSearchConfig,
     );
 
-    expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.type).toBe('refine');
-    expect(result.recommendation!.skill.key).not.toBe('forceful_stabilize');
-    expect(result.recommendation!.skill.type).not.toBe('fusion');
+    // This historical snapshot has only names/stacks for all nine active
+    // buffs. The roster cannot resolve Spirit Cauldron Construct. Retain the
+    // original evidence, but no longer certify a pick from missing mechanics.
+    expect(
+      input.state.buffs.get('spirit_cauldron_construct')?.definition,
+    ).toBeUndefined();
+    expect(result.recommendation).toBeNull();
+    expect(result.blockedReasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: 'unresolved',
+          details:
+            'Unresolved active buff definition: spirit_cauldron_construct',
+        }),
+      ]),
+    );
   });
 
   it('respects the reported alchemical charge pattern and avoids a stabilize overcap follow-up', () => {

@@ -2497,11 +2497,12 @@ describe('Restoring Brilliance stability gain bug', () => {
     );
 
     expect(nextState).not.toBeNull();
-    expect(nextState!.stability).toBe(5.25);
+    // Runtime keeps the -9 overdraft through the +7 proc: even success cannot save it.
+    expect(nextState!.stability).toBe(0);
     expect(survivabilityFloor).toEqual({
       stability: 0,
       maxStability: 59,
-      survivalProbability: 0.75,
+      survivalProbability: 0,
     });
   });
 });
@@ -2684,8 +2685,12 @@ describe('success chance and progress headroom interaction', () => {
       // Headroom is 100 while the raw gain is 5 * 400 = 2000.
       maxCompletion: 1000,
     });
-    return calculateSkillGains(state, overshootingSkill(successChance), config, [])
-      .completion;
+    return calculateSkillGains(
+      state,
+      overshootingSkill(successChance),
+      config,
+      [],
+    ).completion;
   }
 
   it('weights an overshooting gain by success chance instead of hiding it behind the cap', () => {

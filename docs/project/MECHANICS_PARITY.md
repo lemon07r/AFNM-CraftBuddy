@@ -4,7 +4,7 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.17-d8ae6ce
-last_verified: 2026-10-22
+last_verified: 2026-10-29
 source_of_truth: src/optimizer/outcome.ts, src/optimizer/skills.ts, src/optimizer/harmony.ts, src/optimizer/harmonyRegistry.ts, src/optimizer/gameTypes.ts, src/optimizer/state.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, src/modContent/harmonyState.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
@@ -16,9 +16,21 @@ related_files:
 
 # Mechanics Parity Status
 
-Which AFNM **0.7.17** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
+The historical **0.7.17** mechanics baseline, the subsequent stochastic-planner changes, and the limits of the available parity evidence.
 
-Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` holds the extracted runtime source, currently for build `0.7.17-d8ae6ce`.
+Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` preserves the 0.7.17 baseline and records the current 0.7.18 auto-finish predicate in section 18.
+
+## October 2026 audit and planner revision
+
+The installed runtime inspected in the audit was **0.7.18-97c093b**, while CraftBuddy 6.8.0 targeted 0.7.17. Historical corpus counts and release results below describe that earlier baseline, not exhaustive proof of 0.7.18 or the new planner. Current results and all recorded automated-review dispositions are recorded in [PR4_REVIEW_VALIDATION.md](PR4_REVIEW_VALIDATION.md).
+
+The production planner now uses discrete supported success, crit and effect chance branches from the TypeScript transition model. Future buff state stays inside those branches; bounded enumeration records unresolved probability rather than pretending unexplored outcomes are safe. A separate handwritten stability simulation is not authoritative: payment and mastery phases must agree with the action transition used for planning. Expected-value APIs remain for display and legacy/reference search.
+
+`resolvePlanningGoals` separates requested completion/perfection from actual item tiers. Explicit 1-8 band settings request both bars up to their actual caps. Auto requests the caps with extra-band ambition enabled, or the ordinary tier requirements with it disabled. Missing caps fall back to ordinary requirements. The persisted completion ceiling key now represents a Completion Band Goal. Item tiers and band thresholds are unchanged. The old five-completion-band early-finish shortcut was removed from the model after checking installed 0.7.18: resolution requires stability zero or both actual cap flats. The same flat-cap rule was already recorded in the 0.7.17 runtime evidence.
+
+New goal tests demonstrate that provably inert full-bar restoration can be pruned while recovery that unlocks cooldowns or useful buffs remains available, selected-goal work remains after baseline success, and immediate terminal scores retain the same goal settings at every depth. These tests do not prove every requested craft feasible or all effects supported. Any unsupported effect or exhausted branch budget must be distinguished from a proven safe continuation.
+
+Rust remains a reference for the historical transition surface. Its old EV scorer/prior does not implement the new production planner or certify its goal semantics. Do not infer new cross-engine parity from the older corpus.
 
 ## How parity is proven
 
@@ -41,7 +53,7 @@ Runtime source and offsets: `RUNTIME_EVIDENCE.md` §17. The model is mirrored in
 | --- | --- |
 | Cost channels | `qiCostReduction`, `qiCostPenalty`, `stabilityCostReduction`, `stabilityCostPenalty` are independent zero-based multiplicative channels. Stack-scaled contributions are folded once; flat surcharge, condition and harmony ordering follow the runtime. Legacy percentage inputs normalize at the state boundary; legacy buff adjustments apply only to the side with an actual legacy stat, never floor an untouched fractional modern baseline. |
 | Payment phases | Toxicity → droplets → buff costs → success-chance capture → effect masteries → recomputed Qi/stability payment → success-only technique effects. Failed actions still pay, retain mastery effects and resolve harmony. |
-| Chance payment buffs | Transient independent payment branches produce current-action expected costs without branching recursive search or redesigning future probabilistic buff state. The guaranteed survivability floor remains distinct from EV. |
+| Chance payment buffs | The 0.7.17 release used transient independent payment branches for current-action EV. The revised production path preserves supported discrete decisions through payment and subsequent state; bounded branch coverage is reported explicitly. |
 | Droplets | `qiDroplets` / `maxQiDroplets`, `dropletCost`, legality, payment, cloning, replay and native bridge all preserve the runtime payload. New Stablizing Circuit data flows through the generic effect path. |
 | Buff tick membership | Snapshot pre-action buff names; only those names receive type-specific/ordinary ticks. A new name survives its creation turn; a refreshed existing name still ticks. |
 | Scaling and triggers | Preserve `additionalVariables`, room-effectiveness opt-in, nested scaling multiplier/step rules, integer rounding and `setState.keys`. Triggered blocks run general buff effects with a re-entry guard and running bars, so Converging Jade's completion also feeds Bifang's `percentGained` normally. |
@@ -74,8 +86,8 @@ Per event both engines clamp with `min(cap, max(0, floor(value)))`, award `+5` h
 
 These are real gaps, not rounding noise. They are stated here so nobody "discovers" them as bugs.
 
-1. **Mid-technique stat-modifier flip.** In the runtime a focus flip between two effects of the *same* technique retunes intensity/control for the **later** effects of that technique. CraftBuddy evaluates effect scaling once per action, so a flip affects scoring and every subsequent turn, but not the remaining effect magnitudes within the same turn.
-2. **Expected-value bar events.** CraftBuddy applies aggregated expected values, not discrete per-application gains. The fold reconstructs per-application running values by distributing each bar's aggregate proportionally across that bar's raw per-effect contributions (`scaleBarContributions`). That preserves the ordering and the exact total, but not the runtime's exact per-application integers when crit/success weighting is fractional.
+1. **Mid-technique stat-modifier flip.** In the runtime a focus flip between two effects of the _same_ technique retunes intensity/control for the **later** effects of that technique. CraftBuddy evaluates effect scaling once per action, so a flip affects scoring and every subsequent turn, but not the remaining effect magnitudes within the same turn.
+2. **Per-application reconstruction.** Legacy EV transitions reconstruct running bar values by distributing each aggregate proportionally across raw per-effect contributions (`scaleBarContributions`). Discrete action branches remove success/crit averaging at their decision sites, but do not by themselves prove exact runtime integer order for every multi-effect/trigger combination. Keep explicit parity cases for those combinations.
 3. **Disciplined Touch and the legacy scalar path expose no per-effect breakdown**, so they synthesize one application per moved bar, completion first (`synthesizeBarContributions`). Identical in both engines, and equivalent to the old single-delta model except when a band is cleared between the two applications.
 
 Seeding matches the runtime's laziness: `processEffect` and `onBarChange` both anchor absent state on the **current** bars, while only the game's `initEffect` seeds at zero at craft start. `seedEccentricDecreeData` in `src/modContent/harmonyState.ts` mirrors that, so attaching to a craft already in progress cannot retro-charge harmony for progress made before CraftBuddy saw it.
@@ -179,7 +191,7 @@ Outcome layer (`src/optimizer/outcome.ts`):
 - band widths from the recipe's completion/perfection stats, each successive band costing `1.3x` the previous (runtime `qIa`)
 - `TIER_REQUIREMENTS`: `basic` = 1 completion band; `perfect` = 1 + 1; `sublime` = **2 + 2**, and only when the recipe has a distinct sublime item
 - fractional bonus-roll chance carried separately from guaranteed bands, so a near-miss is never reported as banked
-- `willAutoFinish` mirroring the runtime predicate, including the overcraft branch at `>= 5` guaranteed completion bands
+- `willAutoFinish` resolves at stability zero or both actual cap flats; five completion bands alone do not finish a 0.7.18 craft. The Rust reference predicate follows the same rule. Explicit zero caps stay zero; absent/non-finite caps use the documented fallback.
 - unilateral overcraft reward scaling (`computeOvercraftExtras`): each extra perfection band scales result stacks by `1 + (bands - baseline) * 0.2` (baseline 1 perfect / 2 sublime, plus +1 harmony-augment quality on the sublime path), each extra completion band refunds 20% of recipe cost capped at 80% (five bands, sublime-capable crafts only), all gated on the target tier being secured — `docs/project/RUNTIME_EVIDENCE.md` section 12
 
 Search layer (`src/optimizer/search.ts`): see `docs/project/OPTIMIZER_DESIGN.md`.
@@ -220,11 +232,11 @@ Each was verified against the installed bundle before the fix and has a regressi
 
 The Rust engine models the **same searchable action space** as TypeScript: generic active buffs, effect-tree techniques, mastery, Soulflame triggers and stack consumption, toxicity effects, and pill/reagent actions. Item actions are no longer filtered out of the bridge payload.
 
-Both engines share the conjunctive outcome model (`outcome.ts` / `crates/craftbuddy-engine/src/outcome.rs`) and agree on all 1,352 legal corpus transitions; the same 202 illegal-action cases are rejected on both sides.
+At the 6.8.0 release, both engines shared the conjunctive outcome model and agreed on 1,352 legal corpus transitions and 202 illegal-action cases. This historical result is not a claim that revised stochastic branches or new requested-goal semantics are mirrored in Rust.
 
 What is still asymmetric, deliberately:
 
-- TypeScript owns the returned recommendation. The Rust engine contributes a root MCTS **policy prior** for near-tie ordering; it cannot hard-filter a legal skill or overturn a clear TypeScript score difference.
+- TypeScript owns production recommendations through constrained stochastic planning. The Rust root MCTS prior is retained only for legacy/reference lookahead.
 - The Rust scorer mirrors the tier/gate model but not TypeScript's `ScoringContext` sampling, so absolute scores are not comparable across engines — only rankings and transitions are.
 - An unknown effect kind is skipped deterministically on both sides, so the corpus stays green instead of drifting.
 
@@ -242,14 +254,22 @@ Stated plainly rather than tracked as pending work:
 
 1. **Per-harmony item effects (`harmonyAugment`) are not modelled.** They decide what the finished item does, not which action is best this turn.
 2. **Craft-result material returns are not modelled in search.** Verified as best-completion-tier based with an `80%` cap; resolves after the craft.
-3. **Hidden RNG streams are not replicated.** Success/crit/bonus rolls are expected values, never predicted rolls.
+3. **Hidden RNG streams are not replicated.** Supported success/crit/effect decisions are probability branches; neither their actual future rolls nor craft-end bonus rolls are predicted.
 4. **Absolute Rust scores are not TypeScript scores** (see above).
 5. **Wall-clock search depth is machine-dependent.** Presets are a budget envelope, not a determinism guarantee; the _recommendation_ is deterministic for a fixed budget, and that is now directly tested on the Rust side.
-6. **Eccentric Decree bar events are expected values, not the runtime's discrete applications**, and a mid-technique focus flip does not retune that same turn's remaining effect magnitudes. Both are spelled out above and hold in both engines.
-7. **Future chance-buff state is not probability-aware.** Current payment branches account for independent chance-conditioned payment effects, not a new probabilistic persistent-buff/search model.
+6. **Eccentric Decree's mid-technique modifier refresh remains limited.** Branching success/crit does not itself repair the focus-flip or per-application reconstruction limitations described above.
+7. **Stochastic coverage is bounded.** Supported chance-buff decisions retain separate future state. Unexplored probability mass and unmodeled effects are not a safety guarantee. Historical Rust EV parity does not prove these branches.
 
 ## Non-goals
 
 - exact hidden RNG stream replication (not exposed by the game)
 - modelling every non-technique item family without normalized runtime payloads
 - combat-side systems, including the combat auto-use path
+
+## Resource transition audit, 0.7.18
+
+Qi restoration is capped at each application; spending floors at zero and does not apply an upper cap. Native resource handlers observe the actual delta at that point in the action. Stability retains debt until action cleanup. Mastery resource frames, fresh payment/buff/event frames and item-versus-turn cleanup are distinct boundaries. The production discrete simulator now follows those resource operations in order, including boost/sign and fractional cases.
+
+The independent native pool oracle contains 1,440 cases and a hash-checked regeneration script. This establishes scoped resource-applier evidence, not full game equivalence. The historical Rust EV corpus remains an implementation-agreement check; 24 over-cap-state Qi expectations changed with the spending/cleanup repair. EV stability weighting remains historical and cannot certify a stochastic route.
+
+Intermediate progress dependencies and bar-listener subscription changes that the reconstructed bar model cannot order reliably are explicitly unresolved. The validated Celadon Cycle remains supported. See [the review report](PR4_REVIEW_VALIDATION.md#thirteenth-review-follow-up-finding-on-7208130) for origin analysis, reproductions and final validation results.

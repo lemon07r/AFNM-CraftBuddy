@@ -3,9 +3,9 @@ title: Runtime Evidence
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
-last_verified: 2026-10-22
-source_of_truth: installed AFNM 0.7.17 runtime bundle (scripts/installed-game-runtime.js); earlier sections identify their historical builds
+game_version: 0.7.18-97c093b
+last_verified: 2026-10-31
+source_of_truth: installed AFNM 0.7.18 runtime bundle; earlier sections identify their historical builds and coverage
 review_cycle_days: 90
 related_files:
   - docs/project/MECHANICS_PARITY.md
@@ -26,7 +26,7 @@ related_files:
 # Runtime Evidence
 
 Findings extracted from the **installed** AFNM runtime, most recently
-**0.7.17-d8ae6ce** (section 17). Earlier sections retain their historical build
+**0.7.18-97c093b** (section 18). Earlier sections retain their historical build
 citations. The runtime is the sole authority here: where a tooltip, a
 patch note, or an earlier CraftBuddy note disagrees with the code below, the code
 below wins.
@@ -45,16 +45,17 @@ bun run runtime:extract                     # unpacks app.asar into tmp/installe
 bun run runtime:grep -- "<pattern>"         # searches the extracted bundle
 ```
 
-`runtime:oracle` reports `gameVersion: 0.7.10-9bf9078`, extracted to
+**Historical 0.7.10 coordinates:** the earlier `runtime:oracle` run reported
+`gameVersion: 0.7.10-9bf9078`, extracted to
 `tmp/installed-game-runtime/1182767661-1788139699386/`. The 0.7.6 findings below
 were produced by diffing the 0.7.6 build (`1172405719-1785155522026/`) against
 `0.7.5-d764178` (`1170135731-1784964316349/`); the 0.7.7/0.7.8 findings
 (section 14) were verified against the 0.7.8 build (`1168651333-1786309913280/`),
 the 0.7.9 findings (section 15) diff that 0.7.8 build against the 0.7.9 build
 (`1172235715-1787523522327/`), and the 0.7.10 findings (section 16) diff that
-0.7.9 build against the current extraction.
+0.7.9 build against that historical 0.7.10 extraction.
 
-The two crafting-relevant chunks are `dist-electron/Game.js` (~4.5 MB) and
+For those historical builds, the two crafting-relevant chunks were `dist-electron/Game.js` (~4.5 MB) and
 `dist-electron/_rolldown_dynamic_import_helper.js`, which grew from ~12.8 MB in
 0.7.5 to ~14.1 MB in 0.7.6. All crafting mechanics live in the helper chunk;
 `Game.js` holds the React layer. `tmp/` is not committed, so the snippets are
@@ -742,6 +743,10 @@ extras have diminishing value past that cap on quality-kind recipes.
 
 ### 12.5 Auto-finish predicate for overcraft crafts (re-verified)
 
+Historical evidence only: the five-band shortcut below is absent in installed
+0.7.18. Section 18 is the current auto-finish authority; section 17.7 also
+records the flat-cap rule for 0.7.17. Preserve this section as versioned evidence.
+
 The craft-complete flag in the 0.7.6 `Game.js`:
 
 ```js
@@ -1424,4 +1429,249 @@ check pass. Source tests, WASM/build/corpus generation, benchmarks, and live UI
 checks were not run in this read-only implementation audit. Only this evidence
 document was changed in the repository; no phase-2 work or commit was started.
 
+## 18. Installed 0.7.18 auto-finish correction (2026-10-29)
+
+The audit's extracted `package.json` reports **0.7.18-97c093b**. The formatted
+`Game.pretty.js` SHA-256 is
+`d960c947d7b1e8f329183e27dc24a610f54c7c128a15d2e5cc1bd503dbca6e05`.
+The raw `dist-electron/Game.js` SHA-256 is
+`cc6ca4a00d277d5ddf86262cbc786fba8f7b27c823d0c3b788aec8d7f4fb9b4e`.
+Line numbers below refer to that exact formatted artifact; formatting changes
+locations, so recover the alias and re-check the body on another build.
+
+`Game.pretty.js:318431-318438` defines the two cap getters and `Eho`:
+
+```js
+Tho = (e, t, n, r = 0) => bho(t.completion, e, n, e.canOvercraft ?? !1, r),
+IF = (e, t, n, r = 0) => bho(t.perfection, e, n, e.canOvercraft ?? !1, r),
+Eho = (e, t, n, r, i = 0) => {
+  if (e.stability <= 0) return !0;
+  let a = Tho(t, n, r, i).flat,
+    o = IF(t, n, r, i).flat;
+  return e.completion >= a && e.perfection >= o;
+},
+```
+
+There is **no five-completion-band early-finish branch**. The historical
+five-band shortcut described in section 12.5 must not be applied to this
+runtime. Section 17.7 had already recorded the same flat-cap predicate for
+0.7.17, but the TypeScript `willAutoFinish` still retained the older shortcut.
+That mismatch could tell search a high-cap craft had ended while the game still
+allowed more completion. The correction removes only the obsolete shortcut;
+band thresholds, actual item tiers and user-selected goals remain independent.
+
+Example: with completion cap 2000, perfection cap 399 and base widths 100,
+completion 902 (five bands), perfection 399 and stability 50 is still live.
+Reaching both actual flats 2000/399, or stability 0, ends it. These boundaries are
+covered in `src/__tests__/outcome.test.ts`.
+
+This is static installed-artifact evidence. It does not establish full 0.7.18
+mechanics parity or a live gameplay validation.
+
 <!-- prettier-ignore-end -->
+
+### 18.1 Stability payment, failure streaks and critical chains
+
+Additional static checks against the same 0.7.18 artifact:
+
+- `RLc` at formatted line 539835 adds the full negative stability payment to
+  the live bar and emits `stabilitySpent` with that full amount. It does not
+  clamp the bar to zero. `gRc` at 541070 clamps after buffs and harmony. Thus
+  starting at 1, paying 10, then restoring 7 still ends at 0. Clamping before
+  recovery invents survival. Both transition implementations now defer that
+  clamp; mastery subphases also preserve the intermediate value.
+- `KLc` at 540210 is a per-technique failure-streak map. `JLc` at 540221
+  calibrates the increasing-roll coefficient by 64 bisection iterations over
+  expected trial count. The success check at 540687 uses
+  `min(1, coefficient * (failures + 1))`, then resets on success. The map is
+  not reset in the inspected `initCrafting` reducer. Current-craft
+  `actionTracking[name].attempts` proves the streak only after a recorded
+  success. An unknown carry-over is modeled with robust bounds over both
+  outcomes, not a fabricated exact probability.
+- `oho` at 318150 implements independent critical applications, up to nine
+  additional critical-chain rolls using `overcrit`. Values above 90 add to
+  the multiplier; the chain chance is floored after each multiplication.
+  The native helper itself draws randomness, so it must never be called as
+  an expected-value calculation. The new branch resolver implements its
+  arithmetic without invoking the live RNG.
+- `eRc` at 540717 dispatches `actionFailed` before the ordinary turn tick.
+  Nine Fates Flame uses that event (265817 onward). Branch simulation now
+  retains the resulting whole buff on the failed branch.
+
+These checks are covered by `stochasticTransitions.test.ts`, the survival
+regressions, PRD extraction tests, and Rust stability-phase regressions. They
+remain scoped evidence, not an exhaustive audit of all 0.7.18 effects.
+
+
+## 19. PR #4 native-selector verification (0.7.18)
+
+Rechecked on 2026-10-29 using the installed ASAR, fingerprint
+`2905116188-1793133742679`. Set `AFNM_GAME_DIR` to the Steam game directory
+before running `runtime:oracle` or `runtime:extract`. The oracle reports
+`gameVersion: 0.7.18-97c093b`; its older minified buildVersion pattern returns
+null and is not used as version evidence. Nested ASAR lookups now use host path
+separators so Windows extraction includes `dist-electron/main/index.js`.
+Extraction lives in `tmp/installed-game-runtime/2905116188-1793133742679/`.
+
+The current crafting logic is in `dist-electron/Game.js`, SHA-256
+`cc6ca4a00d277d5ddf86262cbc786fba8f7b27c823d0c3b788aec8d7f4fb9b4e`.
+Search these build-specific symbols in the extracted source (names are not
+stable across releases):
+
+- `recipeConditionEffects:eu` exports `eu=[...]`, an ordered array of
+  condition definitions, not a keyed object. Array order defines rule indices.
+- `scu` accepts reagents or pills with `pillKind === 'crafting'`.
+  `ccu` calls this predicate before slot selection; accepting all pills would
+  diverge from the native hook.
+- `eR` normalizes blocks, legacy conditions with AND/OR, and single
+  condition rows. `iho` and `rho` compile `condition/check/value` fields.
+  They do not consume a `kind/comparison` rule schema.
+- `ccu` calls `hEl(fEl(item.effects), entity)` to skip items with an
+  already-active non-stacking createBuff effect. `fEl` extracts direct
+  createBuff definitions; `hEl` tests any matching positive stack count.
+  Stackable buffs at their cap and direct resource restoration are not part
+  of that native predicate. Adding broader satisfaction rules would mispredict
+  which items the game consumes.
+- `NF` / `vho` / `_ho` seed resistance from entity stats and add buff
+  stats. Condition-specific modifiers apply to control/intensity and cost
+  channels, not resistance. The simulator likewise seeds raw resistance,
+  folds buffs once through `getCraftingActionVariables`, and recalculates
+  payment between selected items. Passing already-aggregated resistance into
+  the raw base would double-count buffs.
+- `ccu` uses `floor(pillsPerRound) - consumedPills` and selects nothing
+  when this is zero or negative. Zero must not be converted into one.
+
+The disputes and fixes are backed by `prReviewRegressions.test.ts` and
+`nativeAutoUsePlan.test.ts`. These are scoped observations, not an exhaustive
+claim of parity for every crafting mechanic.
+
+
+### Native harmony rule indices, rechecked during review round 2
+
+The same installed 0.7.18 artifact/hash was rechecked on 2026-10-29. Its
+`Wmo` array still contains only forge, alchemical, inscription, resonance,
+formless, enhancingEcho and eccentricDecree, in that order. This is the native
+rule selector's whitelist, distinct from the nine playable harmony types in
+`harmonyRegistry.ts`. In `rho`, a Harmony Type index not present in `Wmo`
+returns expression `0` before interpreting the comparison operator. Thus
+indices 7/8 do not fire for either equality or inequality. A valid inequality
+such as `Harmony Type != forge` can still match Returning Cycle.
+
+Replacing the native seven-index whitelist with the general nine-entry gameplay
+registry would incorrectly predict item consumption. The whitelist is named and
+commented explicitly in `nativeAutoUsePlan.ts`; `prReviewRound2.test.ts`
+covers invalid indices for both comparisons and valid comparisons across all
+nine playable harmonies. Revisit this list when runtime evidence changes.
+
+
+### Native pre-click gate, rechecked for review comment 4413767132
+
+In the same inspected 0.7.18 Game.js, the control builder computes action costs
+with `s_o` and `canUse` with `dcu` using the pre-action entity/variables,
+then passes that flag and the click callback to the technique control. Only the
+click callback runs native auto-use `v()`, followed by technique dispatch
+`bRc` and history recording `cpc`. Thus an item restoring Qi cannot make a
+currently disabled technique clickable. Native auto-use stays inside the enabled
+control path; direct dispatch remains forbidden when the loadout is active.
+This is also the contract already recorded in section 17.3.
+
+### Native availability payload, rechecked for review comment 4416939157
+
+The same 0.7.18-97c093b artifact was rechecked on 2026-10-30. `dcu`
+requires sufficient Qi, buff payment/requirement stacks, toxicity capacity and
+droplets, an exact condition match, zero cooldown and positive stability. It also
+checks `firstActionOnly` against step zero, `minStability` with a strict `>`
+comparison, and `disableAtMaxStacks` against each createBuff effect. Serpent's
+Foundation declares firstActionOnly, Coiled Strike declares minStability 45,
+and capped-buff techniques declare disableAtMaxStacks. These are real native
+gates, not hypothetical future metadata.
+
+The worker previously lacked those three gates because it has no live native
+callback. `nativeAvailability.ts` now mirrors them from the raw payload, with
+simulated cooldowns and resource state. The raw schema is checked before
+certification, including matching directly copied payment fields. Unknown
+fields or malformed gates cannot receive a certificate. An executable comparison
+against the extracted `dcu` passed 486 combinations of gates, step, stability,
+stacks and condition. This is scoped availability evidence, not exhaustive
+transition parity. Existing Rust arithmetic and its regenerated differential
+corpus are unchanged.
+
+### Missing harmony observations, review comment 4422591232
+
+The same 0.7.18 artifact was rechecked on 2026-10-30. In the Resonance
+different-action branch, unless it is the second consecutive action toward the
+pending resonance, the runtime subtracts 9 harmony and 3 stability and reduces
+strength. `processResonance` models this. Omitting the subsystem is therefore
+not a neutral approximation: at stability 5, a refine costing 2 can end the
+craft immediately after the additional 3-stability penalty.
+
+`hydrateHarmonyData` reports `source: missing` for a non-forge harmony when no
+live progress payload exists. An empty or incomplete payload is still labeled
+`progressState`; that source tag does not establish subsystem completeness.
+Certification checks the resulting envelope and requires the active stateful
+subsystem after step zero. Its Returning Cycle presentation defaults
+do not prove that live charges/stored Qi are zero. The adapter now preserves
+that uncertainty by withholding missing-source data from the search state.
+Certification rejects missing/unknown harmony types, absent envelopes, and
+missing active stateful subsystems after step zero. Observed Forge fallbacks
+remain accepted. The regression in `reviewSafetyIdentity.test.ts` contrasts the
+missing Resonance snapshot with the observed penalty-bearing state.
+
+### Guaranteed actions preserve PRD carry-over, independent review
+
+The same 0.7.18 artifact's success block updates `KLc` only inside the stated
+chance `u < 1` branch. A failure increments the map and a successful trial
+deletes its entry. A stated chance of one bypasses the trial and leaves the
+map unchanged. This differs from a real trial whose streak-adjusted chance
+reaches one: that trial still resets the streak on success.
+
+An independent Astra audit supplied a two-action source reproduction: base
+success 0.5, a +0.5 chance condition on the first action, then neutral. The
+simulator incorrectly reset the streak on the first guaranteed action. An
+incoming streak of two subsequently produced 30.2103% instead of 90.6309%;
+an unknown incoming streak incorrectly became an exact probability. Root
+independently reproduced the result and inspected the native block before
+repair. `prdGuaranteedCarry.test.ts` now covers known/unknown preservation,
+policy uncertainty, real probability-one trials, zero-chance trials and an
+immediately guaranteed finish. This is scoped source/artifact evidence, not
+live-game sampling.
+
+### Celadon Cycle stack events and consumption
+
+The installed artifact was rechecked as **0.7.18-97c093b**. Flickering Celadon
+Flame's `Celadon Cycle` creates Fusion, Refinement, Support and Stability Ember
+from its four action-type blocks. Embers are non-stacking, capped at one. Each
+named stack-gain listener checks all four native aliases, restores 0.1 times
+maximum Qi and 10 stability, then applies four negative createBuff effects.
+
+The native `op` alias helper preserves case (`Fusion_Ember`, not merely a
+lowercase optimizer key). `p2` emits stackGained after an accepted positive
+addition, but not when an existing non-stacking buff ignores it. `XLc` routes
+negative buff createBuff amounts through `f2`, which consumes non-stacking buffs
+too. The trigger dispatcher recomputes `PF` for each matching owner and guards
+re-entry by event/owner. Its captured variable frame remains in use across the
+whole effect list. `WLc` publishes actual capped pool restoration, including
+zero, while `RLc` retains stability overdraft until end-of-action cleanup.
+`gRc` executes action-type buffs after either success or failure.
+
+An isolated comparison loaded the actual native Celadon definition plus native
+stack appliers, trigger dispatcher, buff executor and resource appliers from
+the extracted artifact. **96 comparisons passed** across all 24 action orders,
+one/two cycles and boosted/unboosted payouts. Stat frames and expression
+plumbing were isolated to this tested payload; this is not full-game execution.
+Source tests additionally cover repeated embers, chance branches, caps, low
+stability, current maximum Qi, downstream triggers and nested-event guards.
+The historical Rust corpus is unchanged and does not establish Celadon parity;
+the production TypeScript worker is the authority for this new support.
+
+### Resource phase audit (2026-10-31, 0.7.18-97c093b)
+
+The installed artifact was rechecked through the runtime summary before this audit. Native `WLc` branches on the raw operation sign: spending floors the pool at zero without an upper cap; restoration applies Qi boost and its captured maximum. It publishes the actual state delta, including zero. Negative boosts can produce signed restoration deltas; a later spend can also report a signed delta when flooring a temporarily negative pool. These are applier semantics, not evidence that every generated probe represents a normal equipment loadout.
+
+The technique executor captures its variable frame for the mastery list, executes mastery effects, recomputes the payment frame, pays Qi and then stability, and executes successful technique effects. The buff executor captures a fresh frame per buff; event dispatch captures one per owner and retains it across that handler block. Native `RLc` retains stability debt through the action. Turn cleanup captures its pool cap after buff execution and before harmony, then performs final flooring/capping. The item executor does not perform that technique-turn cleanup.
+
+The independent generator [generate-qi-resource-oracle.cjs](../../scripts/optimizer/generate-qi-resource-oracle.cjs) accepts the audited pretty bundle and refuses a changed `WLc` hash. It imports no simulator code. [qiResourceOracle.json](../../src/__tests__/fixtures/qiResourceOracle.json) records 1,440 literal expectations and the source-function SHA-256. The matrix covers four caller phases, two initial pools, five boost values and two ordered operations drawn from six amounts. Observer values are doubled before encoding so native scaling rounding does not erase fractional deltas. The generated expectations are checked in [qiPhaseSafety.test.ts](../../src/__tests__/qiPhaseSafety.test.ts).
+
+This comparison isolates the pool applier and declared caller order. Separate regressions cover live/captured frames, payment observers, item continuation, chance branches and rejection of unsupported progress-dependent sequencing. It is not full-game execution, full Rust/native equivalence or in-game acceptance of Ashglass Ward.
+
+The native condition evaluator distinguishes scope types: pool conditions and expression conditions read the captured variable frame, while native completion/perfection/stability gates read live progress. The new regression tests distinguish captured expressions from the live bar checks involved in this repair. Ordinary progress-derived stat buffs capture their values for a technique and refresh on the next action; mentioning completion/perfection in a stat formula is not by itself an unsupported mechanic.

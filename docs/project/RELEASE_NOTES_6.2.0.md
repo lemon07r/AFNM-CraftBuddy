@@ -4,8 +4,9 @@ status: active
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.6-7c586da
-last_verified: 2026-07-29
-source_of_truth: git history on main, package.json, src/optimizer/search.ts, src/optimizer/outcome.ts, src/optimizer/searchBackend.ts, src/modContent/searchBackendClient.ts
+last_verified: 2026-10-29
+source_of_truth: git tag v6.2.0 at 7e9fe8393925db17a49b03841293b5a232937321
+review_scope: Historical upstream narrative compared with the tagged record; runtime, test and benchmark claims are not revalidated as current behavior
 review_cycle_days: 90
 related_files:
   - docs/project/RUNTIME_EVIDENCE.md
@@ -17,6 +18,8 @@ related_files:
 ---
 
 # Release Notes 6.2.0
+
+Historical upstream release record. Reviewed against `v6.2.0` on 2026-10-29; the contents matched that tagged record. The narrative below describes that release, not the current local fork.
 
 CraftBuddy 6.2.0 fixes one scoring plateau and makes the search substantially
 faster in practice, without touching the 6.x outcome architecture or any

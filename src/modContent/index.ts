@@ -40,7 +40,6 @@ import {
   VISIBLE_CONDITION_QUEUE_LENGTH,
   setNativeCraftingUtils,
   setNativeCanUseActionProvider,
-  preloadNativeMctsPolicyEngine,
   buildCanonicalNativeVariables,
   CrossStepSearchCache,
   FINISH_CRAFT_KEY,
@@ -69,6 +68,12 @@ import {
   type AutoCraftUiState,
 } from '../settings/autoCraft';
 import { resolveBaseCraftingStats } from './configStats';
+import { extractNativeAutoUsePlan } from './nativeAutoUseExtraction';
+import { extractTechniqueFailureStreaks } from './techniqueSuccessHistory';
+import {
+  buildCrossStepCacheScope,
+  searchSettingsSignature,
+} from './recommendationContext';
 import {
   createAutoCraftController,
   type AutoCraftExecutionRequest,
@@ -79,7 +84,6 @@ import { createDomAutoCraftExecutor } from './autoCraftExecutor';
 import {
   diffCraftStateSignatures,
   readLiveCraftStateSignature,
-  serializeCanonicalValue,
   serializeHarmonyData,
   serializeTechniqueRoster,
 } from './craftStateSignature';
@@ -255,14 +259,6 @@ let targetsNeedComplexityScaling = false;
 
 // Settings
 let currentSettings: CraftBuddySettings = loadSettings();
-function preloadExperimentalEngineIfEnabled(
-  settings: CraftBuddySettings = currentSettings,
-): void {
-  if (settings.optimizerEngine === 'experimental') {
-    preloadNativeMctsPolicyEngine();
-  }
-}
-preloadExperimentalEngineIfEnabled();
 let autoCraftUiState: AutoCraftUiState = createDefaultAutoCraftUiState(
   currentSettings.preferredAutoModePolicy,
 );
@@ -282,57 +278,10 @@ setSearchBackendDiagnosticsHook((message) =>
   debugLog(`[CraftBuddy] ${message}`),
 );
 
-/**
- * Scope signature for the cross-step transposition cache: everything that
- * changes what a cached score means while staying constant across the steps
- * of one craft. Budget fields (time/nodes/beam) are deliberately excluded —
- * they change how much is explored, not what a state is worth.
- */
-function buildCrossStepCacheScope(
-  config: OptimizerConfig,
-  targetCompletion: number,
-  targetPerfection: number,
-  searchConfig: ReturnType<typeof getSearchConfig>,
-): string {
-  return serializeCanonicalValue({
-    targets: [targetCompletion, targetPerfection],
-    caps: [config.maxCompletion ?? null, config.maxPerfection ?? null],
-    stats: [
-      config.maxQi,
-      config.maxStability,
-      config.baseIntensity,
-      config.baseControl,
-      config.defaultBuffMultiplier,
-    ],
-    flags: [
-      config.isSublimeCraft === true,
-      config.trainingMode === true,
-      config.targetMultiplier ?? null,
-      config.conditionEffectType ?? null,
-      config.craftingType ?? null,
-      config.pillsPerRound ?? null,
-    ],
-    roster: (config.skills ?? [])
-      .map((skill) => skill.key)
-      .sort()
-      .join('|'),
-    scoring: [
-      searchConfig.goalPriorityBias,
-      searchConfig.overcraftAmbition !== false,
-    ],
-  });
-}
-
-// Track search-affecting settings for stale detection
-interface LastSearchSettings {
-  lookaheadDepth: number;
-  searchTimeBudgetMs: number;
-  searchMaxNodes: number;
-  searchBeamWidth: number;
-  searchGoalPriorityBias: number;
-  optimizerEngine: CraftBuddySettings['optimizerEngine'];
-}
-let lastSearchSettings: LastSearchSettings | null = null;
+let lastSearchSettings: string | null = null;
+let lastSearchLiveSignature: string | null = null;
+let recommendationStateVerifier: (() => AutoCraftStateVerification) | null =
+  null;
 
 const autoCraftExecutor = createDomAutoCraftExecutor({
   getRootElement: getGameRootElement,
@@ -356,31 +305,22 @@ const autoCraftController = createAutoCraftController({
  * Check if current settings differ from last calculated settings.
  */
 function areSearchSettingsStale(): boolean {
-  if (!lastSearchSettings) return false;
   return (
-    currentSettings.lookaheadDepth !== lastSearchSettings.lookaheadDepth ||
-    currentSettings.searchTimeBudgetMs !==
-      lastSearchSettings.searchTimeBudgetMs ||
-    currentSettings.searchMaxNodes !== lastSearchSettings.searchMaxNodes ||
-    currentSettings.searchBeamWidth !== lastSearchSettings.searchBeamWidth ||
-    currentSettings.searchGoalPriorityBias !==
-      lastSearchSettings.searchGoalPriorityBias ||
-    currentSettings.optimizerEngine !== lastSearchSettings.optimizerEngine
+    lastSearchSettings !== null &&
+    searchSettingsSignature(currentSettings) !== lastSearchSettings
   );
 }
 
 /**
  * Snapshot current search settings after a calculation completes.
  */
-function snapshotSearchSettings(): void {
-  lastSearchSettings = {
-    lookaheadDepth: currentSettings.lookaheadDepth,
-    searchTimeBudgetMs: currentSettings.searchTimeBudgetMs,
-    searchMaxNodes: currentSettings.searchMaxNodes,
-    searchBeamWidth: currentSettings.searchBeamWidth,
-    searchGoalPriorityBias: currentSettings.searchGoalPriorityBias,
-    optimizerEngine: currentSettings.optimizerEngine,
-  };
+function snapshotSearchSettings(signature: string): void {
+  lastSearchSettings = signature;
+}
+
+function liveSearchInputsChanged(): boolean {
+  const reading = readLiveCraftStateSignature(cachedStore);
+  return reading.ok && reading.signature !== lastSearchLiveSignature;
 }
 
 let lastDiagnosticsCheckCount = 0;
@@ -611,7 +551,9 @@ function buildAutoCraftSnapshot(): AutoCraftRuntimeSnapshot {
     craftStep: parseGameNumber((lastProgressState as any)?.step, 0),
     craftStateRevision: nextCraftStateRevision(stateFingerprint),
     nativeAutoUse: readCurrentNativeAutoUseStatus(),
-    verifyRevision: buildCraftStateVerifier(),
+    // Bind verification to the state that produced the recommendation, never
+    // to a newer snapshot created just before dispatch.
+    verifyRevision: recommendationStateVerifier ?? buildCraftStateVerifier(),
   };
 }
 
@@ -632,6 +574,8 @@ function buildExecutionRequestForRecommendation(
     actionName: recommendation.skill.name,
     skill: recommendation.skill,
     reason: recommendation.reasoning,
+    transitionUnresolvedProbability:
+      recommendation.planning?.transitionUnresolvedProbability,
   };
 }
 
@@ -856,6 +800,8 @@ function buildOptimizerReplayInputSnapshot(params: {
       beamWidth: params.searchConfig.beamWidth,
       goalPriorityBias: params.searchConfig.goalPriorityBias,
       overcraftAmbition: params.searchConfig.overcraftAmbition,
+      perfectionBandGoal: params.searchConfig.perfectionBandGoal,
+      completionBandCeiling: params.searchConfig.completionBandCeiling,
       useMonteCarloTreeSearch: params.searchConfig.useMonteCarloTreeSearch,
     },
     settings: {
@@ -865,6 +811,9 @@ function buildOptimizerReplayInputSnapshot(params: {
       searchBeamWidth: currentSettings.searchBeamWidth,
       searchGoalPriorityBias: currentSettings.searchGoalPriorityBias,
       overcraftAmbition: currentSettings.overcraftAmbition,
+      perfectionBandGoal: currentSettings.perfectionBandGoal,
+      completionBandCeiling: currentSettings.completionBandCeiling,
+      searchThreads: currentSettings.searchThreads,
       optimizerEngine: currentSettings.optimizerEngine,
       compactMode: currentSettings.compactMode,
       panelVisible: currentSettings.panelVisible,
@@ -1595,7 +1544,7 @@ function buildConfigFromEntity(
     ...extraSkills,
   ];
   const pillsPerRound = Math.max(
-    1,
+    0,
     parseGameNumber((stats as any)?.pillsPerRound, 1),
   );
 
@@ -1621,6 +1570,7 @@ function buildConfigFromEntity(
 
   return {
     maxQi,
+    techniqueSuccessModel: 'prd',
     maxStability: targetStability,
     maxCompletion: maxCompletionCap,
     maxPerfection: maxPerfectionCap,
@@ -1644,6 +1594,24 @@ function buildConfigFromEntity(
 /**
  * Update recommendation based on current crafting state.
  */
+function recalculateCurrentCraft(): void {
+  const root = cachedStore?.getState?.();
+  const crafting = extractActiveCraftingState(root);
+  const entity = crafting?.player ?? lastEntity;
+  const progress = crafting?.progressState ?? lastProgressState;
+  if (!entity || !progress) return;
+  crossStepSearchCache.clear();
+  updateRecommendation(
+    entity,
+    progress,
+    root?.inventory?.items as InventoryItemLike[] | undefined,
+    Number(crafting?.consumedPills ?? 0) || 0,
+    crafting?.trainingMode !== undefined,
+    crafting?.recipeStats ?? lastRecipeStats,
+    crafting?.recipe ?? lastRecipe,
+  );
+}
+
 function updateRecommendation(
   entity: CraftingEntity,
   progressState: ProgressState,
@@ -1653,6 +1621,10 @@ function updateRecommendation(
   recipeStats?: CraftingRecipeStats,
   recipe?: RecipeItem,
 ): void {
+  const searchInputVerifier = buildCraftStateVerifier();
+  const liveReading = readLiveCraftStateSignature(cachedStore);
+  lastSearchLiveSignature = liveReading.ok ? liveReading.signature : null;
+  const searchSettingsAtStart = searchSettingsSignature(currentSettings);
   // Ensure native providers are wired now that modAPI may be available
   ensureNativeProvidersInitialized();
 
@@ -1849,6 +1821,18 @@ function updateRecommendation(
     recipe || lastRecipe,
     recipeStats || lastRecipeStats,
   );
+  const nativeAutoUseProjection = extractNativeAutoUsePlan(
+    cachedStore?.getState?.(),
+    entity,
+    progressState,
+    inventoryItems ?? [],
+    (window.modAPI?.gameData?.items ?? {}) as Record<string, unknown>,
+    window.modAPI?.gameData?.recipeConditionEffects,
+  );
+  currentConfig.nativeAutoUsePlan = nativeAutoUseProjection.plan;
+  nativeAutoUseProjection.inventoryCounts.forEach((count, key) =>
+    itemCounts.set(key, count),
+  );
 
   // Calculate current max stability from targetStability - stabilityPenalty
   // The game tracks stability decay via stabilityPenalty in progressState, not a separate maxStability field
@@ -1887,11 +1871,18 @@ function updateRecommendation(
   } else {
     integrationDiagnostics.lastHarmonyDataSource = 'missing';
   }
-  const nativeVariables = buildCanonicalNativeVariables({
-    nativeVariables: rawNativeVariables,
-    buffs: extractedBuffs,
-    harmonyData,
-  });
+  const nativeVariables = {
+    ...buildCanonicalNativeVariables({
+      nativeVariables: rawNativeVariables,
+      buffs: extractedBuffs,
+      harmonyData,
+    }),
+    ...extractTechniqueFailureStreaks(
+      progressState?.actionTracking,
+      currentConfig.skills,
+    ),
+    base_overcrit: parseGameNumber(entity?.stats?.overcrit, 0),
+  };
 
   const state = new CraftingState({
     qi: pool,
@@ -1928,7 +1919,9 @@ function updateRecommendation(
     consumedPillsThisTurn,
     buffs: extractedBuffs,
     harmony: gameHarmony,
-    harmonyData,
+    // Presentation hydration may supply defaults (notably Returning Cycle).
+    // A missing observation cannot establish a safe simulated transition.
+    harmonyData: harmonyDataSource === 'missing' ? undefined : harmonyData,
     completionBonus: completionBonusStacks,
     nativeVariables,
     step: progressState?.step || 0,
@@ -2077,6 +2070,10 @@ function updateRecommendation(
       }
 
       currentRecommendation = recommendation;
+      recommendationStateVerifier = () =>
+        searchSettingsSignature(currentSettings) !== searchSettingsAtStart
+          ? { kind: 'stale', changed: ['settings'] }
+          : searchInputVerifier();
       currentOptimizerReplayTurn = {
         ...(currentOptimizerReplayTurn ?? {
           sequence: optimizerReplayTurnSequence,
@@ -2134,7 +2131,7 @@ function updateRecommendation(
       // Always clear calculating flag even if search throws.
       isCalculating = false;
       clearCraftStartPending();
-      snapshotSearchSettings();
+      snapshotSearchSettings(searchSettingsAtStart);
       checkIntegrationHealth();
       syncAutoCraftController();
       if (currentOptimizerReplayTurn) {
@@ -2218,32 +2215,32 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
   applyOverlayContainerLayout();
 
   const handleSettingsChange = (newSettings: CraftBuddySettings) => {
+    const changed =
+      searchSettingsSignature(currentSettings) !==
+      searchSettingsSignature(newSettings);
     currentSettings = newSettings;
-    preloadExperimentalEngineIfEnabled(newSettings);
     autoCraftController.setPolicy(newSettings.preferredAutoModePolicy);
     if (!newSettings.panelVisible && autoCraftUiState.armed) {
       stopAutoCraft('Auto mode stopped because the panel was hidden.');
     }
     applyOverlayContainerLayout();
+    if (changed) recalculateCurrentCraft();
     renderOverlay();
   };
 
   const handleSearchSettingsChange = (newSettings: CraftBuddySettings) => {
-    // Update settings and re-render to reflect stale state
+    const changed =
+      searchSettingsSignature(currentSettings) !==
+      searchSettingsSignature(newSettings);
     currentSettings = newSettings;
-    preloadExperimentalEngineIfEnabled(newSettings);
     applyOverlayContainerLayout();
+    if (changed || (!isCalculating && areSearchSettingsStale()))
+      recalculateCurrentCraft();
     renderOverlay();
   };
 
   const handleRecalculate = () => {
-    // Trigger recalculation with current entity/progress state
-    if (lastEntity && lastProgressState) {
-      const inventoryItems = cachedStore?.getState?.()?.inventory?.items as
-        | InventoryItemLike[]
-        | undefined;
-      updateRecommendation(lastEntity, lastProgressState, inventoryItems);
-    }
+    recalculateCurrentCraft();
   };
 
   const effectiveTargetCompletion = (() => {
@@ -2337,6 +2334,9 @@ function clearActiveCraftingRuntimeState(): void {
   lastProgressState = null;
   lastKnownCraftingTechniques = undefined;
   currentRecommendation = null;
+  recommendationStateVerifier = null;
+  lastSearchLiveSignature = null;
+  lastSearchSettings = null;
   currentConfig = null;
   currentCondition = undefined;
   nextConditions = [];
@@ -2813,7 +2813,7 @@ function detectCraftingState(): {
             | InventoryItemLike[]
             | undefined,
           consumedPillsThisTurn: Number(craftingState?.consumedPills ?? 0) || 0,
-          trainingMode: !!craftingState?.trainingMode,
+          trainingMode: craftingState?.trainingMode !== undefined,
         };
       }
     } catch (e) {
@@ -3122,6 +3122,7 @@ function pollCraftingState(): void {
     );
 
     if (
+      liveSearchInputsChanged() ||
       newCompletion !== currentCompletion ||
       newPerfection !== currentPerfection ||
       newStability !== currentStability ||
@@ -4499,6 +4500,7 @@ function processCraftingState(craftingState: any): void {
     currentMaxStability,
   );
   const stateChanged =
+    liveSearchInputsChanged() ||
     parseGameNumber(progress.completion, 0) !== currentCompletion ||
     parseGameNumber(progress.perfection, 0) !== currentPerfection ||
     parseGameNumber(progress.stability, 0) !== currentStability ||
@@ -4538,7 +4540,7 @@ function processCraftingState(craftingState: any): void {
       progress,
       inventoryItems,
       Number(craftingState?.consumedPills ?? 0) || 0,
-      !!craftingState?.trainingMode,
+      craftingState?.trainingMode !== undefined,
       recipeStats as CraftingRecipeStats | undefined,
       recipe,
     );

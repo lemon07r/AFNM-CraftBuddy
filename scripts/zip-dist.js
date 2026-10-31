@@ -28,9 +28,9 @@ async function zipDist() {
       if (!fs.existsSync(distTranslationsDir)) {
         fs.mkdirSync(distTranslationsDir, { recursive: true });
       }
-      const translationFiles = fs.readdirSync(translationsDir).filter(
-        (f) => f.endsWith('.json'),
-      );
+      const translationFiles = fs
+        .readdirSync(translationsDir)
+        .filter((f) => f.endsWith('.json'));
       for (const file of translationFiles) {
         fs.copyFileSync(
           path.resolve(translationsDir, file),
@@ -48,6 +48,7 @@ async function zipDist() {
     console.log(`Successfully zipped ${package.name} to ${zipPath}`);
   } catch (err) {
     console.error('Error zipping dist folder:', err);
+    process.exitCode = 1;
   }
 }
 

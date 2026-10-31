@@ -52,6 +52,8 @@ export {
   setConditionTransitionProvider,
   VISIBLE_CONDITION_QUEUE_LENGTH,
 } from './search';
+export { constrainedSearch, comparePlanningValues } from './constrainedPlanner';
+export type { PlanningValue } from './constrainedPlanner';
 export type {
   SkillRecommendation,
   SearchResult,
@@ -68,6 +70,7 @@ export type {
 // runtime code must consume these instead of recomputing any of them.
 export {
   deriveOutcomeBands,
+  resolvePlanningGoals,
   buildOutcomeBands,
   classifyOutcome,
   bandThreshold,
@@ -84,6 +87,8 @@ export type {
   OutcomeBandParams,
   OutcomeClassification,
   TierRequirement,
+  PlanningGoals,
+  PlanningGoalSettings,
 } from './outcome';
 
 // Harmony system exports
@@ -149,6 +154,12 @@ export type {
   SearchWorkerRequest,
   SearchWorkerResponse,
 } from './searchBackend';
+
+export { projectNativeAutoUseBranches } from './nativeAutoUsePlan';
+export type {
+  NativeAutoUsePlan,
+  NativeAutoUsePlanItem,
+} from './nativeAutoUsePlan';
 
 // Game-accurate type exports
 export {

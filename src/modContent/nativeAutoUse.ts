@@ -100,7 +100,7 @@ export interface NativeAutoUseProjectionInput {
   readonly slots: readonly NativeAutoUseSlot[];
   /** `progressState.step`; reagents are only applied on step 0. */
   readonly step: number;
-  /** `progressState.consumedPills`, already spent from this turn's budget. */
+  /** `crafting.consumedPills`, already spent from this turn's budget. */
   readonly consumedPills: number;
   /** Aggregated `pillsPerRound`; the runtime defaults it to 1, not 0. */
   readonly pillsPerRound: number;
@@ -345,6 +345,11 @@ export function readNativeAutoUseStatus(
   }
 
   const player = readRecord(readRecord(state.player)?.player);
+  // The 0.7.18 UI retains the configured slots when auto-use is disabled.
+  // Those items belong to the optimizer again while the native hook is off.
+  if (player?.craftingAutoUseEnabled === false) {
+    return INACTIVE_NATIVE_AUTO_USE;
+  }
   const slots = readSlots(
     readRecord(player?.currentCraftingAutoUseLoadout)?.slots,
   );
@@ -390,8 +395,8 @@ export function readNativeAutoUseStatus(
     active: true,
     slotCount: slots.length,
     coveredItemNames,
-    // The runtime defaults the aggregated stat to 1, never 0.
-    pillsPerRound: Math.max(1, Math.floor(readNumber(stats?.pillsPerRound, 1))),
+    // An absent stat defaults to 1; explicit zero is a valid no-use budget.
+    pillsPerRound: Math.max(0, Math.floor(readNumber(stats?.pillsPerRound, 1))),
     availableToxicity: maxToxicity - toxicity,
     // Definedness, not truthiness: a defined-but-false trainingMode still
     // suppresses inventory removal.

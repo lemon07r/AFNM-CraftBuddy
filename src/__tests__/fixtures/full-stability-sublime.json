@@ -1,0 +1,60 @@
+{
+  "name": "Full-stability, no-benefit recovery in a sublime craft",
+  "description": "Skill and config objects are overrides of the helpers in run_probes.js. The search is recalculated after each restore; the gamble itself is not sampled.",
+  "state": {
+    "qi": 200,
+    "stability": 60,
+    "initialMaxStability": 60,
+    "completion": 100,
+    "perfection": 100,
+    "completionBonus": 0
+  },
+  "config": {
+    "maxQi": 200,
+    "maxStability": 60,
+    "baseControl": 10,
+    "baseIntensity": 10,
+    "minStability": 0,
+    "maxToxicity": 100,
+    "defaultBuffMultiplier": 1.4,
+    "targetCompletion": 100,
+    "targetPerfection": 100,
+    "maxCompletion": 3000,
+    "maxPerfection": 3000,
+    "isSublimeCraft": true
+  },
+  "skills": [
+    {
+      "key": "gamble",
+      "name": "Gamble",
+      "qiCost": 0,
+      "stabilityCost": 60,
+      "baseCompletionGain": 3000,
+      "basePerfectionGain": 3000,
+      "successChance": 0.5
+    },
+    {
+      "key": "restore",
+      "name": "Restore",
+      "qiCost": 20,
+      "stabilityCost": 0,
+      "stabilityGain": 40,
+      "preventsMaxStabilityDecay": true
+    }
+  ],
+  "searchConfig": {
+    "timeBudgetMs": 2000,
+    "maxNodes": 10000,
+    "beamWidth": 8,
+    "completionBandCeiling": 8,
+    "perfectionBandGoal": 8,
+    "useMcts": false,
+    "searchEngine": "legacy"
+  },
+  "targetCompletion": 100,
+  "targetPerfection": 100,
+  "lookaheadDepth": 6,
+  "currentCondition": "neutral",
+  "forecast": [],
+  "maxReplans": 15
+}

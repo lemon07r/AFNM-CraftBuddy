@@ -1,11 +1,12 @@
 /**
- * CraftBuddy - Craft Outcome Evaluation (AFNM 0.7.6)
+ * CraftBuddy - Craft Outcome Evaluation (AFNM 0.7.18)
  *
  * The game decides a craft's outcome tier *conjunctively*: completion and
  * perfection each have to clear their own band count, and failing either one
  * caps the result regardless of how far the other overshoots.
  *
- * Ground truth: installed runtime 0.7.6-7c586da.
+ * Band/tier baseline: 0.7.6-7c586da. Auto-finish reverified against installed
+ * 0.7.18-97c093b (RUNTIME_EVIDENCE section 18).
  *
  * Band counting (`hH`, mirrored by `getBonusAndChance` in `./gameTypes`):
  *
@@ -23,9 +24,7 @@
  *
  *   shouldFinish =
  *     stability <= 0 ||
- *     (completion >= completionFinishFlat && perfection >= perfectionFinishFlat) ||
- *     (canOvercraft && hH(completion, target).guaranteed >= 5 &&
- *      perfection >= perfectionFinishFlat);
+ *     (completion >= completionFinishFlat && perfection >= perfectionFinishFlat);
  *
  * Tier decision, using *effective* band counts that include the fractional
  * bonus roll:
@@ -112,16 +111,15 @@ export interface OutcomeBands {
   readonly perfectionCapBandCount?: number;
   /**
    * User ambition: how many perfection bands ("stars") the player asked the
-   * optimizer to chase. `undefined` is auto - the tier requirement decides,
-   * which is the pre-ambition behaviour. Normalized by `buildOutcomeBands`;
-   * never recompute it from raw settings elsewhere.
+   * optimizer to chase. `undefined` is Auto; `resolvePlanningGoals` combines
+   * it with the ambition mode and actual cap. Normalized by `buildOutcomeBands`.
    */
   readonly ambitionPerfectionBands?: number;
   /**
    * User ambition: the completion band count past which the player does not
-   * want any more investment ("keep completion at 200%"). `undefined` is
-   * auto. Only bounds overcraft *extras* - the target tier's completion
-   * requirement always stays reachable.
+   * want any more investment. The legacy ceiling field is also the explicit
+   * requested completion goal in `resolvePlanningGoals`. Item tier rules stay
+   * independent of that request.
    */
   readonly ambitionCompletionCeilingBands?: number;
 }
@@ -205,19 +203,106 @@ export interface OutcomeBandParams {
   completionBandCeiling?: number;
 }
 
+/** Search objectives are separate from the game's outcome and finish rules. */
+export interface PlanningGoalSettings {
+  overcraftAmbition?: boolean;
+  perfectionBandGoal?: number;
+  /** Legacy persisted name; an explicit value now requests completion bands. */
+  completionBandCeiling?: number;
+}
+
+export interface PlanningGoals {
+  completion: number;
+  perfection: number;
+  baselineCompletion: number;
+  baselinePerfection: number;
+  bands: OutcomeBands;
+}
+
+/**
+ * Resolve both requested bars against the actual recipe caps. Auto targets the
+ * caps when extra-band ambition is enabled; without a reported cap, it uses
+ * the ordinary tier requirement. Explicit goals may be below that tier: that
+ * changes the requested work, never the item's tier or the game's finish rule.
+ */
+export function resolvePlanningGoals(
+  config: Pick<
+    OptimizerConfig,
+    'isSublimeCraft' | 'maxCompletion' | 'maxPerfection'
+  >,
+  targetCompletion: number,
+  targetPerfection: number,
+  settings: PlanningGoalSettings = {},
+): PlanningGoals {
+  const bands = buildOutcomeBands({
+    targetCompletion,
+    targetPerfection,
+    isSublimeCraft: config.isSublimeCraft,
+    maxCompletionCap: config.maxCompletion,
+    maxPerfectionCap: config.maxPerfection,
+    perfectionBandGoal: settings.perfectionBandGoal,
+    completionBandCeiling: settings.completionBandCeiling,
+  });
+  const requirement = TIER_REQUIREMENTS[bands.targetTier];
+  const resolveBar = (
+    width: number,
+    requiredBands: number,
+    cap: number | undefined,
+    requestedBands: number | undefined,
+  ): { goal: number; baseline: number } => {
+    if (!Number.isFinite(width) || width <= 0) {
+      return { goal: 0, baseline: 0 };
+    }
+    const finiteCap =
+      cap !== undefined && Number.isFinite(cap) && cap >= 0 ? cap : undefined;
+    const baseline = Math.min(
+      bandThreshold(width, requiredBands),
+      finiteCap ?? Infinity,
+    );
+    const explicit = normalizeAmbitionBands(requestedBands);
+    const goal =
+      explicit !== undefined
+        ? bandThreshold(width, explicit)
+        : settings.overcraftAmbition !== false
+          ? (finiteCap ?? baseline)
+          : baseline;
+    return { goal: Math.min(goal, finiteCap ?? baseline), baseline };
+  };
+  const completion = resolveBar(
+    targetCompletion,
+    requirement.completion,
+    config.maxCompletion,
+    settings.completionBandCeiling,
+  );
+  const perfection = resolveBar(
+    targetPerfection,
+    requirement.perfection,
+    config.maxPerfection,
+    settings.perfectionBandGoal,
+  );
+  return {
+    completion: completion.goal,
+    perfection: perfection.goal,
+    baselineCompletion: completion.baseline,
+    baselinePerfection: perfection.baseline,
+    bands,
+  };
+}
+
 /**
  * Normalize a user ambition band count.
  *
  * Both ambition settings use `0` as "auto", so anything that is not a finite
- * positive number collapses to `undefined` and leaves the pre-ambition
- * behaviour untouched.
+ * positive number collapses to `undefined`. The planning resolver decides
+ * whether Auto means the actual cap or the ordinary tier requirement.
  */
 function normalizeAmbitionBands(value: number | undefined): number | undefined {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) {
     return undefined;
   }
-  return Math.floor(numeric);
+  const bands = Math.min(8, Math.floor(numeric));
+  return bands > 0 ? bands : undefined;
 }
 
 /**
@@ -244,11 +329,15 @@ export function buildOutcomeBands(params: OutcomeBandParams): OutcomeBands {
   const perfectionCap = params.maxPerfectionCap;
 
   const completionFinishFlat =
-    completionCap !== undefined && completionCap > 0
+    completionCap !== undefined &&
+    Number.isFinite(completionCap) &&
+    completionCap >= 0
       ? completionCap
       : derivedCompletionFlat;
   const perfectionFinishFlat =
-    perfectionCap !== undefined && perfectionCap > 0
+    perfectionCap !== undefined &&
+    Number.isFinite(perfectionCap) &&
+    perfectionCap >= 0
       ? perfectionCap
       : derivedPerfectionFlat;
 
@@ -257,8 +346,8 @@ export function buildOutcomeBands(params: OutcomeBandParams): OutcomeBands {
     perfectionTarget,
     completionFinishFlat,
     perfectionFinishFlat,
-    // The overcraft finish branch only exists when the caps run deeper than the
-    // tier requirement, which is exactly when the recipe allows overcrafting.
+    // Retained recipe/quality metadata. Overcraft does not introduce a separate
+    // finish shortcut in the installed 0.7.18 runtime.
     canOvercraft:
       completionCap !== undefined && completionCap > derivedCompletionFlat,
     hasSublimeOutcome,
@@ -461,25 +550,15 @@ function requirementProgress(
 export function willAutoFinish(
   state: BarProgress,
   bands: OutcomeBands,
-  completionBandsHint?: number,
+  _completionBandsHint?: number,
 ): boolean {
   if (state.stability <= 0) {
     return true;
   }
-  const perfectionReady = state.perfection >= bands.perfectionFinishFlat;
-  if (state.completion >= bands.completionFinishFlat && perfectionReady) {
-    return true;
-  }
-  if (bands.canOvercraft && perfectionReady) {
-    const completionBands =
-      completionBandsHint ??
-      getBonusAndChance(Math.max(0, state.completion), bands.completionTarget)
-        .guaranteed;
-    if (completionBands >= 5) {
-      return true;
-    }
-  }
-  return false;
+  return (
+    state.completion >= bands.completionFinishFlat &&
+    state.perfection >= bands.perfectionFinishFlat
+  );
 }
 
 /**

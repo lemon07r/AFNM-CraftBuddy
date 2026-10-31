@@ -15,6 +15,7 @@
  */
 
 import { CraftingState, BuffType } from './state';
+import { constrainedSearch, type PlanningValue } from './constrainedPlanner';
 import {
   SkillDefinition,
   OptimizerConfig,
@@ -47,9 +48,9 @@ import {
 } from './gameTypes';
 import {
   bandThreshold,
-  buildOutcomeBands,
   classifyOutcome,
   computeOvercraftExtras,
+  resolvePlanningGoals,
   tierRank,
   TIER_REQUIREMENTS,
   willAutoFinish,
@@ -75,6 +76,8 @@ type ActionSurvivabilityFloor = ReturnType<
 >;
 
 export interface SkillRecommendation {
+  /** Shared constrained-policy ordering; transported intact through worker merges. */
+  planning?: PlanningValue;
   skill: SkillDefinition;
   /** Projected expected-value gain (includes RNG EV). */
   expectedGains: GainPreview;
@@ -133,7 +136,15 @@ export interface SetupForHint {
 /** Diagnostic info for why skills are unavailable */
 export interface SkillBlockedReason {
   skillName: string;
-  reason: 'cooldown' | 'qi' | 'stability' | 'toxicity' | 'condition';
+  reason:
+    | 'cooldown'
+    | 'qi'
+    | 'stability'
+    | 'toxicity'
+    | 'condition'
+    | 'unresolved'
+    | 'dominated'
+    | 'budget';
   details: string;
 }
 
@@ -170,7 +181,7 @@ export interface OutcomeProjection {
   readonly tier: OutcomeTier;
   /** Tier reachable if both bonus rolls land. */
   readonly optimisticTier: OutcomeTier;
-  /** Best tier this craft can reach at all — what the search aims at. */
+  /** Best item tier this craft can reach, independent of the selected planning goals. */
   readonly targetTier: OutcomeTier;
   readonly completion: OutcomeBarStatus;
   readonly perfection: OutcomeBarStatus;
@@ -178,6 +189,14 @@ export interface OutcomeProjection {
   readonly bindingBar: 'completion' | 'perfection' | 'none';
   /** True when the game's auto-finish predicate already holds. */
   readonly willAutoFinish: boolean;
+  /** Requested planning work, distinct from the item's tier requirements. */
+  readonly requestedGoals?: {
+    readonly completion: { target: number; bands: number; bonusChance: number };
+    readonly perfection: { target: number; bands: number; bonusChance: number };
+    readonly attained: boolean;
+    readonly bindingBar: 'completion' | 'perfection' | 'none';
+    readonly needsResolution: boolean;
+  };
 }
 
 export interface SearchResult {
@@ -185,6 +204,9 @@ export interface SearchResult {
   alternativeSkills: SkillRecommendation[];
   isTerminal: boolean;
   targetsMet: boolean;
+  /** Root coverage is separate from continuation uncertainty. Incomplete
+   * partitions cannot publish or merge an actionable partial ranking. */
+  rootEvaluation?: { complete: boolean; evaluatedSkillKeys: string[] };
   /**
    * Outcome the searched-from state is on track for. Optional so older replay
    * snapshots and hand-built fixtures stay valid; consumers must degrade to a
@@ -311,23 +333,18 @@ export interface SearchConfig {
   /** Native MCTS node cap. */
   mctsMaxNodes?: number;
   /**
-   * Overcraft ambition (default: true). When true, extra bands past the
-   * target tier earn unilateral value up to the game's caps, mirroring the
-   * runtime's per-bar rewards; when false, scoring is tier-only with the
-   * legacy conjunctive extras term.
+   * Auto goals request the actual caps when true (default), or the ordinary
+   * tier requirements when false. Explicit per-bar goals apply in both modes.
    */
   overcraftAmbition?: boolean;
   /**
-   * Desired perfection bands ("stars"). 0/undefined is auto - the target
-   * tier's requirement is the goal, exactly as before. A higher value raises
-   * the effective perfection goal to that band's threshold so the search keeps
-   * working past the tier without touching the tier gates themselves.
+   * Requested perfection bands (1-8), clipped to the actual cap. 0/undefined
+   * is Auto, resolved according to overcraftAmbition.
    */
   perfectionBandGoal?: number;
   /**
-   * Completion band ceiling. 0/undefined is auto. A higher value stops
-   * overcraft extras from paying for completion past that band, which is what
-   * redirects leftover effort into perfection.
+   * Legacy setting name for requested completion bands (1-8), clipped to
+   * the actual cap. 0/undefined is Auto, resolved according to overcraftAmbition.
    */
   completionBandCeiling?: number;
   /**
@@ -1881,19 +1898,21 @@ function deriveBandGoals(
   maxPerfectionCap?: number,
   perfectionBandGoal?: number,
   completionBandCeiling?: number,
+  overcraftAmbition: boolean = true,
 ): BandGoals {
-  const bands = buildOutcomeBands({
+  const planning = resolvePlanningGoals(
+    {
+      isSublimeCraft,
+      maxCompletion: maxCompletionCap,
+      maxPerfection: maxPerfectionCap,
+    },
     targetCompletion,
     targetPerfection,
-    isSublimeCraft,
-    maxCompletionCap,
-    maxPerfectionCap,
-    perfectionBandGoal,
-    completionBandCeiling,
-  });
+    { perfectionBandGoal, completionBandCeiling, overcraftAmbition },
+  );
+  const bands = planning.bands;
   const targetTier = bands.targetTier;
   const perfectReq = TIER_REQUIREMENTS.perfect;
-  const targetReq = TIER_REQUIREMENTS[targetTier];
 
   // Perfect-tier (1-band) goals — the base success floor.
   const baseCompGoal = clampGoalByCap(
@@ -1909,33 +1928,11 @@ function deriveBandGoals(
     maxPerfectionCap,
   );
 
-  // Target-tier goals (perfect or sublime). A cap below the band threshold
-  // genuinely blocks that tier — keep the clamp.
-  const effectiveCompGoal = clampGoalByCap(
-    targetCompletion > 0
-      ? bandThreshold(targetCompletion, targetReq.completion)
-      : 0,
-    maxCompletionCap,
-  );
-  // User perfection ambition only ever *raises* the goal, and only above the
-  // tier requirement: the tier gate still comes from TIER_REQUIREMENTS, so
-  // asking for more stars adds work to chase rather than changing what counts
-  // as success. The cap clamp still applies - the game can never bank past it.
-  const ambitionPerfBands = bands.ambitionPerfectionBands;
-  const perfGoalBands =
-    ambitionPerfBands !== undefined && ambitionPerfBands > targetReq.perfection
-      ? ambitionPerfBands
-      : targetReq.perfection;
-  const effectivePerfGoal = clampGoalByCap(
-    targetPerfection > 0 ? bandThreshold(targetPerfection, perfGoalBands) : 0,
-    maxPerfectionCap,
-  );
-
   return {
     baseCompGoal,
     basePerfGoal,
-    effectiveCompGoal,
-    effectivePerfGoal,
+    effectiveCompGoal: planning.completion,
+    effectivePerfGoal: planning.perfection,
     bands,
     targetTier,
   };
@@ -2027,33 +2024,6 @@ function bonusChanceCreditWhenOneBandShort(
   return Math.max(0, Math.min(1, completionFactor * perfectionFactor));
 }
 
-/**
- * Point-level fill of the target-tier thresholds (0–1). Supplies a smooth
- * early gradient while `tierRank` is flat at `failed`.
- */
-function residualShortfallProgress(
-  outcome: OutcomeClassification,
-  bands: OutcomeBands,
-): number {
-  const req = TIER_REQUIREMENTS[bands.targetTier];
-  const compNeed =
-    bands.completionTarget > 0
-      ? bandThreshold(bands.completionTarget, req.completion)
-      : 0;
-  const perfNeed =
-    bands.perfectionTarget > 0
-      ? bandThreshold(bands.perfectionTarget, req.perfection)
-      : 0;
-  const totalNeed = compNeed + perfNeed;
-  if (totalNeed <= 0) {
-    return 1;
-  }
-  const filled =
-    Math.max(0, compNeed - outcome.completionShortfall) +
-    Math.max(0, perfNeed - outcome.perfectionShortfall);
-  return Math.max(0, Math.min(1, filled / totalNeed));
-}
-
 function weightedMarginAverage(
   completionMargin: number,
   perfectionMargin: number,
@@ -2135,6 +2105,7 @@ function goalScoreTierRank(
  * bit-identical.
  */
 function computeConjunctiveGoalScore(
+  state: Pick<CraftingState, 'completion' | 'perfection'>,
   outcome: OutcomeClassification,
   bands: OutcomeBands,
   baseCompGoal: number,
@@ -2162,15 +2133,26 @@ function computeConjunctiveGoalScore(
     1,
     Math.max(0, baseCompGoal) + Math.max(0, basePerfGoal),
   );
-  const gate = Math.min(outcome.completionMargin, outcome.perfectionMargin);
+  const completionMargin =
+    effectiveCompGoal > 0
+      ? Math.max(0, Math.min(1, state.completion / effectiveCompGoal))
+      : 1;
+  const perfectionMargin =
+    effectivePerfGoal > 0
+      ? Math.max(0, Math.min(1, state.perfection / effectivePerfGoal))
+      : 1;
+  const gate = Math.min(completionMargin, perfectionMargin);
   const balance = weightedMarginAverage(
-    outcome.completionMargin,
-    outcome.perfectionMargin,
+    completionMargin,
+    perfectionMargin,
     completionWeight,
     perfectionWeight,
   );
   const bonusCredit = bonusChanceCreditWhenOneBandShort(outcome);
-  const residual = residualShortfallProgress(outcome, bands);
+  const residual =
+    (Math.min(Math.max(0, state.completion), effectiveCompGoal) +
+      Math.min(Math.max(0, state.perfection), effectivePerfGoal)) /
+    totalTargetMagnitude;
   const extrasScore = overcraft.enabled
     ? (() => {
         const extras = computeOvercraftExtras(outcome, bands, {
@@ -2243,6 +2225,7 @@ function scoreState(
     maxPerfectionCap,
     perfectionBandGoal,
     completionBandCeiling,
+    overcraftAmbition,
   );
 
   const outcome = classifyOutcome(state, bands);
@@ -2254,8 +2237,8 @@ function scoreState(
     (effectivePerfGoal <= 0 || state.perfection >= effectivePerfGoal);
 
   // ── remaining work metrics ───────────────────────────────────────────
-  const compRemaining = Math.max(0, outcome.completionShortfall);
-  const perfRemaining = Math.max(0, outcome.perfectionShortfall);
+  const compRemaining = Math.max(0, effectiveCompGoal - state.completion);
+  const perfRemaining = Math.max(0, effectivePerfGoal - state.perfection);
   const totalRemaining = compRemaining + perfRemaining;
   const compNeedShare =
     totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
@@ -2274,11 +2257,7 @@ function scoreState(
     perfNeedPct,
     (compNeedPct + perfNeedPct) / 2,
   );
-  // Binding-bar remaining work: 1 once the target tier is banked on both bars.
-  const bindingRemainingWork = Math.max(
-    0,
-    1 - Math.min(outcome.completionMargin, outcome.perfectionMargin),
-  );
+  const bindingRemainingWork = Math.max(compNeedPct, perfNeedPct);
   const estimatedProgressPerTurn = estimateWeightedProgressPerTurn(
     compNeedShare,
     perfNeedShare,
@@ -2354,6 +2333,7 @@ function scoreState(
   // trade-off on purpose (see scoreFinishedOutcome): once the craft has
   // actually resolved, the bonus-roll fraction is the final expected reward.
   let score = computeConjunctiveGoalScore(
+    state,
     outcome,
     bands,
     baseCompGoal,
@@ -2604,11 +2584,12 @@ function scoreFinishedOutcome(
     maxPerfectionCap,
     perfectionBandGoal,
     completionBandCeiling,
+    overcraftAmbition,
   );
 
   const outcome = classifyOutcome(state, bands);
-  const compRemaining = Math.max(0, outcome.completionShortfall);
-  const perfRemaining = Math.max(0, outcome.perfectionShortfall);
+  const compRemaining = Math.max(0, effectiveCompGoal - state.completion);
+  const perfRemaining = Math.max(0, effectivePerfGoal - state.perfection);
   const totalRemaining = compRemaining + perfRemaining;
   const compNeedShare =
     totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
@@ -2631,6 +2612,7 @@ function scoreFinishedOutcome(
   // one identical score. Live horizon leaves stay guaranteed-only (band-
   // fraction noise must not steer strategy mid-search); see scoreState.
   let score = computeConjunctiveGoalScore(
+    state,
     outcome,
     bands,
     baseCompGoal,
@@ -2648,20 +2630,17 @@ function scoreFinishedOutcome(
     Math.max(0, effectiveCompGoal) + Math.max(0, effectivePerfGoal),
   );
 
-  // Stability hit 0 ends the craft. If the target-tier goals are already
-  // banked this is a successful resolution (last-hit finish), not a wipe.
-  // Only unmet finishes pay the death cliff, matching live scoreState's
-  // "dying never beats progress" lock for failed lines.
-  const targetGoalsMet =
-    outcome.completionMargin >= 1 && outcome.perfectionMargin >= 1;
+  // Stability 0 resolves the craft. Banking the ordinary item tier does not
+  // satisfy a higher requested goal: unmet selected goals still pay the cliff.
+  // This is heuristic ranking, not a proof of survival or goal feasibility.
+  const targetGoalsMet = compRemaining === 0 && perfRemaining === 0;
   if (state.stability <= 0 && !targetGoalsMet) {
     score -= totalTargetMagnitude * SCORING.DEATH_PENALTY_MULTIPLIER;
   }
 
   // Permanent shortfall once the craft has ended.
   score -=
-    (outcome.completionShortfall + outcome.perfectionShortfall) *
-    SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
+    (compRemaining + perfRemaining) * SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
 
   const stepPenaltyWeight = Math.max(
     SCORING.STEP_PENALTY,
@@ -3137,7 +3116,7 @@ function buildGoalUnlockScalingVariables(
     maxtoxicity: state.maxToxicity,
     resistance: 0,
     itemEffectiveness: state.itemEffectiveness,
-    pillsPerRound: config.pillsPerRound || 1,
+    pillsPerRound: config.pillsPerRound ?? 1,
     poolCostFlat: 0,
     poolCostPercentage: 0,
     stabilityCostPercentage: 0,
@@ -3414,6 +3393,7 @@ function runGreedySearch(
     config.maxPerfection,
     cfg.perfectionBandGoal,
     cfg.completionBandCeiling,
+    cfg.overcraftAmbition,
   );
   const {
     baseCompGoal,
@@ -3464,6 +3444,8 @@ function runGreedySearch(
         scoringCtx,
         cfg.goalPriorityBias,
         cfg.overcraftAmbition,
+        cfg.perfectionBandGoal,
+        cfg.completionBandCeiling,
       ),
       reasoning: generateFinishReasoning(projectedSuccessChance),
       projectedSuccessChance,
@@ -3857,6 +3839,7 @@ function runLookaheadSearch(
     config.maxPerfection,
     cfg.perfectionBandGoal,
     cfg.completionBandCeiling,
+    cfg.overcraftAmbition,
   );
   const {
     baseCompGoal,
@@ -4240,6 +4223,8 @@ function runLookaheadSearch(
         scoringCtx,
         cfg.goalPriorityBias,
         cfg.overcraftAmbition,
+        cfg.perfectionBandGoal,
+        cfg.completionBandCeiling,
       ),
       immediateProgress: 0,
       requiresProbabilisticSurvival: false,
@@ -4712,6 +4697,8 @@ function runLookaheadSearch(
         scoringCtx,
         cfg.goalPriorityBias,
         cfg.overcraftAmbition,
+        cfg.perfectionBandGoal,
+        cfg.completionBandCeiling,
       );
     }
 
@@ -4800,6 +4787,8 @@ function runLookaheadSearch(
           scoringCtx,
           cfg.goalPriorityBias,
           cfg.overcraftAmbition,
+          cfg.perfectionBandGoal,
+          cfg.completionBandCeiling,
         );
       } else if (!actionConsumesTurn(skill)) {
         score = search(
@@ -4893,6 +4882,8 @@ function runLookaheadSearch(
         scoringCtx,
         cfg.goalPriorityBias,
         cfg.overcraftAmbition,
+        cfg.perfectionBandGoal,
+        cfg.completionBandCeiling,
       );
     }
 
@@ -6168,25 +6159,18 @@ export function findBestSkill(
   forecastedConditionTypes: CraftingConditionType[] = [],
   searchConfig: Partial<SearchConfig> = {},
 ): SearchResult {
-  if (useGreedy) {
-    return greedySearch(
-      state,
-      config,
-      targetCompletion,
-      targetPerfection,
-      currentConditionType,
-      searchConfig,
-    );
-  }
-
-  return lookaheadSearch(
+  return constrainedSearch(
     state,
     config,
     targetCompletion,
     targetPerfection,
-    lookaheadDepth,
-    currentConditionType,
-    forecastedConditionTypes,
+    useGreedy ? 1 : lookaheadDepth,
+    normalizeConditionType(
+      currentConditionType ?? 'neutral',
+    ) as import('./gameTypes').CraftingCondition,
+    forecastedConditionTypes.map(
+      normalizeConditionType,
+    ) as import('./gameTypes').CraftingCondition[],
     searchConfig,
   );
 }

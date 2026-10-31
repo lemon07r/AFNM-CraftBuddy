@@ -98,6 +98,56 @@ describe('autoCraftController', () => {
     jest.useRealTimers();
   });
 
+  it('does not dispatch a recommendation with unknown immediate outcome mass', async () => {
+    const controller = createHarness('fullActionSpace');
+    const snapshot = buildSnapshot();
+    snapshot.result!.recommendation!.planning = {
+      goalProbabilityLowerBound: 0,
+      prematureEndProbability: 0,
+      frontierProgress: 0,
+      resourceReserve: 0,
+      expectedSteps: 1,
+      unresolvedProbability: 1,
+      transitionUnresolvedProbability: 0.25,
+    };
+    controller.arm();
+    controller.sync(snapshot);
+    jest.advanceTimersByTime(100);
+    await Promise.resolve();
+    expect(executed).toHaveLength(0);
+    expect(controller.getUiState().phase).toBe('unsupported');
+  });
+
+  it('allows a modelled immediate action when only its distant goal route is unresolved', async () => {
+    const controller = createHarness('fullActionSpace');
+    const snapshot = buildSnapshot();
+    snapshot.result!.recommendation!.planning = {
+      goalProbabilityLowerBound: 0,
+      prematureEndProbability: 0,
+      frontierProgress: 0.2,
+      resourceReserve: 0.4,
+      expectedSteps: 1,
+      unresolvedProbability: 1,
+      transitionUnresolvedProbability: 0,
+    };
+    controller.arm();
+    controller.sync(snapshot);
+    jest.advanceTimersByTime(100);
+    await Promise.resolve();
+    expect(executed).toHaveLength(1);
+  });
+
+  it('stops after a completed search returns no verified action', () => {
+    const controller = createHarness('fullActionSpace');
+    const snapshot = buildSnapshot();
+    snapshot.result!.recommendation = null;
+    controller.arm();
+    controller.sync(snapshot);
+    expect(executed).toHaveLength(0);
+    expect(controller.getUiState().statusDetail).toContain('No verified');
+    expect(controller.getUiState().phase).toBe('stopped');
+  });
+
   it('executes a supported skill recommendation once and waits for state advance', async () => {
     const controller = createHarness();
 
@@ -149,7 +199,7 @@ describe('autoCraftController', () => {
     expect(controller.getUiState().armed).toBe(false);
   });
 
-  it('stops with an unsupported state when finish is disallowed by policy', () => {
+  it('stops at achieved goals even when finish is disallowed by policy', () => {
     const controller = createHarness('techniquesOnly');
 
     controller.arm();
@@ -165,11 +215,11 @@ describe('autoCraftController', () => {
     );
 
     expect(executed).toHaveLength(0);
-    expect(controller.getUiState().phase).toBe('unsupported');
+    expect(controller.getUiState().phase).toBe('completed');
     expect(controller.getUiState().armed).toBe(false);
   });
 
-  it('can auto-finish when the selected policy allows it', async () => {
+  it('does not synthesize Wait when goals are met and finish is allowed', async () => {
     const controller = createHarness('techniquesAndFinish');
 
     controller.arm();
@@ -187,12 +237,11 @@ describe('autoCraftController', () => {
     jest.advanceTimersByTime(100);
     await Promise.resolve();
 
-    expect(executed).toHaveLength(1);
-    expect(executed[0].kind).toBe('finish');
-    expect(executed[0].actionName).toBe('Finish Craft');
+    expect(executed).toHaveLength(0);
+    expect(controller.getUiState().phase).toBe('completed');
   });
 
-  it('marks auto-finish complete after the craft state advances so it does not reissue finish', async () => {
+  it('remains stopped at achieved goals across further state updates', async () => {
     const controller = createHarness('techniquesAndFinish');
 
     controller.arm();
@@ -210,9 +259,8 @@ describe('autoCraftController', () => {
     jest.advanceTimersByTime(100);
     await Promise.resolve();
 
-    expect(executed).toHaveLength(1);
-    expect(executed[0].kind).toBe('finish');
-    expect(controller.getUiState().phase).toBe('waiting_for_state');
+    expect(executed).toHaveLength(0);
+    expect(controller.getUiState().phase).toBe('completed');
 
     controller.sync(
       buildSnapshot({
@@ -241,7 +289,7 @@ describe('autoCraftController', () => {
       }),
     );
 
-    expect(executed).toHaveLength(1);
+    expect(executed).toHaveLength(0);
   });
 
   it('allows item actions only in the full action space policy', async () => {
@@ -928,7 +976,7 @@ describe('autoCraftController', () => {
       outcomeProjection: { willAutoFinish: true },
     } as any;
 
-    it('stops with an auto-finish status instead of spending another turn', async () => {
+    it('reports an ended craft below its goals without spending another turn', async () => {
       const controller = createHarness('techniquesAndFinish');
 
       controller.arm();
@@ -939,9 +987,21 @@ describe('autoCraftController', () => {
 
       expect(executed).toHaveLength(0);
       const state = controller.getUiState();
-      expect(state.phase).toBe('completed');
-      expect(state.statusTitle).toBe('Craft will auto-finish');
+      expect(state.phase).toBe('stopped');
+      expect(state.statusTitle).toBe('Craft ended below the goals');
+      expect(state.tone).toBe('warning');
       expect(state.armed).toBe(false);
+    });
+
+    it('reports completed goals after the game reaches its terminal state', () => {
+      const controller = createHarness('techniquesAndFinish');
+      controller.arm();
+      controller.sync(
+        buildSnapshot({ result: { ...autoFinishResult, targetsMet: true } }),
+      );
+      expect(executed).toHaveLength(0);
+      expect(controller.getUiState().phase).toBe('completed');
+      expect(controller.getUiState().tone).toBe('success');
     });
 
     it('keeps acting while the auto-finish predicate does not hold', async () => {

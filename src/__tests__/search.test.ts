@@ -8,6 +8,7 @@ import {
   OptimizerConfig,
   DEFAULT_SKILLS,
   applySkill,
+  applySkillOutcomes,
   calculateSkillGains,
   getAvailableSkills,
   getConditionEffectsForConfig,
@@ -23,12 +24,73 @@ import {
   type CraftingConditionType,
 } from '../optimizer/search';
 import { CrossStepSearchCache } from '../optimizer/crossStepCache';
+import { constrainedSearch } from '../optimizer/constrainedPlanner';
+import type { CraftingCondition } from '../optimizer/gameTypes';
 import {
   getReplaySearchInput,
   loadOptimizerReplaySnapshot,
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
-import { bandThreshold, TIER_REQUIREMENTS } from '../optimizer/outcome';
+import {
+  bandThreshold,
+  TIER_REQUIREMENTS,
+  resolvePlanningGoals,
+  willAutoFinish,
+} from '../optimizer/outcome';
+
+function runCriticalProductionReplay(filename: string) {
+  const snapshot = loadOptimizerReplaySnapshot(filename);
+  const input = getReplaySearchInput(snapshot);
+  const settings = {
+    ...input.searchConfig,
+    timeBudgetMs: 60000,
+    maxNodes: 100,
+    perfectionBandGoal: 8,
+    completionBandCeiling: 8,
+  };
+  const goals = resolvePlanningGoals(
+    input.config,
+    input.targetCompletion,
+    input.targetPerfection,
+    settings,
+  );
+  const result = constrainedSearch(
+    input.state,
+    input.config,
+    input.targetCompletion,
+    input.targetPerfection,
+    input.lookaheadDepth,
+    input.currentCondition as CraftingCondition,
+    input.forecastConditions as CraftingCondition[],
+    settings,
+  );
+  const outcomesFor = (skill: SkillDefinition) =>
+    applySkillOutcomes(
+      input.state,
+      skill,
+      input.config,
+      getConditionEffectsForConfig(input.config, input.currentCondition),
+      input.targetCompletion,
+      input.currentCondition,
+      input.targetPerfection,
+    );
+  const prematureRisk = (skill: SkillDefinition) => {
+    const distribution = outcomesFor(skill);
+    expect(distribution.unresolvedProbability).toBe(0);
+    expect(distribution.outcomes.length).toBeGreaterThan(0);
+    return distribution.outcomes.reduce(
+      (risk, outcome) =>
+        risk +
+        (willAutoFinish(outcome.state, goals.bands) &&
+        (outcome.state.completion < goals.completion ||
+          outcome.state.perfection < goals.perfection)
+          ? outcome.probability
+          : 0),
+      0,
+    );
+  };
+  return { snapshot, input, goals, result, outcomesFor, prematureRisk };
+}
 
 const {
   scoreState,
@@ -678,7 +740,9 @@ describe('lookaheadSearch', () => {
     const result = lookaheadSearch(state, config, 100, 100, 6, undefined, [], {
       useIterativeDeepening: true,
       iterativeDeepeningMinDepth: 3,
-      timeBudgetMs: 500,
+      // Check completed search work, not whether this machine can finish a
+      // minimum-depth pass inside half a second under concurrent test load.
+      timeBudgetMs: 120000,
       maxNodes: 200000,
     });
 
@@ -2146,11 +2210,10 @@ describe('ambition band goals', () => {
     );
   }
 
-  it('leaves the effective perfection goal at the tier requirement on auto', () => {
+  it('uses both actual caps on auto with extra-band ambition', () => {
     const auto = goalsFor(0);
-    expect(auto.effectivePerfGoal).toBe(
-      bandThreshold(100, TIER_REQUIREMENTS.sublime.perfection),
-    );
+    expect(auto.effectivePerfGoal).toBe(DEEP_CAP);
+    expect(auto.effectiveCompGoal).toBe(DEEP_CAP);
     expect(auto.bands.ambitionPerfectionBands).toBeUndefined();
   });
 
@@ -2163,9 +2226,9 @@ describe('ambition band goals', () => {
     expect(ambitious.effectiveCompGoal).toBe(goalsFor(0).effectiveCompGoal);
   });
 
-  it('never lowers the perfection goal below the tier requirement', () => {
-    // 1 band is under sublime's 2: the tier requirement still wins.
-    expect(goalsFor(1).effectivePerfGoal).toBe(goalsFor(0).effectivePerfGoal);
+  it('honors an explicit goal below the ordinary tier without changing that tier', () => {
+    expect(goalsFor(1).effectivePerfGoal).toBe(bandThreshold(100, 1));
+    expect(goalsFor(1).targetTier).toBe('sublime');
   });
 
   it('still clamps the raised goal at the game cap', () => {
@@ -2403,6 +2466,11 @@ describe('overcraft extras scoring', () => {
       2,
       OVERCRAFT_CAP,
       OVERCRAFT_CAP,
+      undefined,
+      undefined,
+      true,
+      2,
+      5,
     );
     const sevenBandScore = scoreFinishedOutcome(
       overcraftState(bandThreshold(100, 7), TWO_BANDS),
@@ -2412,9 +2480,15 @@ describe('overcraft extras scoring', () => {
       2,
       OVERCRAFT_CAP,
       OVERCRAFT_CAP,
+      undefined,
+      undefined,
+      true,
+      2,
+      5,
     );
 
-    // Refund is `(bands - 1) * 20` capped at 80%, so bands 6+ add nothing.
+    // The requested goal is five completion bands. Refund is capped at80%,
+    // so bands6+ add nothing once that selected goal has also been reached.
     expect(sevenBandScore).toBeCloseTo(fiveBandScore, 5);
   });
 
@@ -2443,6 +2517,7 @@ describe('overcraft extras scoring', () => {
         maxCompletion: OVERCRAFT_CAP,
         maxPerfection: OVERCRAFT_CAP,
         skills: [refine, wait],
+        craftingType: 'formless',
       }),
       // The tier is banked and the craft is near its stability end, so the
       // recommendation is priced by the terminal finish: this is the reported
@@ -2454,6 +2529,8 @@ describe('overcraft extras scoring', () => {
         completion: TWO_BANDS,
         perfection: TWO_BANDS,
         step: 10,
+        harmony: 33,
+        harmonyData: { recommendedTechniqueTypes: [] },
       }),
     };
   }
@@ -2466,7 +2543,7 @@ describe('overcraft extras scoring', () => {
     expect(result.recommendation?.skill.key).toBe('deep_refine');
   });
 
-  it('pays strictly more for the deep line than the tier-only line, only with ambition on', () => {
+  it('distinguishes an unresolved maximum goal from a provable tier-only resolution', () => {
     const { config, state } = createOvercraftRecommendationFixture();
 
     const ambitionOn = findBestSkill(state, config, 100, 100, false, 4);
@@ -2482,11 +2559,16 @@ describe('overcraft extras scoring', () => {
       { overcraftAmbition: false },
     );
 
-    // Tier-only scoring must not bank the extra bands the deep line reaches.
+    // Production score is a goal-probability lower bound, not a legacy utility.
+    // This roster cannot raise completion to the maximum, but it can resolve
+    // the already-banked tier. Different objectives must not share certainty.
     expect(ambitionOn.recommendation?.skill.key).toBe('deep_refine');
-    expect(ambitionOn.recommendation?.score ?? 0).toBeGreaterThan(
-      (ambitionOff.recommendation?.score ?? 0) + 100,
+    expect(ambitionOn.recommendation?.planning?.goalProbabilityLowerBound).toBe(
+      0,
     );
+    expect(
+      ambitionOff.recommendation?.planning?.goalProbabilityLowerBound,
+    ).toBe(1);
   });
 });
 
@@ -2787,7 +2869,7 @@ describe('cross-step transposition cache', () => {
 describe('findBestSkill', () => {
   const config = createTestConfig();
 
-  it('should use greedy search when specified', () => {
+  it('routes the legacy greedy flag through the production safety planner', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -2799,11 +2881,11 @@ describe('findBestSkill', () => {
     const result = findBestSkill(state, config, 100, 100, true);
 
     expect(result.recommendation).not.toBeNull();
-    // Greedy search doesn't provide optimal rotation
-    expect(result.optimalRotation).toBeUndefined();
+    expect(result.recommendation?.planning).toBeDefined();
+    expect(result.optimalRotation).toBeDefined();
   });
 
-  it('should use lookahead search by default', () => {
+  it('uses the production planner by default', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -2815,7 +2897,7 @@ describe('findBestSkill', () => {
     const result = findBestSkill(state, config, 100, 100, false, 3);
 
     expect(result.recommendation).not.toBeNull();
-    // Lookahead search provides optimal rotation
+    expect(result.recommendation?.planning).toBeDefined();
     expect(result.optimalRotation).toBeDefined();
   });
 
@@ -2831,6 +2913,7 @@ describe('findBestSkill', () => {
     // Good condition (positive)
     const goodConfig = {
       ...config,
+      skills: [SIMPLE_REFINE],
       conditionEffectsData: {
         neutral: [],
         positive: [{ kind: 'control' as const, multiplier: 0.5 }],
@@ -2842,16 +2925,17 @@ describe('findBestSkill', () => {
     const goodResult = findBestSkill(
       state,
       goodConfig,
-      100,
+      0,
       100,
       false,
-      3,
+      1,
       'positive',
     );
 
     // Bad condition (negative)
     const badConfig = {
       ...config,
+      skills: [SIMPLE_REFINE],
       conditionEffectsData: {
         neutral: [],
         positive: [],
@@ -2863,23 +2947,24 @@ describe('findBestSkill', () => {
     const badResult = findBestSkill(
       state,
       badConfig,
-      100,
+      0,
       100,
       false,
-      3,
+      1,
       'negative',
     );
 
     // Both should return valid recommendations
     expect(goodResult.recommendation).not.toBeNull();
     expect(badResult.recommendation).not.toBeNull();
-    // Positive condition (boosted control) should produce a higher score than negative
-    expect(goodResult.recommendation!.score).toBeGreaterThan(
-      badResult.recommendation!.score,
+    // Compare the actual condition-sensitive gain, not a goal probability that
+    // may correctly remain zero before a complete route has been proved.
+    expect(goodResult.recommendation!.expectedGains.perfection).toBeGreaterThan(
+      badResult.recommendation!.expectedGains.perfection,
     );
   });
 
-  it('should pass forecasted conditions to lookahead', () => {
+  it('passes forecasted conditions to the production planner', () => {
     const perfectableConfig = createTutorialConfig({
       conditionEffectType: 'perfectable' as any,
     });
@@ -2915,9 +3000,9 @@ describe('findBestSkill', () => {
     expect(negResult.recommendation).not.toBeNull();
     expect(posResult.recommendation!.skill.name).toBe('Simple Refine');
     expect(negResult.recommendation!.skill.name).toBe('Simple Refine');
-    expect(posResult.recommendation!.score).toBeGreaterThan(
-      negResult.recommendation!.score,
-    );
+    expect(
+      posResult.recommendation!.planning!.frontierProgress,
+    ).toBeGreaterThan(negResult.recommendation!.planning!.frontierProgress);
   });
 });
 
@@ -4720,8 +4805,8 @@ describe('scoreState (isolated)', () => {
       completion: 100,
       perfection: 100,
     });
-    // Sub-band overshoot banks nothing guaranteed: it stays soft-penalized
-    // below the exact state in both modes (dead weight, anti-waste pressure).
+    // Auto with ambition requests the caps. Intermediate progress toward
+    // those caps remains useful before the next complete bonus band.
     const halfBand = new CraftingState({
       qi: 100,
       stability: 50,
@@ -4731,7 +4816,7 @@ describe('scoreState (isolated)', () => {
     });
     expect(
       scoreState(halfBand, 100, 100, false, 2, false, deepCap, deepCap),
-    ).toBeLessThan(
+    ).toBeGreaterThan(
       scoreState(exact, 100, 100, false, 2, false, deepCap, deepCap),
     );
     // A fully banked extra perfection band (230 = 2 bands at target 100) on
@@ -4975,55 +5060,23 @@ describe('scoreState (isolated)', () => {
     );
   });
 
-  it('replays the low-stability regression snapshot and keeps invasive refine as a risky lower-ranked alternative', () => {
-    const snapshot = loadOptimizerReplaySnapshot(
+  it('rejects the low-stability replay immediate death while preserving a guaranteed survivor', () => {
+    const { result, prematureRisk } = runCriticalProductionReplay(
       'low-stability-regression.snapshot.json',
     );
-    const input = getReplaySearchInput(snapshot);
-
-    const result = lookaheadSearch(
-      input.state,
-      input.config,
-      input.targetCompletion,
-      input.targetPerfection,
-      input.lookaheadDepth,
-      input.currentCondition,
-      input.forecastConditions as any,
-      input.searchConfig,
-    );
-
-    const allRecommendations = [
-      result.recommendation,
-      ...result.alternativeSkills,
-    ].filter(
-      (
-        recommendation,
-      ): recommendation is NonNullable<typeof result.recommendation> =>
-        Boolean(recommendation),
-    );
-    const invasiveRefine = allRecommendations.find(
-      (recommendation) => recommendation.skill.key === 'invasive_refine',
-    );
-    const forcefulStabilize = allRecommendations.find(
-      (recommendation) => recommendation.skill.key === 'forceful_stabilize',
-    );
-
-    expect(snapshot.output?.recommendation?.skill?.key).toBe('invasive_refine');
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
-    expect(result.recommendation!.skill.type).toBe('stabilize');
-    expect(forcefulStabilize).toBeDefined();
-    expect(invasiveRefine).toBeDefined();
-    expect((invasiveRefine as any).requiresProbabilisticSurvival).toBe(true);
-    expect(
-      allRecommendations.findIndex(
-        (recommendation) => recommendation.skill.key === 'forceful_stabilize',
-      ),
-    ).toBeLessThan(
-      allRecommendations.findIndex(
-        (recommendation) => recommendation.skill.key === 'invasive_refine',
-      ),
+    const invasive = result.alternativeSkills.find(
+      (rec) => rec.skill.key === 'invasive_refine',
     );
+    expect(invasive).toBeDefined();
+    // Shared runtime clamping applies after costs and effects: the previously
+    // imagined recovery branch now reaches zero on every outcome, not just a proc miss.
+    expect(prematureRisk(invasive!.skill)).toBeCloseTo(1);
+    expect(prematureRisk(result.recommendation!.skill)).toBe(0);
+    expect(invasive!.endsCraft).toBe(true);
+    expect(invasive!.requiresProbabilisticSurvival).toBe(true);
+    expect(invasive!.planning!.prematureEndProbability).toBeCloseTo(1);
+    expect(invasive!.planning!.goalProbabilityLowerBound).toBe(0);
   });
 
   it('values aligned resonance strength as productive harmony quality', () => {
@@ -5184,92 +5237,28 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation!.skill.key).toBe('focused_refine');
   });
 
-  it('replays the overcraft endgame snapshot and ranks craft-ending lines by banked value (user report)', () => {
-    const snapshot = loadOptimizerReplaySnapshot(
+  it('preserves an overcraft endgame continuation instead of cashing out below the requested maximum', () => {
+    const { input, goals, result, prematureRisk } = runCriticalProductionReplay(
       'user-report-overcraft-endgame.snapshot.json',
     );
-    // Recorded behavior: with the 2-band sublime gate secured and stability
-    // nearly gone, every craft-ending action scored identically (a four-way
-    // tie at 449505.45) because terminal scoring only banked *full* extra
-    // bands. The pick fell to tie-breakers and the panel presented the winner
-    // as a 0-gain "grants buff" move - the user read it as the mod refusing
-    // to push perfection past 200%.
-    expect(snapshot.output?.recommendation?.skill?.key).toBe(
-      'golden_path:_first_peak',
-    );
-    const recordedOutput = snapshot.output as
-      | {
-          recommendation?: { score?: number } | null;
-          alternatives?: Array<{ score?: number }>;
-          expectedFinalState?: { perfection?: number } | null;
-        }
-      | undefined;
-    const recordedTopScores = [
-      recordedOutput?.recommendation?.score,
-      ...(recordedOutput?.alternatives ?? []).map((alt) => alt.score),
-    ].slice(0, 4);
-    expect(new Set(recordedTopScores).size).toBe(1);
-
-    const input = getReplaySearchInput(snapshot);
-    const stableSearchConfig = {
-      ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 8000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 1500000),
-      useMonteCarloTreeSearch: false,
-    };
-
-    const result = lookaheadSearch(
-      input.state,
-      input.config,
-      input.targetCompletion,
-      input.targetPerfection,
-      input.lookaheadDepth,
-      input.currentCondition,
-      input.forecastConditions as any,
-      stableSearchConfig,
-    );
-
-    expect(result.recommendation).not.toBeNull();
-    // Stability is 7, so the craft is ending - but the best line banks one
-    // more Golden Path: Third Peak support proc first (Focus, then Golden
-    // Path: First Peak) instead of ending a turn early. The recorded build
-    // ended immediately at 34,687 perfection; the replayed line must bank
-    // strictly more by the time the craft resolves.
-    expect(result.recommendation!.skill.key).toBe('focus');
-    expect(result.recommendation!.followUpSkill?.name).toBe(
-      'Golden Path: First Peak',
-    );
-    expect(result.expectedFinalState?.stability).toBe(0);
-    expect(result.expectedFinalState?.perfection ?? 0).toBeGreaterThan(
-      recordedOutput?.expectedFinalState?.perfection ?? 0,
-    );
-
-    // Terminal scores must no longer collapse onto one value: the craft-end
-    // bonus-roll fraction now separates craft-ending lines by the value they
-    // actually bank.
-    const allRecommendations = [
-      result.recommendation!,
-      ...result.alternativeSkills,
-    ];
-    const enders = allRecommendations.filter(
-      (recommendation) => recommendation.endsCraft,
-    );
-    expect(enders.length).toBeGreaterThan(1);
     expect(
-      new Set(enders.map((recommendation) => recommendation.score)).size,
-    ).toBeGreaterThan(1);
-
-    // A craft-ending pick must own the ending in its published gains and
-    // reasoning: triggered procs included (no do-nothing "+0"), and no
-    // "grants buff for next turns" rationale for a move with no next turn.
-    const goldenPath = allRecommendations.find(
-      (recommendation) =>
-        recommendation.skill.key === 'golden_path:_first_peak',
+      input.state.completion < goals.completion ||
+        input.state.perfection < goals.perfection,
+    ).toBe(true);
+    expect(result.recommendation).not.toBeNull();
+    // The new objective requests actual/set limits, not baseline-tier payout EV.
+    // A legal recovery must outrank an immediate ending that misses those goals.
+    expect(prematureRisk(result.recommendation!.skill)).toBe(0);
+    const goldenPath = result.alternativeSkills.find(
+      (rec) => rec.skill.key === 'golden_path:_first_peak',
     );
-    expect(goldenPath?.endsCraft).toBe(true);
-    expect(goldenPath?.expectedGains.perfection).toBeGreaterThan(0);
-    expect(goldenPath?.reasoning).toContain('Ends the craft');
-    expect(goldenPath?.reasoning).not.toContain('for next turns');
+    expect(goldenPath).toBeDefined();
+    expect(prematureRisk(goldenPath!.skill)).toBeGreaterThan(0);
+    expect(goldenPath!.endsCraft).toBe(true);
+    expect(goldenPath!.expectedGains.perfection).toBeGreaterThan(0);
+    expect(goldenPath!.reasoning).toContain('Ends the craft');
+    expect(goldenPath!.reasoning).not.toContain('for next turns');
+    expect(goldenPath!.requiresProbabilisticSurvival).toBe(true);
   });
 
   it('replays the user alchemical sequence snapshot and respects the refine-only harmony step', () => {
@@ -5328,55 +5317,21 @@ describe('scoreState (isolated)', () => {
     expect(['refine', 'support']).toContain(result.recommendation!.skill.type);
   });
 
-  it('replays the premature-finish proc-floor snapshot and keeps proc-dependent refine behind safe stabilization', () => {
-    const snapshot = loadOptimizerReplaySnapshot(
+  it('does not mistake the premature-finish replay restoration proc for a live continuation', () => {
+    const { result, prematureRisk } = runCriticalProductionReplay(
       'premature-finish-proc-floor.snapshot.json',
     );
-    const input = getReplaySearchInput(snapshot);
-
-    const result = lookaheadSearch(
-      input.state,
-      input.config,
-      input.targetCompletion,
-      input.targetPerfection,
-      input.lookaheadDepth,
-      input.currentCondition,
-      input.forecastConditions as any,
-      input.searchConfig,
-    );
-
-    const allRecommendations = [
-      result.recommendation,
-      ...result.alternativeSkills,
-    ].filter(
-      (
-        recommendation,
-      ): recommendation is NonNullable<typeof result.recommendation> =>
-        Boolean(recommendation),
-    );
-    const invasiveRefine = allRecommendations.find(
-      (recommendation) => recommendation.skill.key === 'invasive_refine',
-    );
-    const forcefulStabilize = allRecommendations.find(
-      (recommendation) => recommendation.skill.key === 'forceful_stabilize',
-    );
-
-    expect(snapshot.output?.recommendation?.skill?.key).toBe('invasive_refine');
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.key).toBe('forceful_stabilize');
-    expect(result.recommendation!.skill.type).toBe('stabilize');
-    expect(forcefulStabilize).toBeDefined();
-    expect(invasiveRefine).toBeDefined();
-    expect((invasiveRefine as any).requiresProbabilisticSurvival).toBe(true);
-    expect(
-      allRecommendations.findIndex(
-        (recommendation) => recommendation.skill.key === 'forceful_stabilize',
-      ),
-    ).toBeLessThan(
-      allRecommendations.findIndex(
-        (recommendation) => recommendation.skill.key === 'invasive_refine',
-      ),
+    const invasive = result.alternativeSkills.find(
+      (rec) => rec.skill.key === 'invasive_refine',
     );
+    expect(invasive).toBeDefined();
+    expect(prematureRisk(result.recommendation!.skill)).toBe(0);
+    // End-of-transition clamping rules out the old negative-resource revival.
+    expect(prematureRisk(invasive!.skill)).toBeCloseTo(1);
+    expect(invasive!.planning!.prematureEndProbability).toBeCloseTo(1);
+    expect(invasive!.planning!.goalProbabilityLowerBound).toBe(0);
+    expect(invasive!.requiresProbabilisticSurvival).toBe(true);
   });
 
   it('replays the user runway snapshot and keeps pushing progress instead of finishing early', () => {
@@ -5552,108 +5507,78 @@ describe('scoreState (isolated)', () => {
     expect(result.searchMetrics!.earlyExit).toBeUndefined();
   });
 
-  it('replays the forge heat runway snapshot at heat two and prioritizes heat recovery over support setup', () => {
+  it('preserves immediate guaranteed survival in the critical forge heat-two replay', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'forge-heat-runway-step-2.snapshot.json',
     );
     const input = getReplaySearchInput(snapshot);
 
-    const result = lookaheadSearch(
+    const result = constrainedSearch(
       input.state,
       input.config,
       input.targetCompletion,
       input.targetPerfection,
       input.lookaheadDepth,
-      input.currentCondition,
-      input.forecastConditions as any,
-      input.searchConfig,
+      input.currentCondition as CraftingCondition,
+      input.forecastConditions as CraftingCondition[],
+      {
+        ...input.searchConfig,
+        maxNodes: 100,
+        timeBudgetMs: 60000,
+        perfectionBandGoal: 2,
+        completionBandCeiling: 2,
+        overcraftAmbition: false,
+      },
     );
-
-    const allRecommendations = [
-      result.recommendation,
-      ...result.alternativeSkills,
-    ].filter(
-      (
-        recommendation,
-      ): recommendation is NonNullable<typeof result.recommendation> =>
-        Boolean(recommendation),
-    );
-    const focus = allRecommendations.find(
-      (recommendation) => recommendation.skill.key === 'focus',
-    );
-
-    expect(snapshot.output?.recommendation?.skill?.key).toBe('focus');
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.type).toBe('fusion');
-    expect(result.recommendation!.skill.key).not.toBe('focus');
-    expect(focus).toBeDefined();
-    expect(result.recommendation!.score).toBeGreaterThan(focus!.score);
+    const outcomes = applySkillOutcomes(
+      input.state,
+      result.recommendation!.skill,
+      input.config,
+      getConditionEffectsForConfig(input.config, input.currentCondition),
+      input.targetCompletion,
+      input.currentCondition,
+      input.targetPerfection,
+    );
+    // This snapshot has only2 stability/16 Qi. With the corrected action phases,
+    // recovering heat through fusion is a gamble, while Focus preserves at least1.
+    // Verify actual branch safety, not the old EV-only technique ordering.
+    expect(outcomes.unresolvedProbability).toBe(0);
+    expect(outcomes.outcomes.length).toBeGreaterThan(0);
+    expect(
+      outcomes.outcomes.every((outcome) => outcome.state.stability > 0),
+    ).toBe(true);
+    expect(
+      result.recommendation!.planning?.transitionUnresolvedProbability,
+    ).toBe(0);
   });
 
-  it('replays the forge heat runway snapshot at heat one and no longer walks forge heat to zero', () => {
-    const snapshot = loadOptimizerReplaySnapshot(
+  it('protects the forge heat-one replay from a premature ending before heat recovery', () => {
+    const { result, prematureRisk, outcomesFor } = runCriticalProductionReplay(
       'forge-heat-runway-step-3.snapshot.json',
     );
-    const input = getReplaySearchInput(snapshot);
-    // The 0.7.17 phase model contests this line at depth 5, then completes
-    // the fusion recovery pass at depth 6 (~6,000 nodes). The captured 4.5s
-    // deadline can stop on either pass under Jest; bind on work, not speed.
-    const stableSearchConfig = {
-      ...input.searchConfig,
-      timeBudgetMs: 120000,
-      maxNodes: 6000,
-    };
-
-    const result = lookaheadSearch(
-      input.state,
-      input.config,
-      input.targetCompletion,
-      input.targetPerfection,
-      input.lookaheadDepth,
-      input.currentCondition,
-      input.forecastConditions as CraftingConditionType[],
-      stableSearchConfig,
-    );
-
-    const allRecommendations = [
-      result.recommendation,
-      ...result.alternativeSkills,
-    ].filter(
-      (
-        recommendation,
-      ): recommendation is NonNullable<typeof result.recommendation> =>
-        Boolean(recommendation),
-    );
-    const unstableReEnergisation = allRecommendations.find(
-      (recommendation) =>
-        recommendation.skill.key === 'unstable_re-energisation',
-    );
-
-    expect(snapshot.output?.recommendation?.skill?.key).toBe(
-      'unstable_re-energisation',
-    );
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.type).toBe('fusion');
-    expect(result.recommendation!.skill.key).not.toBe(
-      'unstable_re-energisation',
+    const unsafe = result.alternativeSkills.find(
+      (rec) => rec.skill.key === 'explosive_fusion',
     );
-    expect(unstableReEnergisation).toBeDefined();
-    expect(result.recommendation!.score).toBeGreaterThan(
-      unstableReEnergisation!.score,
-    );
+    expect(unsafe).toBeDefined();
+    // Heat recovery cannot take priority over paying the actual action cost.
+    // Compare branch outcomes rather than requiring the old EV fusion pick.
+    expect(prematureRisk(result.recommendation!.skill)).toBe(0);
+    expect(prematureRisk(unsafe!.skill)).toBeGreaterThan(0);
+    expect(prematureRisk(unsafe!.skill)).toBeLessThan(1);
+    expect(
+      outcomesFor(result.recommendation!.skill).outcomes.every(
+        (o) => o.state.stability > 0,
+      ),
+    ).toBe(true);
+    expect(unsafe!.requiresProbabilisticSurvival).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Survivability regression lock (captured BEFORE conjunctive scoring change)
-// ---------------------------------------------------------------------------
-// These tests pin the praised "keep the craft alive" behaviour so the
-// goal-score rewrite cannot silently trade runway management for raw progress.
-
-// ---------------------------------------------------------------------------
 // Conjunctive outcome scoring
 // ---------------------------------------------------------------------------
-
 describe('conjunctive outcome scoring', () => {
   const healthy = (completion: number, perfection: number) =>
     new CraftingState({
@@ -5727,6 +5652,9 @@ describe('conjunctive outcome scoring', () => {
       false,
       460,
       460,
+      undefined,
+      undefined,
+      false,
     );
     const paddedScore = scoreState(
       moreCompletion,
@@ -5737,6 +5665,9 @@ describe('conjunctive outcome scoring', () => {
       false,
       460,
       460,
+      undefined,
+      undefined,
+      false,
     );
     const bindingScore = scoreState(
       morePerfection,
@@ -5747,6 +5678,9 @@ describe('conjunctive outcome scoring', () => {
       false,
       460,
       460,
+      undefined,
+      undefined,
+      false,
     );
 
     // Marginal completion on the already-satisfied bar must not beat baseline

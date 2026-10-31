@@ -253,9 +253,9 @@ describe('willAutoFinish', () => {
     ).toBe(false);
   });
 
-  it('finishes via the overcraft branch at five completion bands', () => {
-    // A deep overcraft cap, so the plain completion >= flat branch cannot fire
-    // before the five-band branch does.
+  it('requires both actual caps even after five completion bands in 0.7.18', () => {
+    // Installed Eho has no five-band shortcut. This formerly stopped planning
+    // early on high-cap recipes while the actual craft remained live.
     const deepBands = deriveOutcomeBands({
       ...sublimeConfig,
       maxCompletion: 2000,
@@ -270,12 +270,25 @@ describe('willAutoFinish', () => {
         { completion: 902, perfection: 399, stability: 50 },
         deepBands,
       ),
-    ).toBe(true);
-    // 901 is only four bands, so the craft keeps going.
+    ).toBe(false);
     expect(
       willAutoFinish(
         { completion: 901, perfection: 399, stability: 50 },
         deepBands,
+      ),
+    ).toBe(false);
+    expect(
+      willAutoFinish(
+        { completion: 2000, perfection: 399, stability: 50 },
+        deepBands,
+      ),
+    ).toBe(true);
+    // The retained optional count hint cannot bypass the actual flat cap.
+    expect(
+      willAutoFinish(
+        { completion: 902, perfection: 399, stability: 50 },
+        deepBands,
+        8,
       ),
     ).toBe(false);
   });

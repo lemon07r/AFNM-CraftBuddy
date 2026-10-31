@@ -156,13 +156,28 @@ export interface BuffEffect {
  * the block's eqn scope; the two bar triggers add `percentGained`, that one
  * change's share of the recipe with threshold inflation priced in.
  */
+/** Named stack events verified for the current Celadon Cycle payload. */
+export const CELADON_EMBER_NAMES = [
+  'Fusion Ember',
+  'Refinement Ember',
+  'Support Ember',
+  'Stability Ember',
+] as const;
+export function isCeladonStackGainTrigger(
+  value: unknown,
+): value is `stackGained.${(typeof CELADON_EMBER_NAMES)[number]}` {
+  return CELADON_EMBER_NAMES.some((name) => value === `stackGained.${name}`);
+}
+
 export type CraftingBuffTrigger =
+  | 'actionFailed'
   | 'poolSpent'
   | 'poolRestored'
   | 'stabilitySpent'
   | 'stabilityRestored'
   | 'completionGained'
-  | 'perfectionGained';
+  | 'perfectionGained'
+  | `stackGained.${(typeof CELADON_EMBER_NAMES)[number]}`;
 
 export interface CraftingTriggeredEffectBlock {
   trigger: CraftingBuffTrigger | string;
@@ -520,13 +535,11 @@ export interface NativeCraftingUtils {
 }
 
 let activeNativeCraftingUtils: NativeCraftingUtils | undefined;
-let warnedNativeOvercritFailure = false;
 
 export function setNativeCraftingUtils(
   nativeUtils: NativeCraftingUtils | undefined,
 ): void {
   activeNativeCraftingUtils = nativeUtils;
-  warnedNativeOvercritFailure = false;
 }
 
 /**
@@ -573,37 +586,14 @@ export function calculateExpectedCritMultiplier(
   critChance: number,
   critMultiplier: number,
 ): number {
-  const nativeOvercrit = activeNativeCraftingUtils?.calculateCraftingOvercrit;
-  if (nativeOvercrit) {
-    try {
-      const nativeResult = nativeOvercrit(critChance, critMultiplier);
-      const nativeCritMultiplier = Number(nativeResult?.multiplier);
-      if (Number.isFinite(nativeCritMultiplier) && nativeCritMultiplier > 0) {
-        const actualCritChance = Math.min(Math.max(critChance, 0), 100) / 100;
-        // The runtime already divides by 100 inside calculateCraftingOvercrit
-        // (`(critMultiplier + Math.max(0, critChance - 100) * 3) / 100`), so the
-        // returned multiplier is a ratio (1.5 for a 150% crit). Dividing again
-        // here collapsed every crit to ~1.005x.
-        return 1 - actualCritChance + actualCritChance * nativeCritMultiplier;
-      }
-    } catch (error) {
-      if (!warnedNativeOvercritFailure) {
-        console.warn(
-          '[CraftBuddy] Native calculateCraftingOvercrit failed, using local fallback:',
-          error,
-        );
-        warnedNativeOvercritFailure = true;
-      }
-    }
-  }
-
+  // The native 0.7.18 helper ROLLS randomness; calling it is not an EV calculation.
   // Excess crit chance (>100%) converts to bonus multiplier at 1:3 ratio
   const excessCritChance = Math.max(0, critChance - 100);
   const bonusCritMultiplier = excessCritChance * 3;
   const effectiveCritMultiplier = critMultiplier + bonusCritMultiplier;
 
   // For deterministic simulation, use expected value
-  const actualCritChance = Math.min(critChance, 100) / 100;
+  const actualCritChance = Math.max(0, Math.min(critChance, 100)) / 100;
   const critMultiplierAsRatio = effectiveCritMultiplier / 100;
 
   // Expected value: (1 - critChance) * 1 + critChance * multiplier
@@ -796,9 +786,89 @@ function compileExpression(
 }
 
 /**
- * Expression evaluator for game equations with variable substitution.
- * Returns 0 for invalid or blocked expressions.
+ * Whether an expression uses syntax and functions supported by certification.
+ * EV-only random placeholders cannot establish a deterministic branch value.
  */
+export function isSupportedCraftingExpression(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  if (!value) return true;
+  if (value.length > MAX_EXPRESSION_LENGTH) return false;
+  // Update operators are valid JavaScript but not pure numeric formulas.
+  if (/\+\+|--/.test(value)) return false;
+  const normalized = value.replace(/\band\b/g, '&&').replace(/\bor\b/g, '||');
+  const tokens: string[] = [];
+  const token =
+    /^\s*(\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|[A-Za-z_]\w*|===|!==|==|!=|<=|>=|&&|\|\||\*\*|[()+\-*/%<>,!&|])/;
+  let offset = 0;
+  while (offset < normalized.length) {
+    if (!normalized.slice(offset).trim()) break;
+    const match = token.exec(normalized.slice(offset));
+    if (!match) return false;
+    tokens.push(match[1]);
+    offset += match[0].length;
+  }
+  const functions = new Set(['floor', 'ceil', 'round', 'min', 'max', 'abs']);
+  const binary = new Set([
+    '+',
+    '-',
+    '*',
+    '/',
+    '%',
+    '**',
+    '<',
+    '<=',
+    '>',
+    '>=',
+    '==',
+    '!=',
+    '===',
+    '!==',
+    '&&',
+    '||',
+    '&',
+    '|',
+  ]);
+  let index = 0;
+  // This recognizes only numeric/boolean operands and numeric function calls.
+  // The compiler still enforces JavaScript precedence and syntax restrictions.
+  function operand(depth: number): boolean {
+    if (depth > 64) return false;
+    const t = tokens[index++];
+    if (!t) return false;
+    if (['+', '-', '!'].includes(t)) return operand(depth + 1);
+    if (t === '(') return expression(depth + 1) && tokens[index++] === ')';
+    if (/^[\d.]/.test(t)) return Number.isFinite(Number(t));
+    if (!/^[A-Za-z_]\w*$/.test(t)) return false;
+    if (functions.has(t)) {
+      if (tokens[index++] !== '(') return false;
+      let count = 0;
+      do {
+        if (count) index++;
+        if (!expression(depth + 1)) return false;
+        count++;
+      } while (tokens[index] === ',');
+      return (
+        tokens[index++] === ')' && (t === 'min' || t === 'max' || count === 1)
+      );
+    }
+    return t === 'true' || t === 'false' || !JS_RESERVED_WORDS.has(t);
+  }
+  function expression(depth: number): boolean {
+    if (!operand(depth)) return false;
+    while (binary.has(tokens[index])) {
+      index++;
+      if (!operand(depth)) return false;
+    }
+    return true;
+  }
+  return (
+    expression(0) &&
+    index === tokens.length &&
+    compileExpression(value) !== null
+  );
+}
+
+/** Expression evaluator for EV previews; invalid syntax retains the legacy zero fallback. */
 export function evalExpression(
   eqn: string,
   variables: ScalingVariables,

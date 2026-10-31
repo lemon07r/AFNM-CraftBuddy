@@ -38,7 +38,8 @@ function buildState({
     player: { player: { currentCraftingAutoUseLoadout: { slots } } },
     crafting: {
       player: { stats },
-      progressState: { step: 0, consumedPills: 0 },
+      progressState: { step: 0 },
+      consumedPills: 0,
       ...(includeTrainingMode ? { trainingMode } : {}),
     },
     inventory: { items: inventory },
@@ -269,7 +270,9 @@ describe('projectNativeAutoUse', () => {
       item: 'Qi Pill',
       blocks: [
         {
-          conditions: [{ kind: 'thisEffect', comparison: 'lessThan', value: 1 }],
+          conditions: [
+            { kind: 'thisEffect', comparison: 'lessThan', value: 1 },
+          ],
         },
       ],
       conditions: [{ kind: 'thisEffect' }],

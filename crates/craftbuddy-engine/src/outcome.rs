@@ -160,8 +160,8 @@ pub fn build_outcome_bands(
     let derived_completion_flat = band_threshold(completion_target, requirement.completion);
     let derived_perfection_flat = band_threshold(perfection_target, requirement.perfection);
 
-    let completion_cap = max_completion_cap.filter(|cap| cap.is_finite() && *cap > 0.0);
-    let perfection_cap = max_perfection_cap.filter(|cap| cap.is_finite() && *cap > 0.0);
+    let completion_cap = max_completion_cap.filter(|cap| cap.is_finite() && *cap >= 0.0);
+    let perfection_cap = max_perfection_cap.filter(|cap| cap.is_finite() && *cap >= 0.0);
 
     let completion_finish_flat = completion_cap.unwrap_or(derived_completion_flat);
     let perfection_finish_flat = perfection_cap.unwrap_or(derived_perfection_flat);
@@ -171,8 +171,8 @@ pub fn build_outcome_bands(
         perfection_target,
         completion_finish_flat,
         perfection_finish_flat,
-        // The overcraft finish branch only exists when the caps run deeper than
-        // the tier requirement.
+        // Retain overcraft metadata for reference scoring. Termination depends
+        // on the actual cap flats, without a separate five-band shortcut.
         can_overcraft: completion_cap
             .map(|cap| cap > derived_completion_flat)
             .unwrap_or(false),
@@ -333,7 +333,7 @@ pub fn will_auto_finish(
     perfection: f64,
     stability: f64,
     bands: &OutcomeBands,
-    completion_bands_hint: Option<i32>,
+    _completion_bands_hint: Option<i32>,
 ) -> bool {
     if stability <= 0.0 {
         return true;
@@ -341,14 +341,6 @@ pub fn will_auto_finish(
     let perfection_ready = perfection >= bands.perfection_finish_flat;
     if completion >= bands.completion_finish_flat && perfection_ready {
         return true;
-    }
-    if bands.can_overcraft && perfection_ready {
-        let completion_bands = completion_bands_hint.unwrap_or_else(|| {
-            get_bonus_and_chance(completion.max(0.0), bands.completion_target).guaranteed
-        });
-        if completion_bands >= 5 {
-            return true;
-        }
     }
     false
 }
@@ -478,6 +470,15 @@ mod tests {
         assert!(!will_auto_finish(99.0, 80.0, 50.0, &bands, None));
         assert!(will_auto_finish(100.0, 80.0, 50.0, &bands, None));
         assert!(will_auto_finish(0.0, 0.0, 0.0, &bands, None));
+    }
+
+    #[test]
+    fn zero_caps_are_explicit_and_five_bands_do_not_override_larger_caps() {
+        let zero = build_outcome_bands(100.0, 100.0, false, Some(0.0), Some(0.0), 0.0, 0.0);
+        assert!(will_auto_finish(0.0, 0.0, 50.0, &zero, None));
+        let large = build_outcome_bands(100.0, 100.0, true, Some(1500.0), Some(100.0), 0.0, 0.0);
+        assert!(!will_auto_finish(902.0, 100.0, 50.0, &large, Some(5)));
+        assert!(will_auto_finish(1500.0, 100.0, 50.0, &large, None));
     }
 
     /// The completion ceiling must clamp overcraft completion extras without

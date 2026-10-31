@@ -755,7 +755,7 @@ export function buildNativeMctsInput(params: {
       target_completion: finiteNumber(config.targetCompletion),
       target_perfection: finiteNumber(config.targetPerfection),
       pills_per_round: Math.max(
-        1,
+        0,
         Math.floor(finiteNumber(config.pillsPerRound, 1)),
       ),
     },

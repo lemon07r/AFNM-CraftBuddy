@@ -1878,6 +1878,32 @@ function randomScenarios(count: number): ScenarioSpec[] {
 /** Build the full corpus. Deterministic: same input every run. */
 export function buildDifferentialCorpus(): DifferentialCorpus {
   const specs = [
+    {
+      name: '0718-zero-pill-budget',
+      state: new CraftingState({
+        qi: 100,
+        stability: 50,
+        items: new Map([['zero_budget_pill', 1]]),
+      }),
+      config: config({
+        pillsPerRound: 0,
+        skills: [
+          skill({
+            key: 'zero_budget_pill',
+            name: 'Zero Budget Pill',
+            itemName: 'zero_budget_pill',
+            actionKind: 'item',
+            consumesTurn: false,
+            qiCost: 0,
+            stabilityCost: 0,
+            stabilityGain: 10,
+          }),
+        ],
+      }),
+      targetCompletion: 100,
+      targetPerfection: 100,
+      condition: 'neutral',
+    } satisfies ScenarioSpec,
     ...handWrittenScenarios(),
     ...randomScenarios(48),
     ...effectMechanicScenarios(),

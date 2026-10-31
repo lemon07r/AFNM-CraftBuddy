@@ -15,6 +15,8 @@ export interface OptimizerReplaySearchConfigSnapshot extends Pick<
   | 'beamWidth'
   | 'goalPriorityBias'
   | 'overcraftAmbition'
+  | 'perfectionBandGoal'
+  | 'completionBandCeiling'
   | 'useMonteCarloTreeSearch'
 > {}
 
@@ -44,6 +46,9 @@ export interface OptimizerReplayInputSnapshot {
     searchBeamWidth: number;
     searchGoalPriorityBias: number;
     overcraftAmbition?: boolean;
+    perfectionBandGoal?: number;
+    completionBandCeiling?: number;
+    searchThreads?: number | 'auto';
     optimizerEngine?: string;
     compactMode: boolean;
     panelVisible: boolean;
@@ -253,7 +258,9 @@ export function buildConfigSnapshot(
   config: OptimizerConfig,
 ): Record<string, unknown> {
   return {
-    mechanicsVersion: '0.7.17',
+    mechanicsVersion:
+      config.techniqueSuccessModel === 'prd' ? '0.7.18' : '0.7.17',
+    techniqueSuccessModel: config.techniqueSuccessModel,
     maxQi: config.maxQi,
     maxStability: config.maxStability,
     maxCompletion: config.maxCompletion ?? null,
@@ -274,6 +281,9 @@ export function buildConfigSnapshot(
     targetCompletion: config.targetCompletion ?? null,
     targetPerfection: config.targetPerfection ?? null,
     trainingMode: !!config.trainingMode,
+    ...(config.nativeAutoUsePlan
+      ? { nativeAutoUsePlan: sanitizeForJson(config.nativeAutoUsePlan) }
+      : {}),
     skills: config.skills.map(buildSkillSnapshot),
   };
 }
@@ -376,6 +386,7 @@ function summarizeRecommendation(
       actionKind: recommendation.skill.actionKind || 'skill',
     },
     score: recommendation.score,
+    planning: recommendation.planning,
     qualityRating: recommendation.qualityRating ?? null,
     expectedGains: recommendation.expectedGains,
     immediateGains: recommendation.immediateGains,
@@ -404,6 +415,7 @@ export function buildResultSnapshot(
           actionKind: recommendation.skill.actionKind || 'skill',
         },
         score: recommendation.score,
+        planning: recommendation.planning,
         qualityRating: recommendation.qualityRating ?? null,
         expectedGains: recommendation.expectedGains,
         immediateGains: recommendation.immediateGains,
@@ -416,6 +428,7 @@ export function buildResultSnapshot(
       }),
     ),
     blockedReasons: result.blockedReasons ?? [],
+    rootEvaluation: result.rootEvaluation ?? null,
     optimalRotation: result.optimalRotation ?? [],
     expectedFinalState: result.expectedFinalState ?? null,
     searchMetrics: result.searchMetrics ?? null,

@@ -31,13 +31,10 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import {
   AMBITION_BAND_MAX,
   CraftBuddySettings,
-  EXPERIMENTAL_SEARCH_PRESET_BUDGETS,
   getSettings,
   LEGACY_SEARCH_PRESET_BUDGETS,
   saveSettings,
-  OPTIMIZER_ENGINE_OPTIONS,
   SEARCH_THREAD_OPTIONS,
-  type OptimizerEngine,
   type SearchPresetBudget,
   type SearchPresetId,
   type SearchThreadCount,
@@ -111,13 +108,8 @@ const SEARCH_PRESETS: SearchPreset[] = [
   },
 ];
 
-function getSearchPresetBudget(
-  presetId: SearchPresetId,
-  engine: OptimizerEngine,
-): SearchPresetBudget {
-  return engine === 'experimental'
-    ? EXPERIMENTAL_SEARCH_PRESET_BUDGETS[presetId]
-    : LEGACY_SEARCH_PRESET_BUDGETS[presetId];
+function getSearchPresetBudget(presetId: SearchPresetId): SearchPresetBudget {
+  return LEGACY_SEARCH_PRESET_BUDGETS[presetId];
 }
 
 function matchesSearchPresetBudget(
@@ -140,10 +132,10 @@ const SEARCH_BUDGET_HELP: SettingHelpContent = {
 };
 
 const OPTIMIZER_ENGINE_HELP: SettingHelpContent = {
-  title: 'Optimizer Engine',
+  title: 'Constrained Planner',
   description:
-    'Chooses which search engine contributes to recommendations. Legacy uses the established TypeScript search only; Experimental adds the Rust/WASM MCTS policy prior for harder crafts.',
-  note: 'Legacy is the v5 default. Experimental is opt-in while MCTS behavior is still being validated.',
+    'Plans toward both selected limits using separate random outcomes and explicit survival constraints.',
+  note: 'A limited search may not prove a complete route. Its uncertainty is preserved rather than counted as success.',
 };
 
 const SEARCH_THREADS_HELP: SettingHelpContent = {
@@ -191,22 +183,22 @@ const SEARCH_GOAL_PRIORITY_HELP: SettingHelpContent = {
 const OVERCRAFT_AMBITION_HELP: SettingHelpContent = {
   title: 'Push Extra Bands',
   description:
-    'Lets the optimizer keep crafting past the target tier for extra completion and perfection bands, matching the game rewards: more result stacks or quality per extra perfection band and material refunds per extra completion band.',
-  note: 'On by default. Turn off to stop at the target tier as soon as it is secured.',
+    'With Auto goals, requests the recipe maximum on both completion and perfection. Turn it off to request the ordinary outcome tier instead.',
+  note: 'Explicit band goals apply in either mode. The planner can only achieve goals supported by the recipe and available resources.',
 };
 
 const PERFECTION_BAND_GOAL_HELP: SettingHelpContent = {
   title: 'Perfection Band Goal',
   description:
-    'Sets how many perfection bands (stars) the optimizer keeps working toward. Auto stops pushing perfection once the recipe outcome tier is secured; a higher goal makes the search keep investing turns in extra stars.',
-  note: 'Auto is the default. Each band is 1.3x wider than the last, so high goals only pay off on crafts with turns to spare.',
+    'Requests this many perfection bands, up to the recipe maximum. Auto requests the maximum when Push Extra Bands is on, or the ordinary outcome tier when it is off.',
+  note: 'Both bar goals must be reached. Each band is 1.3x wider than the last; a higher goal may require more resources than the craft has.',
 };
 
 const COMPLETION_BAND_CEILING_HELP: SettingHelpContent = {
-  title: 'Completion Band Ceiling',
+  title: 'Completion Band Goal',
   description:
-    'Stops the optimizer spending turns on completion past the chosen band. The target outcome tier stays reachable because the ceiling never drops below what the tier requires; it only trims extra overcraft completion.',
-  note: 'Auto is the default. Lower it to redirect leftover turns from material refunds toward perfection.',
+    'Requests this many completion bands, up to the recipe maximum. Auto requests the maximum when Push Extra Bands is on, or the ordinary outcome tier when it is off.',
+  note: 'This is a goal for completion as well as a limit on extra investment. A lower goal may produce a lower item tier.',
 };
 
 const SEARCH_GOAL_PRIORITY_MARKS = [
@@ -665,42 +657,17 @@ export const SettingsPanel = memo(function SettingsPanel({
     [settings, handleSettingChange, onSearchSettingsChange],
   );
 
-  const handleEngineChange = useCallback(
-    (engine: OptimizerEngine) => {
-      if (settings.optimizerEngine === engine) return;
-      const activePreset = SEARCH_PRESETS.find((preset) =>
-        matchesSearchPresetBudget(
-          settings,
-          getSearchPresetBudget(preset.id, settings.optimizerEngine),
-        ),
-      );
-      const newSettings = applySettingsPatch({
-        optimizerEngine: engine,
-        ...(activePreset
-          ? getSearchPresetBudget(activePreset.id, engine)
-          : {}),
-      });
-      onSearchSettingsChange?.(newSettings);
-    },
-    [settings, applySettingsPatch, onSearchSettingsChange],
-  );
-
   const handleApplyPreset = useCallback(
     (preset: SearchPreset) => {
-      const newSettings = applySettingsPatch(
-        getSearchPresetBudget(preset.id, settings.optimizerEngine),
-      );
+      const newSettings = applySettingsPatch(getSearchPresetBudget(preset.id));
       onSearchSettingsChange?.(newSettings);
     },
-    [settings.optimizerEngine, applySettingsPatch, onSearchSettingsChange],
+    [applySettingsPatch, onSearchSettingsChange],
   );
 
   const isPresetActive = useCallback(
     (preset: SearchPreset): boolean =>
-      matchesSearchPresetBudget(
-        settings,
-        getSearchPresetBudget(preset.id, settings.optimizerEngine),
-      ),
+      matchesSearchPresetBudget(settings, getSearchPresetBudget(preset.id)),
     [settings],
   );
 
@@ -1075,54 +1042,10 @@ export const SettingsPanel = memo(function SettingsPanel({
             >
               <Box sx={{ gridColumn: compact ? 'auto' : '1 / -1' }}>
                 <SettingsGroup
-                  title="Search Engine"
+                  title="Constrained Planner"
                   help={OPTIMIZER_ENGINE_HELP}
-                  description="Legacy is stable. Experimental adds the native MCTS policy prior for difficult crafts."
+                  description="Plans toward both limits while protecting the remaining stability budget."
                 >
-                  <FlexRow gap={0.65} sx={{ flexWrap: 'wrap' }}>
-                    {OPTIMIZER_ENGINE_OPTIONS.map((option) => {
-                      const active = settings.optimizerEngine === option.id;
-                      return (
-                        <Tooltip
-                          key={option.id}
-                          title={renderHelpContent({
-                            title: option.label,
-                            description: option.description,
-                            note: option.note,
-                          })}
-                          enterDelay={250}
-                          placement="top"
-                          arrow
-                          PopperProps={getTooltipPopperProps()}
-                        >
-                          <Button
-                            size="small"
-                            variant={active ? 'contained' : 'outlined'}
-                            onClick={() => handleEngineChange(option.id)}
-                            sx={{
-                              minWidth: compact ? 104 : 122,
-                              color: active ? '#141414' : colors.textSecondary,
-                              backgroundColor: active
-                                ? colors.gold
-                                : 'transparent',
-                              borderColor: active
-                                ? colors.gold
-                                : `${colors.borderMedium}`,
-                              transition: transitions.smooth,
-                              '&:hover': {
-                                borderColor: colors.gold,
-                                backgroundColor: active
-                                  ? colors.goldDark
-                                  : 'rgba(197, 160, 89, 0.12)',
-                              },
-                            }}
-                          >
-                            {option.label}
-                          </Button>
-                        </Tooltip>
-                      );
-                    })}
-                  </FlexRow>
                   <FlexRow
                     gap={0.65}
                     sx={{ flexWrap: 'wrap', alignItems: 'center', mt: 1 }}
@@ -1196,10 +1119,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                   <FlexRow gap={0.65} sx={{ flexWrap: 'wrap' }}>
                     {SEARCH_PRESETS.map((preset) => {
                       const active = isPresetActive(preset);
-                      const values = getSearchPresetBudget(
-                        preset.id,
-                        settings.optimizerEngine,
-                      );
+                      const values = getSearchPresetBudget(preset.id);
                       return (
                         <Tooltip
                           key={preset.id}
@@ -1362,8 +1282,8 @@ export const SettingsPanel = memo(function SettingsPanel({
                       step={1}
                       tooltip={PERFECTION_BAND_GOAL_HELP}
                       valueFormatter={formatAmbitionBands}
-                      hint="Auto stops once the recipe outcome tier is secured."
-                      tip="Raise it to keep chasing extra stars; the percentage is the perfection needed."
+                      hint="Auto requests the recipe maximum with Push Extra Bands on."
+                      tip="Choose the perfection goal; the percentage shows the work required."
                       onChange={(v) =>
                         handleSliderDraftChange('perfectionBandGoal', v)
                       }
@@ -1373,15 +1293,15 @@ export const SettingsPanel = memo(function SettingsPanel({
                     />
 
                     <SliderSetting
-                      label="Completion Band Ceiling"
+                      label="Completion Band Goal"
                       draftValue={draftSettings.completionBandCeiling}
                       min={0}
                       max={AMBITION_BAND_MAX}
                       step={1}
                       tooltip={COMPLETION_BAND_CEILING_HELP}
                       valueFormatter={formatAmbitionBands}
-                      hint="Auto lets overcraft completion run as far as the search likes."
-                      tip="Lower it to stop banking completion past that band and spend the turns elsewhere."
+                      hint="Auto requests the recipe maximum with Push Extra Bands on."
+                      tip="Choose the completion goal; both bar goals must be reached."
                       onChange={(v) =>
                         handleSliderDraftChange('completionBandCeiling', v)
                       }

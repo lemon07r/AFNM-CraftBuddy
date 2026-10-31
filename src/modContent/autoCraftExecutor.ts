@@ -353,8 +353,7 @@ function normalizeImageHint(value: string | undefined): string | null {
 function buildIconHints(request: AutoCraftExecutionRequest): string[] {
   const hints = new Set<string>();
   const nativeTechnique = request.skill?.nativeTechnique as
-    | { icon?: string }
-    | undefined;
+    { icon?: string } | undefined;
 
   const possibleHints = [request.skill?.icon, nativeTechnique?.icon];
   possibleHints.forEach((hint) => {
@@ -754,6 +753,11 @@ export function createDomAutoCraftExecutor(
       snapshot: AutoCraftRuntimeSnapshot,
     ) {
       assertFreshCraftState(snapshot);
+      if ((request.transitionUnresolvedProbability ?? 0) > 1e-9) {
+        throw new UnverifiableCraftStateError(
+          'The immediate action includes unmodelled effects or native auto-use conditions.',
+        );
+      }
 
       const nativeAutoUse = resolveSnapshotNativeAutoUse(snapshot);
       const aliases = buildSearchAliases(request);

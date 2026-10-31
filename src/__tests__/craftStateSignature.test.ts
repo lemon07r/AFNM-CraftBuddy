@@ -127,7 +127,7 @@ describe('serializeHarmonyData', () => {
   });
 
   it('distinguishes absent from empty harmony data', () => {
-    expect(serializeHarmonyData(undefined)).toBe('none');
+    expect(serializeHarmonyData(undefined)).toBe('null');
     expect(serializeHarmonyData({})).toBe('{}');
   });
 
@@ -167,6 +167,7 @@ describe('readLiveCraftStateSignature', () => {
 
   const liveState = {
     crafting: {
+      consumedPills: 0,
       player: {
         stats: { pool: 90, toxicity: 5 },
         buffs: [{ name: 'Inner Fire', stacks: 1 }],
@@ -183,7 +184,6 @@ describe('readLiveCraftStateSignature', () => {
         nextConditions: ['positive'],
         harmony: 6,
         harmonyTypeData: { heat: 2 },
-        consumedPills: 0,
       },
       recipeStats: { stability: 60 },
     },
