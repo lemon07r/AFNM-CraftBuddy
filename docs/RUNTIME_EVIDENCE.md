@@ -1708,6 +1708,9 @@ writes and maximum-stability decay do not call this applier.
 
 The simulator now models stock Su interception and certainty-only Han prevention;
 the latter leaves uncertain losses charged without consuming an integer use.
+That approximation is not a lower bound: saving an uncertain small loss's use
+for a later large loss can overestimate expected stability and survival; the
+counterexample is recorded in the mechanics-parity gap below.
 Optional stochastic interceptor effects/triggers are skipped rather than
 persisting joint companion outcome branches; stock Su has no optional effects.
 These model limits are tracked in [mechanics parity](MECHANICS_PARITY.md#known-gaps).
