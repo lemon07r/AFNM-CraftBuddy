@@ -190605,6 +190605,586 @@
       ]
     },
     {
+      "name": "0719-held-nonpositive-0",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 50,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "pressure",
+              "name": "Pressure",
+              "stacks": 0,
+              "definition": {
+                "name": "Pressure",
+                "canStack": true,
+                "effects": [
+                  {
+                    "kind": "completion",
+                    "amount": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "stats": {
+                  "control": {
+                    "value": 4
+                  },
+                  "successChanceBonus": {
+                    "value": 1
+                  }
+                },
+                "triggeredEffects": [
+                  {
+                    "trigger": "completionGained",
+                    "effects": [
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 100
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 0,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 0,
+            "success_chance": 0.5,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 10
+                },
+                "condition": {
+                  "kind": "buff",
+                  "buff": {
+                    "name": "Pressure",
+                    "canStack": true,
+                    "effects": [
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 5
+                        }
+                      }
+                    ],
+                    "stats": {
+                      "control": {
+                        "value": 4
+                      },
+                      "successChanceBonus": {
+                        "value": 1
+                      }
+                    },
+                    "triggeredEffects": [
+                      {
+                        "trigger": "completionGained",
+                        "effects": [
+                          {
+                            "kind": "perfection",
+                            "amount": {
+                              "value": 100
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "mode": "equal",
+                  "count": 0
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 1,
+                  "eqn": "control - pressure"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 100,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 15,
+            "perfection": 14,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "pressure",
+                "stacks": 0,
+                "internalState": {}
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-held-nonpositive--2",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 50,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "pressure",
+              "name": "Pressure",
+              "stacks": -2,
+              "definition": {
+                "name": "Pressure",
+                "canStack": true,
+                "effects": [
+                  {
+                    "kind": "completion",
+                    "amount": {
+                      "value": 5
+                    }
+                  }
+                ],
+                "stats": {
+                  "control": {
+                    "value": 4
+                  },
+                  "successChanceBonus": {
+                    "value": 1
+                  }
+                },
+                "triggeredEffects": [
+                  {
+                    "trigger": "completionGained",
+                    "effects": [
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 100
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 0,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 0,
+            "success_chance": 0.5,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "completion",
+                "amount": {
+                  "value": 10
+                },
+                "condition": {
+                  "kind": "buff",
+                  "buff": {
+                    "name": "Pressure",
+                    "canStack": true,
+                    "effects": [
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 5
+                        }
+                      }
+                    ],
+                    "stats": {
+                      "control": {
+                        "value": 4
+                      },
+                      "successChanceBonus": {
+                        "value": 1
+                      }
+                    },
+                    "triggeredEffects": [
+                      {
+                        "trigger": "completionGained",
+                        "effects": [
+                          {
+                            "kind": "perfection",
+                            "amount": {
+                              "value": 100
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "mode": "equal",
+                  "count": 0
+                }
+              },
+              {
+                "kind": "perfection",
+                "amount": {
+                  "value": 1,
+                  "eqn": "control - pressure"
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 100,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 15,
+            "perfection": 14,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "pressure",
+                "stacks": -2,
+                "internalState": {}
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "0719-stack-capped",
       "input": {
         "state": {

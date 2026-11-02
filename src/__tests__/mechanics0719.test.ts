@@ -10,11 +10,26 @@ import {
   successCaptureScenario,
   emptyExpressionScenario,
   liveProgressConditionScenarios,
+  nonpositiveBuffScenarios,
 } from './fixtures/mechanics0719';
 import { CraftingState } from '../optimizer/state';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
 describe('AFNM 0.7.19 audited mechanics', () => {
+  it.each(nonpositiveBuffScenarios())(
+    'keeps held nonpositive buffs without enabling listeners/counts: $name',
+    ({ state, skill, config }) => {
+      const missing = state.copy({ buffs: new Map() });
+      expect(state.getCacheKey()).not.toBe(missing.getCacheKey());
+      const next = applySkill(state, skill, config)!;
+      expect(next.completion).toBe(15); // Literal success bonus still applies; ordinary tick adds 5.
+      expect(next.perfection).toBe(14); // Base control 10 + literal stat 4; listener remains disabled.
+      expect(next.getBuffStacks('pressure')).toBe(
+        state.getBuffStacks('pressure'),
+      );
+      expect(next.buffs.has('pressure')).toBe(true);
+    },
+  );
   it.each(liveProgressConditionScenarios())(
     'uses the same live percentage gates for gains and mutations: $name',
     ({ state, skill, config, name }) => {

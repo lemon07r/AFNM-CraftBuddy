@@ -541,7 +541,6 @@ export class CraftingState implements CraftingStateData {
     // Flame's blaze) changes stat scaling, so it must be part of the key or
     // states that differ only there would collide in the transposition table.
     const buffStr = Array.from(this.buffs.entries())
-      .filter(([_, v]) => v.stacks > 0)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => {
         const base = `${k}:${v.stacks}`;

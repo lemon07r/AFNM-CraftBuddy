@@ -10,6 +10,7 @@ export function mechanics0719Scenarios() {
     emptyExpressionScenario(),
     successCaptureScenario(),
     ...liveProgressConditionScenarios(),
+    ...nonpositiveBuffScenarios(),
     ...stackEventScenarios(),
     ...buffGroupScenarios(),
     ...[
@@ -77,6 +78,51 @@ export function emptyExpressionScenario() {
     skill,
     config: retargetConfig(skill),
   };
+}
+
+export function nonpositiveBuffScenarios() {
+  return [0, -2].map((stacks) => {
+    const pressure: BuffDefinition = {
+      name: 'Pressure',
+      canStack: true,
+      effects: [{ kind: 'completion', amount: { value: 5 } }],
+      stats: { control: { value: 4 }, successChanceBonus: { value: 1 } },
+      triggeredEffects: [
+        {
+          trigger: 'completionGained',
+          effects: [{ kind: 'perfection', amount: { value: 100 } }],
+        },
+      ],
+    };
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      successChance: 0.5,
+      effects: [
+        {
+          kind: 'completion',
+          amount: { value: 10 },
+          condition: { kind: 'buff', buff: pressure, mode: 'equal', count: 0 },
+        },
+        {
+          kind: 'perfection',
+          amount: { value: 1, eqn: 'control - pressure' },
+        },
+      ],
+    });
+    return {
+      name: `0719-held-nonpositive-${stacks}`,
+      state: new CraftingState({
+        qi: 100,
+        stability: 50,
+        buffs: new Map([
+          ['pressure', { name: pressure.name, stacks, definition: pressure }],
+        ]),
+      }),
+      skill,
+      config: retargetConfig(skill),
+    };
+  });
 }
 
 export function liveProgressConditionScenarios() {

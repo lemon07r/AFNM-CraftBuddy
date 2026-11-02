@@ -1251,7 +1251,7 @@ pub fn evaluate_effect_condition(
                     }
                     _ => String::new(),
                 };
-                state.buff_stacks(&key) as f64
+                state.buff_stacks(&key).max(0) as f64
             };
             let met = match condition.mode.as_deref() {
                 Some("more") => count >= condition.count,
@@ -1501,6 +1501,9 @@ pub fn build_technique_scaling_base(
     variables.insert("stabilitypenalty".to_string(), state.stability_penalty);
 
     for buff in active_buffs {
+        if buff.stacks <= 0 {
+            continue; // Runtime K1i omits nonpositive buff counts.
+        }
         variables.insert(buff.key.clone(), buff.stacks as f64);
         let normalized = normalize_identifier(&buff.key);
         variables.entry(normalized).or_insert(buff.stacks as f64);
@@ -1590,10 +1593,12 @@ pub fn apply_buff_stat_contributions(
         }
         eval_vars.insert("stacks".to_string(), buff.stacks as f64);
         let normalized_key = fold_key;
-        if !normalized_key.is_empty() {
-            eval_vars.insert(normalized_key, buff.stacks as f64);
+        if buff.stacks > 0 {
+            if !normalized_key.is_empty() {
+                eval_vars.insert(normalized_key, buff.stacks as f64);
+            }
+            eval_vars.insert(buff.key.clone(), buff.stacks as f64);
         }
-        eval_vars.insert(buff.key.clone(), buff.stacks as f64);
         // 0.7.7+ buffs scale off trigger-written internal state (e.g. True
         // Bifang Flame's `scaling: "blaze"`); the keys share the eqn namespace.
         for (state_key, state_value) in &buff.internal_state {

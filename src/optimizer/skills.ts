@@ -1383,6 +1383,7 @@ function buildTechniqueScalingBase(
   };
 
   activeBuffs.forEach((tracked, buffName) => {
+    if (tracked.stacks <= 0) return; // Runtime K1i omits nonpositive counts.
     vars[buffName] = tracked.stacks;
     const normalized = normalizeBuffName(buffName);
     if (!(normalized in vars)) {
@@ -1461,8 +1462,10 @@ function applyBuffStatContributions(
           ...tracked.internalState,
           stacks: tracked.stacks,
         };
-        if (normalizedBuff) evalVars[normalizedBuff] = tracked.stacks;
-        evalVars[buffKey] = tracked.stacks;
+        if (tracked.stacks > 0) {
+          if (normalizedBuff) evalVars[normalizedBuff] = tracked.stacks;
+          evalVars[buffKey] = tracked.stacks;
+        }
         // 0.7.7+ buffs scale off trigger-written internal state (e.g. True Bifang
         // Flame's `scaling: 'blaze'`); the keys share the eqn namespace.
         if (tracked.internalState) {
@@ -1676,7 +1679,9 @@ export function evaluateEffectCondition(
           ? 'self'
           : normalizeBuffName(condition.buff?.name);
       const count =
-        buffKey === 'self' ? selfStacks : state.getBuffStacks(buffKey);
+        buffKey === 'self'
+          ? selfStacks
+          : Math.max(0, state.getBuffStacks(buffKey));
       let met = false;
       if (condition.mode === 'more') {
         met = count >= condition.count;
