@@ -25,7 +25,7 @@ describe('shared settings subscription', () => {
     saveSettings({ compactMode: true });
     expect(listener).toHaveBeenCalledTimes(2);
   });
-  it('merges a later control edit into live settings, not an old panel copy', () => {
+  it('preserves both changes from sequential partial settings saves', () => {
     saveSettings({ compactMode: true });
     saveSettings({ showForecastedConditions: false });
     expect(getSettings().compactMode).toBe(true);
