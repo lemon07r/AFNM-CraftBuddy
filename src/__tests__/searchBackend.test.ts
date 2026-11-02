@@ -465,9 +465,7 @@ describe('search backend client fallback', () => {
     });
     expect(second.kind).toBe('unavailable');
     expect(getSearchBackendStatus().syncFallbackCount).toBe(2);
-  });
 
-  it('probes false exactly once per session', async () => {
     await expect(probeSearchWorkerCapability()).resolves.toBe(false);
     await expect(probeSearchWorkerCapability()).resolves.toBe(false);
     expect(getSearchBackendStatus().probe).toBe('failed');
