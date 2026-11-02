@@ -18,9 +18,12 @@ import {
   __resetSearchBackendForTests,
 } from '../modContent/searchBackendClient';
 import {
+  freezeSearchClock,
   getReplaySearchInput,
   loadOptimizerReplaySnapshot,
 } from './__fixtures__/replaySnapshots';
+
+freezeSearchClock();
 
 const REPLAY_FIXTURES = [
   'forge-heat-runway-step-2.snapshot.json',

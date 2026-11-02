@@ -30,11 +30,16 @@ import {
   __testing,
 } from '../optimizer/search';
 import {
+  freezeSearchClock,
+  FIXED_WORK_CLOCK_MS,
   getReplaySearchInput,
   loadOptimizerReplaySnapshot,
+  withFixedWork,
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
 import { convertGameTechniques } from '../modContent/craftStateExtraction';
+
+freezeSearchClock();
 
 const { evaluateCraftEndOutcomeDistribution, getProgressTowardRawGoal } =
   __testing;
@@ -314,8 +319,10 @@ function simulateCraft(
       condition,
       forecast,
       {
-        timeBudgetMs: 500,
-        maxNodes: 200000,
+        // Fixed work per turn (about what 500 ms reached on a developer
+        // machine) so results don't depend on runner speed.
+        timeBudgetMs: FIXED_WORK_CLOCK_MS,
+        maxNodes: 400,
         beamWidth: 8,
         ...searchConfig,
       },
@@ -979,7 +986,7 @@ describe('craft simulation — survivability', () => {
       6,
       'neutral',
       ['neutral', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 200000, beamWidth: 8 },
     );
 
     expect(result.recommendation).not.toBeNull();
@@ -1236,7 +1243,7 @@ describe('craft simulation — rotation must not suggest stability death', () =>
       28, // default lookahead depth
       'neutral',
       ['positive', 'veryPositive', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 900, beamWidth: 8 },
     );
 
     // The rotation must not be all-progress — it should include stabilize.
@@ -1297,7 +1304,7 @@ describe('craft simulation — rotation must not suggest stability death', () =>
       28,
       'neutral',
       ['neutral', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 900, beamWidth: 8 },
     );
 
     const rotation = result.optimalRotation ?? [];
@@ -1642,12 +1649,12 @@ describe('craft simulation — sublime crafts', () => {
     const neutralOnly: CraftingConditionType[] = ['neutral'];
 
     // Pass scaled targets (200/200) to the simulation loop so it doesn't
-    // stop at base targets.  The search is time-budgeted, so on slower
-    // machines each turn explores less deeply and convergence needs more
-    // turns; give this deep craft generous turn and per-turn budgets so the
-    // contract checks the model, not machine speed.
+    // stop at base targets. Each turn gets a fixed 800-node budget (about
+    // what the former 1 s clock budget reached locally) and a generous turn
+    // limit, so the contract checks the model, not machine speed.
     const sim = simulateCraft(state, config, 200, 200, neutralOnly, 90, 6, {
-      timeBudgetMs: 1000,
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 800,
     });
     expect(sim.craftDied).toBe(false);
     expect(sim.targetsMet).toBe(true);
@@ -1692,7 +1699,7 @@ describe('craft simulation — sublime crafts', () => {
       6,
       'neutral',
       ['neutral', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 200000, beamWidth: 8 },
     );
 
     // At heat=0, refine gives 0 perfection.  The optimizer MUST NOT
@@ -1885,7 +1892,7 @@ describe('craft simulation — sublime crafts', () => {
       input.lookaheadDepth,
       input.currentCondition,
       input.forecastConditions as CraftingConditionType[],
-      input.searchConfig,
+      withFixedWork(input.searchConfig, 500),
     );
 
     // The buggy build recommended focused_fusion here; with the Focus cost
@@ -1912,7 +1919,7 @@ describe('craft simulation — sublime crafts', () => {
       stepBeforeInput.lookaheadDepth,
       stepBeforeInput.currentCondition,
       stepBeforeInput.forecastConditions as CraftingConditionType[],
-      stepBeforeInput.searchConfig,
+      withFixedWork(stepBeforeInput.searchConfig, 500),
     );
 
     expect(stepBeforeSnapshot.output?.recommendation?.skill?.key).toBe(
@@ -2008,7 +2015,7 @@ describe('craft simulation — sublime crafts', () => {
       input.lookaheadDepth,
       input.currentCondition,
       input.forecastConditions as CraftingConditionType[],
-      input.searchConfig,
+      withFixedWork(input.searchConfig, 600),
     );
 
     expect(snapshot.output?.recommendation?.skill?.key).toBe('invasive_refine');
@@ -2043,7 +2050,7 @@ describe('craft simulation — sublime crafts', () => {
       input.lookaheadDepth,
       input.currentCondition,
       input.forecastConditions as CraftingConditionType[],
-      input.searchConfig,
+      withFixedWork(input.searchConfig, 1500),
     );
 
     expect(result.recommendation).not.toBeNull();
@@ -2104,7 +2111,7 @@ describe('craft simulation — sublime crafts', () => {
         input.lookaheadDepth,
         currentCondition,
         forecast,
-        input.searchConfig,
+        withFixedWork(input.searchConfig, 1200),
       );
 
       expect(result.recommendation).not.toBeNull();
