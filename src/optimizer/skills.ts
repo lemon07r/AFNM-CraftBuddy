@@ -756,6 +756,54 @@ function hasEffectInterceptors(buffs: ActiveBuffMap): boolean {
   );
 }
 
+function hasStabilityPrevention(buffs: ActiveBuffMap): boolean {
+  return Array.from(buffs.values()).some(
+    (buff) => buff.definition?.stabilityLossPrevention,
+  );
+}
+
+/** n7c: held order, no stack check. Never spend an integer use on an EV loss. */
+function preventCertainStabilityLoss(
+  buffs: ActiveBuffMap,
+  amount: number,
+  certain: boolean,
+): boolean {
+  if (!certain || amount >= 0) return false;
+  for (const [key, owner] of Array.from(buffs.entries())) {
+    const prevention = owner.definition?.stabilityLossPrevention;
+    const used = Math.max(
+      0,
+      Math.floor(owner.internalState?.preventedStabilityLosses ?? 0),
+    );
+    if (!prevention || used >= prevention.uses) continue;
+    buffs.set(key, {
+      ...owner,
+      internalState: {
+        ...owner.internalState,
+        preventedStabilityLosses: used + 1,
+      },
+    });
+    return true;
+  }
+  return false;
+}
+
+function appliedStabilityAmount(
+  amount: number,
+  variables: ScalingVariables,
+  buffs: ActiveBuffMap,
+): number {
+  return amount < 0 && hasStabilityPrevention(buffs)
+    ? -floorCost(
+        -amount *
+          costMultiplier(
+            variables.stabilityCostReduction,
+            variables.stabilityCostPenalty,
+          ),
+      )
+    : amount;
+}
+
 function hasTriggeredEffectBuffs(
   buffs: ReadonlyMap<string, { definition?: BuffDefinition }>,
 ): boolean {
@@ -4322,7 +4370,10 @@ function applySkillTransition(
 
   // Calculate gains BEFORE applying buffs from this skill
   const orderedNumeric =
-    !isItemAction && hasEffectInterceptors(resolvedActiveBuffs);
+    (!isItemAction && hasEffectInterceptors(resolvedActiveBuffs)) ||
+    hasStabilityPrevention(resolvedActiveBuffs);
+  const newBuffs = new Map(resolvedActiveBuffs);
+  let certainApplication = true;
   const gains: SkillGains =
     orderedNumeric ||
     (!skill.isDisciplinedTouch &&
@@ -4382,15 +4433,16 @@ function applySkillTransition(
   actionVars.successChanceBonus += mastery.successChanceBonus || 0;
 
   const effectiveQiCost = effectiveCosts.qiCost;
-  const effectiveStabilityCost = effectiveCosts.stabilityCost;
+  let effectiveStabilityCost = effectiveCosts.stabilityCost;
   const stabilityProjection = new StabilityProjection(
     state.stability,
     state.stabilityPenalty,
   );
-  stabilityProjection.pay(
-    effectiveStabilityCost,
-    effectiveCosts.stabilityOutcomes,
-  );
+  if (!orderedNumeric)
+    stabilityProjection.pay(
+      effectiveStabilityCost,
+      effectiveCosts.stabilityOutcomes,
+    );
 
   // Calculate new resource values
   let newQi = clampQi(state.qi - effectiveQiCost);
@@ -4460,7 +4512,10 @@ function applySkillTransition(
   }
 
   // Calculate new stability (current stability, not max)
-  let newStability = state.stability - effectiveStabilityCost + gains.stability;
+  let newStability =
+    state.stability -
+    (orderedNumeric ? 0 : effectiveStabilityCost) +
+    gains.stability;
   if (!skill.effects?.length) stabilityProjection.change(gains.stability);
 
   // Stability can overdraw and exceed its ceiling until turn cleanup. Qi's
@@ -4529,7 +4584,6 @@ function applySkillTransition(
   }
 
   // Update stack-based buffs
-  const newBuffs = new Map(resolvedActiveBuffs);
   const newItems = new Map(state.items);
 
   if (isItemAction) {
@@ -4724,7 +4778,6 @@ function applySkillTransition(
     actionVars.critchance,
     actionVars.critmultiplier,
   );
-  stabilityProjection.beginTechnique(actionSuccessChance);
   const applyTechniqueNumeric = (
     effect: TechniqueEffect,
     factor: number,
@@ -4743,7 +4796,7 @@ function applySkillTransition(
     )
       raw = 0;
     // y7c: held order, first matching interceptor PER owner, floor each step.
-    for (const [key] of Array.from(newBuffs.entries())) {
+    for (const [key] of isItemAction ? [] : Array.from(newBuffs.entries())) {
       const owner = newBuffs.get(key);
       if (!owner) continue;
       for (const interceptor of owner.definition?.craftingEffectInterceptors ??
@@ -4812,6 +4865,22 @@ function applySkillTransition(
       raw > 0 && isBar ? safeFloor(raw * crit) : raw,
       actionVars,
     );
+    if (effect.kind === 'stability' && application.realizedAmount < 0) {
+      application.realizedAmount = appliedStabilityAmount(
+        application.realizedAmount,
+        actionVars,
+        newBuffs,
+      );
+      application.amount = application.realizedAmount;
+      if (
+        preventCertainStabilityLoss(
+          newBuffs,
+          application.amount,
+          certainApplication && factor === 1,
+        )
+      )
+        application.amount = application.realizedAmount = 0;
+    }
     let amount = application.amount * factor;
     if (isBar) {
       const completion = effect.kind === 'completion';
@@ -4882,9 +4951,28 @@ function applySkillTransition(
   };
   if (orderedNumeric && !phase.preview) {
     if (qiSpentByCost > 0) dispatchBuffTriggers('poolSpent', qiSpentByCost);
+    const paymentCertain =
+      effectiveCosts.stabilityOutcomes?.every((outcome) => outcome.cost > 0) ??
+      true;
+    if (
+      preventCertainStabilityLoss(
+        newBuffs,
+        -effectiveStabilityCost,
+        paymentCertain,
+      )
+    )
+      effectiveStabilityCost = 0;
+    else
+      stabilityProjection.pay(
+        effectiveStabilityCost,
+        effectiveCosts.stabilityOutcomes,
+      );
+    newStability -= effectiveStabilityCost;
     if (effectiveStabilityCost > 0)
       dispatchBuffTriggers('stabilitySpent', effectiveStabilityCost);
+    techniqueProgress.stability = stabilityProjection.meanStability();
   }
+  stabilityProjection.beginTechnique(actionSuccessChance);
   if (skill.effects && skill.effects.length > 0) {
     for (const effect of skill.effects) {
       if (!effect) continue;
@@ -4898,6 +4986,8 @@ function applySkillTransition(
       if (!conditionResult.met || conditionResult.probability <= 0) continue;
       const factor = actionSuccessChance * conditionResult.probability;
       if (factor <= 0) continue;
+      const previousCertainty: boolean = certainApplication;
+      certainApplication = previousCertainty && factor === 1;
       if (
         orderedNumeric &&
         [
@@ -4910,6 +5000,7 @@ function applySkillTransition(
         ].includes(effect.kind)
       ) {
         applyTechniqueNumeric(effect, factor, conditionResult.probability);
+        certainApplication = previousCertainty;
         continue;
       }
 
@@ -5022,6 +5113,7 @@ function applySkillTransition(
           break;
         }
       }
+      certainApplication = previousCertainty;
     }
   }
 
@@ -5074,7 +5166,25 @@ function applySkillTransition(
       conditionFactor,
     );
     const rawAmount = raw * conditionFactor;
+    if (effect.kind === 'stability' && application.realizedAmount < 0) {
+      application.realizedAmount = appliedStabilityAmount(
+        application.realizedAmount,
+        scalingVars,
+        newBuffs,
+      );
+      application.amount = application.realizedAmount * conditionFactor;
+      if (
+        preventCertainStabilityLoss(
+          newBuffs,
+          application.realizedAmount,
+          certainApplication && conditionFactor === 1,
+        )
+      )
+        application.amount = application.realizedAmount = 0;
+    }
     const amount = application.amount;
+    const previousCertainty: boolean = certainApplication;
+    certainApplication = previousCertainty && conditionFactor === 1;
     switch (effect.kind) {
       case 'completion':
         buffCompletion += amount;
@@ -5233,6 +5343,7 @@ function applySkillTransition(
         break;
       }
     }
+    certainApplication = previousCertainty;
   }
 
   // Fire the cost/technique triggers before per-turn buff effects run,
