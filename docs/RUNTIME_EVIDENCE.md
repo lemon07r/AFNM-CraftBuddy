@@ -1585,6 +1585,20 @@ do not immediately cap current stability. Qi differs: ordinary payment and
 restoration clamp immediately (`G:14935853–14936307`). Local early stability
 bounds and the separate floor helper were confirmed gaps at inspection time.
 
+### Benchmark contracts moved by late cleanup
+
+Two fixed-work contracts changed because of the cleanup timing above, each
+checked by replaying the fixture's lines under the corrected transitions:
+
+- `user-report-overcraft-endgame` now requires Gentle Stabilize. Late overdraft
+  repayment lets its six-action restoration line bank 44,604 perfection;
+  Focus into First Peak resolves at 37,115. The restoration buff does not tick
+  on its creation turn.
+- `forge-heat-runway-step-3` now requires Unstable Re-energisation. At
+  stability 8, Explosive Fusion pays 10 and survives only the 75% +7 recovery
+  (floor 0, 25% fatal); the support technique pays 5 and guarantees 3, then
+  stabilizes and restores heat through fusion.
+
 ### Percentage conditions read running progress
 
 `b7c` makes one success check after payment and returns immediately on failure
