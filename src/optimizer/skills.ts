@@ -42,6 +42,7 @@ import {
   buildCanonicalNativeVariables,
 } from './nativeVariables';
 import { normalizeIdentifier } from './nameNormalization';
+import { StabilityProjection } from './stability';
 
 /**
  * Simplified skill definition for optimizer.
@@ -1882,6 +1883,7 @@ export interface EffectiveActionCosts {
   qiCost: number;
   stabilityCost: number;
   requiredPostStability: number;
+  stabilityOutcomes?: Array<{ cost: number; probability: number }>;
 }
 
 interface PostCostStabilityFrame {
@@ -3271,6 +3273,7 @@ export function calculateActionSurvivabilityFloor(
 
   if (consumesTurn) {
     for (const [buffKey, buff] of Array.from(newBuffs.entries())) {
+      if (!resolvedActiveBuffs.has(buffKey)) continue;
       if (!buff.definition) continue;
       const scalingVars: ScalingVariables = {
         ...actionVars,
@@ -3817,10 +3820,11 @@ function literalMasteryPayment(
     outcomes = next;
   }
   if (!varies) return {};
-  const costs = {
+  const costs: EffectiveActionCosts = {
     qiCost: 0,
     stabilityCost: 0,
     requiredPostStability: Math.max(0, config.minStability),
+    stabilityOutcomes: [],
   };
   let first: EffectiveActionCosts | undefined;
   let different = false;
@@ -3839,6 +3843,10 @@ function literalMasteryPayment(
     else first = payment;
     costs.qiCost += outcome.probability * payment.qiCost;
     costs.stabilityCost += outcome.probability * payment.stabilityCost;
+    costs.stabilityOutcomes!.push({
+      cost: payment.stabilityCost,
+      probability: outcome.probability,
+    });
   }
   return different ? { costs } : {};
 }
@@ -4017,6 +4025,10 @@ function expectedMasteryPayment(
       0,
     ),
     requiredPostStability: first.requiredPostStability,
+    stabilityOutcomes: costs.map((outcome) => ({
+      cost: outcome.costs.stabilityCost,
+      probability: outcome.probability,
+    })),
   };
 }
 
@@ -4235,6 +4247,14 @@ function applySkillTransition(
     );
   const effectiveQiCost = effectiveCosts.qiCost;
   const effectiveStabilityCost = effectiveCosts.stabilityCost;
+  const stabilityProjection = new StabilityProjection(
+    state.stability,
+    state.stabilityPenalty,
+  );
+  stabilityProjection.pay(
+    effectiveStabilityCost,
+    effectiveCosts.stabilityOutcomes,
+  );
 
   // Calculate new resource values
   let newQi = clampQi(state.qi - effectiveQiCost);
@@ -4293,16 +4313,19 @@ function applySkillTransition(
       state.initialMaxStability,
       Math.max(0, newStabilityPenalty - effectiveMaxStabilityChange),
     );
+    stabilityProjection.change(0, -effectiveMaxStabilityChange);
     newMaxStability = state.initialMaxStability - newStabilityPenalty;
   }
 
   if (skill.restoresMaxStabilityToFull && !maxStabilitySealed) {
     newStabilityPenalty = 0;
     newMaxStability = state.initialMaxStability;
+    stabilityProjection.restoreMaximum();
   }
 
   // Calculate new stability (current stability, not max)
   let newStability = state.stability - effectiveStabilityCost + gains.stability;
+  if (!skill.effects?.length) stabilityProjection.change(gains.stability);
 
   // Stability can overdraw and exceed its ceiling until turn cleanup. Qi's
   // immediate clamp above is intentionally different.
@@ -4519,6 +4542,20 @@ function applySkillTransition(
       if (factor <= 0) continue;
 
       switch (effect.kind) {
+        case 'stability': {
+          const raw = evaluateScalingWithMasteryUpgrades(
+            effect.amount,
+            actionMasteryUpgrades,
+            actionVars,
+            0,
+          );
+          stabilityProjection.change(
+            applyGainBoost(raw, actionVars.stabilityBoost),
+            0,
+            factor,
+          );
+          break;
+        }
         case 'pool': {
           // Runtime routes positive pool effects through applyPool, which
           // applies the 0.7.10 Qi Boost stat to the restored amount.
@@ -4536,6 +4573,26 @@ function applySkillTransition(
           break;
         }
         case 'maxStability':
+          stabilityProjection.change(
+            0,
+            -(maxStabilitySealed
+              ? Math.min(
+                  0,
+                  evaluateScalingWithMasteryUpgrades(
+                    effect.amount,
+                    actionMasteryUpgrades,
+                    actionVars,
+                    0,
+                  ),
+                )
+              : evaluateScalingWithMasteryUpgrades(
+                  effect.amount,
+                  actionMasteryUpgrades,
+                  actionVars,
+                  0,
+                )),
+            factor,
+          );
           techniqueMaxStabilityDelta +=
             evaluateScalingWithMasteryUpgrades(
               effect.amount,
@@ -4661,6 +4718,19 @@ function applySkillTransition(
         }
         break;
       case 'stability':
+        stabilityProjection.change(
+          applyGainBoost(
+            evaluateScalingWithMasteryUpgrades(
+              effect.amount,
+              actionMasteryUpgrades,
+              scalingVars,
+              0,
+            ),
+            scalingVars.stabilityBoost,
+          ),
+          0,
+          conditionFactor,
+        );
         buffStabilityDelta += amount;
         if (triggerBuffsPresent && amount !== 0) {
           dispatchBuffTriggers(
@@ -4679,6 +4749,13 @@ function applySkillTransition(
         }
         break;
       case 'maxStability':
+        stabilityProjection.change(
+          0,
+          -(maxStabilitySealed
+            ? Math.min(0, rawAmount / conditionFactor)
+            : rawAmount / conditionFactor),
+          conditionFactor,
+        );
         buffMaxStabilityDelta += amount;
         break;
       case 'changeToxicity':
@@ -5005,6 +5082,7 @@ function applySkillTransition(
     // Apply direct state changes from harmony (e.g., Inscription penalty, Resonance stability loss)
     if (harmonyResult.stabilityDelta !== 0) {
       newStability += harmonyResult.stabilityDelta;
+      stabilityProjection.change(harmonyResult.stabilityDelta);
     }
     if (harmonyResult.poolDelta !== 0) {
       newQi = clampQi(newQi + harmonyResult.poolDelta);
@@ -5021,6 +5099,7 @@ function applySkillTransition(
       }
     }
     if (harmonyResult.stabilityPenaltyDelta !== 0) {
+      stabilityProjection.change(0, harmonyResult.stabilityPenaltyDelta);
       newStabilityPenalty += harmonyResult.stabilityPenaltyDelta;
       newStabilityPenalty = Math.min(
         newStabilityPenalty,
@@ -5029,25 +5108,13 @@ function applySkillTransition(
     }
   }
 
-  // Create new state with all updates
-  if (
-    consumesTurn &&
-    (!skill.preventsMaxStabilityDecay || hasSealedMaxStabilityBuff(newBuffs))
-  ) {
-    newStabilityPenalty++;
-  }
-  // Preserve the mean of chance-weighted penalties instead of rounding that
-  // mean again (15% of a 3-point loss is 0.45, not a whole point).
-  newStabilityPenalty = Math.min(
+  const cleanedStability = stabilityProjection.finish(
     state.initialMaxStability,
-    Math.max(0, newStabilityPenalty),
+    !skill.preventsMaxStabilityDecay || hasSealedMaxStabilityBuff(newBuffs),
+    consumesTurn,
   );
-  if (consumesTurn) {
-    newStability = clampStabilityToBounds(
-      newStability,
-      state.initialMaxStability - newStabilityPenalty,
-    );
-  }
+  newStability = cleanedStability.stability;
+  newStabilityPenalty = cleanedStability.penalty;
   if (recordBarChanges && !consumesTurn) {
     phase.barContributions.push(
       ...(gains.barContributions?.length

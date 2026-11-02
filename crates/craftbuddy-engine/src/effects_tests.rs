@@ -86,6 +86,7 @@ fn audited_stability_intermediates_persist_until_cleanup() {
         (1.0, 10.0, 0.0, 7.0, 0.0),
         (1.0, 10.0, 0.0, 12.0, 3.0),
         (58.0, 0.0, 5.0, -5.0, 58.0),
+        (8.0, 0.0, 0.0, 6.25, 14.0),
     ] {
         let mut state = base_state();
         state.stability = start;
@@ -106,6 +107,37 @@ fn audited_stability_intermediates_persist_until_cleanup() {
             expected
         );
     }
+}
+
+#[test]
+fn audited_cleanup_rounds_realized_outcomes_and_preserves_maximum_repair_excess() {
+    let mut state = base_state();
+    state.stability = 8.0;
+    let subject = skill(merge(
+        minimal_skill("cleanup"),
+        json!({"effects":[
+            {"kind":"stability", "amount":{"value":6.25}},
+            {"kind":"maxStability", "amount":{"value":10}},
+            {"kind":"maxStability", "amount":{"value":-5}}
+        ]}),
+    ));
+    let next = apply_0717(&state, subject, &base_config()).unwrap();
+    assert_eq!((next.stability, next.stability_penalty), (14.0, 0.0));
+    state.stability = 48.0;
+    state.initial_max_stability = 56.0;
+    state.stability_penalty = 5.0;
+    let subject = skill(merge(
+        minimal_skill("chance"),
+        json!({"prevents_max_stability_decay":true,"effects":[
+            {"kind":"stability", "amount":{"value":7}, "condition":{"kind":"chance", "percentage":75}}
+        ]}),
+    ));
+    assert_eq!(
+        apply_0717(&state, subject, &base_config())
+            .unwrap()
+            .stability,
+        50.25
+    );
 }
 
 #[test]

@@ -8,6 +8,13 @@ export function mechanics0719Scenarios() {
       { name: 'overdraft', stability: 1, cost: 10, gain: 0, tick: 7 },
       { name: 'overdraft-rescue', stability: 1, cost: 10, gain: 0, tick: 12 },
       { name: 'temporary-excess', stability: 58, cost: 0, gain: 5, tick: -5 },
+      {
+        name: 'fractional-cleanup',
+        stability: 8,
+        cost: 0,
+        gain: 0,
+        tick: 6.25,
+      },
     ].map(({ name, stability, cost, gain, tick }) => {
       const definition: BuffDefinition = {
         name: 'Stability tick',

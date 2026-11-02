@@ -2089,6 +2089,16 @@ fn dispatch_buff_triggers(
                         Some(("perfectionGained", gain, percent))
                     }
                     "stability" => {
+                        let applied = apply_gain_boost(
+                            evaluate_scaling_with_upgrades(
+                                effect.amount.as_ref(),
+                                upgrades,
+                                &scope,
+                                0.0,
+                            ),
+                            get_variable_value(&scope, "stabilityBoost"),
+                        );
+                        buffs.stability.change(applied, 0.0, evaluation.probability);
                         buffs.triggered.stability += gain;
                         Some((
                             if gain > 0.0 {
@@ -2113,6 +2123,15 @@ fn dispatch_buff_triggers(
                         ))
                     }
                     "maxStability" => {
+                        let raw = raw / evaluation.probability;
+                        let applied = if has_sealed_max_stability_buff(buffs.as_slice()) {
+                            raw.min(0.0)
+                        } else {
+                            raw
+                        };
+                        buffs
+                            .stability
+                            .change(0.0, -applied, evaluation.probability);
                         buffs.triggered.max_stability += gain;
                         None
                     }
@@ -2202,7 +2221,69 @@ fn dispatch_buff_triggers(
 
 /// Insertion-ordered buff collection, mirroring the JavaScript `Map` the
 /// TypeScript simulator threads through `applySkill`.
+#[derive(Default)]
+struct StabilityProjection {
+    outcomes: Vec<(f64, f64, f64)>,
+}
+
+impl StabilityProjection {
+    fn new(stability: f64, penalty: f64) -> Self {
+        Self {
+            outcomes: vec![(stability, penalty, 1.0)],
+        }
+    }
+    fn change(&mut self, stability: f64, penalty: f64, probability: f64) {
+        if probability <= 0.0 || (stability == 0.0 && penalty == 0.0) {
+            return;
+        }
+        if probability >= 1.0 {
+            for outcome in &mut self.outcomes {
+                outcome.0 += stability;
+                outcome.1 += penalty;
+            }
+            return;
+        }
+        let mut next = Vec::<(f64, f64, f64)>::new();
+        for &(s, p, weight) in &self.outcomes {
+            for value in [
+                (s, p, weight * (1.0 - probability)),
+                (s + stability, p + penalty, weight * probability),
+            ] {
+                if let Some(old) = next
+                    .iter_mut()
+                    .find(|old| old.0 == value.0 && old.1 == value.1)
+                {
+                    old.2 += value.2;
+                } else {
+                    next.push(value);
+                }
+            }
+        }
+        self.outcomes = next;
+    }
+    fn finish(&self, maximum: f64, decay: bool, cleanup: bool) -> (f64, f64) {
+        self.outcomes
+            .iter()
+            .fold((0.0, 0.0), |(stability, penalty), &(s, p, probability)| {
+                let p = if cleanup {
+                    (p + if decay { 1.0 } else { 0.0 })
+                        .ceil()
+                        .clamp(0.0, maximum)
+                } else {
+                    p
+                };
+                let s = if cleanup {
+                    s.max(0.0).min(maximum - p).floor()
+                } else {
+                    s
+                };
+                (stability + probability * s, penalty + probability * p)
+            })
+    }
+}
+
 pub struct BuffSet {
+    stability: StabilityProjection,
     entries: Vec<ActiveBuff>,
     active_triggers: std::collections::HashSet<String>,
     triggered: TriggeredGains,
@@ -2225,6 +2306,7 @@ struct TriggeredGains {
 impl BuffSet {
     pub fn new(entries: Vec<ActiveBuff>) -> Self {
         Self {
+            stability: StabilityProjection::default(),
             entries,
             active_triggers: std::collections::HashSet::new(),
             triggered: TriggeredGains::default(),
@@ -3191,6 +3273,7 @@ pub fn apply_skill_with_buffs(
         perfection: state.perfection,
         bar_contributions: Vec::new(),
         payment_costs: None,
+        payment_stability_outcomes: Vec::new(),
     };
     if let Some(cost) = &skill.buff_cost {
         let have = buffs.stacks(&cost.buff_name);
@@ -3261,7 +3344,10 @@ pub fn apply_skill_with_buffs(
     phase.success_chance = captured_success;
     // Keep HEAD's expected-stack approximation for subsequent turns; integrate
     // realized, individually rounded outcomes only for this action's payment.
-    phase.payment_costs = payment_costs;
+    if let Some((costs, outcomes)) = payment_costs {
+        phase.payment_costs = Some(costs);
+        phase.payment_stability_outcomes = outcomes;
+    }
     Some(apply_skill_transition(
         env,
         &working,
@@ -3281,6 +3367,7 @@ struct ActionPhaseContext {
     perfection: f64,
     bar_contributions: Vec<BarContribution>,
     payment_costs: Option<EffectiveActionCosts>,
+    payment_stability_outcomes: Vec<(f64, f64)>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3292,7 +3379,7 @@ fn expected_mastery_payment(
     condition_effects: crate::ConditionEffectSummary,
     target_completion: f64,
     phase: &ActionPhaseContext,
-) -> Option<EffectiveActionCosts> {
+) -> Option<(EffectiveActionCosts, Vec<(f64, f64)>)> {
     let is_chance = |condition: &Option<EffectCondition>| {
         condition
             .as_ref()
@@ -3388,6 +3475,7 @@ fn expected_mastery_payment(
                         perfection: phase.perfection,
                         bar_contributions: Vec::new(),
                         payment_costs: None,
+                        payment_stability_outcomes: Vec::new(),
                     };
                     apply_skill_transition(
                         env,
@@ -3426,16 +3514,22 @@ fn expected_mastery_payment(
     }) {
         return None;
     }
-    Some(EffectiveActionCosts {
-        qi_cost: costs
+    Some((
+        EffectiveActionCosts {
+            qi_cost: costs
+                .iter()
+                .map(|(probability, cost)| probability * cost.qi_cost)
+                .sum(),
+            stability_cost: costs
+                .iter()
+                .map(|(probability, cost)| probability * cost.stability_cost)
+                .sum(),
+        },
+        costs
             .iter()
-            .map(|(probability, cost)| probability * cost.qi_cost)
-            .sum(),
-        stability_cost: costs
-            .iter()
-            .map(|(probability, cost)| probability * cost.stability_cost)
-            .sum(),
-    })
+            .map(|(probability, costs)| (costs.stability_cost, *probability))
+            .collect(),
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3583,6 +3677,36 @@ fn apply_skill_transition(
 
     let mut buffs = BuffSet::new(active_buffs.to_vec());
     buffs.record_bar_changes = needs_bar_contributions(config);
+    buffs.stability = StabilityProjection::new(state.stability, state.stability_penalty);
+    if phase.payment_stability_outcomes.is_empty() {
+        buffs.stability.change(-costs.stability_cost, 0.0, 1.0);
+    } else {
+        buffs.stability.outcomes = phase
+            .payment_stability_outcomes
+            .iter()
+            .map(|(cost, probability)| {
+                (
+                    state.stability - cost,
+                    state.stability_penalty,
+                    *probability,
+                )
+            })
+            .collect();
+    }
+    if skill.effects.is_empty() {
+        buffs.stability.change(gains.stability, 0.0, 1.0);
+    }
+    let maximum_change = if max_stability_sealed {
+        skill.max_stability_change.min(0.0)
+    } else {
+        skill.max_stability_change
+    };
+    buffs.stability.change(0.0, -maximum_change, 1.0);
+    if skill.restores_max_stability_to_full && !max_stability_sealed {
+        for outcome in &mut buffs.stability.outcomes {
+            outcome.1 = 0.0;
+        }
+    }
 
     // The TypeScript simulator refreshes the Qi ceiling here - after the buff
     // cost has been paid but *before* any technique effect runs - so a buff this
@@ -3624,6 +3748,19 @@ fn apply_skill_transition(
             continue;
         }
         match effect.kind.as_str() {
+            "stability" => {
+                let raw = evaluate_scaling_with_upgrades(
+                    effect.amount.as_ref(),
+                    &resolved.upgrades,
+                    &action_vars,
+                    0.0,
+                );
+                buffs.stability.change(
+                    apply_gain_boost(raw, get_variable_value(&action_vars, "stabilityBoost")),
+                    0.0,
+                    factor,
+                );
+            }
             "pool" => {
                 // Runtime routes positive pool effects through applyPool, which
                 // applies the 0.7.10 Qi Boost stat to the restored amount.
@@ -3640,6 +3777,21 @@ fn apply_skill_transition(
                 };
             }
             "maxStability" => {
+                let raw = evaluate_scaling_with_upgrades(
+                    effect.amount.as_ref(),
+                    &resolved.upgrades,
+                    &action_vars,
+                    0.0,
+                );
+                buffs.stability.change(
+                    0.0,
+                    -if max_stability_sealed {
+                        raw.min(0.0)
+                    } else {
+                        raw
+                    },
+                    factor,
+                );
                 technique_max_stability_delta += evaluate_scaling_with_upgrades(
                     effect.amount.as_ref(),
                     &resolved.upgrades,
@@ -3992,6 +4144,20 @@ fn apply_skill_transition(
                             }
                         }
                         "stability" => {
+                            let raw = evaluate_scaling_with_upgrades(
+                                effect.amount.as_ref(),
+                                &resolved.upgrades,
+                                &scaling_vars,
+                                0.0,
+                            );
+                            buffs.stability.change(
+                                apply_gain_boost(
+                                    raw,
+                                    get_variable_value(&scaling_vars, "stabilityBoost"),
+                                ),
+                                0.0,
+                                condition_factor,
+                            );
                             buff_stability_delta += amount;
                             if trigger_buffs_present && amount != 0.0 {
                                 dispatch_buff_triggers(
@@ -4035,7 +4201,19 @@ fn apply_skill_transition(
                                 );
                             }
                         }
-                        "maxStability" => buff_max_stability_delta += amount,
+                        "maxStability" => {
+                            let raw = raw_amount / condition_factor;
+                            buffs.stability.change(
+                                0.0,
+                                -if max_stability_sealed {
+                                    raw.min(0.0)
+                                } else {
+                                    raw
+                                },
+                                condition_factor,
+                            );
+                            buff_max_stability_delta += amount;
+                        }
                         // Runtime `changeToxicity` does `toxicity -= amount`, so a
                         // positive amount cleanses and a negative amount inflicts.
                         "changeToxicity" => buff_toxicity_delta -= amount,
@@ -4193,6 +4371,7 @@ fn apply_skill_transition(
     }
 
     profile_count!(StateClone);
+    let mut stability_projection = std::mem::take(&mut buffs.stability);
     let mut next = EngineState {
         qi: new_qi,
         qi_droplets: state.qi_droplets,
@@ -4276,6 +4455,7 @@ fn apply_skill_transition(
             100.0,
         );
         if result.stability_delta != 0.0 {
+            stability_projection.change(result.stability_delta, 0.0, 1.0);
             next.stability += result.stability_delta;
         }
         if result.pool_delta != 0.0 {
@@ -4297,6 +4477,7 @@ fn apply_skill_transition(
             }
         }
         if result.stability_penalty_delta != 0.0 {
+            stability_projection.change(0.0, result.stability_penalty_delta, 1.0);
             next.stability_penalty =
                 (next.stability_penalty + result.stability_penalty_delta).min(initial_max);
         }
@@ -4315,17 +4496,11 @@ fn apply_skill_transition(
         phase.bar_contributions.extend(contributions);
         phase.bar_contributions.extend(buff_bar_contributions);
     }
-    if consumes_turn
-        && (!skill.prevents_max_stability_decay || has_sealed_max_stability_buff(&next.buffs))
-    {
-        next.stability_penalty += 1.0;
-    }
-    // Preserve the expectation of chance-gated integer penalties, rather
-    // than rounding their weighted average up to a certain extra loss.
-    next.stability_penalty = next.stability_penalty.clamp(0.0, initial_max);
-    if consumes_turn {
-        next.stability = clamp(next.stability, 0.0, initial_max - next.stability_penalty);
-    }
+    (next.stability, next.stability_penalty) = stability_projection.finish(
+        initial_max,
+        !skill.prevents_max_stability_decay || has_sealed_max_stability_buff(&next.buffs),
+        consumes_turn,
+    );
     next
 }
 
