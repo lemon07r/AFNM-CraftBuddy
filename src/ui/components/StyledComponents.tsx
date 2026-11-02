@@ -106,6 +106,8 @@ export function Disclosure({
         '& > summary': {
           cursor: 'pointer',
           py: 1,
+          // Follow the active theme's text face like the surrounding Typography.
+          typography: 'body2',
           fontSize: '0.8rem',
           color: colors.textPrimary,
         },

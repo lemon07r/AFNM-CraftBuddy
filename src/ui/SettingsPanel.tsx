@@ -44,11 +44,11 @@ interface SettingsPanelProps {
 }
 
 const PRESETS: ReadonlyArray<{ id: SearchPresetId; label: string }> = [
-  { id: 'instant', label: 'Quickest' },
-  { id: 'fast', label: 'Short wait' },
-  { id: 'balanced', label: 'More thought' },
-  { id: 'high_accuracy', label: 'Longer wait' },
-  { id: 'max', label: 'Most effort' },
+  { id: 'instant', label: 'Instant' },
+  { id: 'fast', label: 'Fast' },
+  { id: 'balanced', label: 'Balanced' },
+  { id: 'high_accuracy', label: 'High accuracy' },
+  { id: 'max', label: 'Max' },
 ];
 
 const PERFECTION_BAND_GOAL_HELP =
@@ -251,6 +251,7 @@ export function SettingsBody({
       </Typography>
       <ChoiceGroup
         label="Search effort"
+        hideLabel
         value={activePreset}
         options={PRESETS.map(({ id, label }) => ({
           id,
