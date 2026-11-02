@@ -397,7 +397,7 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
         stopRequested: false,
         nativeAutoUseActive: true,
         policyNotice:
-          'Full action space downgraded to techniques: your crafting auto-use loadout already consumes Spirit Dew and Clear Mind Pill.',
+          'Your crafting auto-use loadout (2 slots) already applies items before each technique, so auto mode is using techniques only to avoid consuming them twice.',
       } as AutoCraftUiState;
     case 'auto-error':
       return {

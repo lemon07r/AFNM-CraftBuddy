@@ -1986,7 +1986,11 @@ const FinalStateSection = memo(function FinalStateSection({
   turnsCount: number;
   compact?: boolean;
 }) {
-  const targetsMet = state.targetsMet === true;
+  // Older replay results predate `targetsMet`; fall back to the raw bars.
+  const targetsMet =
+    state.targetsMet ??
+    (state.completion >= targetCompletion &&
+      state.perfection >= targetPerfection);
 
   return (
     <Box

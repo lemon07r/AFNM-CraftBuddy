@@ -582,6 +582,7 @@ function runBenchmark(options: {
           status: result.status,
           recommendationIsRealAction:
             !!recommendation &&
+            recommendation.skill.actionKind !== 'item' &&
             input.config.skills.some(
               (skill) => skill.key === recommendation.skill.key,
             ),
