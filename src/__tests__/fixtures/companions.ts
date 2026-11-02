@@ -35,7 +35,75 @@ export function companionScenarios() {
     ...companionWeightedBarScenarios(),
     ...companionPoolScenarios(),
     ...companionDisciplinedScenarios(),
+    ...companionCritScenarios(),
   ];
+}
+
+export function companionCritScenarios() {
+  return (['su', 'han'] as const).flatMap((companion) =>
+    (['completion', 'perfection'] as const).flatMap((bar) =>
+      [false, true].map((multiple) => {
+        const base = companion === 'su' ? suScenarios()[0] : hanScenarios()[0];
+        const buffs = new Map(base.state.buffs);
+        if (companion === 'han')
+          buffs.set(HAN_KEY, {
+            ...buffs.get(HAN_KEY)!,
+            internalState: { preventedStabilityLosses: 2 },
+          });
+        const observer: BuffDefinition = {
+          name: 'Crit observer',
+          canStack: false,
+          effects: [],
+          stats: { [`${bar}Boost`]: { value: multiple ? 0 : 100 } },
+          triggeredEffects: [
+            {
+              trigger: `${bar}Gained`,
+              effects: [
+                {
+                  kind: 'setState',
+                  key: 'amount',
+                  mode: 'add',
+                  value: { value: 1, eqn: 'amount' },
+                },
+                {
+                  kind: 'setState',
+                  key: 'calls',
+                  mode: 'add',
+                  value: { value: 1 },
+                },
+              ],
+            },
+          ],
+        };
+        buffs.set('crit_observer', {
+          name: observer.name,
+          stacks: 1,
+          definition: observer,
+        });
+        const skill = retargetSkill({
+          qiCost: 0,
+          stabilityCost: 0,
+          effects: Array.from({ length: multiple ? 2 : 1 }, () => ({
+            kind: bar,
+            amount: { value: multiple ? 1 : 3 },
+          })),
+        });
+        return {
+          name: `companion-crit-${companion}-${bar}-${multiple ? 'multiple' : 'boost'}`,
+          state: base.state.copy({
+            step: 0,
+            critChance: 50,
+            critMultiplier: 200,
+            buffs,
+          }),
+          skill,
+          config: retargetConfig(skill),
+          bar,
+          multiple,
+        };
+      }),
+    ),
+  );
 }
 
 export function companionDisciplinedScenarios() {

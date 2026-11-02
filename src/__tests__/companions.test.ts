@@ -19,9 +19,30 @@ import {
   companionWeightedBarScenarios,
   companionPoolScenarios,
   companionDisciplinedScenarios,
+  companionCritScenarios,
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('companion expected crit parity', () => {
+  it.each(companionCritScenarios())(
+    'matches the non-companion EV and listeners: $name',
+    ({ state, skill, config, bar, multiple }) => {
+      const buffs = new Map(state.buffs);
+      buffs.delete(HAN_KEY);
+      buffs.delete("su_lianhua's_assistance");
+      const bare = applySkill(state.copy({ buffs }), skill, config)!;
+      expect(bare[bar]).toBe(multiple ? 3 : 9);
+      const next = applySkill(state, skill, config)!;
+      expect(next[bar]).toBe(bare[bar]);
+      expect(next.buffs.get('crit_observer')?.internalState).toEqual(
+        bare.buffs.get('crit_observer')?.internalState,
+      );
+      expect(calculateSkillGains(state, skill, config)[bar]).toBe(bare[bar]);
+      expect(state.buffs.get('crit_observer')?.internalState).toBeUndefined();
+    },
+  );
+});
 
 describe('companion authoritative Disciplined Touch', () => {
   it.each(companionDisciplinedScenarios())(

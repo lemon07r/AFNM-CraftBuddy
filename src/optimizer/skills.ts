@@ -4900,7 +4900,7 @@ function applySkillTransition(
     const isBar = effect.kind === 'completion' || effect.kind === 'perfection';
     const application = prepareNumericApplication(
       effect.kind,
-      raw > 0 && isBar ? safeFloor(raw * crit) : raw,
+      raw > 0 && isBar ? raw * crit : raw,
       actionVars,
     );
     if (effect.kind === 'stability' && application.realizedAmount < 0) {
