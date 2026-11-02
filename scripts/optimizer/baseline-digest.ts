@@ -33,6 +33,7 @@ interface DigestEntry {
     unsafe: boolean;
     probabilistic: boolean;
     endsCraft: boolean;
+    endsBelowTarget: boolean;
   }>;
   rotation: string[];
   depth: number;
@@ -81,6 +82,7 @@ function run(): Record<string, DigestEntry> {
           unsafe: rec.yieldsToSafeAlternative === true,
           probabilistic: rec.requiresProbabilisticSurvival === true,
           endsCraft: rec.endsCraft === true,
+          endsBelowTarget: rec.endsCraftBelowTarget === true,
         })),
         rotation: result.optimalRotation ?? [],
         depth: result.searchMetrics?.depthReached ?? 0,
@@ -102,6 +104,23 @@ const comparePath = args.includes('--compare')
 // Performance work may legitimately change how many nodes a fixed budget
 // reaches; `--ignore-work` drops depth/nodes from the comparison.
 const ignoreWork = args.includes('--ignore-work');
+for (const [flag, value] of [
+  ['--out', outPath],
+  ['--compare', comparePath],
+] as const) {
+  if (args.includes(flag) && (!value || value.startsWith('--'))) {
+    console.error(`${flag} needs a file path`);
+    process.exit(2);
+  }
+}
+if (
+  outPath &&
+  comparePath &&
+  path.resolve(outPath) === path.resolve(comparePath)
+) {
+  console.error('--out and --compare must be different files');
+  process.exit(2);
+}
 const baseline = comparePath
   ? (JSON.parse(readFileSync(comparePath, 'utf8')) as Record<
       string,
