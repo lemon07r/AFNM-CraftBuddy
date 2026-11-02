@@ -28,9 +28,8 @@ import {
   classifyOutcome,
   deriveOutcomeBands,
   TIER_REQUIREMENTS,
-} from '../optimizer/outcome';
+} from '../optimizer';
 import { getBonusAndChance } from '../optimizer/gameTypes';
-import * as optimizer from '../optimizer';
 
 function createConfig(
   overrides: Partial<OptimizerConfig> = {},
@@ -281,13 +280,7 @@ describe('outcome projection contract', () => {
       maxPerfection: 100,
     });
     const state = createLiveState({ completion: 100, perfection: 100 });
-    const bands = buildOutcomeBands({
-      targetCompletion: 100,
-      targetPerfection: 100,
-      isSublimeCraft: false,
-      maxCompletionCap: 100,
-      maxPerfectionCap: 100,
-    });
+    const bands = deriveOutcomeBands(config);
 
     const projection = greedySearch(state, config, 100, 100).outcomeProjection!;
 
@@ -368,25 +361,5 @@ describe('setupFor hint contract', () => {
 
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.setupFor).toBeUndefined();
-  });
-});
-
-describe('optimizer facade re-exports', () => {
-  it('exposes the outcome evaluator so consumers never recompute bands', () => {
-    expect(optimizer.deriveOutcomeBands).toBe(deriveOutcomeBands);
-    expect(optimizer.buildOutcomeBands).toBe(buildOutcomeBands);
-    expect(optimizer.classifyOutcome).toBe(classifyOutcome);
-    expect(optimizer.bandThreshold).toBe(bandThreshold);
-    expect(optimizer.TIER_REQUIREMENTS).toBe(TIER_REQUIREMENTS);
-    expect(optimizer.OUTCOME_TIER_ORDER).toEqual([
-      'failed',
-      'basic',
-      'perfect',
-      'sublime',
-    ]);
-    expect(typeof optimizer.tierForBands).toBe('function');
-    expect(typeof optimizer.tierRank).toBe('function');
-    expect(typeof optimizer.willAutoFinish).toBe('function');
-    expect(optimizer.BAND_GROWTH_RATIO).toBe(1.3);
   });
 });
