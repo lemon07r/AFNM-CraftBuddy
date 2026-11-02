@@ -203,6 +203,16 @@ interface BarProgress {
  * and the running total is floored once at the end.
  */
 export function bandThreshold(bandWidth: number, bandCount: number): number {
+  return Math.floor(bandLadderSum(bandWidth, bandCount));
+}
+
+/**
+ * Unfloored sum of the first `bandCount` band widths. Band classification
+ * subtracts each width from the raw value (Game.js `JS`), so a resolved
+ * branch with `bandCount` bands sits at this value; a fractional first width
+ * keeps its fraction. `bandThreshold` floors it for goal/cap arithmetic.
+ */
+export function bandLadderSum(bandWidth: number, bandCount: number): number {
   if (!Number.isFinite(bandWidth) || bandWidth <= 0 || bandCount <= 0) {
     return 0;
   }
@@ -212,7 +222,7 @@ export function bandThreshold(bandWidth: number, bandCount: number): number {
     total += width;
     width = Math.floor(width * BAND_GROWTH_RATIO);
   }
-  return Math.floor(total);
+  return total;
 }
 
 /** Loose parameters for building outcome bands without a full optimizer config. */

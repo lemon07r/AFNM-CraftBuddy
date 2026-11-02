@@ -19,9 +19,9 @@ use effects::{
     MasteryBonuses, MasteryEntry,
 };
 use outcome::{
-    band_threshold, build_outcome_bands, classify_outcome, compute_overcraft_extras,
-    get_bonus_and_chance, tier_requirement, OutcomeBands, OutcomeClassification, OutcomeTier,
-    EXPONENTIAL_SCALING_FACTOR,
+    band_ladder_sum, band_threshold, build_outcome_bands, classify_outcome,
+    compute_overcraft_extras, get_bonus_and_chance, tier_requirement, OutcomeBands,
+    OutcomeClassification, OutcomeTier, EXPONENTIAL_SCALING_FACTOR,
 };
 
 const FINISH_CRAFT_KEY: &str = "__finish_craft__";
@@ -1231,10 +1231,14 @@ impl Engine {
             // Harmonious/Brilliant windows, which is worthless once banked.
             let completion_need = if goals.mode_completion > 0.0 {
                 clamp(remaining_completion / goals.mode_completion, 0.0, 1.0)
-            } else { 0.0 };
+            } else {
+                0.0
+            };
             let perfection_need = if goals.mode_perfection > 0.0 {
                 clamp(remaining_perfection / goals.mode_perfection, 0.0, 1.0)
-            } else { 0.0 };
+            } else {
+                0.0
+            };
             let binding_remaining = completion_need.max(perfection_need);
             score += (state.harmony / 100.0)
                 * total_target_magnitude
@@ -1687,15 +1691,7 @@ fn threshold_for_guaranteed_count(target: f64, guaranteed: i32) -> f64 {
     if target <= 0.0 || guaranteed <= 0 {
         return 0.0;
     }
-    // Unfloored ladder sum, matching the runtime's band classification;
-    // `band_threshold` floors for goal/cap arithmetic only.
-    let mut total = 0.0;
-    let mut current = target;
-    for _ in 0..guaranteed {
-        total += current;
-        current = (current * EXPONENTIAL_SCALING_FACTOR).floor();
-    }
-    total
+    band_ladder_sum(target, guaranteed)
 }
 fn expected_crit_multiplier(crit_chance: f64, crit_multiplier: f64) -> f64 {
     let excess_crit = (crit_chance - 100.0).max(0.0);

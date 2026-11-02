@@ -150,6 +150,12 @@ pub struct OutcomeClassification {
 /// Widths compound by 1.3 with a floor each step; the running total is floored
 /// once at the end.
 pub fn band_threshold(band_width: f64, band_count: i32) -> f64 {
+    band_ladder_sum(band_width, band_count).floor()
+}
+
+/// Unfloored band-width sum, as the runtime's band classifier sees it.
+/// Mirrors `bandLadderSum` in `outcome.ts`.
+pub fn band_ladder_sum(band_width: f64, band_count: i32) -> f64 {
     if !band_width.is_finite() || band_width <= 0.0 || band_count <= 0 {
         return 0.0;
     }
@@ -159,7 +165,7 @@ pub fn band_threshold(band_width: f64, band_count: i32) -> f64 {
         total += width;
         width = (width * EXPONENTIAL_SCALING_FACTOR).floor();
     }
-    total.floor()
+    total
 }
 
 /// Normalize a user ambition band count.
