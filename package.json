@@ -30,6 +30,7 @@
     "docs:check": "bun run docs:check-links && bun run docs:check-freshness && bun run docs:check-authority",
     "docs:inventory": "bun run scripts/docs/generate-inventory.js",
     "optimizer:bench": "bun run scripts/optimizer/benchmark-engines.ts",
+    "optimizer:digest": "bun run scripts/optimizer/baseline-digest.ts",
     "optimizer:bench:verbose": "bun run scripts/optimizer/benchmark-engines.ts --verbose",
     "optimizer:differential-corpus": "bun run scripts/optimizer/generate-differential-corpus.ts",
     "release:validate": "bun run typecheck && bun run test && bun run build && bun run docs:check"
