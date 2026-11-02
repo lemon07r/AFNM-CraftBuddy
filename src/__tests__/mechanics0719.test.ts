@@ -6,11 +6,16 @@ import {
   mechanics0719Scenarios,
   stackEventScenarios,
   buffGroupScenarios,
+  successCaptureScenario,
 } from './fixtures/mechanics0719';
 import { CraftingState } from '../optimizer/state';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
 describe('AFNM 0.7.19 audited mechanics', () => {
+  it('captures success after synchronous buff-cost listeners', () => {
+    const { state, skill, config } = successCaptureScenario();
+    expect(applySkill(state, skill, config)!.completion).toBe(100);
+  });
   it.each([
     ['all', [4, 5, 4, 5, 2]],
     ['highest', [1, 5, 4, 2, 2]],

@@ -4062,24 +4062,6 @@ export function applySkill(
     skill.buffCost || skill.toxicityCost || skill.dropletCost,
   );
   let successChance = options.successChance;
-  if (successChance === undefined && (paysSetup || hasMasteryEffects)) {
-    const initialVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      getHarmonyStatModifiers(state.harmonyData, config.craftingType),
-    );
-    successChance =
-      skill.actionKind === 'item'
-        ? 1
-        : Math.max(
-            0,
-            Math.min(
-              1,
-              (skill.successChance ?? 1) + initialVars.successChanceBonus,
-            ),
-          );
-  }
   let working = paysSetup
     ? state.copy({
         toxicity: state.toxicity + (skill.toxicityCost ?? 0),
@@ -4122,6 +4104,26 @@ export function applySkill(
       )!;
     }
   }
+  // Runtime captures success after setup payment/listeners, before masteries.
+  if (successChance === undefined && (paysSetup || hasMasteryEffects)) {
+    const initialVars = buildPreMasteryActionVariables(
+      working,
+      config,
+      conditionEffects,
+      getHarmonyStatModifiers(working.harmonyData, config.craftingType),
+    );
+    successChance =
+      skill.actionKind === 'item'
+        ? 1
+        : Math.max(
+            0,
+            Math.min(
+              1,
+              (skill.successChance ?? 1) + initialVars.successChanceBonus,
+            ),
+          );
+  }
+  context.successChance = successChance;
   const paymentCosts = expectedMasteryPayment(
     working,
     skill,
@@ -5195,7 +5197,8 @@ function applySkillTransition(
       // cleanup floors and caps the pool. Precision arrives after buff ticking.
       newQi = clampQi(Math.floor(newQi));
       if (harmonyResult.precisionStacksAdded) {
-        upsertBuffFromDefinition(
+        upsertBuffIntoMap(
+          newBuffs,
           RETURNED_PRECISION,
           harmonyResult.precisionStacksAdded,
         );

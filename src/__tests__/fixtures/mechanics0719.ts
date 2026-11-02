@@ -7,6 +7,7 @@ import type {
 
 export function mechanics0719Scenarios() {
   return [
+    successCaptureScenario(),
     ...stackEventScenarios(),
     ...buffGroupScenarios(),
     ...[
@@ -49,6 +50,59 @@ export function mechanics0719Scenarios() {
       };
     }),
   ];
+}
+
+export function successCaptureScenario() {
+  const token: BuffDefinition = {
+    name: 'Capture token',
+    canStack: true,
+    effects: [],
+  };
+  const observer: BuffDefinition = {
+    name: 'Capture observer',
+    canStack: true,
+    effects: [],
+    triggeredEffects: [
+      {
+        trigger: 'stackLost.Capture token',
+        effects: [
+          {
+            kind: 'createBuff',
+            buff: {
+              name: 'Setup certainty',
+              canStack: true,
+              effects: [],
+              stats: { successChanceBonus: { value: 0.5 } },
+            },
+            stacks: { value: 1 },
+          },
+        ],
+      },
+    ],
+  };
+  const skill = retargetSkill({
+    qiCost: 0,
+    stabilityCost: 0,
+    successChance: 0.5,
+    buffCost: { buffName: 'capture_token', amount: 1 },
+    effects: [{ kind: 'completion', amount: { value: 100 } }],
+  });
+  return {
+    name: '0719-success-capture-after-loss',
+    state: new CraftingState({
+      qi: 100,
+      stability: 50,
+      buffs: new Map([
+        ['capture_token', { name: token.name, stacks: 1, definition: token }],
+        [
+          'capture_observer',
+          { name: observer.name, stacks: 1, definition: observer },
+        ],
+      ]),
+    }),
+    skill,
+    config: retargetConfig(skill),
+  };
 }
 
 export function buffGroupScenarios() {

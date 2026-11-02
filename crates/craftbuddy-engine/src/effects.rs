@@ -2395,6 +2395,11 @@ struct TriggeredGains {
 }
 
 impl BuffSet {
+    fn upsert_silently(&mut self, definition: &BuffDefinition, stacks: f64) {
+        let pending = self.stack_events.len();
+        self.upsert_from_definition(Some(definition), stacks, None);
+        self.stack_events.truncate(pending);
+    }
     fn group_targets(&self, group: Option<&str>, mode: Option<&str>) -> Vec<ActiveBuff> {
         let mut targets: Vec<ActiveBuff> = self
             .entries
@@ -3404,16 +3409,10 @@ pub fn apply_skill_with_buffs(
     ) {
         return None;
     }
-    let mut buffs = BuffSet::new(active_buffs.to_vec());
+    let buffs = BuffSet::new(active_buffs.to_vec());
     let mut phase = ActionPhaseContext {
         existing_names: active_buffs.iter().map(|buff| buff.key.clone()).collect(),
-        success_chance: if skill.action_kind == "item" {
-            1.0
-        } else {
-            let resolved = resolve_action(env, state, skill, condition_effects, active_buffs);
-            (skill.success_chance + get_variable_value(&resolved.variables, "successChanceBonus"))
-                .clamp(0.0, 1.0)
-        },
+        success_chance: 1.0,
         completion: state.completion,
         perfection: state.perfection,
         bar_contributions: Vec::new(),
@@ -3473,6 +3472,14 @@ pub fn apply_skill_with_buffs(
             phase.success_chance = captured;
         }
     }
+    // Setup loss listeners run before capture; masteries run after it.
+    phase.success_chance = if skill.action_kind == "item" {
+        1.0
+    } else {
+        let resolved = resolve_action(env, &working, skill, condition_effects, &working.buffs);
+        (skill.success_chance + get_variable_value(&resolved.variables, "successChanceBonus"))
+            .clamp(0.0, 1.0)
+    };
     let captured_success = phase.success_chance;
     let payment_costs = expected_mastery_payment(
         env,
@@ -4749,11 +4756,7 @@ fn apply_skill_transition(
                     // decay on the releasing action. Direct drain fires no triggers.
                     let definition = returned_precision_definition();
                     let mut released = BuffSet::new(std::mem::take(&mut next.buffs));
-                    released.upsert_from_definition(
-                        Some(&definition),
-                        result.precision_stacks_added,
-                        None,
-                    );
+                    released.upsert_silently(&definition, result.precision_stacks_added);
                     next.buffs = released.into_vec();
                 }
             }
