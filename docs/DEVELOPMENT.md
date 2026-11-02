@@ -49,6 +49,8 @@ CraftBuddy has no native action-cost wrapper; costs are locally simulated. Nativ
 
 `onReduxAction` runs during the reducer; read-only observation there avoids nested-dispatch hazards. The overlay mounts through `overlayMount.ts`. The settings also register as a native options screen through `modAPI.gameData.registerOptionsUI` (on `gameData` in the installed bundle, despite the published types); both views share one settings store via `subscribeSettings`. Top-level `modAPI.injectUI` is available but unused. Localization through `actions.addTranslation` and a native overlay host are candidates, not completed migrations.
 
+The settings dialog portals into CraftBuddy's overlay, not the document body: MUI's sibling hiding must not mark the game controls `aria-hidden` or inert while native auto-use automation is running. MUI retains focus trapping/restoration and Escape-to-close; the dialog explicitly accepts pointer events despite the overlay's pass-through host.
+
 ### Automation
 
 - Re-read the live revision immediately before dispatch. `stale` means recalculate; `unverifiable` means pause and dispatch nothing. The signature includes resources, conditions/queue, buffs, cooldowns, inventory, harmony/state digest, roster and consumed pills.

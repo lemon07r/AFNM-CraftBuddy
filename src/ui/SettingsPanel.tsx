@@ -3,7 +3,6 @@ import React, {
   useCallback,
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -475,34 +474,24 @@ export function SettingsBody({
 export function SettingsPanel(props: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (!open) return;
-    // MUI owns focus trapping/restoration and aria-hidden. Also make the game's
-    // background genuinely inert, restoring pre-existing inert state on close.
-    const siblings = Array.from(document.body.children).filter(
-      (node): node is HTMLElement =>
-        node instanceof HTMLElement && !node.contains(dialogRef.current),
-    );
-    const previous = siblings.map((node) => [node, node.inert] as const);
-    previous.forEach(([node]) => {
-      node.inert = true;
-    });
-    return () =>
-      previous.forEach(([node, inert]) => {
-        node.inert = inert;
-      });
-  }, [open]);
+  const openerRef = useRef<HTMLButtonElement>(null);
   return (
     <>
       <IconButton
+        ref={openerRef}
         aria-label="Open CraftBuddy settings"
         onClick={() => setOpen(true)}
       >
         <SettingsIcon sx={{ fontSize: 20 }} />
       </IconButton>
       <Dialog
-        ref={dialogRef}
+        // MUI must hide only overlay siblings, never the game controls that
+        // native auto-use automation still needs while settings are open.
+        container={() =>
+          openerRef.current?.closest<HTMLElement>('#craftbuddy-overlay') ??
+          openerRef.current?.parentElement ??
+          null
+        }
         open={open}
         onClose={() => setOpen(false)}
         aria-labelledby={titleId}
@@ -517,6 +506,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
         }}
         sx={{
           zIndex: uiLayers.dialog,
+          // The host overlay is pointer-events:none; the dialog opts back in.
+          pointerEvents: 'auto',
           ...reducedMotionSx,
           '& .MuiDialog-paper': {
             m: 1.5,

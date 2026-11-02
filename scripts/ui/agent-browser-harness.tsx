@@ -863,11 +863,13 @@ function Harness() {
             </div>
 
             <div
+              id="craftbuddy-overlay"
               style={{
                 position: 'absolute',
                 top: layout.top,
                 right: layout.right,
                 width: layout.width,
+                pointerEvents: 'none',
               }}
             >
               {panel}
