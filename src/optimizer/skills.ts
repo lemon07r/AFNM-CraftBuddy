@@ -5380,62 +5380,66 @@ function applySkillTransition(
     };
     return state;
   }
-  if (triggerBuffsPresent && !orderedNumeric) {
-    if (qiSpentByCost > 0) {
-      dispatchBuffTriggers('poolSpent', qiSpentByCost);
-    }
-    if (qiRestoredBySkill > 0) {
-      dispatchBuffTriggers('poolRestored', qiRestoredBySkill);
+  if (triggerBuffsPresent) {
+    if (!orderedNumeric) {
+      if (qiSpentByCost > 0) {
+        dispatchBuffTriggers('poolSpent', qiSpentByCost);
+      }
+      if (qiRestoredBySkill > 0) {
+        dispatchBuffTriggers('poolRestored', qiRestoredBySkill);
+      }
     }
     if (techniquePoolDelta > 0) {
       dispatchBuffTriggers('poolRestored', techniquePoolDelta);
     } else if (techniquePoolDelta < 0) {
       dispatchBuffTriggers('poolSpent', -techniquePoolDelta);
     }
-    if (effectiveStabilityCost > 0) {
+    if (!orderedNumeric && effectiveStabilityCost > 0) {
       dispatchBuffTriggers('stabilitySpent', effectiveStabilityCost);
     }
-    if (gains.stability > 0) {
-      dispatchBuffTriggers('stabilityRestored', gains.stability);
-    }
-    // Bar applications fire per application in runtime order; True Bifang
-    // Flame keys blaze on the largest single-application percentGained.
-    const triggerBarContributions =
-      gains.barContributions && gains.barContributions.length > 0
-        ? scaleBarContributions(
-            gains.barContributions,
-            gains.completion,
-            gains.perfection,
-          )
-        : synthesizeBarContributions(gains.completion, gains.perfection);
-    for (const contribution of triggerBarContributions) {
-      if (contribution.amount <= 0) {
-        continue;
+    if (!orderedEffects) {
+      if (gains.stability > 0) {
+        dispatchBuffTriggers('stabilityRestored', gains.stability);
       }
-      if (contribution.bar === 'completion') {
-        const barAfter = runningCompletion + contribution.amount;
-        dispatchBuffTriggers(
-          'completionGained',
-          contribution.amount,
-          computeTriggerPercentGained(
+      // Bar applications fire per application in runtime order; True Bifang
+      // Flame keys blaze on the largest single-application percentGained.
+      const triggerBarContributions =
+        gains.barContributions && gains.barContributions.length > 0
+          ? scaleBarContributions(
+              gains.barContributions,
+              gains.completion,
+              gains.perfection,
+            )
+          : synthesizeBarContributions(gains.completion, gains.perfection);
+      for (const contribution of triggerBarContributions) {
+        if (contribution.amount <= 0) {
+          continue;
+        }
+        if (contribution.bar === 'completion') {
+          const barAfter = runningCompletion + contribution.amount;
+          dispatchBuffTriggers(
+            'completionGained',
             contribution.amount,
-            barAfter,
-            targetCompletion,
-          ),
-        );
-        runningCompletion = barAfter;
-      } else {
-        const barAfter = runningPerfection + contribution.amount;
-        dispatchBuffTriggers(
-          'perfectionGained',
-          contribution.amount,
-          computeTriggerPercentGained(
+            computeTriggerPercentGained(
+              contribution.amount,
+              barAfter,
+              targetCompletion,
+            ),
+          );
+          runningCompletion = barAfter;
+        } else {
+          const barAfter = runningPerfection + contribution.amount;
+          dispatchBuffTriggers(
+            'perfectionGained',
             contribution.amount,
-            barAfter,
-            targetPerfection,
-          ),
-        );
-        runningPerfection = barAfter;
+            computeTriggerPercentGained(
+              contribution.amount,
+              barAfter,
+              targetPerfection,
+            ),
+          );
+          runningPerfection = barAfter;
+        }
       }
     }
   }

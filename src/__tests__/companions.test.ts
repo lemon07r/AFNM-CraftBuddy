@@ -1,4 +1,5 @@
 import { applySkill, calculateSkillGains } from '../optimizer/skills';
+import type { BuffDefinition } from '../optimizer/gameTypes';
 import { buildNativeMctsInput } from '../optimizer/nativeMcts';
 import {
   buildStateSnapshot,
@@ -14,6 +15,70 @@ import {
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('companion fallback technique events', () => {
+  it.each(companionReviewScenarios())(
+    'retains scalar and Disciplined Touch listeners: $name',
+    ({ state, skill, config }) => {
+      const observer: BuffDefinition = {
+        name: 'Fallback observer',
+        canStack: false,
+        effects: [],
+        triggeredEffects: [
+          {
+            trigger: 'completionGained',
+            effects: [
+              { kind: 'perfection', amount: { value: 3 } },
+              {
+                kind: 'setState',
+                key: 'completionCalls',
+                mode: 'add',
+                value: { value: 1 },
+              },
+            ],
+          },
+          {
+            trigger: 'perfectionGained',
+            effects: [
+              {
+                kind: 'setState',
+                key: 'perfectionCalls',
+                mode: 'add',
+                value: { value: 1 },
+              },
+            ],
+          },
+          {
+            trigger: 'stabilityRestored',
+            effects: [
+              {
+                kind: 'setState',
+                key: 'stabilityRestored',
+                mode: 'add',
+                value: { value: 1, eqn: 'amount' },
+              },
+            ],
+          },
+        ],
+      };
+      const buffs = new Map(state.buffs);
+      buffs.set('fallback_observer', {
+        name: observer.name,
+        stacks: 1,
+        definition: observer,
+      });
+      const next = applySkill(state.copy({ buffs }), skill, config)!;
+      expect(next.completion).toBe(5);
+      expect(next.perfection).toBe((skill.isDisciplinedTouch ? 5 : 7) + 3);
+      const observed = next.buffs.get('fallback_observer')?.internalState;
+      expect(observed?.completionCalls).toBe(1);
+      expect(observed?.perfectionCalls).toBe(2);
+      expect(observed?.stabilityRestored ?? 0).toBe(
+        skill.isDisciplinedTouch ? 0 : 3,
+      );
+    },
+  );
+});
 
 describe('companion shared-success caps', () => {
   it.each(companionCapScenarios())(
