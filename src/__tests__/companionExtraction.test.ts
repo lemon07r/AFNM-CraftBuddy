@@ -79,11 +79,20 @@ describe('companion live extraction and replay', () => {
   });
 
   it('defaults missing stacks to zero but still rejects nonfinite stacks', () => {
-    const base = { name: 'Missing stacks', canStack: false, effects: [] };
+    const base: CraftingBuff = {
+      name: 'Missing stacks',
+      icon: '',
+      stacks: 0,
+      stats: undefined,
+      displayLocation: 'none',
+      canStack: false,
+      effects: [],
+    };
+    const { stacks: _stacks, ...missing } = base;
     const buffs = extractTrackedBuffs([
-      base as CraftingBuff,
-      { ...base, name: 'Negative stacks', stacks: -2 } as CraftingBuff,
-      { ...base, name: 'Invalid stacks', stacks: Infinity } as CraftingBuff,
+      missing as CraftingBuff,
+      { ...base, name: 'Negative stacks', stacks: -2 },
+      { ...base, name: 'Invalid stacks', stacks: Infinity },
     ]);
     expect(Array.from(buffs, ([key, buff]) => [key, buff.stacks])).toEqual([
       ['missing_stacks', 0],

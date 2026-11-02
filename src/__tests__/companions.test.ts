@@ -8,9 +8,29 @@ import {
   HAN_KEY,
   companionIntegrationScenarios,
   companionReviewScenarios,
+  companionPreviewScenarios,
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('companion paid previews', () => {
+  it.each(companionPreviewScenarios())(
+    'uses the paid/prevented progress: $name',
+    ({ state, skill, config, name }) => {
+      const preview = calculateSkillGains(state, skill, config);
+      const next = applySkill(state, skill, config)!;
+      expect(preview.completion).toBe(0);
+      expect(next.completion).toBe(0);
+      expect(preview.stability).toBe(
+        name.endsWith('payment-use-order') ? -10 : 0,
+      );
+      expect(next.stability).toBe(name.endsWith('prevented-loss') ? 50 : 40);
+      expect(
+        state.buffs.get(HAN_KEY)?.internalState?.preventedStabilityLosses ?? 0,
+      ).toBe(0);
+    },
+  );
+});
 
 describe('companion scalar compatibility', () => {
   it.each(companionReviewScenarios())(

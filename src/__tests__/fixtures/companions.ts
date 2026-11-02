@@ -1,5 +1,8 @@
 import { CraftingState, type TrackedBuff } from '../../optimizer/state';
-import type { BuffDefinition } from '../../optimizer/gameTypes';
+import type {
+  BuffDefinition,
+  TechniqueEffect,
+} from '../../optimizer/gameTypes';
 import { retargetConfig, retargetSkill } from './runtime0717';
 
 export function suBuff(): BuffDefinition {
@@ -26,7 +29,41 @@ export function companionScenarios() {
     ...hanScenarios(),
     ...companionIntegrationScenarios(),
     ...companionReviewScenarios(),
+    ...companionPreviewScenarios(),
   ];
+}
+
+export function companionPreviewScenarios() {
+  return ['su-paid-gate', 'han-prevented-loss', 'han-payment-use-order'].map(
+    (edge) => {
+      const base = edge.startsWith('su-')
+        ? suScenarios()[2]
+        : hanScenarios()[0];
+      const effects: TechniqueEffect[] =
+        edge === 'su-paid-gate'
+          ? [
+              {
+                kind: 'completion',
+                amount: { value: 5 },
+                condition: { kind: 'stability', mode: 'more', percentage: 75 },
+              },
+            ]
+          : [{ kind: 'stability', amount: { value: -5 } }];
+      if (edge === 'han-payment-use-order')
+        effects.push({ kind: 'stability', amount: { value: -10 } });
+      const skill = retargetSkill({
+        qiCost: 0,
+        stabilityCost: edge === 'han-prevented-loss' ? 0 : 10,
+        effects,
+      });
+      return {
+        name: `companion-preview-${edge}`,
+        state: base.state,
+        skill,
+        config: retargetConfig(skill),
+      };
+    },
+  );
 }
 
 export function companionReviewScenarios() {
@@ -100,7 +137,7 @@ export function companionIntegrationScenarios() {
         percentage: 75,
       };
       skill.effects = [
-        { kind: 'stability', amount: { value: -10 } },
+        { kind: 'stability' as const, amount: { value: -10 } },
         { kind: 'completion', amount: { value: 5 } },
       ];
     }

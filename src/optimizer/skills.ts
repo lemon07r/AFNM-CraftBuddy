@@ -2389,13 +2389,27 @@ export function calculateSkillGains(
   if (
     !skill.isDisciplinedTouch &&
     skill.effects?.length &&
-    skill.actionKind !== 'item' &&
-    hasEffectInterceptors(state.buffs)
+    ((skill.actionKind !== 'item' && hasEffectInterceptors(state.buffs)) ||
+      hasStabilityPrevention(state.buffs))
   ) {
+    const paymentCosts = calculateEffectiveActionCosts(
+      state,
+      skill,
+      config.minStability,
+      conditionEffects,
+      config,
+    );
     const phase: ActionPhaseContext = {
       preview: true,
       includeExpectedValue,
-      masteryPhase: true,
+      paymentCosts:
+        options.stabilityCost === undefined
+          ? paymentCosts
+          : {
+              ...paymentCosts,
+              stabilityCost: options.stabilityCost,
+              stabilityOutcomes: undefined,
+            },
       successChance: includeExpectedValue ? options.successChance : 1,
       existingBuffNames: state.buffs,
       barStart: state,
@@ -4952,7 +4966,7 @@ function applySkillTransition(
       gains.toxicityCleanse = (gains.toxicityCleanse ?? 0) + amount;
     }
   };
-  if (orderedNumeric && !phase.preview) {
+  if (orderedNumeric) {
     if (qiSpentByCost > 0) dispatchBuffTriggers('poolSpent', qiSpentByCost);
     const paymentCertain =
       effectiveCosts.stabilityOutcomes?.every((outcome) => outcome.cost > 0) ??
