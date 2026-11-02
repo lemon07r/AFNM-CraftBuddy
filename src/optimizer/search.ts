@@ -3687,10 +3687,9 @@ function runGreedySearch(
       modePerfGoal,
     );
     const endsByAutoFinish = stateWillAutoFinish(newState);
-    // Auto-finish horizon: score via finished outcome and stop the craft.
-    // Goal-met-but-not-auto-finishing stays on the live scorer (no finish
-    // penalties) so resonance/overcraft snapshots do not regress.
-    const score = endsByAutoFinish
+    // Auto-resolved and blocked successors have final bars. A playable
+    // goal-met state keeps the live scorer for resonance/overcraft continuation.
+    const score = endsByAutoFinish || terminalState.isTerminal
       ? scoreFinishedOutcome(
           newState,
           targetCompletion,
@@ -3738,7 +3737,7 @@ function runGreedySearch(
       reasoning,
       endsCraft: endsByAutoFinish,
       endsCraftBelowTarget:
-        endsByAutoFinish &&
+        (endsByAutoFinish || terminalState.isTerminal) &&
         !goalsMet(newState, targetCompletion, targetPerfection),
       requiresProbabilisticSurvival,
       ...terminalState,
@@ -4051,10 +4050,12 @@ function runLookaheadSearch(
     candidate: CraftingState,
     conditionAtDepth: CraftingConditionType,
   ): number => {
-    // Finished-path scorer only when the craft is actually ending. A goal-met
-    // node that will NOT auto-finish must keep the live scoreState so
-    // resonance/overcraft continuation is not hit with finish penalties.
-    if (stateWillAutoFinish(candidate)) {
+    // Blocked bars are final even though the game has not resolved the craft.
+    // Playable goal-met nodes retain live continuation value.
+    if (
+      stateWillAutoFinish(candidate) ||
+      isTerminalState(candidate, config, conditionAtDepth)
+    ) {
       return scoreFinishedOutcome(
         candidate,
         targetCompletion,
@@ -5470,7 +5471,8 @@ function runLookaheadSearch(
         projectedSuccessChance: candidate.projectedSuccessChance,
         endsCraft,
         endsCraftBelowTarget:
-          endsCraft && !goalsMet(newState, targetCompletion, targetPerfection),
+          (endsCraft || terminalState.isTerminal) &&
+          !goalsMet(newState, targetCompletion, targetPerfection),
         requiresProbabilisticSurvival: candidate.requiresProbabilisticSurvival,
         ...terminalState,
       });

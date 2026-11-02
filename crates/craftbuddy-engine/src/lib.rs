@@ -969,7 +969,7 @@ impl Engine {
                 None => break,
             }
         }
-        self.score_state(&state)
+        self.score_state(&state, &condition)
     }
 
     fn pick_rollout_action(
@@ -1073,7 +1073,7 @@ impl Engine {
     ) -> Option<f64> {
         profile_count!(PreviewActionScore);
         let mut rng = SmallRng::new(0x9E37_79B9_7F4A_7C15);
-        let (next_state, _, _) = self.apply_action_with_rng(
+        let (next_state, next_condition, _) = self.apply_action_with_rng(
             state,
             condition,
             queue,
@@ -1081,7 +1081,7 @@ impl Engine {
             &mut rng,
             Some(active_buffs),
         )?;
-        Some(self.score_state(&next_state))
+        Some(self.score_state(&next_state, &next_condition))
     }
 
     /// Legality, delegated to the shared port of `canApplySkill` so technique,
@@ -1193,9 +1193,23 @@ impl Engine {
         Some((next, next_condition, next_queue))
     }
 
-    fn score_state(&self, state: &EngineState) -> f64 {
+    fn score_state(&self, state: &EngineState, condition: &str) -> f64 {
         profile_count!(ScoreState);
         if state.finished {
+            return self.score_finished_outcome(state);
+        }
+        // A blocked craft is unresolved, but its bars cannot progress. Check
+        // legality directly: ordered_legal_actions previews scores recursively
+        // and may also stop early at the search deadline.
+        let env = self.action_env();
+        let active = effects::resolve_active_buffs(state, env.config, env.skills);
+        if !self
+            .input
+            .skills
+            .iter()
+            .enumerate()
+            .any(|(idx, skill)| self.can_apply_skill(state, idx, skill, condition, &active))
+        {
             return self.score_finished_outcome(state);
         }
 
@@ -3142,6 +3156,74 @@ mod tests {
     }
 
     #[test]
+    fn blocked_successor_uses_final_bars_without_claiming_resolution() {
+        let mut input = basic_input();
+        input.state.qi = 20.0;
+        input.state.perfection = 100.0;
+        input.target_completion = 100.0;
+        input.target_perfection = 100.0;
+        input.config.max_completion = Some(1000.0);
+        input.config.max_perfection = Some(1000.0);
+        input.skills.truncate(2);
+        input.skills[0].qi_cost = 20.0;
+        input.skills[0].base_completion_gain = 99.0;
+        input.skills[0].scales_with_intensity = false;
+        input.skills[1].qi_cost = 10.0;
+        input.skills[1].base_completion_gain = 60.0;
+        input.skills[1].base_perfection_gain = 0.0;
+        input.skills[1].scales_with_control = false;
+        let engine = Engine::new(input);
+        let actions = engine.ordered_legal_actions(&engine.input.state, "neutral", &[]);
+        let dead_end = actions
+            .iter()
+            .find(|action| action.skill_index == 0)
+            .unwrap();
+        let continuation = actions
+            .iter()
+            .find(|action| action.skill_index == 1)
+            .unwrap();
+        let mut rng = SmallRng::new(42);
+        let (blocked, _, _) = engine
+            .apply_action_with_rng(
+                &engine.input.state,
+                "neutral",
+                &[],
+                dead_end,
+                &mut rng,
+                None,
+            )
+            .unwrap();
+        assert!(blocked.stability > 0.0);
+        assert!(!blocked.finished);
+        assert!(engine
+            .ordered_legal_actions(&blocked, "neutral", &[])
+            .is_empty());
+        assert_eq!(
+            engine.score_state(&blocked, "neutral"),
+            engine.score_finished_outcome(&blocked)
+        );
+        let (playable, _, _) = engine
+            .apply_action_with_rng(
+                &engine.input.state,
+                "neutral",
+                &[],
+                continuation,
+                &mut rng,
+                None,
+            )
+            .unwrap();
+        assert!(!engine
+            .ordered_legal_actions(&playable, "neutral", &[])
+            .is_empty());
+        let (completed, _, _) = engine
+            .apply_action_with_rng(&playable, "neutral", &[], continuation, &mut rng, None)
+            .unwrap();
+        assert!(
+            engine.score_state(&completed, "neutral") > engine.score_state(&blocked, "neutral")
+        );
+    }
+
+    #[test]
     fn met_goals_remain_live_until_actual_caps() {
         let mut input = basic_input();
         input.state.completion = input.target_completion;
@@ -3550,7 +3632,8 @@ mod tests {
         balanced.perfection = 184.0;
 
         assert!(
-            engine.score_state(&balanced) > engine.score_state(&over_completed),
+            engine.score_state(&balanced, "neutral")
+                > engine.score_state(&over_completed, "neutral"),
             "balanced sublime state must outscore an over-completed perfect state"
         );
     }

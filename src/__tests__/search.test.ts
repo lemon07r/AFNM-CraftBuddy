@@ -51,6 +51,84 @@ const {
 
 // Helper to create a basic test config
 describe('terminal scoring ambition', () => {
+  it.each(['greedy', 'lookahead-1', 'lookahead-2'] as const)(
+    'values blocked successors by final bars without claiming resolution (%s)',
+    (strategy) => {
+      const deadEnd = createCustomSkill({
+        key: 'dead_end',
+        qiCost: 20,
+        stabilityCost: 10,
+        baseCompletionGain: 99,
+        type: 'fusion',
+      });
+      const continuation = createCustomSkill({
+        key: 'continuation',
+        qiCost: 10,
+        stabilityCost: 10,
+        baseCompletionGain: 60,
+        type: 'fusion',
+      });
+      const config = createTestConfig({
+        minStability: 0,
+        maxCompletion: 1000,
+        maxPerfection: 1000,
+        skills: [deadEnd, continuation],
+      });
+      const state = new CraftingState({
+        qi: 20,
+        stability: 60,
+        initialMaxStability: 60,
+        perfection: 100,
+      });
+      const blocked = applySkill(state, deadEnd, config, [], 100)!;
+      expect(blocked.stability).toBeGreaterThan(0);
+      expect(getAvailableSkills(blocked, config, 'neutral')).toEqual([]);
+      const search = (root: CraftingState) =>
+        strategy === 'greedy'
+          ? greedySearch(root, config, 100, 100, 'neutral')
+          : lookaheadSearch(
+              root,
+              config,
+              100,
+              100,
+              strategy === 'lookahead-1' ? 1 : 2,
+              'neutral',
+              ['neutral', 'neutral'],
+              { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 10000 },
+            );
+      const result = search(state);
+      const all = [result.recommendation!, ...result.alternativeSkills];
+      // Depth 1 sees only the continuation's immediate live score; the
+      // playable line only pays off once its next move is searched.
+      if (strategy === 'lookahead-2') {
+        expect(result.recommendation?.skill.key).toBe('continuation');
+      }
+      const deadEndRecommendation = all.find(
+        (rec) => rec.skill.key === 'dead_end',
+      )!;
+      expect(deadEndRecommendation.endsCraft).toBe(false);
+      expect(deadEndRecommendation.endsCraftBelowTarget).toBe(true);
+      expect(deadEndRecommendation.score).toBeCloseTo(
+        scoreFinishedOutcome(
+          blocked,
+          100,
+          100,
+          false,
+          2,
+          1000,
+          1000,
+          __testing.buildScoringContext(config, state, 'neutral'),
+        ),
+        6,
+      );
+      const blockedResult = search(blocked);
+      expect(blockedResult.status).toBe('blocked');
+      expect(blockedResult.targetsMet).toBe(false);
+      expect(blockedResult.outcomeProjection?.willAutoFinish).toBe(false);
+      expect(blockedResult.recommendation).toBeNull();
+    },
+  );
+
   it('preserves the perfection band goal for an immediate finish at every depth', () => {
     const finish = createCustomSkill({
       key: 'finish',
