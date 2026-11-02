@@ -750,6 +750,12 @@ function hasSealedMaxStabilityBuff(
  * dispatcher). Gates per-application trigger bookkeeping so crafts without
  * trigger buffs allocate nothing extra.
  */
+function hasEffectInterceptors(buffs: ActiveBuffMap): boolean {
+  return Array.from(buffs.values()).some(
+    (buff) => buff.definition?.craftingEffectInterceptors?.length,
+  );
+}
+
 function hasTriggeredEffectBuffs(
   buffs: ReadonlyMap<string, { definition?: BuffDefinition }>,
 ): boolean {
@@ -2332,6 +2338,32 @@ export function calculateSkillGains(
   options: SkillGainOptions = {},
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
+  if (
+    skill.effects?.length &&
+    skill.actionKind !== 'item' &&
+    hasEffectInterceptors(state.buffs)
+  ) {
+    const phase: ActionPhaseContext = {
+      preview: true,
+      includeExpectedValue,
+      masteryPhase: true,
+      successChance: includeExpectedValue ? options.successChance : 1,
+      existingBuffNames: state.buffs,
+      barStart: state,
+      barContributions: [],
+    };
+    applySkillTransition(
+      state,
+      { ...skill, consumesTurn: false },
+      config,
+      conditionEffects,
+      config.targetCompletion ?? 0,
+      undefined,
+      config.targetPerfection ?? 0,
+      phase,
+    );
+    return phase.previewGains!;
+  }
   const clampPredictedProgressGain = (
     gain: number,
     current: number,
@@ -3666,6 +3698,9 @@ export function canApplySkill(
  * @param targetCompletion - Target completion for completion bonus calculation
  */
 interface ActionPhaseContext {
+  preview?: boolean;
+  includeExpectedValue?: boolean;
+  previewGains?: SkillGains;
   existingBuffNames: Pick<ReadonlySet<string>, 'has'>;
   successChance?: number;
   masteryPhase?: boolean;
@@ -4286,12 +4321,15 @@ function applySkillTransition(
     );
 
   // Calculate gains BEFORE applying buffs from this skill
+  const orderedNumeric =
+    !isItemAction && hasEffectInterceptors(resolvedActiveBuffs);
   const gains: SkillGains =
-    !skill.isDisciplinedTouch &&
-    skill.effects?.length &&
-    skill.effects.every(
-      (effect) => effect.kind === 'createBuff' && !effect.condition,
-    )
+    orderedNumeric ||
+    (!skill.isDisciplinedTouch &&
+      skill.effects?.length &&
+      skill.effects.every(
+        (effect) => effect.kind === 'createBuff' && !effect.condition,
+      ))
       ? { completion: 0, perfection: 0, stability: 0 }
       : calculateSkillGains(state, skill, config, conditionEffects, {
           successChance: phase.successChance,
@@ -4335,6 +4373,7 @@ function applySkillTransition(
   const actionMasteryUpgrades = resolvedActionMastery.upgrades;
   const actionVars = {
     ...preMasteryActionVars,
+    ...(orderedNumeric ? { step: state.step } : {}),
   };
   actionVars.control *= 1 + (mastery.controlBonus || 0);
   actionVars.intensity *= 1 + (mastery.intensityBonus || 0);
@@ -4686,6 +4725,166 @@ function applySkillTransition(
     actionVars.critmultiplier,
   );
   stabilityProjection.beginTechnique(actionSuccessChance);
+  const applyTechniqueNumeric = (
+    effect: TechniqueEffect,
+    factor: number,
+    conditionProbability: number,
+  ): void => {
+    let raw = evaluateScalingWithMasteryUpgrades(
+      effect.amount,
+      actionMasteryUpgrades,
+      actionVars,
+      0,
+    );
+    if (
+      (effect.kind === 'completion' || effect.kind === 'perfection') &&
+      raw < 0 &&
+      (effect.amount?.value ?? 0) > 0
+    )
+      raw = 0;
+    // y7c: held order, first matching interceptor PER owner, floor each step.
+    for (const [key] of Array.from(newBuffs.entries())) {
+      const owner = newBuffs.get(key);
+      if (!owner) continue;
+      for (const interceptor of owner.definition?.craftingEffectInterceptors ??
+        []) {
+        if (
+          !interceptor.appliesTo.some((kind) => kind === effect.kind) ||
+          (interceptor.techniqueTypes &&
+            !interceptor.techniqueTypes.includes(skill.type))
+        )
+          continue;
+        const scope: ScalingVariables = {
+          ...actionVars,
+          step: state.step,
+          ...owner.definition?.additionalVariables,
+          ...owner.internalState,
+          stacks: owner.stacks,
+          amount: raw,
+        };
+        const trigger = evaluateLiveProgressCondition(
+          interceptor.trigger,
+          state,
+          scope,
+          owner.stacks,
+          techniqueProgress,
+        );
+        if (!trigger.met || trigger.probability !== 1) continue;
+        raw = Math.floor(raw * interceptor.modifier.value);
+        // Optional stochastic side effects are intentionally not approximated.
+        if (factor === 1)
+          for (const sideEffect of interceptor.effects ?? []) {
+            const sideScope = { ...actionVars, amount: raw };
+            Object.assign(
+              sideScope,
+              owner.definition?.additionalVariables,
+              newBuffs.get(key)?.internalState,
+              { stacks: newBuffs.get(key)?.stacks ?? 0 },
+            );
+            const condition = evaluateLiveProgressCondition(
+              sideEffect.condition,
+              state,
+              sideScope,
+              owner.stacks,
+              techniqueProgress,
+            );
+            if (condition.met && condition.probability === 1)
+              executeBuffEffect(
+                { ...sideEffect, condition: undefined },
+                key,
+                owner,
+                sideScope,
+              );
+          }
+        break;
+      }
+    }
+    const crit =
+      phase.includeExpectedValue === false
+        ? 1
+        : calculateExpectedCritMultiplier(
+            actionVars.critchance,
+            actionVars.critmultiplier,
+          );
+    const isBar = effect.kind === 'completion' || effect.kind === 'perfection';
+    const application = prepareNumericApplication(
+      effect.kind,
+      raw > 0 && isBar ? safeFloor(raw * crit) : raw,
+      actionVars,
+    );
+    let amount = application.amount * factor;
+    if (isBar) {
+      const completion = effect.kind === 'completion';
+      const before = completion ? runningCompletion : runningPerfection;
+      const cap = completion ? config.maxCompletion : config.maxPerfection;
+      amount = safeFloor(
+        Math.min(
+          application.amount,
+          cap === undefined ? Infinity : Math.max(0, cap - before),
+        ) * factor,
+      );
+      if (completion) {
+        gains.completion += amount;
+        runningCompletion += amount;
+        techniqueProgress.completion +=
+          application.realizedAmount * conditionProbability;
+      } else {
+        gains.perfection += amount;
+        runningPerfection += amount;
+        techniqueProgress.perfection +=
+          application.realizedAmount * conditionProbability;
+      }
+      if (recordBarChanges && amount !== 0)
+        gains.barContributions = [
+          ...(gains.barContributions ?? []),
+          { bar: completion ? 'completion' : 'perfection', amount },
+        ];
+      if (amount > 0)
+        dispatchBuffTriggers(
+          completion ? 'completionGained' : 'perfectionGained',
+          amount,
+          computeTriggerPercentGained(
+            amount,
+            before + amount,
+            completion ? targetCompletion : targetPerfection,
+          ),
+        );
+    } else if (effect.kind === 'stability') {
+      stabilityProjection.changeTechnique(
+        application.realizedAmount,
+        0,
+        conditionProbability,
+      );
+      techniqueProgress.stability +=
+        application.realizedAmount * conditionProbability;
+      newStability += amount;
+      gains.stability += amount;
+      if (amount !== 0)
+        dispatchBuffTriggers(
+          amount > 0 ? 'stabilityRestored' : 'stabilitySpent',
+          Math.abs(amount),
+        );
+    } else if (effect.kind === 'pool') {
+      newQi = clampQi(newQi + amount);
+      if (amount !== 0)
+        dispatchBuffTriggers(
+          amount > 0 ? 'poolRestored' : 'poolSpent',
+          Math.abs(amount),
+        );
+    } else if (effect.kind === 'maxStability') {
+      const applied = maxStabilitySealed ? Math.min(0, raw) : raw;
+      stabilityProjection.changeTechnique(0, -applied, conditionProbability);
+      techniqueMaxStabilityDelta += applied * factor;
+    } else if (effect.kind === 'cleanseToxicity') {
+      newToxicity = Math.max(0, newToxicity - amount);
+      gains.toxicityCleanse = (gains.toxicityCleanse ?? 0) + amount;
+    }
+  };
+  if (orderedNumeric && !phase.preview) {
+    if (qiSpentByCost > 0) dispatchBuffTriggers('poolSpent', qiSpentByCost);
+    if (effectiveStabilityCost > 0)
+      dispatchBuffTriggers('stabilitySpent', effectiveStabilityCost);
+  }
   if (skill.effects && skill.effects.length > 0) {
     for (const effect of skill.effects) {
       if (!effect) continue;
@@ -4699,6 +4898,21 @@ function applySkillTransition(
       if (!conditionResult.met || conditionResult.probability <= 0) continue;
       const factor = actionSuccessChance * conditionResult.probability;
       if (factor <= 0) continue;
+      if (
+        orderedNumeric &&
+        [
+          'completion',
+          'perfection',
+          'stability',
+          'pool',
+          'maxStability',
+          'cleanseToxicity',
+        ].includes(effect.kind)
+      ) {
+        applyTechniqueNumeric(effect, factor, conditionResult.probability);
+        continue;
+      }
+
       advanceTechniqueProgress(
         techniqueProgress,
         effect,
@@ -5023,7 +5237,16 @@ function applySkillTransition(
 
   // Fire the cost/technique triggers before per-turn buff effects run,
   // matching the runtime order (costs, technique effects, then buff effects).
-  if (triggerBuffsPresent) {
+  if (phase.preview) {
+    phase.previewGains = {
+      ...gains,
+      completion: gains.completion + buffCompletion,
+      perfection: gains.perfection + buffPerfection,
+      stability: gains.stability + buffStabilityDelta,
+    };
+    return state;
+  }
+  if (triggerBuffsPresent && !orderedNumeric) {
     if (qiSpentByCost > 0) {
       dispatchBuffTriggers('poolSpent', qiSpentByCost);
     }
