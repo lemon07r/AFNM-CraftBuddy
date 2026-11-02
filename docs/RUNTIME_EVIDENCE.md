@@ -1687,6 +1687,20 @@ did not emit stack events or execute group changes at inspection time.
 
 ### Stock companion and auto-use scope
 
+#### Bar overflow and companion ordering
+
+In the current 0.7.19 bundle, perfection applier `s7c` (`G:14932019`) and
+completion applier `c7c` (`G:14933194`) use signed `r.perfection += e` /
+`r.completion += e`, without an immediate cap. Their bar hooks and positive
+gain listeners observe those applications before cleanup. `I7c` caps/floors
+perfection at `G:14953909` and completion at `G:14954060`, after ordinary buff
+effects and harmony. Thus 90/cap 100 with +20 then −10 reaches 110 then 100,
+not 100 then 90. This confirms the additive appliers described earlier in
+§17 and the historical hook evidence above; holding a companion does not
+change that rule. CraftBuddy's ordered path retains this overflow and, like
+its non-companion EV preview, caps the combined successful technique gain
+before weighting by the single action success chance.
+
 Su Lianhua's Assistance intercepts positive technique/mastery completion and
 perfection on `step % 3 == 2`, multiplying by 1.5 and flooring (`G:13041335`).
 Runtime `y7c` (`G:14941598–14943000`) walks held buffs in order, chooses the

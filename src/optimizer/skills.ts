@@ -4782,11 +4782,6 @@ function applySkillTransition(
 
   let techniquePoolDelta = 0;
   let techniqueMaxStabilityDelta = 0;
-  // Cap headroom belongs to the one successful action, not its weighted mean.
-  const techniqueCapProgress = {
-    completion: state.completion,
-    perfection: state.perfection,
-  };
   const techniqueProgress: LiveProgress = {
     completion: state.completion,
     perfection: state.perfection,
@@ -4902,17 +4897,9 @@ function applySkillTransition(
     let amount = application.amount * factor;
     if (isBar) {
       const completion = effect.kind === 'completion';
-      const bar = completion ? 'completion' : 'perfection';
       const before = completion ? runningCompletion : runningPerfection;
-      const cap = completion ? config.maxCompletion : config.maxPerfection;
-      const cappedAmount = Math.min(
-        application.amount,
-        cap === undefined
-          ? Infinity
-          : Math.max(0, cap - techniqueCapProgress[bar]),
-      );
-      techniqueCapProgress[bar] += cappedAmount * conditionProbability;
-      amount = safeFloor(cappedAmount * factor);
+      // Runtime bar appliers add uncapped; a later drain can consume overflow.
+      amount = safeFloor(application.amount * factor);
       if (completion) {
         gains.completion += amount;
         runningCompletion += amount;
@@ -5140,6 +5127,21 @@ function applySkillTransition(
     }
   }
 
+  if (orderedEffects) {
+    // Match the legacy preview: cap the combined successful gain, then apply
+    // the shared success probability once. Never discard overflow per effect.
+    const expectedBarGain = (
+      bar: 'completion' | 'perfection',
+      cap: number | undefined,
+    ): number => {
+      const gain = safeFloor(techniqueProgress[bar] - state[bar]);
+      const headroom =
+        cap === undefined ? Infinity : Math.max(0, cap - state[bar]);
+      return safeFloor(Math.min(gain, headroom) * actionSuccessChance);
+    };
+    gains.completion = expectedBarGain('completion', config.maxCompletion);
+    gains.perfection = expectedBarGain('perfection', config.maxPerfection);
+  }
   stabilityProjection.endTechnique();
 
   function executeBuffEffect(

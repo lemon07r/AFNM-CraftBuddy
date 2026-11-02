@@ -1,5 +1,6 @@
 import { applySkill, calculateSkillGains } from '../optimizer/skills';
 import type { BuffDefinition } from '../optimizer/gameTypes';
+import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 import { buildNativeMctsInput } from '../optimizer/nativeMcts';
 import {
   buildStateSnapshot,
@@ -15,6 +16,45 @@ import {
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('companion bar overflow', () => {
+  it.each([
+    ['han', 'completion', 1],
+    ['han', 'perfection', 1],
+    ['su', 'completion', 1],
+    ['su', 'perfection', 1],
+    ['han', 'completion', 0.5],
+    ['han', 'perfection', 0.5],
+    ['su', 'completion', 0.5],
+    ['su', 'perfection', 0.5],
+  ] as const)(
+    'retains overflow before a later drain: %s / %s / p=%s',
+    (companion, bar, successChance) => {
+      const base = companion === 'han' ? hanScenarios()[0] : suScenarios()[0];
+      const state = base.state.copy({ completion: 90, perfection: 90 });
+      const skill = retargetSkill({
+        qiCost: 0,
+        stabilityCost: 0,
+        successChance,
+        effects: [
+          { kind: bar, amount: { value: 20 } },
+          { kind: bar, amount: { value: -10 } },
+        ],
+      });
+      const config = retargetConfig(skill, {
+        maxCompletion: 100,
+        maxPerfection: 100,
+      });
+      const next = applySkill(state, skill, config)!;
+      const bare = applySkill(state.copy({ buffs: new Map() }), skill, config)!;
+      expect(next[bar]).toBe(90 + 10 * successChance);
+      expect(next[bar]).toBe(bare[bar]);
+      expect(calculateSkillGains(state, skill, config)[bar]).toBe(
+        10 * successChance,
+      );
+    },
+  );
+});
 
 describe('companion fallback technique events', () => {
   it.each(companionReviewScenarios())(
