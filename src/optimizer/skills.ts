@@ -2442,6 +2442,24 @@ export function calculateSkillGains(
       stability: gains.stability + prepared.state.stability - state.stability,
     };
   }
+  return calculateUninterceptedSkillGains(
+    state,
+    skill,
+    config,
+    conditionEffects,
+    options,
+  );
+}
+
+/** Established aggregate EV model, also used to normalize inert bar listeners. */
+function calculateUninterceptedSkillGains(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ConditionEffect[],
+  options: SkillGainOptions,
+): SkillGains {
+  const includeExpectedValue = options.includeExpectedValue ?? true;
   const clampPredictedProgressGain = (
     gain: number,
     current: number,
@@ -4862,6 +4880,20 @@ function applySkillTransition(
     actionVars.critchance,
     actionVars.critmultiplier,
   );
+  const canNormalizeInertBars = !Array.from(newBuffs.values()).some((owner) => {
+    const uses = owner.definition?.stabilityLossPrevention?.uses ?? 0;
+    const used = Math.max(
+      0,
+      Math.floor(owner.internalState?.preventedStabilityLosses ?? 0),
+    );
+    return (
+      used < uses ||
+      owner.definition?.craftingEffectInterceptors?.some(
+        (interceptor) => interceptor.effects?.length,
+      )
+    );
+  });
+  let inertBarScales: { completion: number; perfection: number } | undefined;
   const applyTechniqueNumeric = (
     effect: TechniqueEffect,
     factor: number,
@@ -4873,6 +4905,7 @@ function applySkillTransition(
       actionVars,
       0,
     );
+    const uninterceptedRaw = raw;
     if (
       (effect.kind === 'completion' || effect.kind === 'perfection') &&
       raw < 0 &&
@@ -4947,8 +4980,18 @@ function applySkillTransition(
     const application = prepareNumericApplication(
       effect.kind,
       raw > 0 && isBar ? raw * crit : raw,
-      actionVars,
+      isBar
+        ? { ...actionVars, completionBoost: 0, perfectionBoost: 0 }
+        : actionVars,
     );
+    if (isBar && application.amount > 0) {
+      const boost =
+        effect.kind === 'completion'
+          ? actionVars.completionBoost
+          : actionVars.perfectionBoost;
+      if (Number.isFinite(boost))
+        application.amount = application.realizedAmount *= 1 + boost / 100;
+    }
     if (effect.kind === 'stability' && application.realizedAmount < 0) {
       application.realizedAmount = appliedStabilityAmount(
         application.realizedAmount,
@@ -4969,16 +5012,54 @@ function applySkillTransition(
     if (isBar) {
       const completion = effect.kind === 'completion';
       const before = completion ? runningCompletion : runningPerfection;
+      let eventAmount = amount;
+      if (
+        triggerBuffsPresent &&
+        canNormalizeInertBars &&
+        raw === uninterceptedRaw
+      ) {
+        if (!inertBarScales) {
+          const reference = calculateUninterceptedSkillGains(
+            state,
+            skill,
+            config,
+            conditionEffects,
+            {
+              includeExpectedValue: phase.includeExpectedValue,
+              successChance: actionSuccessChance,
+              stabilityCost: effectiveStabilityCost,
+            },
+          );
+          const totals = { completion: 0, perfection: 0 };
+          for (const contribution of reference.barContributions ?? [])
+            totals[contribution.bar] += contribution.amount;
+          inertBarScales = {
+            completion: totals.completion
+              ? reference.completion / totals.completion
+              : 0,
+            perfection: totals.perfection
+              ? reference.perfection / totals.perfection
+              : 0,
+          };
+        }
+        // Match the established EV listener allocation when this companion
+        // neither intercepts the application nor changes prevention/gates.
+        if (!skill.isDisciplinedTouch)
+          eventAmount =
+            raw *
+            conditionProbability *
+            inertBarScales[completion ? 'completion' : 'perfection'];
+      }
       // Retain uncapped overflow and fractional expected listener amounts.
       // Aggregate expected progress is floored/capped in expectedBarGain below.
       if (completion) {
         gains.completion += amount;
-        runningCompletion += amount;
+        runningCompletion += eventAmount;
         techniqueProgress.completion +=
           application.realizedAmount * conditionProbability;
       } else {
         gains.perfection += amount;
-        runningPerfection += amount;
+        runningPerfection += eventAmount;
         techniqueProgress.perfection +=
           application.realizedAmount * conditionProbability;
       }
@@ -4987,13 +5068,13 @@ function applySkillTransition(
           ...(gains.barContributions ?? []),
           { bar: completion ? 'completion' : 'perfection', amount },
         ];
-      if (amount > 0)
+      if (eventAmount > 0)
         dispatchBuffTriggers(
           completion ? 'completionGained' : 'perfectionGained',
-          amount,
+          eventAmount,
           computeTriggerPercentGained(
-            amount,
-            before + amount,
+            eventAmount,
+            before + eventAmount,
             completion ? targetCompletion : targetPerfection,
           ),
         );

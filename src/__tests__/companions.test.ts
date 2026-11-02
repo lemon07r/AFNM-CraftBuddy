@@ -45,6 +45,47 @@ describe('companion preview setup and mastery phases', () => {
 });
 
 describe('companion expected crit parity', () => {
+  it.each(['completion', 'perfection'] as const)(
+    'aggregates fractional boosted means once for %s',
+    (bar) => {
+      const base = companionCritScenarios().find(
+        (entry) => entry.bar === bar && !entry.multiple,
+      )!;
+      const observer = base.state.buffs.get('crit_observer')!;
+      const buffs = new Map(base.state.buffs);
+      buffs.set('crit_observer', {
+        ...observer,
+        definition: {
+          ...observer.definition!,
+          stats: { [`${bar}Boost`]: { value: 50 } },
+        },
+      });
+      const state = base.state.copy({ buffs });
+      const skill = {
+        ...base.skill,
+        effects: [
+          { kind: bar, amount: { value: 3 } },
+          { kind: bar, amount: { value: 3 } },
+        ],
+      };
+      const bareBuffs = new Map(buffs);
+      bareBuffs.delete("su_lianhua's_assistance");
+      const bare = applySkill(
+        state.copy({ buffs: bareBuffs }),
+        skill,
+        base.config,
+      )!;
+      expect(bare[bar]).toBe(13);
+      const actual = applySkill(state, skill, base.config)!;
+      expect(actual[bar]).toBe(13);
+      expect(actual.buffs.get('crit_observer')?.internalState).toEqual({
+        amount: 13,
+        calls: 2,
+      });
+      expect(calculateSkillGains(state, skill, base.config)[bar]).toBe(13);
+    },
+  );
+
   it.each(companionCritScenarios())(
     'matches the non-companion EV and listeners: $name',
     ({ state, skill, config, bar, multiple }) => {
