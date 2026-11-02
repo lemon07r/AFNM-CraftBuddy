@@ -21,7 +21,106 @@ export function suBuff(): BuffDefinition {
 }
 
 export function companionScenarios() {
-  return [...suScenarios(), ...hanScenarios()];
+  return [
+    ...suScenarios(),
+    ...hanScenarios(),
+    ...companionIntegrationScenarios(),
+  ];
+}
+
+/** Rebase joins: live progress must use intercepted/prevented amounts, while
+ * every stability effect still shares the one captured technique success. */
+export function companionIntegrationScenarios() {
+  return [
+    'su-live-interceptor',
+    'su-intercepted-progress',
+    'su-live-stability',
+    'su-live-side-effect',
+    'su-shared-success',
+    'han-shared-success',
+    'han-prevented-payment-progress',
+    'han-prevented-effect-progress',
+  ].map((edge) => {
+    const isHan = edge.startsWith('han-');
+    const base = isHan
+      ? hanScenarios().find((entry) => entry.name === 'companion-han-payment')!
+      : suScenarios().find((entry) => entry.name === 'companion-su-step-2')!;
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      effects: [
+        { kind: 'completion', amount: { value: 5 } },
+        { kind: 'perfection', amount: { value: 5 } },
+      ],
+    });
+    let state = base.state;
+    const su = state.buffs.get("su_lianhua's_assistance")?.definition;
+    if (edge === 'su-live-interceptor')
+      su!.craftingEffectInterceptors![0].trigger = {
+        kind: 'completion',
+        mode: 'more',
+        percentage: 5,
+      };
+    if (edge === 'su-intercepted-progress')
+      skill.effects![1].condition = {
+        kind: 'completion',
+        mode: 'more',
+        percentage: 6,
+      };
+    if (edge === 'su-live-stability') {
+      su!.craftingEffectInterceptors![0].trigger = {
+        kind: 'stability',
+        mode: 'less',
+        percentage: 75,
+      };
+      skill.effects = [
+        { kind: 'stability', amount: { value: -10 } },
+        { kind: 'completion', amount: { value: 5 } },
+      ];
+    }
+    if (edge === 'su-live-side-effect')
+      su!.craftingEffectInterceptors![0].effects = [
+        {
+          kind: 'setState',
+          key: 'seenLive',
+          value: { value: 1 },
+          condition: {
+            kind: 'completion',
+            mode: 'more',
+            percentage: 6,
+          },
+        },
+      ];
+    if (edge.endsWith('shared-success')) {
+      state = state.copy({ stability: 5 });
+      skill.successChance = 0.5;
+      skill.effects = [
+        { kind: 'stability', amount: { value: -10 } },
+        { kind: 'stability', amount: { value: 4 } },
+      ];
+    }
+    if (edge.includes('prevented-')) {
+      skill.effects = [
+        {
+          kind: 'completion',
+          amount: { value: 5 },
+          condition: {
+            kind: 'stability',
+            mode: 'more',
+            percentage: 80,
+          },
+        },
+      ];
+      if (edge === 'han-prevented-payment-progress') skill.stabilityCost = 10;
+      else skill.effects!.unshift({ kind: 'stability', amount: { value: -10 } });
+    }
+    return {
+      name: `companion-integration-${edge}`,
+      state,
+      skill,
+      config: retargetConfig(skill),
+    };
+  });
 }
 
 export const HAN_KEY = "han_weiguang's_assistance";

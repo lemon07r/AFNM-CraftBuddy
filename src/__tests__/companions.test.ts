@@ -4,7 +4,48 @@ import {
   buildStateSnapshot,
   reviveStateSnapshot,
 } from '../modContent/replaySnapshot';
-import { HAN_KEY, hanScenarios, suScenarios } from './fixtures/companions';
+import {
+  HAN_KEY,
+  companionIntegrationScenarios,
+  hanScenarios,
+  suScenarios,
+} from './fixtures/companions';
+
+describe('companion integration with final mechanics', () => {
+  it.each([
+    ['su-live-interceptor', 5, 7, 50, 0],
+    ['su-intercepted-progress', 7, 7, 50, 0],
+    ['su-live-stability', 7, 0, 40, 0],
+    ['su-live-side-effect', 7, 7, 50, 0],
+    ['su-shared-success', 0, 0, 2.5, 0],
+    ['han-shared-success', 0, 0, 2.5, 0],
+    ['han-prevented-payment-progress', 5, 0, 50, 1],
+    ['han-prevented-effect-progress', 5, 0, 50, 1],
+  ])(
+    'preserves live progress and the shared success roll: %s',
+    (edge, completion, perfection, stability, uses) => {
+      const { state, skill, config } = companionIntegrationScenarios().find(
+        (entry) => entry.name === `companion-integration-${edge}`,
+      )!;
+      const next = applySkill(state, skill, config)!;
+      expect(next.completion).toBe(completion);
+      expect(next.perfection).toBe(perfection);
+      expect(next.stability).toBe(stability);
+      expect(
+        next.buffs.get(HAN_KEY)?.internalState?.preventedStabilityLosses ?? 0,
+      ).toBe(uses);
+      if (edge.startsWith('su-')) {
+        const preview = calculateSkillGains(state, skill, config);
+        expect(preview.completion).toBe(completion);
+        expect(preview.perfection).toBe(perfection);
+      }
+      if (edge === 'su-live-side-effect')
+        expect(
+          next.buffs.get("su_lianhua's_assistance")?.internalState,
+        ).toEqual({ seenLive: 1 });
+    },
+  );
+});
 
 describe('Han Weiguang certainty-only prevention', () => {
   it.each([
