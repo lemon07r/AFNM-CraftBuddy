@@ -32,7 +32,81 @@ export function companionScenarios() {
     ...companionPreviewScenarios(),
     ...companionRestoreScenarios(),
     ...companionCapScenarios(),
+    ...companionWeightedBarScenarios(),
   ];
+}
+
+export function companionWeightedBarScenarios() {
+  return (['completion', 'perfection'] as const).flatMap((bar) =>
+    [0, 2].map((used) => {
+      const base = hanScenarios()[0];
+      const otherBar: 'completion' | 'perfection' =
+        bar === 'completion' ? 'perfection' : 'completion';
+      const observer: BuffDefinition = {
+        name: 'Weighted bar observer',
+        canStack: false,
+        effects: [],
+        triggeredEffects: [
+          {
+            trigger: `${bar}Gained`,
+            effects: [
+              {
+                kind: 'setState',
+                key: 'first',
+                value: { value: 1, eqn: 'amount' },
+                condition: { kind: 'condition', condition: 'calls == 0' },
+              },
+              {
+                kind: 'setState',
+                key: 'last',
+                value: { value: 1, eqn: 'amount' },
+              },
+              {
+                kind: 'setState',
+                key: 'total',
+                mode: 'add',
+                value: { value: 1, eqn: 'amount' },
+              },
+              {
+                kind: 'setState',
+                key: 'calls',
+                mode: 'add',
+                value: { value: 1 },
+              },
+              { kind: otherBar, amount: { value: 2 } },
+            ],
+          },
+        ],
+      };
+      const buffs = new Map(base.state.buffs);
+      buffs.set(HAN_KEY, {
+        ...buffs.get(HAN_KEY)!,
+        internalState: { preventedStabilityLosses: used },
+      });
+      buffs.set('weighted_bar_observer', {
+        name: observer.name,
+        stacks: 1,
+        definition: observer,
+      });
+      const skill = retargetSkill({
+        qiCost: 0,
+        stabilityCost: 0,
+        successChance: 0.5,
+        effects: [
+          { kind: bar, amount: { value: 1 } },
+          { kind: bar, amount: { value: 1 } },
+        ],
+      });
+      return {
+        name: `companion-weighted-events-${bar}-${used}`,
+        state: base.state.copy({ buffs }),
+        skill,
+        config: retargetConfig(skill),
+        bar,
+        otherBar,
+      };
+    }),
+  );
 }
 
 export function companionCapScenarios() {

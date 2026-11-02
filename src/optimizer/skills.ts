@@ -4907,12 +4907,12 @@ function applySkillTransition(
       )
         application.amount = application.realizedAmount = 0;
     }
-    let amount = application.amount * factor;
+    const amount = application.amount * factor;
     if (isBar) {
       const completion = effect.kind === 'completion';
       const before = completion ? runningCompletion : runningPerfection;
-      // Runtime bar appliers add uncapped; a later drain can consume overflow.
-      amount = safeFloor(application.amount * factor);
+      // Retain uncapped overflow and fractional expected listener amounts.
+      // Aggregate expected progress is floored/capped in expectedBarGain below.
       if (completion) {
         gains.completion += amount;
         runningCompletion += amount;

@@ -16,6 +16,7 @@ import {
   companionPreviewScenarios,
   companionRestoreScenarios,
   companionCapScenarios,
+  companionWeightedBarScenarios,
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
@@ -52,6 +53,37 @@ describe('Han survivability floor', () => {
       preventedStabilityLosses: used,
     });
   });
+});
+
+describe('companion probability-weighted bar events', () => {
+  it.each(companionWeightedBarScenarios())(
+    'matches the non-companion contributions and listener gains: $name',
+    ({ state, skill, config, bar, otherBar }) => {
+      const bareBuffs = new Map(state.buffs);
+      bareBuffs.delete(HAN_KEY);
+      const bare = applySkill(state.copy({ buffs: bareBuffs }), skill, config)!;
+      const observed = { first: 0.5, last: 0.5, total: 1, calls: 2 };
+      // The existing non-companion path is the reference: two half-point
+      // events, one aggregate progress point, and both listener payouts.
+      expect(bare[bar]).toBe(1);
+      expect(bare[otherBar]).toBe(4);
+      expect(bare.buffs.get('weighted_bar_observer')?.internalState).toEqual(
+        observed,
+      );
+      const next = applySkill(state, skill, config)!;
+      expect(next.buffs.get('weighted_bar_observer')?.internalState).toEqual(
+        observed,
+      );
+      expect(next[bar]).toBe(bare[bar]);
+      expect(next[otherBar]).toBe(bare[otherBar]);
+      const preview = calculateSkillGains(state, skill, config);
+      expect(preview[bar]).toBe(1);
+      expect(preview[otherBar]).toBe(4);
+      expect(
+        state.buffs.get('weighted_bar_observer')?.internalState,
+      ).toBeUndefined();
+    },
+  );
 });
 
 describe('companion bar overflow', () => {
