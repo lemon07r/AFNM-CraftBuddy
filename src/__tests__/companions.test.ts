@@ -18,9 +18,30 @@ import {
   companionCapScenarios,
   companionWeightedBarScenarios,
   companionPoolScenarios,
+  companionDisciplinedScenarios,
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('companion authoritative Disciplined Touch', () => {
+  it.each(companionDisciplinedScenarios())(
+    'intercepts the effect tree: $name',
+    ({ state, skill, config }) => {
+      const bareState = state.copy({ buffs: new Map() });
+      const bare = applySkill(bareState, skill, config)!;
+      expect([bare.completion, bare.perfection]).toEqual([5, 5]);
+      const next = applySkill(state, skill, config)!;
+      expect([next.completion, next.perfection]).toEqual([7, 7]);
+      const preview = calculateSkillGains(state, skill, config);
+      expect([preview.completion, preview.perfection]).toEqual([7, 7]);
+      expect(calculateSkillGains(bareState, skill, config)).toEqual({
+        completion: 5,
+        perfection: 5,
+        stability: 0,
+      });
+    },
+  );
+});
 
 describe('companion realized pool events', () => {
   it.each(companionPoolScenarios())(

@@ -34,7 +34,41 @@ export function companionScenarios() {
     ...companionCapScenarios(),
     ...companionWeightedBarScenarios(),
     ...companionPoolScenarios(),
+    ...companionDisciplinedScenarios(),
   ];
+}
+
+export function companionDisciplinedScenarios() {
+  return ['disciplined', 'consume-buff'].map((edge) => {
+    const base = suScenarios()[2];
+    const skill = retargetSkill({
+      name: edge === 'disciplined' ? 'Disciplined Touch' : 'Consume probe',
+      isDisciplinedTouch: true,
+      baseCompletionGain: 0.5,
+      basePerfectionGain: 0.5,
+      qiCost: 0,
+      stabilityCost: 0,
+      effects: [
+        { kind: 'completion', amount: { value: 0.5, stat: 'intensity' } },
+        { kind: 'perfection', amount: { value: 0.5, stat: 'intensity' } },
+        ...(edge === 'consume-buff'
+          ? [
+              {
+                kind: 'consumeBuff' as const,
+                buff: { name: 'Unused' },
+                stacks: { value: 1 },
+              },
+            ]
+          : []),
+      ],
+    });
+    return {
+      ...base,
+      name: `companion-authoritative-${edge}`,
+      skill,
+      config: retargetConfig(skill),
+    };
+  });
 }
 
 export function companionPoolScenarios() {
