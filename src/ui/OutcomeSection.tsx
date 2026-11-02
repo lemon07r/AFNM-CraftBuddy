@@ -6,15 +6,20 @@ import {
   type SearchResult,
 } from '../optimizer';
 import type { OutcomeSummary } from '../utils/outcomeSummary';
-import { currentOutcomeCopy } from '../utils/recommendationPresentation';
+import {
+  currentOutcomeCopy,
+  type LegacyOutcomeProgress,
+} from '../utils/recommendationPresentation';
 import { colors, getConditionColor } from './theme';
 
 export function CurrentOutcome({
   summary,
+  legacyProgress,
 }: {
   summary: OutcomeSummary | null;
+  legacyProgress?: LegacyOutcomeProgress;
 }) {
-  const copy = currentOutcomeCopy(summary);
+  const copy = currentOutcomeCopy(summary, legacyProgress);
   return (
     <Box
       sx={{ mt: 1.5, pt: 1.25, borderTop: `1px solid ${colors.borderSubtle}` }}

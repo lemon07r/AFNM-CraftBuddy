@@ -64,6 +64,10 @@ interface RecommendationPanelProps {
 /** One reading order and one feature set, regardless of density or automation. */
 export const RecommendationPanel = memo(function RecommendationPanel({
   result,
+  currentCompletion,
+  currentPerfection,
+  targetCompletion,
+  targetPerfection,
   currentCondition,
   nextConditions = [],
   craftingType,
@@ -232,7 +236,17 @@ export const RecommendationPanel = memo(function RecommendationPanel({
         )}
       </Box>
 
-      {!loading && <CurrentOutcome summary={outcome} />}
+      {!loading && (
+        <CurrentOutcome
+          summary={outcome}
+          legacyProgress={{
+            currentCompletion,
+            currentPerfection,
+            targetCompletion,
+            targetPerfection,
+          }}
+        />
+      )}
       {settings?.showForecastedConditions !== false && (
         <Conditions current={currentCondition} next={nextConditions} />
       )}

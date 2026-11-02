@@ -2,21 +2,14 @@ import React, { memo } from 'react';
 import { Box, Typography } from '@mui/material';
 import { techniqueDisplayName, type SkillRecommendation } from '../optimizer';
 import { formatLargeNumber } from '../utils/largeNumbers';
-import { relativeChoiceLabel } from '../utils/recommendationPresentation';
+import {
+  expectedGainsLabel,
+  gainsLabel,
+  relativeChoiceLabel,
+  successPercentage,
+} from '../utils/recommendationPresentation';
 import { ActionButton, Help } from './components';
 import { colors, getSkillTypeColor } from './theme';
-
-function gainsLabel(gains: SkillRecommendation['immediateGains']): string {
-  return (
-    (['completion', 'perfection', 'stability'] as const)
-      .filter((key) => gains[key] !== 0)
-      .map(
-        (key) =>
-          `${gains[key] > 0 ? '+' : ''}${formatLargeNumber(gains[key], 1)} ${key}`,
-      )
-      .join(' · ') || 'Prepares the next turn'
-  );
-}
 
 export const ActionRecommendation = memo(function ActionRecommendation({
   rec,
@@ -30,6 +23,7 @@ export const ActionRecommendation = memo(function ActionRecommendation({
   onUse?: (rec: SkillRecommendation) => void;
 }) {
   const name = techniqueDisplayName(rec.skill);
+  const expected = expectedGainsLabel(rec);
   return (
     <Box
       sx={{
@@ -90,6 +84,14 @@ export const ActionRecommendation = memo(function ActionRecommendation({
           <Typography variant="body2" sx={{ mt: 0.5 }}>
             {gainsLabel(rec.immediateGains)}
           </Typography>
+          {expected && (
+            <Typography
+              variant="caption"
+              sx={{ color: colors.textSecondary, display: 'block', mt: 0.4 }}
+            >
+              {expected}
+            </Typography>
+          )}
           <Typography
             variant="caption"
             sx={{ color: colors.textSecondary, display: 'block', mt: 0.4 }}
@@ -129,7 +131,7 @@ export const ActionRecommendation = memo(function ActionRecommendation({
               color: colors.textSecondary,
             }}
           >
-            Technique success: {Math.round(rec.projectedSuccessChance * 100)}%
+            Technique success: {successPercentage(rec.projectedSuccessChance)}%
             <Help title="Technique success">
               This is the action’s success chance, not a ranking or the chance
               of reaching the planned final outcome.

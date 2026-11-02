@@ -7,10 +7,13 @@ import {
 import { buildOutcomeSummary } from '../utils/outcomeSummary';
 import {
   currentOutcomeCopy,
+  expectedGainsLabel,
+  gainsLabel,
   isPlayableRecommendation,
   isPlayableAction,
   relativeChoiceLabel,
   rotationDisplayNames,
+  successPercentage,
 } from '../utils/recommendationPresentation';
 
 const recommendation: SkillRecommendation = {
@@ -93,6 +96,33 @@ describe('current standing, not a forecast', () => {
         'This saved result has no outcome summary. Check the game’s bars.',
     });
   });
+  it('keeps supplied current progress and targets for legacy results', () => {
+    const copy = currentOutcomeCopy(null, {
+      currentCompletion: 120,
+      targetCompletion: 130,
+      currentPerfection: 40,
+      targetPerfection: 130,
+    });
+    expect(copy.headline).toBe('Completion 120 / 130 · Perfection 40 / 130');
+    expect(copy.detail).not.toMatch(/secured|unavailable/);
+  });
+  it('shows available legacy bars, including zero, without inventing missing values', () => {
+    expect(
+      currentOutcomeCopy(null, {
+        currentCompletion: 0,
+        targetCompletion: 130,
+        currentPerfection: 40,
+      }).headline,
+    ).toBe('Completion 0 / 130');
+  });
+  it('prefers the outcome projection over legacy progress', () => {
+    expect(
+      currentOutcomeCopy(buildOutcomeSummary({ projection }), {
+        currentCompletion: 120,
+        targetCompletion: 130,
+      }).headline,
+    ).toBe('Perfect secured · aiming for Sublime');
+  });
   it('labels the target secured without implying it ends the craft', () => {
     const met = {
       ...projection,
@@ -117,6 +147,44 @@ describe('current standing, not a forecast', () => {
 });
 
 describe('action labels', () => {
+  it('omits the expected line when every gain matches', () => {
+    expect(expectedGainsLabel(recommendation)).toBeNull();
+  });
+  it.each(['completion', 'perfection', 'stability'] as const)(
+    'shows the expected line when %s differs',
+    (key) => {
+      const gains = { completion: 0, perfection: 0, stability: 0 };
+      expect(
+        expectedGainsLabel({
+          immediateGains: { ...gains, [key]: 10 },
+          expectedGains: { ...gains, [key]: 5 },
+        }),
+      ).toBe(`Expected: +5 ${key}`);
+    },
+  );
+  it('uses the same number, sign and zero formatting for both gain lines', () => {
+    const expectedGains = { completion: 12345, perfection: 5.5, stability: -2 };
+    expect(expectedGainsLabel({ ...recommendation, expectedGains })).toBe(
+      `Expected: ${gainsLabel(expectedGains)}`,
+    );
+    expect(gainsLabel(expectedGains)).toBe(
+      '+12.3K completion · +6 perfection · -2 stability',
+    );
+    expect(
+      expectedGainsLabel({
+        ...recommendation,
+        expectedGains: { completion: 0, perfection: 0, stability: 0 },
+      }),
+    ).toBe('Expected: Prepares the next turn');
+  });
+  it.each([
+    [0, 0],
+    [0.5, 50],
+    [0.996, 99],
+    [1, 100],
+  ])('floors success chance %s to %s percent', (chance, percent) =>
+    expect(successPercentage(chance)).toBe(percent),
+  );
   it.each([undefined, 0, 35, 50, 70, 90, 100])(
     'never renders candidate rating %s as a percentage or a probability',
     (rating) => {

@@ -4,6 +4,43 @@ import {
   type SkillRecommendation,
 } from '../optimizer';
 import type { OutcomeSummary } from './outcomeSummary';
+import { formatLargeNumber } from './largeNumbers';
+
+const GAIN_KEYS = ['completion', 'perfection', 'stability'] as const;
+
+export function gainsLabel(
+  gains: SkillRecommendation['immediateGains'],
+): string {
+  return (
+    GAIN_KEYS.filter((key) => gains[key] !== 0)
+      .map(
+        (key) =>
+          `${gains[key] > 0 ? '+' : ''}${formatLargeNumber(gains[key], 1)} ${key}`,
+      )
+      .join(' · ') || 'Prepares the next turn'
+  );
+}
+
+export function expectedGainsLabel(
+  rec: Pick<SkillRecommendation, 'immediateGains' | 'expectedGains'>,
+): string | null {
+  return GAIN_KEYS.some(
+    (key) => rec.expectedGains[key] !== rec.immediateGains[key],
+  )
+    ? `Expected: ${gainsLabel(rec.expectedGains)}`
+    : null;
+}
+
+export function successPercentage(chance: number): number {
+  return Math.floor(chance * 100);
+}
+
+export interface LegacyOutcomeProgress {
+  currentCompletion?: number;
+  currentPerfection?: number;
+  targetCompletion?: number;
+  targetPerfection?: number;
+}
 
 export function isPlayableRecommendation(rec: SkillRecommendation): boolean {
   return isPlayableAction(rec.skill);
@@ -21,16 +58,34 @@ export function relativeChoiceLabel(rating: number | undefined): string {
   return 'Lower-ranked choice';
 }
 
-export function currentOutcomeCopy(summary: OutcomeSummary | null): {
+export function currentOutcomeCopy(
+  summary: OutcomeSummary | null,
+  legacy: LegacyOutcomeProgress = {},
+): {
   headline: string;
   detail: string;
 } {
-  if (!summary)
+  if (!summary) {
+    const bars = [
+      ['Completion', legacy.currentCompletion, legacy.targetCompletion],
+      ['Perfection', legacy.currentPerfection, legacy.targetPerfection],
+    ] as const;
+    const progress = bars
+      .flatMap(([label, current, target]) =>
+        current === undefined || target === undefined
+          ? []
+          : [
+              `${label} ${formatLargeNumber(current, 1)} / ${formatLargeNumber(target, 1)}`,
+            ],
+      )
+      .join(' · ');
     return {
-      headline: 'Current outcome unavailable',
-      detail:
-        'This saved result has no outcome summary. Check the game’s bars.',
+      headline: progress || 'Current outcome unavailable',
+      detail: progress
+        ? 'Current progress against the recipe targets; no outcome tier is available in this saved result.'
+        : 'This saved result has no outcome summary. Check the game’s bars.',
     };
+  }
   const standing =
     summary.tier === 'failed'
       ? 'No outcome secured'
