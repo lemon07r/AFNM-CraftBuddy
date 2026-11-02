@@ -65,6 +65,14 @@ function toBackendInput(
 }
 
 describe('searchBackend wire format', () => {
+  it('retains transient pre-cleanup harmony through JSON serialization', () => {
+    const input = toBackendInput('forge-heat-runway-step-3.snapshot.json', {});
+    input.state = input.state.copy({ conditionGenerationHarmony: 105 });
+    const revived = reviveSearchInput(
+      JSON.parse(JSON.stringify(serializeSearchInput(input))),
+    );
+    expect(revived.state.conditionGenerationHarmony).toBe(105);
+  });
   it.each([15.5, 100])(
     'preserves every state field, including %s%% reduction, through a worker hop',
     (qiCostReduction) => {

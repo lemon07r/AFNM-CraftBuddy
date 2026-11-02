@@ -224,6 +224,10 @@ export function reviveSearchInput(plain: PlainSearchInput): SearchBackendInput {
       ...(stateRecord as unknown as ConstructorParameters<
         typeof CraftingState
       >[0]),
+      conditionGenerationHarmony:
+        typeof stateRecord.conditionGenerationHarmony === 'number'
+          ? stateRecord.conditionGenerationHarmony
+          : undefined,
       cooldowns: recordToMap(stateRecord.cooldowns),
       items: recordToMap(stateRecord.items),
       buffs: recordToMap(stateRecord.buffs),
