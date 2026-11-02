@@ -11,6 +11,7 @@ const GAIN_KEYS = ['completion', 'perfection', 'stability'] as const;
 
 export function gainsLabel(
   gains: SkillRecommendation['immediateGains'],
+  emptyLabel = 'Prepares the next turn',
 ): string {
   return (
     GAIN_KEYS.filter((key) => gains[key] !== 0)
@@ -18,7 +19,7 @@ export function gainsLabel(
         (key) =>
           `${gains[key] > 0 ? '+' : ''}${formatLargeNumber(gains[key], 1)} ${key}`,
       )
-      .join(' · ') || 'Prepares the next turn'
+      .join(' · ') || emptyLabel
   );
 }
 
@@ -28,8 +29,18 @@ export function expectedGainsLabel(
   return GAIN_KEYS.some(
     (key) => rec.expectedGains[key] !== rec.immediateGains[key],
   )
-    ? `Expected: ${gainsLabel(rec.expectedGains)}`
+    ? `Expected: ${gainsLabel(rec.expectedGains, 'no gains')}`
     : null;
+}
+
+export function recommendationGainsCopy(
+  rec: Pick<SkillRecommendation, 'immediateGains' | 'expectedGains'>,
+): { primary: string; secondary: string | null } {
+  const expected = expectedGainsLabel(rec);
+  if (GAIN_KEYS.every((key) => rec.immediateGains[key] === 0) && expected) {
+    return { primary: expected, secondary: null };
+  }
+  return { primary: gainsLabel(rec.immediateGains), secondary: expected };
 }
 
 export function successPercentage(chance: number): number {

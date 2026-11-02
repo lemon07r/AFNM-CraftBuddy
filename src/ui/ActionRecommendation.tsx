@@ -3,8 +3,7 @@ import { Box, Typography } from '@mui/material';
 import { techniqueDisplayName, type SkillRecommendation } from '../optimizer';
 import { formatLargeNumber } from '../utils/largeNumbers';
 import {
-  expectedGainsLabel,
-  gainsLabel,
+  recommendationGainsCopy,
   relativeChoiceLabel,
   successPercentage,
 } from '../utils/recommendationPresentation';
@@ -23,7 +22,7 @@ export const ActionRecommendation = memo(function ActionRecommendation({
   onUse?: (rec: SkillRecommendation) => void;
 }) {
   const name = techniqueDisplayName(rec.skill);
-  const expected = expectedGainsLabel(rec);
+  const gains = recommendationGainsCopy(rec);
   return (
     <Box
       sx={{
@@ -82,14 +81,14 @@ export const ActionRecommendation = memo(function ActionRecommendation({
             {name}
           </Typography>
           <Typography variant="body2" sx={{ mt: 0.5 }}>
-            {gainsLabel(rec.immediateGains)}
+            {gains.primary}
           </Typography>
-          {expected && (
+          {gains.secondary && (
             <Typography
               variant="caption"
               sx={{ color: colors.textSecondary, display: 'block', mt: 0.4 }}
             >
-              {expected}
+              {gains.secondary}
             </Typography>
           )}
           <Typography

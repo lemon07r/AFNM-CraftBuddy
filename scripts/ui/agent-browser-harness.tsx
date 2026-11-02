@@ -243,6 +243,28 @@ const legacyFixtureResult: HarnessResult = {
 
 function buildFixtureResult(state: string): HarnessResult {
   switch (state) {
+    case 'proc': {
+      const proc = {
+        ...fixtureResult.recommendation!,
+        skill: skill('Golden Path: First Peak', 'support', 0, 10),
+        immediateGains: { completion: 0, perfection: 0, stability: 0 },
+        expectedGains: { completion: 0, perfection: 40, stability: 0 },
+        effectiveCosts: { qi: 0, stability: 10 },
+        endsCraft: true,
+        reasoning:
+          'Triggered effects add perfection as this technique resolves.',
+      };
+      return {
+        ...fixtureResult,
+        recommendation: proc,
+        alternativeSkills: [
+          {
+            ...proc,
+            skill: skill('Triggered-effect alternative', 'support', 0, 10),
+          },
+        ],
+      };
+    }
     case 'chance':
       return {
         ...fixtureResult,

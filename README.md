@@ -18,7 +18,7 @@ Subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedet
 
 The panel shows the next action with its gains and costs, the outcome it is working towards and upcoming conditions. The plan, other actions and automatic crafting sit in sections you can expand. It follows conditions, buffs, mastery, toxicity and all nine harmonies, and coexists with the game's native auto-use loadout rather than spending the same pill twice.
 
-When random effects change the expected gains, a second compact line shows their expected value beneath the immediate gains.
+When random effects change the expected gains, a second compact line shows their expected value beneath the immediate gains. Actions whose gains come entirely from triggered effects show those expected gains as the main line, rather than suggesting they only prepare another turn.
 
 Outcome rows show the tier you are aiming for, each bar's bands and the bar holding the next tier back. Older results without an outcome projection show the available current completion and perfection against their recipe targets instead. There is no manual Finish button: crafts resolve when stability runs out or both bars reach their actual caps.
 

@@ -13,6 +13,7 @@ import {
   isPlayableRecommendation,
   isPlayableAction,
   planDisplayContent,
+  recommendationGainsCopy,
   relativeChoiceLabel,
   rotationDisplayNames,
   successPercentage,
@@ -237,6 +238,51 @@ describe('current standing, not a forecast', () => {
 });
 
 describe('action labels', () => {
+  it.each(['completion', 'perfection', 'stability'] as const)(
+    'promotes proc-driven expected %s gains instead of promising another turn',
+    (key) => {
+      const zero = { completion: 0, perfection: 0, stability: 0 };
+      const copy = recommendationGainsCopy({
+        immediateGains: zero,
+        expectedGains: { ...zero, [key]: 40 },
+      });
+      expect(copy).toEqual({
+        primary: `Expected: +40 ${key}`,
+        secondary: null,
+      });
+      expect(copy.primary).not.toContain('Prepares');
+    },
+  );
+  it('keeps preparation wording only when both previews have zero gains', () => {
+    const zero = { completion: 0, perfection: 0, stability: 0 };
+    expect(
+      recommendationGainsCopy({ immediateGains: zero, expectedGains: zero }),
+    ).toEqual({
+      primary: 'Prepares the next turn',
+      secondary: null,
+    });
+    expect(
+      recommendationGainsCopy({ ...recommendation, expectedGains: zero }),
+    ).toEqual({
+      primary: '+20 completion',
+      secondary: 'Expected: no gains',
+    });
+  });
+  it('keeps direct gains primary and differing expected gains secondary', () => {
+    expect(
+      recommendationGainsCopy({
+        immediateGains: { completion: 0, perfection: 10, stability: 0 },
+        expectedGains: { completion: 0, perfection: 5, stability: 0 },
+      }),
+    ).toEqual({
+      primary: '+10 perfection',
+      secondary: 'Expected: +5 perfection',
+    });
+    expect(recommendationGainsCopy(recommendation)).toEqual({
+      primary: '+20 completion',
+      secondary: null,
+    });
+  });
   it('omits the expected line when every gain matches', () => {
     expect(expectedGainsLabel(recommendation)).toBeNull();
   });
@@ -265,7 +311,7 @@ describe('action labels', () => {
         ...recommendation,
         expectedGains: { completion: 0, perfection: 0, stability: 0 },
       }),
-    ).toBe('Expected: Prepares the next turn');
+    ).toBe('Expected: no gains');
   });
   it.each([
     [0, 0],
