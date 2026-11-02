@@ -28,7 +28,10 @@ import {
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { DifferentialCorpus } from './fixtures/differentialCorpus';
-import { reviveSearchInput } from '../optimizer/searchBackend';
+import {
+  reviveSearchInput,
+  serializeSearchInput,
+} from '../optimizer/searchBackend';
 
 describe('companion preview setup and mastery phases', () => {
   it.each(companionPhasePreviewScenarios())(
@@ -214,7 +217,7 @@ describe('inert companion corpus differential', () => {
     }
   });
   it.each(inertCases)(
-    'preserves resources, buffs and listener events: $name',
+    'preserves the full persisted transition and listener state: $name',
     ({ scenario, skillIndex, companion, name }) => {
       const input = reviveSearchInput(scenario.input);
       const skill = input.config.skills[skillIndex];
@@ -315,14 +318,15 @@ describe('inert companion corpus differential', () => {
             internalState,
           });
         }
+        const persisted = serializeSearchInput({
+          ...input,
+          state: next.copy({ buffs: comparedBuffs }),
+        }).state;
         return {
-          completion: next.completion,
-          perfection: next.perfection,
+          ...persisted,
           stability: exception?.fields.has('stability')
-            ? undefined
-            : next.stability,
-          qi: next.qi,
-          buffs: comparedBuffs,
+            ? null
+            : persisted.stability,
         };
       };
       expect(comparable(actual)).toEqual(comparable(bare));
