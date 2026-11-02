@@ -23,8 +23,10 @@ import {
   companionCritScenarios,
   companionPhasePreviewScenarios,
   hanScenarios,
+  suBuff,
   suScenarios,
 } from './fixtures/companions';
+import { CraftingState } from '../optimizer/state';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { DifferentialCorpus } from './fixtures/differentialCorpus';
@@ -637,6 +639,50 @@ describe('companion bar overflow', () => {
       );
     },
   );
+});
+
+describe('companion preview caps', () => {
+  it('caps listener progress in previews at the bar maximum', () => {
+    const listener: BuffDefinition = {
+      name: 'Completion echo',
+      canStack: false,
+      effects: [],
+      triggeredEffects: [
+        {
+          trigger: 'completionGained',
+          effects: [{ kind: 'completion', amount: { value: 10 } }],
+        },
+      ],
+    };
+    const su = suBuff();
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      effects: [{ kind: 'completion', amount: { value: 5 } }],
+    });
+    const config = { ...retargetConfig(skill), maxCompletion: 100 };
+    const state = new CraftingState({
+      qi: 100,
+      stability: 50,
+      completion: 95,
+      step: 2,
+      buffs: new Map([
+        [
+          "su_lianhua's_assistance",
+          { name: su.name, stacks: 1, definition: su },
+        ],
+        [
+          'completion_echo',
+          { name: listener.name, stacks: 1, definition: listener },
+        ],
+      ]),
+    });
+    const next = applySkill(state, skill, config)!;
+    expect(next.completion).toBe(100);
+    expect(calculateSkillGains(state, skill, config).completion).toBe(
+      next.completion - state.completion,
+    );
+  });
 });
 
 describe('companion fallback technique events', () => {

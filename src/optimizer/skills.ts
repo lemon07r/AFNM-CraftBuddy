@@ -2433,12 +2433,22 @@ export function calculateSkillGains(
       phase,
     );
     const gains = phase.previewGains!;
+    // Listener progress joins the gains after the technique's own cap; apply
+    // the transition's hard bar caps to the combined total.
+    const capped = (value: number, cap: number | undefined): number =>
+      cap !== undefined && Number.isFinite(cap) ? Math.min(value, cap) : value;
     return {
       ...gains,
       completion:
-        gains.completion + prepared.state.completion - state.completion,
+        capped(
+          prepared.state.completion + gains.completion,
+          config.maxCompletion,
+        ) - state.completion,
       perfection:
-        gains.perfection + prepared.state.perfection - state.perfection,
+        capped(
+          prepared.state.perfection + gains.perfection,
+          config.maxPerfection,
+        ) - state.perfection,
       stability: gains.stability + prepared.state.stability - state.stability,
       // The setup source includes toxicity payment, before listeners/masteries.
       // Count their cleanse without subtracting the toxicity cost from it.
