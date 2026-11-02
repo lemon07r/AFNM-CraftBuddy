@@ -730,8 +730,10 @@ describe('lookaheadSearch', () => {
     const result = lookaheadSearch(state, config, 100, 100, 6, undefined, [], {
       useIterativeDeepening: true,
       iterativeDeepeningMinDepth: 3,
-      timeBudgetMs: 500,
-      maxNodes: 200000,
+      // Bound the work by nodes, not the clock, so slow CI runners reach the
+      // same depth as a developer machine.
+      timeBudgetMs: 60000,
+      maxNodes: 1500,
     });
 
     expect(result.recommendation).not.toBeNull();
