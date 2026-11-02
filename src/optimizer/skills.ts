@@ -4011,11 +4011,10 @@ function literalMasteryPayment(
     })
   )
     return undefined;
-  // Interceptors can create payment buffs as numeric mastery side effects.
-  // Keep newly admitted metadata cases on the full interpreter when held;
-  // the pre-existing literal shortcut's accepted cases remain unchanged.
+  // Interceptors can create payment buffs as numeric mastery side effects,
+  // whether held or created earlier in this action; the full interpreter
+  // replays those.
   if (
-    projectBuffs &&
     Array.from(active.values()).some(
       (buff) => buff.definition?.craftingEffectInterceptors !== undefined,
     )
@@ -4030,6 +4029,7 @@ function literalMasteryPayment(
     for (const effect of entry.effects) {
       if (effect.kind === 'createBuff') {
         if (
+          effect.buff?.craftingEffectInterceptors !== undefined ||
           !hasLiteralPaymentStats(effect.buff) ||
           !isLiteralScaling(effect.stacks) ||
           (effect.condition && effect.condition.kind !== 'chance')
