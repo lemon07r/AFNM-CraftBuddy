@@ -25,11 +25,16 @@ import {
 } from '../optimizer/search';
 import { CrossStepSearchCache } from '../optimizer/crossStepCache';
 import {
+  freezeSearchClock,
+  FIXED_WORK_CLOCK_MS,
   getReplaySearchInput,
   loadOptimizerReplaySnapshot,
+  withFixedWork,
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
 import { bandThreshold, TIER_REQUIREMENTS } from '../optimizer/outcome';
+
+freezeSearchClock();
 
 const {
   scoreState,
@@ -70,7 +75,7 @@ describe('terminal scoring ambition', () => {
         findBestSkill(state, config, 100, 100, false, depth, 'neutral', [], {
           perfectionBandGoal: 3,
           completionBandCeiling: 1,
-          timeBudgetMs: 10000,
+          timeBudgetMs: FIXED_WORK_CLOCK_MS,
           maxNodes: 10000,
         }).recommendation?.score,
     );
@@ -692,7 +697,7 @@ describe('lookaheadSearch', () => {
       'negative',
       ['negative', 'negative', 'negative'],
       {
-        timeBudgetMs: 500,
+        timeBudgetMs: FIXED_WORK_CLOCK_MS,
         maxNodes: 200000,
         beamWidth: 8,
       },
@@ -1945,7 +1950,7 @@ describe('finish craft policy', () => {
     // with one more refine in the plan, so the search runs 6 deep.
     const result = lookaheadSearch(state, config, 100, 100, 6, 'neutral', [], {
       beamWidth: 8,
-      timeBudgetMs: 4000,
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
       maxNodes: 200000,
     });
 
@@ -2550,7 +2555,7 @@ describe('cross-step transposition cache', () => {
   const config = createTutorialConfig({});
   const forecast: CraftingConditionType[] = ['neutral', 'neutral', 'neutral'];
   const searchConfig = {
-    timeBudgetMs: 2000,
+    timeBudgetMs: FIXED_WORK_CLOCK_MS,
     maxNodes: 200000,
     beamWidth: 6,
   };
@@ -3303,7 +3308,7 @@ describe('tutorial regression scenarios', () => {
       36,
       'neutral',
       ['positive', 'veryPositive', 'neutral'],
-      { timeBudgetMs: 5000, maxNodes: 2000000, beamWidth: 10 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 2000000, beamWidth: 10 },
     );
 
     expect(result.recommendation).not.toBeNull();
@@ -3347,7 +3352,7 @@ describe('tutorial regression scenarios', () => {
       36,
       'neutral',
       ['positive', 'veryPositive', 'neutral'],
-      { timeBudgetMs: 3000, maxNodes: 250000, beamWidth: 10 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 7000, beamWidth: 10 },
     );
 
     expect(result.recommendation).not.toBeNull();
@@ -3373,7 +3378,7 @@ describe('tutorial regression scenarios', () => {
       input.lookaheadDepth,
       input.currentCondition,
       input.forecastConditions as any,
-      input.searchConfig,
+      withFixedWork(input.searchConfig, 1200),
     );
 
     const allRecommendations = [
@@ -3467,7 +3472,7 @@ describe('survivability-first recommendation gate', () => {
         'neutral',
         [],
         {
-          timeBudgetMs: 10000,
+          timeBudgetMs: FIXED_WORK_CLOCK_MS,
           maxNodes: 10000,
         },
       );
@@ -3528,7 +3533,7 @@ describe('survivability-first recommendation gate', () => {
         depth,
         'neutral',
         [],
-        { timeBudgetMs: 10000, maxNodes: 10000 },
+        { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 10000 },
       );
       expect(result.recommendation?.skill.key).toBe('z_sure');
       const risky = result.alternativeSkills.find(
@@ -3570,7 +3575,7 @@ describe('survivability-first recommendation gate', () => {
       });
       const partials = [['a_gamble'], ['z_sure']].map((rootSkillKeys) =>
         findBestSkill(state, config, 100, 0, false, depth, 'neutral', [], {
-          timeBudgetMs: 10000,
+          timeBudgetMs: FIXED_WORK_CLOCK_MS,
           maxNodes: 10000,
           rootSkillKeys,
         }),
@@ -3625,7 +3630,7 @@ describe('survivability-first recommendation gate', () => {
         depth,
         'neutral',
         [],
-        { timeBudgetMs: 10000, maxNodes: 10000 },
+        { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 10000 },
       );
       expect(result.recommendation?.skill.key).toBe('a_gamble');
       expect(result.recommendation?.requiresProbabilisticSurvival).toBe(true);
@@ -4016,7 +4021,7 @@ describe('condition timeline modeling', () => {
       2,
       'neutral',
       ['negative', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 50000, beamWidth: 4 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 50000, beamWidth: 4 },
     );
 
     expect(result.recommendation).not.toBeNull();
@@ -4589,6 +4594,10 @@ describe('condition timeline modeling', () => {
 
 describe('search performance', () => {
   const config = createTestConfig();
+
+  // These tests check the real time budget.
+  beforeAll(() => jest.useRealTimers());
+  afterAll(() => freezeSearchClock());
 
   it('should complete depth-3 search without exploring excess nodes', () => {
     const state = new CraftingState({
@@ -5165,7 +5174,7 @@ describe('scoreState (isolated)', () => {
       input.lookaheadDepth,
       input.currentCondition,
       input.forecastConditions as any,
-      input.searchConfig,
+      withFixedWork(input.searchConfig, 700),
     );
 
     const allRecommendations = [
@@ -5431,8 +5440,8 @@ describe('scoreState (isolated)', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 500,
     };
 
     const result = lookaheadSearch(
@@ -5483,8 +5492,8 @@ describe('scoreState (isolated)', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 8000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 1500000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 400,
       useMonteCarloTreeSearch: false,
     };
 
@@ -5549,8 +5558,8 @@ describe('scoreState (isolated)', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 550,
       useMonteCarloTreeSearch: false,
     };
 
@@ -5612,7 +5621,7 @@ describe('scoreState (isolated)', () => {
       input.lookaheadDepth,
       input.currentCondition,
       input.forecastConditions as any,
-      input.searchConfig,
+      withFixedWork(input.searchConfig, 600),
     );
 
     const allRecommendations = [
@@ -5656,8 +5665,8 @@ describe('scoreState (isolated)', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 150,
     };
 
     const result = lookaheadSearch(
@@ -5701,8 +5710,8 @@ describe('scoreState (isolated)', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 250,
     };
 
     const result = lookaheadSearch(
@@ -5800,8 +5809,8 @@ describe('scoreState (isolated)', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 500,
     };
 
     const result = lookaheadSearch(
@@ -5836,7 +5845,7 @@ describe('scoreState (isolated)', () => {
       input.lookaheadDepth,
       input.currentCondition,
       input.forecastConditions as any,
-      input.searchConfig,
+      withFixedWork(input.searchConfig, 1000),
     );
 
     const allRecommendations = [

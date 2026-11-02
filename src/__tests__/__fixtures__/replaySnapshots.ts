@@ -15,6 +15,47 @@ export {
   reviveStateSnapshot as reviveReplayState,
 };
 
+/**
+ * Clock limit for fixed-work searches: high enough that the node budget always
+ * stops the search first, so results don't depend on machine speed.
+ */
+export const FIXED_WORK_CLOCK_MS = 600_000;
+
+/**
+ * Freeze `Date.now()` (the search's only clock) so time budgets never stop a
+ * search: results then depend on node budgets alone, not on runner speed.
+ * Timers stay real. Tests that exercise the time budget opt back in with
+ * `jest.useRealTimers()`.
+ */
+export function freezeSearchClock(): void {
+  jest.useFakeTimers({
+    now: 1_700_000_000_000,
+    doNotFake: [
+      'hrtime',
+      'nextTick',
+      'performance',
+      'queueMicrotask',
+      'requestAnimationFrame',
+      'cancelAnimationFrame',
+      'requestIdleCallback',
+      'cancelIdleCallback',
+      'setImmediate',
+      'clearImmediate',
+      'setInterval',
+      'clearInterval',
+      'setTimeout',
+      'clearTimeout',
+    ],
+  });
+}
+
+export function withFixedWork<T extends object>(
+  searchConfig: T,
+  maxNodes: number,
+): T & { timeBudgetMs: number; maxNodes: number } {
+  return { ...searchConfig, timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes };
+}
+
 export function loadOptimizerReplaySnapshot(
   filename: string,
 ): OptimizerReplaySnapshot {

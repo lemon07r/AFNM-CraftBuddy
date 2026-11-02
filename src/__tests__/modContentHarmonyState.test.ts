@@ -26,9 +26,14 @@ import {
   type OptimizerReplayTurnSnapshot,
 } from '../modContent/replaySnapshot';
 import {
+  freezeSearchClock,
+  FIXED_WORK_CLOCK_MS,
   getReplaySearchInput,
   loadOptimizerReplaySnapshot,
+  withFixedWork,
 } from './__fixtures__/replaySnapshots';
+
+freezeSearchClock();
 
 function createSkill(
   overrides: Partial<SkillDefinition> = {},
@@ -108,7 +113,7 @@ function createReplayInputSnapshot(
       ...(conditions ?? {}),
     },
     searchConfig: {
-      timeBudgetMs: 250,
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
       maxNodes: 20_000,
       beamWidth: 8,
       goalPriorityBias: 0,
@@ -579,7 +584,7 @@ describe('optimizer replay state snapshots', () => {
       4,
       'neutral',
       ['neutral', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 100000, beamWidth: 8 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 100000, beamWidth: 8 },
     );
 
     const replayed = lookaheadSearch(
@@ -590,7 +595,7 @@ describe('optimizer replay state snapshots', () => {
       4,
       'neutral',
       ['neutral', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 100000, beamWidth: 8 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 100000, beamWidth: 8 },
     );
 
     expect(direct.recommendation?.skill.key).toBe('mastered_refine');
@@ -803,7 +808,7 @@ describe('integration regression - forge heat parity', () => {
       6,
       'neutral',
       ['neutral', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 200000, beamWidth: 8 },
     );
 
     expect(result.recommendation).not.toBeNull();
@@ -996,7 +1001,7 @@ describe('integration regression - forge heat parity', () => {
       24,
       'neutral',
       ['positive', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 7 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 200000, beamWidth: 7 },
     );
 
     expect(result.recommendation).not.toBeNull();
@@ -1063,7 +1068,7 @@ describe('integration regression - forge heat parity', () => {
       6,
       'neutral',
       ['neutral', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 200000, beamWidth: 8 },
     );
 
     expect(nativeEvaluateScaling).not.toHaveBeenCalled();
@@ -1138,7 +1143,7 @@ describe('integration regression - forge heat parity', () => {
       6,
       'neutral',
       ['neutral', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 8 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 200000, beamWidth: 8 },
     );
 
     expect(nativeEvaluateScaling).not.toHaveBeenCalled();
@@ -1155,7 +1160,13 @@ describe('integration regression - forge heat parity', () => {
     const fixture = loadOptimizerReplaySnapshot(
       'skyfall-bow-heat-regression.snapshot.json',
     );
-    const replayed = replayOptimizerSnapshot(fixture);
+    const replayed = replayOptimizerSnapshot({
+      ...fixture,
+      input: {
+        ...fixture.input,
+        searchConfig: withFixedWork(fixture.input.searchConfig, 600),
+      },
+    });
     const {
       state,
       config,
@@ -1611,7 +1622,7 @@ describe('integration regression - forge heat parity', () => {
       24,
       'neutral',
       ['positive', 'neutral', 'neutral'],
-      { timeBudgetMs: 500, maxNodes: 200000, beamWidth: 7 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 200000, beamWidth: 7 },
     );
 
     const refineRecommendation = [
@@ -1643,8 +1654,8 @@ describe('user report replay regressions', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 550,
     };
     const result = findBestSkill(
       input.state,
@@ -1671,8 +1682,8 @@ describe('user report replay regressions', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 550,
     };
     const result = findBestSkill(
       input.state,
@@ -1734,8 +1745,8 @@ describe('user report replay regressions', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 600,
     };
     const result = findBestSkill(
       input.state,
@@ -1762,8 +1773,8 @@ describe('user report replay regressions', () => {
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      timeBudgetMs: Math.max(input.searchConfig.timeBudgetMs ?? 0, 4000),
-      maxNodes: Math.max(input.searchConfig.maxNodes ?? 0, 750000),
+      timeBudgetMs: FIXED_WORK_CLOCK_MS,
+      maxNodes: 600,
     };
     const result = findBestSkill(
       input.state,
