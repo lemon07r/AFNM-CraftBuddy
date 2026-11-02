@@ -1,319 +1,126 @@
-/**
- * CraftBuddy - MUI Theme Configuration
- *
- * Centralized theme with xianxia-inspired dark aesthetic.
- * Performance-optimized: uses static values where possible,
- * avoids runtime calculations in theme definition.
- */
+import { createTheme } from '@mui/material/styles';
 
-import { createTheme, alpha } from '@mui/material/styles';
-
-// Extend MUI palette types for custom colors
-declare module '@mui/material/styles' {
-  interface Palette {
-    skillTypes: {
-      fusion: string;
-      refine: string;
-      stabilize: string;
-      support: string;
-    };
-    conditions: {
-      veryPositive: string;
-      positive: string;
-      neutral: string;
-      negative: string;
-      veryNegative: string;
-    };
-    quality: {
-      optimal: string;
-      good: string;
-      okay: string;
-      suboptimal: string;
-      poor: string;
-    };
-  }
-  interface PaletteOptions {
-    skillTypes?: Palette['skillTypes'];
-    conditions?: Palette['conditions'];
-    quality?: Palette['quality'];
-  }
-}
-
-// Pre-computed color values for performance
+// Read-only AFNM 0.7.19 theme tokens. This provider scopes them to CraftBuddy;
+// never register a game-wide theme override.
 export const colors = {
-  // Primary accent (warm amber-gold, inspired by Spirit Ring)
-  gold: '#C5A059',
-  goldLight: '#D4B87A',
-  goldDark: '#9B7D3F',
-  goldGlow: 'rgba(197, 160, 89, 0.4)',
-
-  // Status colors
-  completion: '#4ade80',
-  completionLight: '#86efac',
-  perfection: '#87CEEB',
-  stability: '#FFA500',
-  error: '#f87171',
-  qi: '#ADD8E6',
-
-  // Skill type colors (matching game UI)
-  fusion: '#00FF00',
-  refine: '#00FFFF',
-  stabilize: '#FFA500',
-  support: '#EB34DB',
-
-  // Condition colors
-  veryPositive: '#4ade80',
-  positive: '#86efac',
-  neutral: '#FFFFFF',
-  negative: '#FFA500',
-  veryNegative: '#f87171',
-
-  // Quality rating colors
-  optimal: '#4ade80',
-  good: '#86efac',
-  okay: '#C5A059',
-  suboptimal: '#FFA500',
-  poor: '#f87171',
-
-  // Background colors
-  panelBg: 'rgba(15, 15, 20, 0.96)',
-  panelBgLight: 'rgba(20, 20, 25, 0.95)',
-  cardBg: 'rgba(25, 25, 30, 0.9)',
-  cardBgHover: 'rgba(30, 30, 38, 0.95)',
-
-  // Border colors
-  borderSubtle: 'rgba(197, 160, 89, 0.2)',
-  borderMedium: 'rgba(197, 160, 89, 0.35)',
-  borderHighlight: 'rgba(74, 222, 128, 0.4)',
-
-  // Text colors
-  textPrimary: '#ddd',
-  textSecondary: '#b9b0a0',
-  textMuted: '#a69d8c',
-  textDisabled: 'rgba(140, 130, 115, 0.65)',
+  gold: '#e3c27a',
+  goldLight: '#f0d699',
+  goldDark: '#b8956a',
+  panelBg: '#1a1714',
+  panelBgLight: '#2a2520',
+  cardBg: '#302a24',
+  cardBgHover: '#393128',
+  borderSubtle: '#62513b',
+  borderMedium: '#b8956a',
+  textPrimary: '#e8d4a0',
+  textSecondary: '#c4b088',
+  textMuted: '#c4b088',
+  textDisabled: '#a99878',
+  completion: '#98c88e',
+  stability: '#e1ad64',
+  error: '#f08a76',
+  fusion: '#018f01',
+  refine: '#029ab5',
+  stabilize: '#cc8800',
+  support: '#74009c',
+  veryPositive: '#7affd5',
+  positive: '#00fbff',
+  neutral: '#ffffff',
+  negative: '#edca2d',
+  veryNegative: '#db3a00',
 } as const;
 
-// Pre-computed gradients
-export const gradients = {
-  panelBackground:
-    'linear-gradient(135deg, rgba(20, 20, 28, 0.98) 0%, rgba(15, 15, 20, 0.98) 100%)',
-  headerUnderline:
-    'linear-gradient(90deg, rgba(197, 160, 89, 0.6) 0%, rgba(197, 160, 89, 0) 100%)',
-  primaryCard:
-    'linear-gradient(135deg, rgba(0, 50, 0, 0.35) 0%, rgba(0, 35, 0, 0.25) 100%)',
-  alternativeCard:
-    'linear-gradient(135deg, rgba(38, 38, 46, 0.5) 0%, rgba(28, 28, 36, 0.4) 100%)',
-  successGlow:
-    'radial-gradient(ellipse at center, rgba(74, 222, 128, 0.12) 0%, transparent 70%)',
-  errorGlow:
-    'radial-gradient(ellipse at center, rgba(248, 113, 113, 0.12) 0%, transparent 70%)',
+export const fonts = {
+  body: 'normalFont, fancyFont, langGlyphs, "PT Serif", Georgia, sans-serif',
+  heading: 'fancyFont, normalFont, langGlyphs, "PT Serif", Georgia, sans-serif',
+};
+
+// The overlay sits above the game's MUI roots. All portals share this scale.
+export const uiLayers = { overlay: 10000, dialog: 10010, tooltip: 10020 };
+
+export const reducedMotionSx = {
+  '@media (prefers-reduced-motion: reduce)': {
+    '& *, & *::before, & *::after': {
+      animation: 'none !important',
+      transition: 'none !important',
+      scrollBehavior: 'auto !important',
+    },
+  },
 } as const;
 
-// Pre-computed shadows for performance
-export const shadows = {
-  panel: '0 4px 20px rgba(0, 0, 0, 0.7), 0 0 1px rgba(197, 160, 89, 0.15)',
-  panelInner: 'inset 0 1px 0 rgba(255, 255, 255, 0.04)',
-  card: '0 2px 8px rgba(0, 0, 0, 0.3)',
-  cardHover: '0 4px 16px rgba(0, 0, 0, 0.4)',
-  primaryGlow:
-    '0 0 10px rgba(74, 222, 128, 0.25), inset 0 0 5px rgba(74, 222, 128, 0.08)',
-  goldGlow: '0 0 10px rgba(197, 160, 89, 0.3)',
-  iconGlow: '0 2px 8px rgba(0, 0, 0, 0.4)',
-} as const;
-
-// Spacing constants
-export const spacing = {
-  panelPadding: 2,
-  panelPaddingCompact: 1.5,
-  sectionGap: 1.5,
-  cardPadding: 1,
-  cardGap: 0.5,
-} as const;
-
-// Create the theme
 export const craftBuddyTheme = createTheme({
   palette: {
     mode: 'dark',
-    primary: {
+    primary: { main: '#8B2500', light: '#B8442A', dark: '#5C1700' },
+    secondary: {
       main: colors.gold,
       light: colors.goldLight,
       dark: colors.goldDark,
     },
-    secondary: {
-      main: colors.perfection,
-    },
-    success: {
-      main: colors.completion,
-      light: colors.completionLight,
-    },
-    warning: {
-      main: colors.stability,
-    },
-    error: {
-      main: colors.error,
-    },
-    info: {
-      main: colors.perfection,
-    },
-    background: {
-      default: colors.panelBg,
-      paper: colors.panelBgLight,
-    },
-    text: {
-      primary: colors.textPrimary,
-      secondary: colors.textSecondary,
-      disabled: colors.textDisabled,
-    },
-    divider: 'rgba(100, 100, 100, 0.3)',
-    skillTypes: {
-      fusion: colors.fusion,
-      refine: colors.refine,
-      stabilize: colors.stabilize,
-      support: colors.support,
-    },
-    conditions: {
-      veryPositive: colors.veryPositive,
-      positive: colors.positive,
-      neutral: colors.neutral,
-      negative: colors.negative,
-      veryNegative: colors.veryNegative,
-    },
-    quality: {
-      optimal: colors.optimal,
-      good: colors.good,
-      okay: colors.okay,
-      suboptimal: colors.suboptimal,
-      poor: colors.poor,
-    },
+    background: { default: colors.panelBg, paper: colors.panelBgLight },
+    text: { primary: colors.textPrimary, secondary: colors.textSecondary },
+    divider: colors.borderSubtle,
+    success: { main: colors.completion },
+    warning: { main: colors.stability },
+    error: { main: colors.error },
   },
   typography: {
-    fontFamily: '"Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif',
-    h6: {
-      fontWeight: 600,
-      fontSize: '1.1rem',
-      letterSpacing: '0.5px',
-    },
-    subtitle1: {
-      fontWeight: 500,
-      fontSize: '0.95rem',
-    },
-    subtitle2: {
-      fontWeight: 500,
-      fontSize: '0.85rem',
-    },
-    body1: {
-      fontSize: '0.9rem',
-      lineHeight: 1.5,
-    },
-    body2: {
-      fontSize: '0.85rem',
-      lineHeight: 1.5,
-    },
-    caption: {
-      fontSize: '0.7rem',
-      letterSpacing: '0.3px',
-    },
+    fontFamily: fonts.body,
+    h6: { fontFamily: fonts.heading, fontSize: '1.1rem', fontWeight: 600 },
+    subtitle1: { fontFamily: fonts.heading, fontSize: '1rem' },
+    subtitle2: { fontSize: '0.85rem', fontWeight: 600 },
+    body1: { fontSize: '0.9rem', lineHeight: 1.5 },
+    body2: { fontSize: '0.8rem', lineHeight: 1.5 },
+    caption: { fontSize: '0.72rem', lineHeight: 1.5 },
+    button: { textTransform: 'none', fontSize: '0.8rem' },
   },
-  shape: {
-    borderRadius: 8,
-  },
+  shape: { borderRadius: 3 },
+  zIndex: { modal: uiLayers.dialog, tooltip: uiLayers.tooltip },
   components: {
-    MuiPaper: {
+    MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
+    MuiButton: {
+      defaultProps: { disableElevation: true, color: 'secondary' },
       styleOverrides: {
         root: {
-          backgroundImage: gradients.panelBackground,
-          border: `1px solid ${colors.borderSubtle}`,
-          boxShadow: shadows.panel,
-        },
-      },
-    },
-    MuiChip: {
-      styleOverrides: {
-        root: {
-          fontWeight: 500,
-          transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-          '&:hover': {
-            transform: 'scale(1.02)',
-          },
-        },
-        sizeSmall: {
-          fontSize: '0.7rem',
-          height: 22,
-        },
-      },
-    },
-    MuiSlider: {
-      styleOverrides: {
-        root: {
-          color: colors.gold,
-        },
-        thumb: {
-          transition: 'box-shadow 0.15s ease',
-          '&:hover, &.Mui-focusVisible': {
-            boxShadow: shadows.goldGlow,
-          },
-        },
-        track: {
-          border: 'none',
-        },
-      },
-    },
-    MuiSwitch: {
-      styleOverrides: {
-        switchBase: {
-          '&.Mui-checked': {
-            color: colors.gold,
-          },
-          '&.Mui-checked + .MuiSwitch-track': {
-            backgroundColor: colors.goldDark,
+          minHeight: 32,
+          '&.Mui-focusVisible': {
+            outline: `2px solid ${colors.goldLight}`,
+            outlineOffset: 2,
           },
         },
       },
     },
     MuiIconButton: {
+      defaultProps: { size: 'small' },
       styleOverrides: {
         root: {
-          transition: 'transform 0.15s ease, color 0.15s ease',
-          '&:hover': {
-            transform: 'scale(1.1)',
-          },
+          color: colors.textSecondary,
+          minWidth: 32,
+          minHeight: 32,
+          '&.Mui-focusVisible': { outline: `2px solid ${colors.goldLight}` },
         },
       },
     },
-    MuiDivider: {
+    MuiSlider: { defaultProps: { color: 'secondary', size: 'small' } },
+    MuiSwitch: { defaultProps: { color: 'secondary', size: 'small' } },
+    MuiRadio: { defaultProps: { color: 'secondary', size: 'small' } },
+    MuiTooltip: {
+      defaultProps: { arrow: true, enterDelay: 250 },
       styleOverrides: {
-        root: {
-          borderColor: 'rgba(100, 100, 100, 0.4)',
+        tooltip: {
+          fontSize: '0.75rem',
+          backgroundColor: '#443a2e',
+          color: colors.textPrimary,
         },
       },
     },
-    MuiCollapse: {
-      styleOverrides: {
-        root: {
-          // Use GPU-accelerated transitions
-          transition: 'height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-        },
-      },
-    },
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          textTransform: 'none',
-          fontWeight: 500,
-          transition: 'all 0.15s ease',
-        },
-        outlined: {
-          borderWidth: 1,
-          '&:hover': {
-            borderWidth: 1,
-          },
-        },
-      },
+    MuiDialog: {
+      defaultProps: { transitionDuration: 0 },
+      styleOverrides: { paper: { border: `1px solid ${colors.goldDark}` } },
     },
   },
 });
 
-// Helper function to get skill type color
 export function getSkillTypeColor(type: string): string {
   switch (type.toLowerCase()) {
     case 'fusion':
@@ -325,37 +132,16 @@ export function getSkillTypeColor(type: string): string {
     case 'support':
       return colors.support;
     default:
-      return colors.textPrimary;
+      return colors.borderSubtle;
   }
 }
 
-// Helper function to get quality color
-export function getQualityColor(rating: number): string {
-  if (rating >= 90) return colors.optimal;
-  if (rating >= 70) return colors.good;
-  if (rating >= 50) return colors.okay;
-  if (rating >= 30) return colors.suboptimal;
-  return colors.poor;
-}
-
-// Helper function to get quality label
-export function getQualityLabel(rating: number): string {
-  if (rating >= 90) return 'Optimal';
-  if (rating >= 70) return 'Good';
-  if (rating >= 50) return 'Okay';
-  if (rating >= 30) return 'Suboptimal';
-  return 'Poor';
-}
-
-// Helper function to get condition color
 export function getConditionColor(condition: string): string {
   switch (condition) {
     case 'veryPositive':
       return colors.veryPositive;
     case 'positive':
       return colors.positive;
-    case 'neutral':
-      return colors.neutral;
     case 'negative':
       return colors.negative;
     case 'veryNegative':
@@ -364,5 +150,3 @@ export function getConditionColor(condition: string): string {
       return colors.neutral;
   }
 }
-
-export default craftBuddyTheme;

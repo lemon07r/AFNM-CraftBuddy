@@ -1,1116 +1,123 @@
-/**
- * CraftBuddy - Styled Components
- *
- * Reusable styled components for consistent UI.
- * Performance-optimized: uses static styles, minimal runtime computation.
- */
-
-import React, { memo } from 'react';
-import { Box, Paper, Typography, Chip, Avatar, Divider } from '@mui/material';
-import type { SxProps, Theme } from '@mui/material/styles';
+import React, { memo, useId } from 'react';
 import {
-  colors,
-  gradients,
-  shadows,
-  getSkillTypeColor,
-  getQualityColor,
-  getQualityLabel,
-  getConditionColor,
-} from '../theme';
-import {
-  pulseGlow,
-  pulseGold,
-  slideInRight,
-  fadeInUp,
-  fadeIn,
-  loadingShimmer,
-  dotPulse,
-  progressFill,
-  progressGlow,
-  transitions,
-} from '../animations';
-import {
-  getOverlayPanelMaxWidth,
-  OVERLAY_EDGE_MARGIN_PX,
-} from '../../utils/overlayLayout';
+  Box,
+  Button,
+  IconButton,
+  Paper,
+  Tooltip,
+  Typography,
+} from '@mui/material';
+import type { ButtonProps } from '@mui/material';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import { colors, fonts, reducedMotionSx } from '../theme';
 
-// ============================================================================
-// Panel Components
-// ============================================================================
-
-/**
- * Height budget the overlay host gives the panel (`computeOverlayLayout` returns
- * `viewportHeight - 2 * OVERLAY_EDGE_MARGIN_PX`). Expressed in viewport units so
- * the panel clamps itself even though its host is `overflow: visible`.
- */
-const PANEL_MAX_VIEWPORT_HEIGHT = `calc(100vh - ${OVERLAY_EDGE_MARGIN_PX * 2}px)`;
-
-interface PanelContainerProps {
-  children: React.ReactNode;
-  compact?: boolean;
-  variant?: 'default' | 'success' | 'error';
-  animate?: boolean;
-  allowOverflowVisible?: boolean;
-}
-
-/**
- * Main panel container with decorative styling.
- * Memoized for performance.
- */
 export const PanelContainer = memo(function PanelContainer({
   children,
   compact = false,
-  variant = 'default',
-  animate = true,
-  allowOverflowVisible = false,
-}: PanelContainerProps) {
-  const maxPanelWidthPx = getOverlayPanelMaxWidth(compact);
-
-  const getBorderColor = () => {
-    switch (variant) {
-      case 'success':
-        return 'rgba(74, 222, 128, 0.45)';
-      case 'error':
-        return 'rgba(255, 100, 100, 0.5)';
-      default:
-        return colors.borderSubtle;
-    }
-  };
-
-  const getBackgroundOverlay = () => {
-    switch (variant) {
-      case 'success':
-        return gradients.successGlow;
-      case 'error':
-        return gradients.errorGlow;
-      default:
-        return 'none';
-    }
-  };
-
+}: {
+  children: React.ReactNode;
+  compact?: boolean;
+}) {
   return (
     <Paper
+      component="section"
+      aria-label="CraftBuddy crafting assistant"
       elevation={0}
       sx={{
-        position: 'relative',
-        display: 'block',
-        p: compact ? 1.5 : 2,
         width: '100%',
         minWidth: 0,
-        maxWidth: maxPanelWidthPx ?? 'none',
         boxSizing: 'border-box',
-        backgroundImage: gradients.panelBackground,
-        border: `1px solid ${getBorderColor()}`,
-        borderRadius: 2,
-        boxShadow: shadows.panel,
-        // The overlay host clamps its own box to `layout.maxHeight` but keeps
-        // `overflow: visible`, so a tall panel used to grow straight past the
-        // bottom of a short game window. Clamp to the same budget here and
-        // scroll instead. Skipped while the settings drawer is open, which needs
-        // to overflow the panel on purpose.
-        ...(allowOverflowVisible
-          ? { overflow: 'visible' }
-          : {
-              maxHeight: PANEL_MAX_VIEWPORT_HEIGHT,
-              overflowX: 'hidden',
-              overflowY: 'auto',
-              scrollbarWidth: 'thin',
-            }),
-        animation: animate ? `${slideInRight} 0.3s ease-out` : 'none',
-        // Decorative corner accents
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: 20,
-          height: 20,
-          borderTop: `2px solid ${colors.goldDark}40`,
-          borderLeft: `2px solid ${colors.goldDark}40`,
-          borderTopLeftRadius: 8,
-          pointerEvents: 'none',
+        maxHeight: 'calc(100dvh - 20px)',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        scrollbarWidth: 'thin',
+        containerType: 'inline-size',
+        backgroundColor: colors.panelBgLight,
+        border: `1px solid ${colors.goldDark}`,
+        borderRadius: '3px',
+        boxShadow: '0 4px 12px #0005',
+        pointerEvents: 'auto',
+        '& :focus-visible': {
+          outline: `2px solid ${colors.goldLight}`,
+          outlineOffset: 2,
         },
-        '&::after': {
-          content: '""',
-          position: 'absolute',
-          bottom: 0,
-          right: 0,
-          width: 20,
-          height: 20,
-          borderBottom: `2px solid ${colors.goldDark}40`,
-          borderRight: `2px solid ${colors.goldDark}40`,
-          borderBottomRightRadius: 8,
-          pointerEvents: 'none',
-        },
+        ...reducedMotionSx,
       }}
     >
-      {/* Background glow overlay for success/error states */}
-      {variant !== 'default' && (
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            background: getBackgroundOverlay(),
-            pointerEvents: 'none',
-          }}
-        />
-      )}
-      <Box sx={{ position: 'relative', zIndex: 1 }}>{children}</Box>
+      <Box sx={{ p: compact ? 1.25 : 2 }}>{children}</Box>
     </Paper>
   );
 });
 
-// ============================================================================
-// Header Components
-// ============================================================================
-
-interface SectionHeaderProps {
-  children: React.ReactNode;
-  icon?: React.ReactNode;
-  color?: string;
-  compact?: boolean;
-}
-
-/**
- * Section header with gradient underline.
- */
-export const SectionHeader = memo(function SectionHeader({
-  children,
-  icon,
-  color = colors.gold,
-  compact = false,
-}: SectionHeaderProps) {
-  return (
-    <Box sx={{ mb: compact ? 1 : 1.5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        {icon && (
-          <Box sx={{ color, display: 'flex', alignItems: 'center' }}>
-            {icon}
-          </Box>
-        )}
-        <Typography
-          variant={compact ? 'subtitle1' : 'h6'}
-          sx={{
-            color,
-            fontWeight: 600,
-            letterSpacing: '0.5px',
-          }}
-        >
-          {children}
-        </Typography>
-      </Box>
-      {/* Gradient underline */}
-      <Box
-        sx={{
-          height: 1,
-          mt: 0.5,
-          background: `linear-gradient(90deg, ${color}60 0%, transparent 80%)`,
-          borderRadius: 1,
-        }}
-      />
-    </Box>
-  );
-});
-
-interface SubSectionHeaderProps {
-  children: React.ReactNode;
-}
-
-/**
- * Smaller section header for subsections.
- */
-export const SubSectionHeader = memo(function SubSectionHeader({
-  children,
-}: SubSectionHeaderProps) {
+export function PanelHeading({ children }: { children: React.ReactNode }) {
   return (
     <Typography
-      variant="body2"
-      sx={{
-        color: colors.textMuted,
-        mb: 0.5,
-        fontSize: '0.8rem',
-      }}
+      component="h2"
+      variant="h6"
+      sx={{ color: colors.gold, fontFamily: fonts.heading, m: 0 }}
     >
       {children}
     </Typography>
   );
-});
-
-// ============================================================================
-// Skill Card Components
-// ============================================================================
-
-interface SkillCardContainerProps {
-  children: React.ReactNode;
-  isPrimary?: boolean;
-  isFollowUp?: boolean;
-  skillType?: string;
-  animate?: boolean;
 }
 
-/**
- * Container for skill recommendation cards.
- */
-export const SkillCardContainer = memo(function SkillCardContainer({
+export function ActionButton(props: ButtonProps) {
+  return <Button size="small" variant="outlined" {...props} />;
+}
+
+export function Help({
+  title,
   children,
-  isPrimary = false,
-  isFollowUp = false,
-  skillType,
-  animate = false,
-}: SkillCardContainerProps) {
-  const typeColor = skillType
-    ? getSkillTypeColor(skillType)
-    : colors.textPrimary;
-
-  const getBackground = () => {
-    if (isPrimary && !isFollowUp) {
-      return gradients.primaryCard;
-    }
-    if (isFollowUp) {
-      return 'rgba(35, 38, 48, 0.6)';
-    }
-    return gradients.alternativeCard;
-  };
-
-  const getBorder = () => {
-    if (isPrimary && !isFollowUp) {
-      return `1px solid ${colors.borderHighlight}`;
-    }
-    if (isFollowUp) {
-      return '1px solid rgba(80, 85, 100, 0.4)';
-    }
-    return '1px solid rgba(80, 85, 100, 0.35)';
-  };
-
-  return (
-    <Box
-      sx={{
-        p: 1,
-        borderRadius: 1.5,
-        background: getBackground(),
-        border: getBorder(),
-        boxShadow:
-          isPrimary && !isFollowUp ? shadows.primaryGlow : shadows.card,
-        transition: transitions.smooth,
-        animation:
-          animate && isPrimary
-            ? `${pulseGlow} 2.5s ease-in-out infinite`
-            : 'none',
-        // Skill type indicator bar on left
-        borderLeft: `3px solid ${typeColor}60`,
-        '&:hover': {
-          background: colors.cardBgHover,
-          boxShadow: shadows.cardHover,
-        },
-      }}
-    >
-      {children}
-    </Box>
-  );
-});
-
-interface SkillIconProps {
-  src?: string;
-  name: string;
-  size?: 'small' | 'medium' | 'large';
-  typeColor?: string;
-}
-
-/**
- * Skill icon with type-colored border.
- */
-export const SkillIcon = memo(function SkillIcon({
-  src,
-  name,
-  size = 'medium',
-  typeColor = colors.textPrimary,
-}: SkillIconProps) {
-  const sizeMap = {
-    small: 40,
-    medium: 56,
-    large: 72,
-  };
-
-  const iconSize = sizeMap[size];
-
-  if (!src) return null;
-
-  return (
-    <Avatar
-      src={src}
-      alt={name}
-      variant="rounded"
-      sx={{
-        width: iconSize,
-        height: iconSize,
-        border: `2px solid ${typeColor}50`,
-        borderRadius: 1,
-        boxShadow: shadows.iconGlow,
-        flexShrink: 0,
-      }}
-    />
-  );
-});
-
-interface SkillNameProps {
-  children: React.ReactNode;
-  typeColor?: string;
-  size?: 'small' | 'normal';
-}
-
-/**
- * Skill name with type color.
- */
-export const SkillName = memo(function SkillName({
-  children,
-  typeColor = colors.textPrimary,
-  size = 'normal',
-}: SkillNameProps) {
-  return (
-    <Typography
-      variant="body2"
-      sx={{
-        color: typeColor,
-        fontWeight: 600,
-        fontSize: size === 'small' ? '0.8rem' : '0.9rem',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        textShadow: `0 0 8px ${typeColor}30`,
-      }}
-    >
-      {children}
-    </Typography>
-  );
-});
-
-// ============================================================================
-// Stat Display Components
-// ============================================================================
-
-interface StatValueProps {
-  value: number | string;
-  label?: string;
-  color?: string;
-  prefix?: string;
-}
-
-/**
- * Stat value display with optional label.
- */
-export const StatValue = memo(function StatValue({
-  value,
-  label,
-  color = colors.textSecondary,
-  prefix = '',
-}: StatValueProps) {
-  return (
-    <Typography variant="caption" sx={{ color }}>
-      {prefix}
-      {value}
-      {label && ` ${label}`}
-    </Typography>
-  );
-});
-
-interface GainDisplayProps {
-  completion?: number;
-  perfection?: number;
-  stability?: number;
-  formatFn?: (value: number) => string;
-}
-
-/**
- * Display expected gains from a skill.
- */
-export const GainDisplay = memo(function GainDisplay({
-  completion = 0,
-  perfection = 0,
-  stability = 0,
-  formatFn = (v) => v.toLocaleString(),
-}: GainDisplayProps) {
-  return (
-    <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 0.25 }}>
-      {completion > 0 && (
-        <StatValue
-          value={formatFn(completion)}
-          label="Comp"
-          color={colors.completionLight}
-          prefix="+"
-        />
-      )}
-      {perfection > 0 && (
-        <StatValue
-          value={formatFn(perfection)}
-          label="Perf"
-          color={colors.perfection}
-          prefix="+"
-        />
-      )}
-      {stability > 0 && (
-        <StatValue
-          value={formatFn(stability)}
-          label="Stab"
-          color={colors.stability}
-          prefix="+"
-        />
-      )}
-    </Box>
-  );
-});
-
-interface CostDisplayProps {
-  qiCost?: number;
-  stabilityCost?: number;
-}
-
-/**
- * Display skill costs.
- */
-export const CostDisplay = memo(function CostDisplay({
-  qiCost = 0,
-  stabilityCost = 0,
-}: CostDisplayProps) {
-  if (qiCost === 0 && stabilityCost === 0) return null;
-
-  return (
-    <Box sx={{ display: 'flex', gap: 0.75, mt: 0.25, flexWrap: 'wrap' }}>
-      {qiCost > 0 && <StatValue value={qiCost} label="Qi" color={colors.qi} />}
-      {stabilityCost > 0 && (
-        <StatValue
-          value={stabilityCost}
-          label="Stab"
-          color="#FFB6C1"
-          prefix="-"
-        />
-      )}
-    </Box>
-  );
-});
-
-// ============================================================================
-// Chip Components
-// ============================================================================
-
-interface ConditionChipProps {
-  condition: string;
-  label?: string;
-  current?: boolean;
-  index?: number;
-}
-
-/**
- * Chip for displaying crafting conditions.
- */
-export const ConditionChip = memo(function ConditionChip({
-  condition,
-  label,
-  current = false,
-  index,
-}: ConditionChipProps) {
-  const color = getConditionColor(condition);
-  const displayLabel = label || (index !== undefined ? `${index + 1}` : '');
-
-  return (
-    <Chip
-      label={displayLabel}
-      size="small"
-      sx={{
-        backgroundColor: current ? `${color}25` : 'rgba(50, 50, 60, 0.7)',
-        color,
-        fontSize: '0.7rem',
-        height: current ? 22 : 20,
-        fontWeight: current ? 600 : 400,
-        border: `1px solid ${color}${current ? '70' : '35'}`,
-        transition: transitions.quick,
-      }}
-    />
-  );
-});
-
-interface QualityBadgeProps {
-  rating: number;
-}
-
-/**
- * Badge showing quality rating.
- */
-export const QualityBadge = memo(function QualityBadge({
-  rating,
-}: QualityBadgeProps) {
-  const color = getQualityColor(rating);
-  const label = getQualityLabel(rating);
-
-  return (
-    <Chip
-      label={`${rating}% ${label}`}
-      size="small"
-      sx={{
-        backgroundColor: 'transparent',
-        color,
-        border: `1px solid ${color}`,
-        fontSize: '0.65rem',
-        height: 18,
-        fontWeight: 500,
-      }}
-    />
-  );
-});
-
-interface BuffChipProps {
-  label: string;
-  icon?: React.ReactNode;
-  variant?: 'control' | 'intensity' | 'consumer' | 'default';
-}
-
-/**
- * Chip for displaying buff information.
- */
-export const BuffChip = memo(function BuffChip({
-  label,
-  icon,
-  variant = 'default',
-}: BuffChipProps) {
-  const getColors = () => {
-    switch (variant) {
-      case 'control':
-        return { bg: colors.perfection, text: '#000' };
-      case 'intensity':
-        return { bg: colors.completionLight, text: '#000' };
-      case 'consumer':
-        return { bg: colors.gold, text: '#000' };
-      default:
-        return { bg: 'rgba(100, 100, 100, 0.5)', text: colors.textPrimary };
-    }
-  };
-
-  const colorScheme = getColors();
-
-  return (
-    <Chip
-      icon={icon as React.ReactElement}
-      label={label}
-      size="small"
-      sx={{
-        backgroundColor: colorScheme.bg,
-        color: colorScheme.text,
-        fontSize: '0.6rem',
-        height: 18,
-        '& .MuiChip-icon': { color: colorScheme.text },
-      }}
-    />
-  );
-});
-
-// ============================================================================
-// Divider Components
-// ============================================================================
-
-/**
- * Gradient divider with fade effect.
- */
-export const GradientDivider = memo(function GradientDivider() {
-  return (
-    <Box
-      sx={{
-        my: 1.5,
-        height: 1,
-        background:
-          'linear-gradient(90deg, transparent 0%, rgba(100, 100, 100, 0.4) 20%, rgba(100, 100, 100, 0.4) 80%, transparent 100%)',
-        borderRadius: 1,
-      }}
-    />
-  );
-});
-
-// ============================================================================
-// Layout Components
-// ============================================================================
-
-interface FlexRowProps {
-  children: React.ReactNode;
-  gap?: number;
-  align?: 'flex-start' | 'center' | 'flex-end' | 'stretch';
-  wrap?: boolean;
-  sx?: SxProps<Theme>;
-}
-
-/**
- * Flex row utility component.
- */
-export const FlexRow = memo(function FlexRow({
-  children,
-  gap = 1,
-  align = 'center',
-  wrap = false,
-  sx,
-}: FlexRowProps) {
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: align,
-        gap,
-        flexWrap: wrap ? 'wrap' : 'nowrap',
-        ...sx,
-      }}
-    >
-      {children}
-    </Box>
-  );
-});
-
-// ============================================================================
-// Arrow Component
-// ============================================================================
-
-/**
- * Arrow separator for skill sequences.
- */
-export const SequenceArrow = memo(function SequenceArrow() {
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', px: 0.25 }}>
-      <Typography sx={{ color: colors.textMuted, fontSize: '1rem' }}>
-        →
-      </Typography>
-    </Box>
-  );
-});
-
-// ============================================================================
-// Hotkey Hint Component
-// ============================================================================
-
-interface HotkeyHintProps {
-  hints: Array<{ key: string; action: string }>;
-}
-
-/**
- * Display keyboard shortcuts.
- */
-export const HotkeyHints = memo(function HotkeyHints({
-  hints,
-}: HotkeyHintProps) {
-  return (
-    <Box
-      sx={{
-        mt: 1.5,
-        pt: 1,
-        borderTop: '1px solid rgba(100, 100, 100, 0.25)',
-      }}
-    >
-      <Typography
-        variant="caption"
-        sx={{ color: colors.textDisabled, display: 'block' }}
-      >
-        {hints.map((h, i) => (
-          <React.Fragment key={h.key}>
-            {i > 0 && ' | '}
-            {h.key}: {h.action}
-          </React.Fragment>
-        ))}
-      </Typography>
-    </Box>
-  );
-});
-
-// ============================================================================
-// Loading Components
-// ============================================================================
-
-/**
- * Loading skeleton card - shimmer placeholder for skill cards.
- * Uses GPU-accelerated transform animation for performance.
- */
-export const LoadingSkeletonCard = memo(function LoadingSkeletonCard({
-  compact = false,
 }: {
-  compact?: boolean;
+  title: string;
+  children: React.ReactNode;
 }) {
   return (
-    <Box
-      sx={{
-        p: compact ? 0.875 : 1,
-        borderRadius: 1.5,
-        background: 'rgba(35, 38, 48, 0.6)',
-        border: '1px solid rgba(80, 85, 100, 0.35)',
-        borderLeft: `3px solid ${colors.goldDark}40`,
-        position: 'relative',
-        overflow: 'hidden',
-        minHeight: compact ? 'auto' : 72,
-      }}
-    >
-      {compact ? (
-        <Box sx={{ display: 'grid', gap: 0.75 }}>
-          <Box
-            sx={{
-              width: '68%',
-              height: 10,
-              borderRadius: 0.5,
-              backgroundColor: 'rgba(60, 65, 80, 0.5)',
-            }}
-          />
-          <Box
-            sx={{
-              width: '92%',
-              height: 8,
-              borderRadius: 0.5,
-              backgroundColor: 'rgba(60, 65, 80, 0.4)',
-            }}
-          />
-          <Box
-            sx={{
-              width: '58%',
-              height: 8,
-              borderRadius: 0.5,
-              backgroundColor: 'rgba(60, 65, 80, 0.36)',
-            }}
-          />
-        </Box>
-      ) : (
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-          {/* Icon placeholder */}
-          <Box
-            sx={{
-              width: 56,
-              height: 56,
-              borderRadius: 1,
-              backgroundColor: 'rgba(60, 65, 80, 0.5)',
-              flexShrink: 0,
-            }}
-          />
-          {/* Text placeholders */}
-          <Box sx={{ flex: 1, minWidth: 0, pt: 0.5 }}>
-            <Box
-              sx={{
-                width: '60%',
-                height: 14,
-                borderRadius: 0.5,
-                backgroundColor: 'rgba(60, 65, 80, 0.5)',
-                mb: 1,
-              }}
-            />
-            <Box
-              sx={{
-                width: '40%',
-                height: 10,
-                borderRadius: 0.5,
-                backgroundColor: 'rgba(60, 65, 80, 0.4)',
-                mb: 0.75,
-              }}
-            />
-            <Box
-              sx={{
-                width: '75%',
-                height: 10,
-                borderRadius: 0.5,
-                backgroundColor: 'rgba(60, 65, 80, 0.4)',
-              }}
-            />
-          </Box>
-        </Box>
-      )}
-
-      {/* Shimmer overlay - GPU-accelerated */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: `linear-gradient(90deg, transparent 0%, ${colors.goldDark}12 50%, transparent 100%)`,
-          animation: `${loadingShimmer} 1.5s ease-in-out infinite`,
-          pointerEvents: 'none',
-        }}
-      />
-    </Box>
-  );
-});
-
-/**
- * Animated loading dots component.
- * Opacity-only animation for minimal CPU usage.
- */
-export const LoadingDots = memo(function LoadingDots() {
-  return (
-    <Box component="span" sx={{ display: 'inline-flex', gap: '2px', ml: 0.5 }}>
-      {[0, 1, 2].map((i) => (
-        <Box
-          key={i}
-          component="span"
-          sx={{
-            width: 4,
-            height: 4,
-            borderRadius: '50%',
-            backgroundColor: colors.gold,
-            opacity: 0.3,
-            animation: `${dotPulse} 1.2s ease-in-out infinite`,
-            animationDelay: `${i * 0.2}s`,
-          }}
-        />
-      ))}
-    </Box>
-  );
-});
-
-/**
- * Loading header with gold pulse animation.
- */
-export const LoadingHeader = memo(function LoadingHeader({
-  compact = false,
-  title = 'CraftBuddy',
-  statusLabel = 'Calculating',
-}: {
-  compact?: boolean;
-  title?: string;
-  statusLabel?: string;
-}) {
-  return (
-    <Box sx={{ mb: compact ? 1 : 1.5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography
-          variant={compact ? 'subtitle1' : 'h6'}
-          sx={{
-            color: colors.gold,
-            fontWeight: 600,
-            letterSpacing: '0.5px',
-            animation: `${pulseGold} 2s ease-in-out infinite`,
-          }}
-        >
-          {title}
-        </Typography>
-        <Typography
-          variant="body2"
-          sx={{
-            color: colors.textMuted,
-            fontStyle: 'italic',
-            display: 'flex',
-            alignItems: 'center',
-          }}
-        >
-          {statusLabel}
-          <LoadingDots />
-        </Typography>
-      </Box>
-      {/* Gradient underline with pulse */}
-      <Box
-        sx={{
-          height: 1,
-          mt: 0.5,
-          background: `linear-gradient(90deg, ${colors.gold}60 0%, transparent 80%)`,
-          borderRadius: 1,
-          animation: `${pulseGold} 2s ease-in-out infinite`,
-        }}
-      />
-    </Box>
-  );
-});
-
-/**
- * Animated search progress bar that fills over the search time budget.
- * Uses GPU-composited `transform: scaleX()` so the animation continues
- * smoothly even while the main thread is blocked by the synchronous search.
- */
-export const SearchProgressBar = memo(function SearchProgressBar({
-  durationMs,
-}: {
-  durationMs: number;
-}) {
-  const durationSec = (durationMs / 1000).toFixed(1);
-
-  return (
-    <Box sx={{ mt: 1.5, mb: 0.5 }}>
-      {/* Duration label */}
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          mb: 0.5,
-        }}
+    <Tooltip title={children}>
+      <IconButton
+        aria-label={`Help: ${title}`}
+        sx={{ minWidth: 28, minHeight: 28 }}
       >
-        <Typography
-          variant="caption"
-          sx={{ color: colors.textMuted, fontSize: '0.65rem' }}
-        >
-          Searching...
-        </Typography>
-        <Typography
-          variant="caption"
-          sx={{ color: colors.textDisabled, fontSize: '0.6rem' }}
-        >
-          ~{durationSec}s
-        </Typography>
-      </Box>
-
-      {/* Track */}
-      <Box
-        sx={{
-          position: 'relative',
-          height: 4,
-          borderRadius: 2,
-          backgroundColor: 'rgba(60, 65, 80, 0.5)',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Filled bar — scaleX is GPU-composited, runs on compositor thread */}
-        <Box
-          sx={{
-            width: '100%',
-            height: '100%',
-            borderRadius: 2,
-            transformOrigin: 'left center',
-            transform: 'scaleX(0)',
-            background: `linear-gradient(90deg, ${colors.goldDark} 0%, ${colors.gold} 60%, ${colors.goldLight} 100%)`,
-            animation: `${progressFill} ${durationMs}ms cubic-bezier(0.25, 0.1, 0.25, 1) forwards`,
-            willChange: 'transform',
-          }}
-        />
-
-        {/* Glow dot that rides the leading edge */}
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            transformOrigin: 'left center',
-            transform: 'scaleX(0)',
-            animation: `${progressFill} ${durationMs}ms cubic-bezier(0.25, 0.1, 0.25, 1) forwards`,
-            willChange: 'transform',
-            pointerEvents: 'none',
-            // The ::after sits at the right edge of this scaled container
-            '&::after': {
-              content: '""',
-              position: 'absolute',
-              right: -1,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              backgroundColor: colors.goldLight,
-              animation: `${progressGlow} 1s ease-in-out infinite`,
-            },
-          }}
-        />
-
-        {/* Shimmer sweep over the track */}
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: `linear-gradient(90deg, transparent 0%, rgba(197, 160, 89, 0.07) 50%, transparent 100%)`,
-            animation: `${loadingShimmer} 1.5s ease-in-out infinite`,
-            pointerEvents: 'none',
-          }}
-        />
-      </Box>
-    </Box>
+        <HelpOutlineIcon sx={{ fontSize: 16 }} />
+      </IconButton>
+    </Tooltip>
   );
-});
-
-// ============================================================================
-// Recalculate Button
-// ============================================================================
-
-interface RecalculateButtonProps {
-  onClick: () => void;
-  visible: boolean;
 }
 
-/**
- * Recalculate button that appears when search settings change.
- * Uses opacity/transform for smooth fade-in animation.
- */
-export const RecalculateButton = memo(function RecalculateButton({
-  onClick,
-  visible,
-}: RecalculateButtonProps) {
-  if (!visible) return null;
-
+// Native details provides keyboard interaction, excludes collapsed controls
+// from tab order, and needs no height measurements or opening animation.
+export function Disclosure({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const id = useId();
   return (
     <Box
+      component="details"
+      open={defaultOpen || undefined}
       sx={{
-        mt: 1,
-        mb: 0.5,
-        animation: `${fadeIn} 0.25s ease-out`,
-      }}
-    >
-      <Box
-        component="button"
-        onClick={onClick}
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 0.75,
-          width: '100%',
-          py: 0.75,
-          px: 1.5,
-          backgroundColor: 'rgba(197, 160, 89, 0.1)',
-          border: `1px solid ${colors.gold}50`,
-          borderRadius: 1,
-          color: colors.gold,
-          fontSize: '0.8rem',
-          fontWeight: 500,
-          fontFamily: 'inherit',
+        borderTop: `1px solid ${colors.borderSubtle}`,
+        mt: 1.25,
+        '& > summary': {
           cursor: 'pointer',
-          transition: transitions.smooth,
-          '&:hover': {
-            backgroundColor: 'rgba(197, 160, 89, 0.2)',
-            borderColor: colors.gold,
-            boxShadow: `0 0 8px ${colors.goldGlow}`,
-          },
-          '&:active': {
-            transform: 'scale(0.98)',
-          },
-        }}
-      >
-        {/* Simple refresh icon using CSS */}
-        <Box
-          component="span"
-          sx={{
-            display: 'inline-block',
-            width: 12,
-            height: 12,
-            border: `2px solid ${colors.gold}`,
-            borderTopColor: 'transparent',
-            borderRadius: '50%',
-            position: 'relative',
-            '&::after': {
-              content: '""',
-              position: 'absolute',
-              top: -3,
-              right: -1,
-              width: 0,
-              height: 0,
-              borderLeft: `3px solid transparent`,
-              borderRight: `3px solid transparent`,
-              borderBottom: `4px solid ${colors.gold}`,
-              transform: 'rotate(45deg)',
-            },
-          }}
-        />
-        Recalculate
+          py: 1,
+          fontSize: '0.8rem',
+          color: colors.textPrimary,
+        },
+        '& > summary::marker': { color: colors.goldDark },
+      }}
+    >
+      <Box component="summary" tabIndex={0} aria-controls={id}>
+        {title}
       </Box>
-      <Typography
-        variant="caption"
-        sx={{
-          display: 'block',
-          color: colors.textMuted,
-          textAlign: 'center',
-          mt: 0.5,
-          fontSize: '0.65rem',
-        }}
-      >
-        Search settings changed
-      </Typography>
+      <Box id={id} sx={{ pb: 1 }}>
+        {children}
+      </Box>
     </Box>
   );
-});
+}
