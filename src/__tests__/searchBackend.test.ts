@@ -131,6 +131,7 @@ describe('searchBackend wire format', () => {
       const revived = reviveSearchInput(JSON.parse(JSON.stringify(plain)));
       const overTheWire = runSearchBackendInput(revived);
 
+      expect(overTheWire.status).toBe(direct.status);
       expect(overTheWire.recommendation?.skill.key).toBe(
         direct.recommendation?.skill.key,
       );

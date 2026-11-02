@@ -254,6 +254,7 @@ describe('autoCraftController', () => {
     controller.sync(
       buildSnapshot({
         result: {
+          status: 'live',
           recommendation: {
             skill: {
               name: 'Use Spirit Dew',
@@ -310,6 +311,7 @@ describe('autoCraftController', () => {
     controller.sync(
       buildSnapshot({
         result: {
+          status: 'live',
           recommendation: {
             skill: {
               name: 'Wait',
@@ -346,6 +348,7 @@ describe('autoCraftController', () => {
     controller.sync(
       buildSnapshot({
         result: {
+          status: 'live',
           recommendation: {
             skill: {
               name: 'Simple Refine',
@@ -546,6 +549,7 @@ describe('autoCraftController', () => {
 
   describe('native auto-use coexistence', () => {
     const itemResult = {
+      status: 'live',
       recommendation: {
         skill: {
           name: 'Use Qi Pill',
@@ -905,6 +909,7 @@ describe('autoCraftController', () => {
 
   describe('auto-finish', () => {
     const autoFinishResult = {
+      status: 'live',
       recommendation: {
         skill: {
           name: 'Simple Refine',

@@ -175,8 +175,27 @@ const setupFixtureResult = {
 /** The craft has already met every band, so the game resolves it by itself. */
 const autoFinishFixtureResult = {
   ...fixtureResult,
+  status: 'autoResolved',
   outcomeProjection: autoFinishProjection,
 } as any;
+
+const failedAutoFinishFixtureResult = {
+  ...autoFinishFixtureResult,
+  outcomeProjection: {
+    ...autoFinishProjection,
+    tier: 'failed',
+    optimisticTier: 'failed',
+    completion: {
+      ...autoFinishProjection.completion,
+      value: 0,
+      bands: 0,
+      nextThreshold: 100,
+      pointsToNextBand: 100,
+      bonusChance: 0,
+    },
+    bindingBar: 'completion',
+  },
+};
 
 /**
  * Pre-0.7.5 replay snapshot: no `outcomeProjection` at all. The panel must fall
@@ -193,6 +212,8 @@ function buildFixtureResult(state: string): unknown {
       return setupFixtureResult;
     case 'outcome-autofinish':
       return autoFinishFixtureResult;
+    case 'outcome-failed':
+      return failedAutoFinishFixtureResult;
     case 'outcome-legacy':
       return legacyFixtureResult;
     default:
@@ -362,7 +383,8 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
       // workstream's controller; the panel reads them structurally, so the
       // harness can exercise the row before that branch merges.
       return {
-        policy: 'allowCraftEnding',
+        policy: 'includeItems',
+        effectivePolicy: 'allowCraftEnding',
         armed: true,
         phase: 'ready',
         tone: 'active',
