@@ -548,6 +548,11 @@ interface ScoringContext {
   avgGainPerTurn: number;
   /** Average qi cost per progress turn, from available skills. */
   avgQiCostPerTurn: number;
+  /** Non-dominated productive action rates; preserves which bars advance together. */
+  progressRates?: ReadonlyArray<{
+    completion: number;
+    perfection: number;
+  }>;
 }
 
 /** Default scoring context used when callers don't provide one. */
@@ -629,16 +634,54 @@ function estimateTurnsRemainingFromContext(
     );
   }
 
-  // Joint productive-action estimate: both per-bar workloads and the total
-  // workload must fit. Total gain counts a dual-bar action once, while the
-  // per-bar bounds prevent a fast bar from hiding the slower binding bar.
+  const rates = ctx.progressRates ?? [
+    { completion: ctx.avgCompletionGainPerTurn, perfection: 0 },
+    { completion: 0, perfection: ctx.avgPerfectionGainPerTurn },
+  ];
+  let turns = Infinity;
+  for (let i = 0; i < rates.length; i++) {
+    const first = rates[i];
+    // A single joint action can cover both bars concurrently.
+    turns = Math.min(
+      turns,
+      Math.max(
+        first.completion > 0
+          ? completionRemaining / first.completion
+          : Infinity,
+        first.perfection > 0
+          ? perfectionRemaining / first.perfection
+          : Infinity,
+      ),
+    );
+    for (let j = i + 1; j < rates.length; j++) {
+      const second = rates[j];
+      const determinant =
+        first.completion * second.perfection -
+        second.completion * first.perfection;
+      if (determinant === 0) continue;
+      const firstTurns =
+        (completionRemaining * second.perfection -
+          perfectionRemaining * second.completion) /
+        determinant;
+      const secondTurns =
+        (perfectionRemaining * first.completion -
+          completionRemaining * first.perfection) /
+        determinant;
+      if (firstTurns >= 0 && secondTurns >= 0) {
+        turns = Math.min(turns, firstTurns + secondTurns);
+      }
+    }
+  }
+  // The fractional two-bar covering problem has an optimum using at most
+  // two rates. Round once, as with the other runway estimates. Unlike a
+  // max-of-marginals bound, this cannot run separate actions concurrently.
+  if (Number.isFinite(turns)) return Math.ceil(turns);
+
+  // A currently unavailable bar can become productive after setup. Retain
+  // the representative-rate fallback rather than declaring it unreachable.
   return Math.ceil(
-    Math.max(
-      completionRemaining / Math.max(1, ctx.avgCompletionGainPerTurn),
+    completionRemaining / Math.max(1, ctx.avgCompletionGainPerTurn) +
       perfectionRemaining / Math.max(1, ctx.avgPerfectionGainPerTurn),
-      (completionRemaining + perfectionRemaining) /
-        Math.max(1, ctx.avgGainPerTurn),
-    ),
   );
 }
 
@@ -765,12 +808,32 @@ function buildScoringContext(
     average(topOverallSamples.map((sample) => sample.qiCost)),
   );
 
+  // Keep the existing top-sample damping of unusually large gains, but retain
+  // action coupling. Marginal averages and total gain alone cannot distinguish
+  // one dual-bar action from two separate single-bar actions.
+  const progressRates = fallbackSamples.map((sample) => ({
+    completion: Math.min(sample.completionGain, avgCompletionGainPerTurn),
+    perfection: Math.min(sample.perfectionGain, avgPerfectionGainPerTurn),
+  }));
+  const nonDominatedRates = progressRates.filter(
+    (rate, index) =>
+      !progressRates.some(
+        (other, otherIndex) =>
+          other.completion >= rate.completion &&
+          other.perfection >= rate.perfection &&
+          (other.completion > rate.completion ||
+            other.perfection > rate.perfection ||
+            otherIndex < index),
+      ),
+  );
+
   return {
     avgStabilityCostPerTurn,
     avgCompletionGainPerTurn,
     avgPerfectionGainPerTurn,
     avgGainPerTurn,
     avgQiCostPerTurn,
+    progressRates: nonDominatedRates,
   };
 }
 
