@@ -7,7 +7,6 @@
  * Performance optimizations:
  * - Move ordering: Search promising skills first (buff skills when no buff, high-gain skills)
  * - Memoization: Cache search results by state key with progress bucketing for large numbers
- * - Alpha-beta pruning: Cut off branches that can't improve the result
  * - Beam search: Limit branches explored at each depth level
  * - Early termination: Stop when targets are met
  * - Time budget: Prevent UI freezes with configurable time limits
@@ -29,6 +28,7 @@ import {
   getConditionEffectsForConfig,
   techniqueDisplayName,
   getBuffDiscordantConditions,
+  type SkillBlockedReason,
 } from './skills';
 import { INSCRIBED_PATTERN_BLOCK, getHarmonyStatModifiers } from './harmony';
 import {
@@ -132,13 +132,6 @@ export interface SetupForHint {
   readonly techniqueName?: string;
   /** Human-readable explanation for the panel. */
   readonly reason: string;
-}
-
-/** Diagnostic info for why skills are unavailable */
-export interface SkillBlockedReason {
-  skillName: string;
-  reason: 'cooldown' | 'qi' | 'stability' | 'toxicity' | 'condition';
-  details: string;
 }
 
 /**
@@ -262,8 +255,6 @@ export interface SearchConfig {
    * -100 = perfection priority, 0 = balanced, 100 = completion priority.
    */
   goalPriorityBias: number;
-  /** Whether to use alpha-beta pruning (default: true) */
-  useAlphaBeta: boolean;
   /** Progress bucket size for cache key normalization (default: 100) */
   progressBucketSize: number;
   /**
@@ -366,7 +357,6 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   maxNodes: 750000,
   beamWidth: 10,
   goalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
-  useAlphaBeta: true,
   progressBucketSize: 100,
   useIterativeDeepening: true,
   iterativeDeepeningMinDepth: 3,
@@ -1269,15 +1259,6 @@ interface UnsafeCandidateClassification extends TerminalStateClassification {
   requiresProbabilisticSurvival?: boolean;
 }
 
-function filterUnfinishedTerminalCandidates<
-  T extends UnsafeCandidateClassification,
->(candidates: T[]): T[] {
-  // Terminal branches are now scored through the same authoritative craft-end
-  // outcome model used by Finish Craft. Do not hard-filter them out before the
-  // scorer can compare their actual forced-resolution EV against live lines.
-  return candidates;
-}
-
 function getBonusTierProgress(
   value: number,
   target: number,
@@ -1547,22 +1528,6 @@ function evaluateCraftEndOutcomeDistribution(params: {
       Math.min(1, perfectChance + sublimeChance),
     ),
   };
-}
-
-function isRawGoalSecuredByOutcome(
-  guaranteedBands: number,
-  rawGoal: number,
-  baseTarget: number,
-): boolean {
-  if (!Number.isFinite(rawGoal) || rawGoal <= 0) {
-    return true;
-  }
-  if (!Number.isFinite(baseTarget) || baseTarget <= 0) {
-    return guaranteedBands > 0;
-  }
-  return (
-    getThresholdForGuaranteedBonusCount(baseTarget, guaranteedBands) >= rawGoal
-  );
 }
 
 /**
@@ -3830,7 +3795,7 @@ function runGreedySearch(
   }
 
   const scoredSkills: SkillRecommendation[] =
-    filterUnfinishedTerminalCandidates(evaluatedMoves).map(
+    evaluatedMoves.map(
       ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
     );
 
@@ -3876,7 +3841,6 @@ function runGreedySearch(
  * Searches N moves ahead to find the best first move.
  *
  * Performance features:
- * - Alpha-beta pruning to cut off unpromising branches
  * - Beam search to limit branches at each level
  * - Time budget to prevent UI freezes
  * - Progress bucketing for better cache hits with large numbers
@@ -4650,13 +4614,7 @@ function runLookaheadSearch(
       candidates.push(finishCandidate);
     }
 
-    const filteredCandidates = filterUnfinishedTerminalCandidates(
-      candidates.map((candidate) => ({
-        ...candidate,
-        isTerminal: false,
-        isTerminalUnmet: false,
-      })),
-    ).map(({ isTerminal, isTerminalUnmet, ...candidate }) => candidate);
+    const filteredCandidates = candidates;
 
     filteredCandidates.sort((a, b) => {
       const scoreDiff = b.orderingScore - a.orderingScore;
@@ -4799,14 +4757,12 @@ function runLookaheadSearch(
   }
 
   /**
-   * Recursive search function with alpha-beta pruning
+   * Recursive single-player search function
    * Uses forecasted conditions at each depth level for more accurate simulation
    *
    * @param currentState - Current state to evaluate
    * @param remainingDepth - Remaining search depth
    * @param depthIndex - Current depth index for condition lookups
-   * @param alpha - Best score achievable by maximizer (for pruning)
-   * @param beta - Best score achievable by minimizer (for pruning, unused in single-player)
    */
   function search(
     currentState: CraftingState,
@@ -4814,8 +4770,6 @@ function runLookaheadSearch(
     depthIndex: number,
     currentConditionAtDepth: CraftingConditionType,
     nextConditionQueueAtDepth: CraftingConditionType[],
-    alpha: number = -Infinity,
-    beta: number = Infinity,
   ): number {
     // Check budget constraints
     if (checkBudget()) {
@@ -4949,8 +4903,6 @@ function runLookaheadSearch(
           depthIndex,
           currentConditionAtDepth,
           nextConditionQueueAtDepth,
-          bestScore,
-          beta,
         );
       } else {
         const transitions = getConditionTransitionsWithProvider(
@@ -4966,8 +4918,6 @@ function runLookaheadSearch(
             depthIndex + 1,
             transition.nextCondition,
             transition.nextQueue,
-            bestScore,
-            beta,
           );
           score += transition.probability * branchScore;
         }
@@ -4987,12 +4937,6 @@ function runLookaheadSearch(
         bestMoveKey = skill.key;
       }
 
-      // Alpha-beta pruning: if we found a score better than what the parent
-      // could guarantee, we can prune this branch
-      if (cfg.useAlphaBeta && bestScore >= beta) {
-        metrics.pruned++;
-        break;
-      }
     }
 
     if (!Number.isFinite(bestScore)) {
@@ -5732,7 +5676,7 @@ function runLookaheadSearch(
     }
 
     const scored: SkillRecommendation[] = orderRootRecommendations(
-      filterUnfinishedTerminalCandidates(evaluatedFirstMoves).map(
+      evaluatedFirstMoves.map(
         ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
       ),
       unsafeRecommendationKeys,

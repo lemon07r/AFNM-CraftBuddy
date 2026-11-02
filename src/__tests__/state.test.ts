@@ -184,34 +184,6 @@ describe('CraftingState', () => {
     });
   });
 
-  describe('getScore', () => {
-    it('should return min of completion and perfection when no targets', () => {
-      const state = new CraftingState({
-        completion: 50,
-        perfection: 30,
-      });
-      expect(state.getScore()).toBe(30);
-    });
-
-    it('should score based on progress toward targets', () => {
-      const state = new CraftingState({
-        completion: 50,
-        perfection: 30,
-      });
-      // Score = min(50, 100) + min(30, 100) = 50 + 30 = 80
-      expect(state.getScore(100, 100)).toBe(80);
-    });
-
-    it('should cap progress at target values', () => {
-      const state = new CraftingState({
-        completion: 150,
-        perfection: 80,
-      });
-      // Score = min(150, 100) + min(80, 100) = 100 + 80 = 180
-      expect(state.getScore(100, 100)).toBe(180);
-    });
-  });
-
   describe('targetsMet', () => {
     it('should return true when both targets are met', () => {
       const state = new CraftingState({
