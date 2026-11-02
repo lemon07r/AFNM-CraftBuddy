@@ -34,13 +34,15 @@ jobs:
 
       - name: Get version from tag
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Check tag matches package version
+        env:
+          TAG_VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
-          if [ "$PKG_VERSION" != "${{ steps.get_version.outputs.VERSION }}" ]; then
-            echo "Tag v${{ steps.get_version.outputs.VERSION }} does not match package.json $PKG_VERSION"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag v$TAG_VERSION does not match package.json $PKG_VERSION"
             exit 1
           fi
 
