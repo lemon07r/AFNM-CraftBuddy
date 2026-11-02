@@ -105,6 +105,10 @@ export interface SkillRecommendation {
   endsCraft?: boolean;
   /** Whether the line depends on probabilistic survival rather than a guaranteed floor. */
   requiresProbabilisticSurvival?: boolean;
+  /** Whether a viable guaranteed-safe line should outrank this one regardless of score. */
+  yieldsToSafeAlternative?: boolean;
+  /** Whether this action certainly ends the craft without meeting the base target. */
+  endsCraftBelowTarget?: boolean;
   /**
    * Present when the action's value comes from unlocking a currently-gated
    * technique rather than from its own gains (for example rushing completion to
@@ -2859,14 +2863,15 @@ function shouldUseSurvivabilityFloorForContinuation(params: {
 function hasFatalTechniqueFailure(
   state: CraftingState,
   skill: SkillDefinition,
-  displayState: CraftingState,
   config: OptimizerConfig,
   conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
   currentCondition: CraftingConditionType,
   targetCompletion: number,
   targetPerfection: number,
 ): boolean {
-  if (displayState.stability > 0 || skill.actionKind === 'item') return false;
+  // Expected stability can stay positive when success restores stability, so
+  // the failure transition is the only reliable test.
+  if (skill.actionKind === 'item' || isFinishAction(skill)) return false;
   const expected = calculateSkillGains(state, skill, config, conditionEffects);
   const onSuccess = calculateSkillGains(
     state,
@@ -2977,14 +2982,55 @@ function computeScoreTieWindow(totalTargetMagnitude: number): number {
   return Math.max(1e-6, totalTargetMagnitude * SCORING.RESOURCE_TIEBREAKER * 2);
 }
 
-function shouldUnsafeYieldToSafeRecommendation(
-  unsafeRecommendation: SkillRecommendation,
-  safeRecommendation: SkillRecommendation,
-): boolean {
-  // Guaranteed-safe stabilize and other live continuations should still outrank
-  // low-floor lines, but do not let Finish Craft jump ahead of a materially
-  // better continuation solely because that continuation was marked unsafe.
-  return !isFinishAction(safeRecommendation.skill);
+/**
+ * Orders recommendations so a viable guaranteed-safe line outranks a line
+ * that only survives probabilistically. A safe line that certainly ends the
+ * craft below target is not viable: it ranks with the gambles by score, and
+ * without any viable safe line candidates keep score order, so a certain
+ * failure never beats a winnable gamble. When no line is unsafe, candidates
+ * also keep score order. Finish Craft must not jump ahead of a
+ * better continuation solely because that continuation is unsafe, so finish
+ * actions are placed by score against the safety-ordered live lines. The
+ * result does not depend on input order.
+ */
+export function orderRecommendationsBySafety<T extends SkillRecommendation>(
+  recommendations: readonly T[],
+  compareByScore: (a: T, b: T) => number,
+  isUnsafe: (recommendation: T) => boolean,
+): T[] {
+  const live: T[] = [];
+  const finishes: T[] = [];
+  for (const recommendation of recommendations) {
+    if (isFinishAction(recommendation.skill)) finishes.push(recommendation);
+    else live.push(recommendation);
+  }
+  const yieldsToViableLine = (recommendation: T): boolean =>
+    isUnsafe(recommendation) || recommendation.endsCraftBelowTarget === true;
+  const applySafetyTier =
+    live.some(isUnsafe) &&
+    live.some((recommendation) => !yieldsToViableLine(recommendation));
+  live.sort((a, b) => {
+    if (applySafetyTier) {
+      const aYields = yieldsToViableLine(a);
+      if (aYields !== yieldsToViableLine(b)) return aYields ? 1 : -1;
+    }
+    return compareByScore(a, b);
+  });
+  if (finishes.length === 0) return live;
+  finishes.sort(compareByScore);
+  const ordered: T[] = [];
+  let liveIndex = 0;
+  for (const finish of finishes) {
+    while (
+      liveIndex < live.length &&
+      compareByScore(live[liveIndex], finish) <= 0
+    ) {
+      ordered.push(live[liveIndex++]);
+    }
+    ordered.push(finish);
+  }
+  for (; liveIndex < live.length; liveIndex++) ordered.push(live[liveIndex]);
+  return ordered;
 }
 
 function rankRecommendations(
@@ -2993,26 +3039,19 @@ function rankRecommendations(
   unsafeKeys: ReadonlySet<string> = new Set(),
   tieBreaker?: (a: SkillRecommendation, b: SkillRecommendation) => number,
 ): SkillRecommendation[] {
+  for (const recommendation of scored) {
+    if (unsafeKeys.has(recommendation.skill.key)) {
+      recommendation.yieldsToSafeAlternative = true;
+    }
+  }
   if (scored.length <= 1) {
     return scored;
   }
 
-  const sorted = [...scored].sort((a, b) => {
-    const aUnsafe = unsafeKeys.has(a.skill.key);
-    const bUnsafe = unsafeKeys.has(b.skill.key);
-    if (aUnsafe !== bUnsafe) {
-      const unsafeRecommendation = aUnsafe ? a : b;
-      const safeRecommendation = aUnsafe ? b : a;
-      if (
-        shouldUnsafeYieldToSafeRecommendation(
-          unsafeRecommendation,
-          safeRecommendation,
-        )
-      ) {
-        return aUnsafe ? 1 : -1;
-      }
-    }
-
+  const compareByScore = (
+    a: SkillRecommendation,
+    b: SkillRecommendation,
+  ): number => {
     const scoreDiff = b.score - a.score;
     if (Math.abs(scoreDiff) > scoreTieWindow) {
       return scoreDiff;
@@ -3037,7 +3076,12 @@ function rankRecommendations(
     }
 
     return a.skill.key.localeCompare(b.skill.key);
-  });
+  };
+  const sorted = orderRecommendationsBySafety(
+    scored,
+    compareByScore,
+    (recommendation) => unsafeKeys.has(recommendation.skill.key),
+  );
   if (sorted.length <= 2) {
     return sorted;
   }
@@ -3661,7 +3705,6 @@ function runGreedySearch(
     const fatalTechniqueFailure = hasFatalTechniqueFailure(
       state,
       skill,
-      displayState,
       config,
       conditionEffects,
       normalizedCurrentCondition,
@@ -3764,6 +3807,9 @@ function runGreedySearch(
       score,
       reasoning,
       endsCraft: terminalState.isTerminal || endsByAutoFinish,
+      endsCraftBelowTarget:
+        (terminalState.isTerminal || endsByAutoFinish) &&
+        !goalsMet(newState, targetCompletion, targetPerfection),
       requiresProbabilisticSurvival,
       ...terminalState,
     });
@@ -4181,12 +4227,14 @@ function runLookaheadSearch(
     searchState: CraftingState;
     survivabilityFloor: ActionSurvivabilityFloor;
     requiresProbabilisticSurvival: boolean;
+    fatalTechniqueFailure: boolean;
   } => {
     if (isFinishAction(skill)) {
       return {
         searchState: displayState,
         survivabilityFloor: null,
         requiresProbabilisticSurvival: false,
+        fatalTechniqueFailure: false,
       };
     }
 
@@ -4205,17 +4253,17 @@ function runLookaheadSearch(
     );
     const floorStability =
       survivabilityFloor?.stability ?? displayState.stability;
+    const fatalTechniqueFailure = hasFatalTechniqueFailure(
+      currentState,
+      skill,
+      config,
+      conditionEffectsAtDepth,
+      currentConditionAtDepth,
+      targetCompletion,
+      targetPerfection,
+    );
     const requiresProbabilisticSurvival =
-      hasFatalTechniqueFailure(
-        currentState,
-        skill,
-        displayState,
-        config,
-        conditionEffectsAtDepth,
-        currentConditionAtDepth,
-        targetCompletion,
-        targetPerfection,
-      ) ||
+      fatalTechniqueFailure ||
       shouldUseSurvivabilityFloorForContinuation({
         currentStability: currentState.stability,
         displayStability: displayState.stability,
@@ -4232,6 +4280,7 @@ function runLookaheadSearch(
         : displayState,
       survivabilityFloor,
       requiresProbabilisticSurvival,
+      fatalTechniqueFailure,
     };
   };
   const getGuaranteedSafeStabilizeContext = (
@@ -4517,16 +4566,20 @@ function runLookaheadSearch(
       if (nextState === null) {
         continue;
       }
-      const { searchState, survivabilityFloor, requiresProbabilisticSurvival } =
-        buildSearchStateForContinuation(
-          currentState,
-          skill,
-          nextState,
-          conditionEffectsAtDepth,
-          currentConditionAtDepth,
-          hasGuaranteedSafeStabilize,
-          minimumGuaranteedContinuationStability,
-        );
+      const {
+        searchState,
+        survivabilityFloor,
+        requiresProbabilisticSurvival,
+        fatalTechniqueFailure,
+      } = buildSearchStateForContinuation(
+        currentState,
+        skill,
+        nextState,
+        conditionEffectsAtDepth,
+        currentConditionAtDepth,
+        hasGuaranteedSafeStabilize,
+        minimumGuaranteedContinuationStability,
+      );
       const floorStability =
         survivabilityFloor?.stability ?? nextState.stability;
       const baseSuccessSecuredAfterAction = goalsMet(
@@ -4535,7 +4588,7 @@ function runLookaheadSearch(
         targetPerfection,
       );
       const unsafeWithGuaranteedSafeAlternative =
-        (requiresProbabilisticSurvival && nextState.stability <= 0) ||
+        fatalTechniqueFailure ||
         shouldDeprioritizeAgainstGuaranteedSafeStabilize({
           currentStability: currentState.stability,
           displayStability: nextState.stability,
@@ -5281,25 +5334,10 @@ function runLookaheadSearch(
     recommendationTieMetricCache.set(recommendation.skill.key, metrics);
     return metrics;
   };
-  const compareRecommendations = (
+  const compareRecommendationScores = (
     a: SkillRecommendation,
     b: SkillRecommendation,
   ): number => {
-    const aUnsafe = unsafeRootRecommendationKeys.has(a.skill.key);
-    const bUnsafe = unsafeRootRecommendationKeys.has(b.skill.key);
-    if (aUnsafe !== bUnsafe) {
-      const unsafeRecommendation = aUnsafe ? a : b;
-      const safeRecommendation = aUnsafe ? b : a;
-      if (
-        shouldUnsafeYieldToSafeRecommendation(
-          unsafeRecommendation,
-          safeRecommendation,
-        )
-      ) {
-        return aUnsafe ? 1 : -1;
-      }
-    }
-
     const scoreDiff = b.score - a.score;
     if (Math.abs(scoreDiff) > scoreTieWindow) {
       return scoreDiff;
@@ -5320,6 +5358,15 @@ function runLookaheadSearch(
 
     return a.skill.key.localeCompare(b.skill.key);
   };
+  const orderRootRecommendations = (
+    recommendations: SkillRecommendation[],
+    unsafeKeys: ReadonlySet<string>,
+  ): SkillRecommendation[] =>
+    orderRecommendationsBySafety(
+      recommendations,
+      compareRecommendationScores,
+      (recommendation) => unsafeKeys.has(recommendation.skill.key),
+    );
 
   function findFollowUpSkill(
     stateAfterSkill: CraftingState,
@@ -5664,18 +5711,24 @@ function runLookaheadSearch(
         followUpSkill: undefined,
         projectedSuccessChance: candidate.projectedSuccessChance,
         endsCraft,
+        endsCraftBelowTarget:
+          endsCraft &&
+          !isFinish &&
+          !goalsMet(newState, targetCompletion, targetPerfection),
         requiresProbabilisticSurvival: candidate.requiresProbabilisticSurvival,
         ...terminalState,
       });
     }
 
-    const scored: SkillRecommendation[] = filterUnfinishedTerminalCandidates(
-      evaluatedFirstMoves,
-    ).map(({ isTerminal, isTerminalUnmet, ...rec }) => rec);
+    const scored: SkillRecommendation[] = orderRootRecommendations(
+      filterUnfinishedTerminalCandidates(evaluatedFirstMoves).map(
+        ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
+      ),
+      unsafeRecommendationKeys,
+    );
     unsafeRootRecommendationKeys = unsafeRecommendationKeys;
 
     if (!useDeepSearch || depthToSearch <= 1) {
-      scored.sort(compareRecommendations);
       return {
         recommendations: scored,
         unsafeRecommendationKeys,
@@ -5687,7 +5740,6 @@ function runLookaheadSearch(
     // Second pass: enhance scores with deep lookahead if budget allows.
     // Follow-up generation stays out of the critical path so recommendation
     // budget is spent on first-move ranking, not auxiliary UI details.
-    scored.sort(compareRecommendations);
     const deepenedRecommendations = scored.map((rec) => ({ ...rec }));
 
     for (const rec of deepenedRecommendations) {
@@ -5733,10 +5785,11 @@ function runLookaheadSearch(
       };
     }
 
-    deepenedRecommendations.sort(compareRecommendations);
-
     return {
-      recommendations: deepenedRecommendations,
+      recommendations: orderRootRecommendations(
+        deepenedRecommendations,
+        unsafeRecommendationKeys,
+      ),
       unsafeRecommendationKeys,
       completed: true,
       evaluatedDepth: depthToSearch,

@@ -282,7 +282,7 @@ describe('mergePartitionedResults', () => {
       hits: 0,
       depth: 2,
     });
-    risky.recommendation!.requiresProbabilisticSurvival = true;
+    risky.recommendation!.yieldsToSafeAlternative = true;
     const safe = makePartial([['sure', 50]], { nodes: 1, hits: 0, depth: 2 });
     const merged = mergePartitionedResults([risky, safe]);
     expect(merged.recommendation?.skill.key).toBe('sure');
@@ -293,7 +293,7 @@ describe('mergePartitionedResults', () => {
 
   it('does not promote synthetic finish solely because a better live line is probabilistic', () => {
     const risky = makePartial([['live', 100]], { nodes: 1, hits: 0, depth: 2 });
-    risky.recommendation!.requiresProbabilisticSurvival = true;
+    risky.recommendation!.yieldsToSafeAlternative = true;
     const finish = makePartial([[FINISH_CRAFT_KEY, 50]], {
       nodes: 1,
       hits: 0,
@@ -302,6 +302,103 @@ describe('mergePartitionedResults', () => {
     expect(
       mergePartitionedResults([risky, finish]).recommendation?.skill.key,
     ).toBe('live');
+  });
+
+  it('orders safe, risky and finish candidates the same in every partition order', () => {
+    const build = (): SearchResult[] => {
+      const safe = makePartial([['safe', 50]], { nodes: 1, hits: 0, depth: 2 });
+      const risky = makePartial([['risky', 100]], {
+        nodes: 1,
+        hits: 0,
+        depth: 2,
+      });
+      risky.recommendation!.yieldsToSafeAlternative = true;
+      const finish = makePartial([[FINISH_CRAFT_KEY, 75]], {
+        nodes: 1,
+        hits: 0,
+        depth: 2,
+      });
+      return [safe, risky, finish];
+    };
+    const permutations = [
+      [0, 1, 2],
+      [0, 2, 1],
+      [1, 0, 2],
+      [1, 2, 0],
+      [2, 0, 1],
+      [2, 1, 0],
+    ];
+    const orders = permutations.map((order) => {
+      const partials = build();
+      const merged = mergePartitionedResults(order.map((i) => partials[i]));
+      return [merged.recommendation, ...merged.alternativeSkills].map(
+        (candidate) => candidate?.skill.key,
+      );
+    });
+    for (const order of orders) {
+      expect(order).toEqual([FINISH_CRAFT_KEY, 'safe', 'risky']);
+    }
+  });
+
+  it('keeps score order when the only safe line ends the craft below target', () => {
+    const risky = makePartial([['gamble', 100]], {
+      nodes: 1,
+      hits: 0,
+      depth: 2,
+    });
+    risky.recommendation!.yieldsToSafeAlternative = true;
+    const doomed = makePartial([['doomed', 10]], {
+      nodes: 1,
+      hits: 0,
+      depth: 2,
+    });
+    doomed.recommendation!.endsCraftBelowTarget = true;
+    const merged = mergePartitionedResults([doomed, risky]);
+    expect(merged.recommendation?.skill.key).toBe('gamble');
+    expect(merged.alternativeSkills[0]?.skill.key).toBe('doomed');
+  });
+
+  it('drops rotation details when merging promotes a partition alternative', () => {
+    const left = makePartial(
+      [
+        ['risky', 100],
+        ['doomed', 75],
+      ],
+      { nodes: 1, hits: 0, depth: 2 },
+    );
+    left.recommendation!.yieldsToSafeAlternative = true;
+    left.alternativeSkills[0].endsCraftBelowTarget = true;
+    left.optimalRotation = ['risky'];
+    const right = makePartial([['safe', 50]], { nodes: 1, hits: 0, depth: 2 });
+    right.recommendation!.endsCraftBelowTarget = true;
+    right.optimalRotation = ['safe'];
+    const merged = mergePartitionedResults([left, right]);
+    // With no viable safe line, score order wins across partitions.
+    expect(merged.recommendation?.skill.key).toBe('risky');
+    expect(merged.optimalRotation).toEqual(['risky']);
+
+    right.recommendation!.endsCraftBelowTarget = false;
+    const viable = mergePartitionedResults([left, right]);
+    // A viable safe line leads; the certain failure ranks with the gamble.
+    expect(
+      [viable.recommendation, ...viable.alternativeSkills].map(
+        (candidate) => candidate?.skill.key,
+      ),
+    ).toEqual(['safe', 'risky', 'doomed']);
+    expect(viable.optimalRotation).toEqual(['safe']);
+
+    const withSafeAlternative = makePartial(
+      [
+        ['risky', 100],
+        ['steady', 60],
+      ],
+      { nodes: 1, hits: 0, depth: 2 },
+    );
+    withSafeAlternative.recommendation!.yieldsToSafeAlternative = true;
+    withSafeAlternative.optimalRotation = ['risky'];
+    const promoted = mergePartitionedResults([withSafeAlternative, right]);
+    expect(promoted.recommendation?.skill.key).toBe('steady');
+    expect(promoted.optimalRotation).toBeUndefined();
   });
 
   it('stays terminal only when every partition is terminal', () => {

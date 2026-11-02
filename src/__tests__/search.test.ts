@@ -12,6 +12,7 @@ import {
   getAvailableSkills,
   getConditionEffectsForConfig,
 } from '../optimizer/skills';
+import { mergePartitionedResults } from '../optimizer/searchBackend';
 import {
   findBestSkill,
   greedySearch,
@@ -3473,6 +3474,163 @@ describe('survivability-first recommendation gate', () => {
         (candidate) => candidate.skill.key === 'a_gamble',
       );
       expect(risky?.requiresProbabilisticSurvival).toBe(true);
+    },
+  );
+  it.each([0, 1, 2])(
+    'flags a fatal gamble whose expected stability stays positive at depth %s',
+    (depth) => {
+      const gamble = createCustomSkill({
+        name: 'Restoring Gamble',
+        key: 'a_gamble',
+        type: 'fusion',
+        stabilityCost: 10,
+        stabilityGain: 20,
+        successChance: 0.5,
+        baseCompletionGain: 200,
+        preventsMaxStabilityDecay: true,
+      });
+      const sure = createCustomSkill({
+        name: 'Sure',
+        key: 'z_sure',
+        type: 'fusion',
+        stabilityCost: 10,
+        baseCompletionGain: 100,
+        preventsMaxStabilityDecay: true,
+      });
+      const config = createTestConfig({
+        minStability: 0,
+        maxCompletion: 200,
+        maxPerfection: 0,
+        skills: [gamble, sure],
+      });
+      const state = new CraftingState({
+        qi: 100,
+        stability: 10,
+        initialMaxStability: 60,
+      });
+      const expected = applySkill(state, gamble, config, [], 100);
+      expect(expected?.stability).toBeGreaterThan(0);
+      expect(expected?.completion).toBe(100);
+      const failure = applySkill(state, gamble, config, [], 100, undefined, 0, {
+        successChance: 0,
+      });
+      expect(failure?.stability).toBe(0);
+      expect(failure?.completion).toBe(0);
+
+      const result = findBestSkill(
+        state,
+        config,
+        100,
+        0,
+        false,
+        depth,
+        'neutral',
+        [],
+        { timeBudgetMs: 10000, maxNodes: 10000 },
+      );
+      expect(result.recommendation?.skill.key).toBe('z_sure');
+      const risky = result.alternativeSkills.find(
+        (candidate) => candidate.skill.key === 'a_gamble',
+      );
+      expect(risky?.requiresProbabilisticSurvival).toBe(true);
+      expect(risky?.yieldsToSafeAlternative).toBe(true);
+    },
+  );
+  it.each([0, 1, 2])(
+    'keeps the secured route when singleton worker partitions merge at depth %s',
+    (depth) => {
+      const gamble = createCustomSkill({
+        name: 'Gamble',
+        key: 'a_gamble',
+        type: 'fusion',
+        stabilityCost: 10,
+        successChance: 0.5,
+        baseCompletionGain: 200,
+        preventsMaxStabilityDecay: true,
+      });
+      const sure = createCustomSkill({
+        ...gamble,
+        name: 'Sure',
+        key: 'z_sure',
+        successChance: 1,
+        baseCompletionGain: 100,
+      });
+      const config = createTestConfig({
+        minStability: 0,
+        maxCompletion: 200,
+        maxPerfection: 0,
+        skills: [gamble, sure],
+      });
+      const state = new CraftingState({
+        qi: 100,
+        stability: 10,
+        initialMaxStability: 60,
+      });
+      const partials = [['a_gamble'], ['z_sure']].map((rootSkillKeys) =>
+        findBestSkill(state, config, 100, 0, false, depth, 'neutral', [], {
+          timeBudgetMs: 10000,
+          maxNodes: 10000,
+          rootSkillKeys,
+        }),
+      );
+      expect(partials[0].recommendation?.skill.key).toBe('a_gamble');
+      expect(partials[0].recommendation?.yieldsToSafeAlternative).toBe(true);
+      const merged = mergePartitionedResults(partials);
+      expect(merged.recommendation?.skill.key).toBe('z_sure');
+      expect(merged.optimalRotation).toEqual(partials[1].optimalRotation);
+    },
+  );
+  it.each([0, 1, 2])(
+    'keeps a winnable gamble ahead of a guaranteed failure at depth %s',
+    (depth) => {
+      const gamble = createCustomSkill({
+        name: 'Gamble',
+        key: 'a_gamble',
+        type: 'fusion',
+        stabilityCost: 10,
+        successChance: 0.5,
+        baseCompletionGain: 200,
+        preventsMaxStabilityDecay: true,
+      });
+      const useless = createCustomSkill({
+        name: 'Useless',
+        key: 'z_useless',
+        type: 'refine',
+        stabilityCost: 10,
+        preventsMaxStabilityDecay: true,
+      });
+      const config = createTestConfig({
+        minStability: 0,
+        maxCompletion: 200,
+        maxPerfection: 0,
+        skills: [gamble, useless],
+      });
+      const state = new CraftingState({
+        qi: 100,
+        stability: 10,
+        initialMaxStability: 60,
+      });
+      const uselessState = applySkill(state, useless, config, [], 100);
+      expect(uselessState?.stability).toBe(0);
+      expect(uselessState?.completion).toBe(0);
+
+      const result = findBestSkill(
+        state,
+        config,
+        100,
+        0,
+        false,
+        depth,
+        'neutral',
+        [],
+        { timeBudgetMs: 10000, maxNodes: 10000 },
+      );
+      expect(result.recommendation?.skill.key).toBe('a_gamble');
+      expect(result.recommendation?.requiresProbabilisticSurvival).toBe(true);
+      const fallback = result.alternativeSkills.find(
+        (candidate) => candidate.skill.key === 'z_useless',
+      );
+      expect(fallback?.endsCraftBelowTarget).toBe(true);
     },
   );
   const energizedFusion = createCustomSkill({

@@ -33,8 +33,11 @@ contracts changed.
   Band Goal and Completion Band Ceiling. Changing either, or Push Extra Bands,
   marks recommendations stale and changes the cross-step score-cache scope.
 - **Prefer secured routes:** techniques whose failure ends below target are
-  flagged as requiring probabilistic survival. Worker-partition merging keeps
-  survival precedence before score rather than promoting a higher-EV gamble.
+  flagged as requiring probabilistic survival, including when success would
+  restore stability. A guaranteed line takes precedence only when it does not
+  itself end the craft below target, so a certain failure never beats a
+  winnable gamble. Ranking is independent of input order, and worker-partition
+  merging uses the same safety flags as single-worker search.
 - **Respect native auto-use state:** a disabled crafting auto-use toggle makes
   the configured loadout inactive; the live revision signature reads consumed
   pills from the crafting state, not progress state.
@@ -61,7 +64,7 @@ certification or live game UI test.
 
 ## Validation
 
-- `bun run release:validate`: **passed** — strict TypeScript, **991 Jest tests /
+- `bun run release:validate`: **passed** — strict TypeScript, **1,003 Jest tests /
   39 suites**, production build/package (6.9.0, five zip entries), docs links,
   freshness and authority over 64 Markdown files.
 - Rust: **91 passed / 3 intentionally ignored** profiling harnesses.

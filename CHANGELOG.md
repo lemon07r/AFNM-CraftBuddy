@@ -5,7 +5,7 @@
 - Retargeted to `0.7.19-ac29603` and `afnm-types@0.7.19`; audited recorded crafting mechanics and unchanged crafting declarations.
 - Removed the pre-existing five-band auto-finish shortcut in both engines: stability <= 0 or both actual caps now decide termination.
 - Preserved ambition settings in every terminal score, stale-settings detection and cross-step score-cache scope.
-- Preferred secured routes over fatal technique-failure gambles, including worker-partition merging.
+- Preferred secured routes over fatal technique-failure gambles (unless the safe option is itself a certain failure), with order-independent ranking that worker-partition merging shares.
 - Corrected consumed-pill revision tracking and honored the native crafting auto-use enabled toggle (issue #3, PommesMitChips).
 - Marked superseded release notes historical without rewriting them. No scoring constants or benchmark contracts changed; existing parity corpus unchanged.
 

@@ -29,6 +29,7 @@ import type { OptimizerConfig } from './skills';
 import {
   findBestSkill,
   FINISH_CRAFT_KEY,
+  orderRecommendationsBySafety,
   type CraftingConditionType,
   type SearchConfig,
   type SearchResult,
@@ -277,21 +278,10 @@ export function partitionRootSkillKeys(
 
 // ── Merging partitioned results ─────────────────────────────────────────────
 
-function compareMergedCandidates(
+function compareMergedScores(
   a: SkillRecommendation,
   b: SkillRecommendation,
 ): number {
-  const aUnsafe = a.requiresProbabilisticSurvival === true;
-  const bUnsafe = b.requiresProbabilisticSurvival === true;
-  if (aUnsafe !== bUnsafe) {
-    // Match search's safety precedence, including its exception for the
-    // synthetic finish action: finishing must not displace a better live line
-    // solely on safety grounds.
-    const safe = aUnsafe ? b : a;
-    if (safe.skill.key !== FINISH_CRAFT_KEY) {
-      return aUnsafe ? 1 : -1;
-    }
-  }
   if (b.score !== a.score) {
     return b.score - a.score;
   }
@@ -325,8 +315,7 @@ export function mergePartitionedResults(
   }
 
   const pooled = new Map<string, SkillRecommendation>();
-  let winningPartial: SearchResult | undefined;
-  let bestCandidate: SkillRecommendation | undefined;
+  const sourcePartials = new Map<SkillRecommendation, SearchResult>();
   for (const partial of partials) {
     const candidates = [
       ...(partial.recommendation ? [partial.recommendation] : []),
@@ -334,15 +323,9 @@ export function mergePartitionedResults(
     ];
     for (const candidate of candidates) {
       const existing = pooled.get(candidate.skill.key);
-      if (!existing || compareMergedCandidates(candidate, existing) < 0) {
+      if (!existing || compareMergedScores(candidate, existing) < 0) {
         pooled.set(candidate.skill.key, candidate);
-      }
-      if (
-        !bestCandidate ||
-        compareMergedCandidates(candidate, bestCandidate) < 0
-      ) {
-        bestCandidate = candidate;
-        winningPartial = partial;
+        sourcePartials.set(candidate, partial);
       }
     }
   }
@@ -350,7 +333,13 @@ export function mergePartitionedResults(
   // es5 target: collect via forEach instead of spreading the Map iterator.
   const pooledCandidates: SkillRecommendation[] = [];
   pooled.forEach((candidate) => pooledCandidates.push(candidate));
-  const merged = pooledCandidates.sort(compareMergedCandidates);
+  const merged = orderRecommendationsBySafety(
+    pooledCandidates,
+    compareMergedScores,
+    (candidate) => candidate.yieldsToSafeAlternative === true,
+  );
+  const winningPartial =
+    merged.length > 0 ? sourcePartials.get(merged[0]) : undefined;
   recomputeQualityRatings(merged);
 
   const anyCandidates = merged.length > 0;
@@ -371,6 +360,12 @@ export function mergePartitionedResults(
     0,
   );
   const referencePartial = winningPartial ?? partials[0];
+  // Rotation and final-state projections describe the partition's own top
+  // move; drop them when merging promoted one of its alternatives instead.
+  const rotationPartial =
+    winningPartial && winningPartial.recommendation === merged[0]
+      ? winningPartial
+      : undefined;
 
   return {
     recommendation: merged[0] ?? null,
@@ -382,9 +377,9 @@ export function mergePartitionedResults(
     blockedReasons: anyCandidates
       ? undefined
       : referencePartial?.blockedReasons,
-    optimalRotation: referencePartial?.optimalRotation,
-    optimalRotationLabels: referencePartial?.optimalRotationLabels,
-    expectedFinalState: referencePartial?.expectedFinalState,
+    optimalRotation: rotationPartial?.optimalRotation,
+    optimalRotationLabels: rotationPartial?.optimalRotationLabels,
+    expectedFinalState: rotationPartial?.expectedFinalState,
     searchMetrics: {
       nodesExplored,
       cacheHits,
