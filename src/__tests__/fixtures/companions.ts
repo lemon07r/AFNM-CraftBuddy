@@ -30,7 +30,66 @@ export function companionScenarios() {
     ...companionIntegrationScenarios(),
     ...companionReviewScenarios(),
     ...companionPreviewScenarios(),
+    ...companionRestoreScenarios(),
   ];
+}
+
+export function companionRestoreScenarios() {
+  return ['su-scalar', 'han-scalar', 'su-effect', 'han-effect', 'han-full'].map(
+    (edge) => {
+      const base = edge.startsWith('su-')
+        ? suScenarios()[2]
+        : hanScenarios()[0];
+      const observer: BuffDefinition = {
+        name: 'Qi restore observer',
+        effects: [],
+        stats: { qiBoost: { value: 50 } },
+        triggeredEffects: [
+          {
+            trigger: 'poolRestored',
+            effects: [
+              { kind: 'completion', amount: { value: 1, eqn: 'amount' } },
+              {
+                kind: 'setState',
+                key: 'restored',
+                mode: 'add',
+                value: { value: 1, eqn: 'amount' },
+              },
+              {
+                kind: 'setState',
+                key: 'calls',
+                mode: 'add',
+                value: { value: 1 },
+              },
+            ],
+          },
+        ],
+      };
+      const buffs = new Map(base.state.buffs);
+      buffs.set('qi_restore_observer', {
+        name: observer.name,
+        stacks: 1,
+        definition: observer,
+      });
+      const full = edge === 'han-full';
+      const state = base.state.copy({ qi: full ? 200 : 199, buffs });
+      const skill = retargetSkill({
+        qiCost: full ? 0 : 2,
+        stabilityCost: 0,
+        restoresQi: true,
+        qiRestore: 10,
+        effects: edge.endsWith('effect')
+          ? [{ kind: 'completion', amount: { value: 5 } }]
+          : undefined,
+      });
+      return {
+        name: `companion-restore-${edge}`,
+        state,
+        skill,
+        config: retargetConfig(skill),
+      };
+    },
+  );
 }
 
 export function companionPreviewScenarios() {

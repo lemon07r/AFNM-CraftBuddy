@@ -4987,6 +4987,8 @@ function applySkillTransition(
     newStability -= effectiveStabilityCost;
     if (effectiveStabilityCost > 0)
       dispatchBuffTriggers('stabilitySpent', effectiveStabilityCost);
+    if (qiRestoredBySkill > 0)
+      dispatchBuffTriggers('poolRestored', qiRestoredBySkill);
     techniqueProgress.stability = stabilityProjection.meanStability();
   }
   stabilityProjection.beginTechnique(actionSuccessChance);

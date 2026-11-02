@@ -9,9 +9,37 @@ import {
   companionIntegrationScenarios,
   companionReviewScenarios,
   companionPreviewScenarios,
+  companionRestoreScenarios,
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('ordered scalar Qi restoration', () => {
+  it.each(companionRestoreScenarios())(
+    'dispatches the clamped realized delta once: $name',
+    ({ name, state, skill, config }) => {
+      const next = applySkill(state, skill, config)!;
+      const full = name.endsWith('full');
+      const techniqueGain = name.endsWith('effect')
+        ? name.includes('-su-')
+          ? 7
+          : 5
+        : 0;
+      expect(next.qi).toBe(200);
+      expect(next.completion).toBe(techniqueGain + (full ? 0 : 3));
+      expect(next.buffs.get('qi_restore_observer')?.internalState).toEqual(
+        full ? undefined : { restored: 3, calls: 1 },
+      );
+      expect(
+        state.buffs.get('qi_restore_observer')?.internalState,
+      ).toBeUndefined();
+      if (skill.effects?.length)
+        expect(calculateSkillGains(state, skill, config).completion).toBe(
+          next.completion,
+        );
+    },
+  );
+});
 
 describe('companion paid previews', () => {
   it.each(companionPreviewScenarios())(
