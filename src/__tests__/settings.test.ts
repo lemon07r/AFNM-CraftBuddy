@@ -126,6 +126,41 @@ describe('settings search budget', () => {
     },
   );
 
+  it('moves a saved experimental preset budget to the same-named preset', () => {
+    storageData['craftbuddy_settings'] = JSON.stringify({
+      optimizerEngine: 'experimental',
+      lookaheadDepth: 48,
+      searchTimeBudgetMs: 2250,
+      searchMaxNodes: 800000,
+      searchBeamWidth: 5,
+    });
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
+
+    expect(loadSettings()).toMatchObject(SEARCH_PRESET_BUDGETS.balanced);
+  });
+
+  it('keeps a custom experimental budget as saved', () => {
+    const custom = {
+      lookaheadDepth: 40,
+      searchTimeBudgetMs: 2250,
+      searchMaxNodes: 800000,
+      searchBeamWidth: 5,
+    };
+    storageData['craftbuddy_settings'] = JSON.stringify({
+      optimizerEngine: 'experimental',
+      ...custom,
+    });
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
+
+    expect(loadSettings()).toMatchObject(custom);
+  });
+
   it('keeps searchThreads at 1 by default and normalizes invalid values', () => {
     expect(loadSettings().searchThreads).toBe(1);
 

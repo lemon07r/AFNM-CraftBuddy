@@ -265,10 +265,70 @@ function clampInteger(
   return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
+/**
+ * Budgets the retired experimental engine used for each preset (6.x). A saved
+ * exact match is moved to the same-named preset so it is not shown as custom.
+ */
+const RETIRED_EXPERIMENTAL_PRESET_BUDGETS: Record<
+  SearchPresetId,
+  SearchPresetBudget
+> = {
+  instant: {
+    lookaheadDepth: 32,
+    searchTimeBudgetMs: 1250,
+    searchMaxNodes: 400000,
+    searchBeamWidth: 5,
+  },
+  fast: {
+    lookaheadDepth: 32,
+    searchTimeBudgetMs: 1500,
+    searchMaxNodes: 500000,
+    searchBeamWidth: 5,
+  },
+  balanced: {
+    lookaheadDepth: 48,
+    searchTimeBudgetMs: 2250,
+    searchMaxNodes: 800000,
+    searchBeamWidth: 5,
+  },
+  high_accuracy: {
+    lookaheadDepth: 64,
+    searchTimeBudgetMs: 3250,
+    searchMaxNodes: 1300000,
+    searchBeamWidth: 5,
+  },
+  max: {
+    lookaheadDepth: 80,
+    searchTimeBudgetMs: 4000,
+    searchMaxNodes: 2000000,
+    searchBeamWidth: 5,
+  },
+};
+
+function migrateRetiredEngineBudget(
+  settings: StoredCraftBuddySettings,
+): StoredCraftBuddySettings {
+  if (settings.optimizerEngine !== 'experimental') return settings;
+  const presetId = (
+    Object.keys(RETIRED_EXPERIMENTAL_PRESET_BUDGETS) as SearchPresetId[]
+  ).find((id) => {
+    const budget = RETIRED_EXPERIMENTAL_PRESET_BUDGETS[id];
+    return (
+      settings.lookaheadDepth === budget.lookaheadDepth &&
+      settings.searchTimeBudgetMs === budget.searchTimeBudgetMs &&
+      settings.searchMaxNodes === budget.searchMaxNodes &&
+      settings.searchBeamWidth === budget.searchBeamWidth
+    );
+  });
+  return presetId
+    ? { ...settings, ...SEARCH_PRESET_BUDGETS[presetId] }
+    : settings;
+}
+
 function normalizeSettings(
   storedSettings: StoredCraftBuddySettings,
 ): CraftBuddySettings {
-  const settings = { ...storedSettings };
+  const settings = { ...migrateRetiredEngineBudget(storedSettings) };
   delete settings.optimizerEngine;
   const searchGoalPriorityBias =
     settings.searchGoalPriorityBias !== undefined
