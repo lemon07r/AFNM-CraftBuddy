@@ -214,6 +214,9 @@ export function companionIntegrationScenarios() {
         },
       ];
     if (edge.endsWith('shared-success')) {
+      // One shared 50% roll: success gives 5 - 10 + 4 = -1, cleaned to 0;
+      // failure retains 5. The cleanup expectation is (0 + 5) / 2 = 2.5,
+      // not cleanup of the mean (-10 and +4 weighted separately).
       state = state.copy({ stability: 5 });
       skill.successChance = 0.5;
       skill.effects = [

@@ -745,11 +745,7 @@ function hasSealedMaxStabilityBuff(
   );
 }
 
-/**
- * Whether any held buff carries 0.7.7+ triggered effects (the runtime `_6`
- * dispatcher). Gates per-application trigger bookkeeping so crafts without
- * trigger buffs allocate nothing extra.
- */
+/** Whether any held buff intercepts technique/mastery numeric applications. */
 function hasEffectInterceptors(buffs: ActiveBuffMap): boolean {
   return Array.from(buffs.values()).some(
     (buff) => buff.definition?.craftingEffectInterceptors?.length,
@@ -804,6 +800,11 @@ function appliedStabilityAmount(
     : amount;
 }
 
+/**
+ * Whether any held buff carries 0.7.7+ triggered effects (the runtime `_6`
+ * dispatcher). Gates per-application trigger bookkeeping so crafts without
+ * trigger buffs allocate nothing extra.
+ */
 function hasTriggeredEffectBuffs(
   buffs: ReadonlyMap<string, { definition?: BuffDefinition }>,
 ): boolean {
@@ -940,11 +941,6 @@ const TURBID_QI_BUFF_KEY = 'turbid_qi';
  */
 const COMPLETION_BONUS_BUFF_KEY = 'completion_bonus';
 
-/**
- * 0.7.10 boost application (runtime applyCompletion/applyPerfection/
- * applyStability/applyPool): floors `amount * (1 + boost / 100)` for positive
- * applications only. `boost` is a percentage stat (10 = +10%).
- */
 function grantsTurbidQiStack(nextStep: number): boolean {
   return (
     Number.isFinite(nextStep) &&
