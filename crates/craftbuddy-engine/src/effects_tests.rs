@@ -836,8 +836,8 @@ fn rng_placeholder_resolves_to_the_expected_value() {
 #[test]
 fn rejects_unsafe_or_unparsable_expressions() {
     let variables = vars(&[("control", 10.0)]);
-    // An empty formula is neutral, not zero.
-    assert_eq!(eval_expression("", &variables), 1.0);
+    // Runtime cy (G:6127938) explicitly returns zero for an empty expression.
+    assert_eq!(eval_expression("", &variables), 0.0);
     // Assignment, blocked keywords and disallowed characters all collapse to 0.
     assert_eq!(eval_expression("control = 5", &variables), 0.0);
     assert_eq!(eval_expression("return control", &variables), 0.0);

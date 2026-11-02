@@ -21,6 +21,7 @@ import {
   DEFAULT_CONFIG,
 } from '../optimizer/skills';
 import {
+  type ScalingVariables,
   calculateExpectedCritMultiplier,
   getBonusAndChance,
   getConditionEffects,
@@ -202,7 +203,10 @@ describe('Game-Accurate Mechanics', () => {
       const negativeEffects = getConditionEffects('perfectable', 'negative');
       expect(negativeEffects[0].multiplier).toBe(-0.5); // -50%
 
-      const veryPositiveEffects = getConditionEffects('perfectable', 'veryPositive');
+      const veryPositiveEffects = getConditionEffects(
+        'perfectable',
+        'veryPositive',
+      );
       expect(veryPositiveEffects[0].multiplier).toBe(1.0); // +100%
     });
 
@@ -216,8 +220,10 @@ describe('Game-Accurate Mechanics', () => {
     it('should return correct effects for flowing (both) recipes', () => {
       const effects = getConditionEffects('flowing', 'positive');
       expect(effects).toHaveLength(2);
-      expect(effects.find(e => e.kind === 'control')?.multiplier).toBe(0.25);
-      expect(effects.find(e => e.kind === 'intensity')?.multiplier).toBe(0.25);
+      expect(effects.find((e) => e.kind === 'control')?.multiplier).toBe(0.25);
+      expect(effects.find((e) => e.kind === 'intensity')?.multiplier).toBe(
+        0.25,
+      );
     });
 
     it('should return correct effects for energised (pool cost) recipes', () => {
@@ -233,7 +239,10 @@ describe('Game-Accurate Mechanics', () => {
     });
 
     it('should return correct effects for fortuitous (chance) recipes', () => {
-      const veryPositiveEffects = getConditionEffects('fortuitous', 'veryPositive');
+      const veryPositiveEffects = getConditionEffects(
+        'fortuitous',
+        'veryPositive',
+      );
       expect(veryPositiveEffects[0].kind).toBe('chance');
       expect(veryPositiveEffects[0].bonus).toBe(0.5); // +50% success
     });
@@ -737,12 +746,25 @@ describe('Comparison: Old vs Fixed Behavior', () => {
         scalesWithControl: true,
       };
 
-      const gainsWithBonus = calculateSkillGains(stateWithBonus, refineSkill, config);
-      const gainsWithoutBonus = calculateSkillGains(stateWithoutBonus, refineSkill, config);
+      const gainsWithBonus = calculateSkillGains(
+        stateWithBonus,
+        refineSkill,
+        config,
+      );
+      const gainsWithoutBonus = calculateSkillGains(
+        stateWithoutBonus,
+        refineSkill,
+        config,
+      );
 
       // With +20% control from completion bonus, should have ~20% more perfection
-      expect(gainsWithBonus.perfection).toBeGreaterThan(gainsWithoutBonus.perfection);
-      expect(gainsWithBonus.perfection).toBeCloseTo(gainsWithoutBonus.perfection * 1.2, -1);
+      expect(gainsWithBonus.perfection).toBeGreaterThan(
+        gainsWithoutBonus.perfection,
+      );
+      expect(gainsWithBonus.perfection).toBeCloseTo(
+        gainsWithoutBonus.perfection * 1.2,
+        -1,
+      );
     });
   });
 });
@@ -763,7 +785,12 @@ describe('Safe Expression Parser', () => {
   });
 
   it('should substitute variables correctly', () => {
-    const vars = { control: 100, intensity: 50, maxpool: 200, pool: 150 } as any;
+    const vars = {
+      control: 100,
+      intensity: 50,
+      maxpool: 200,
+      pool: 150,
+    } as any;
     expect(evalExpression('control * 2', vars)).toBeCloseTo(200);
     expect(evalExpression('intensity + control', vars)).toBeCloseTo(150);
   });
@@ -774,8 +801,8 @@ describe('Safe Expression Parser', () => {
     expect(evalExpression('maxpool - pool', vars)).toBeCloseTo(50);
   });
 
-  it('should return 1 for empty/null expressions', () => {
-    expect(evalExpression('', {} as any)).toBe(1);
+  it('returns zero for empty expressions like runtime cy (G:6127938)', () => {
+    expect(evalExpression('', {} as ScalingVariables)).toBe(0);
   });
 
   it('should handle division by zero safely', () => {
@@ -973,7 +1000,10 @@ describe('getConditionEffectsForConfig prefers real data', () => {
       conditionEffectsData: realData as any,
     };
 
-    const effects = getConditionEffectsForConfig(config, 'someInvalidCondition');
+    const effects = getConditionEffectsForConfig(
+      config,
+      'someInvalidCondition',
+    );
     expect(effects).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import type {
 
 export function mechanics0719Scenarios() {
   return [
+    emptyExpressionScenario(),
     successCaptureScenario(),
     ...stackEventScenarios(),
     ...buffGroupScenarios(),
@@ -50,6 +51,31 @@ export function mechanics0719Scenarios() {
       };
     }),
   ];
+}
+
+export function emptyExpressionScenario() {
+  const skill = retargetSkill({
+    qiCost: 0,
+    stabilityCost: 0,
+    effects: [
+      {
+        kind: 'createBuff',
+        buff: {
+          name: 'Empty expression probe',
+          canStack: true,
+          effects: [],
+          initialState: { empty: '' },
+        },
+        stacks: { value: 1 },
+      },
+    ],
+  });
+  return {
+    name: '0719-empty-expression',
+    state: new CraftingState({ qi: 100, stability: 50 }),
+    skill,
+    config: retargetConfig(skill),
+  };
 }
 
 export function successCaptureScenario() {

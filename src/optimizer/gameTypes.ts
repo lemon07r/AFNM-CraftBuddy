@@ -810,7 +810,7 @@ export function evalExpression(
   eqn: string,
   variables: ScalingVariables,
 ): number {
-  if (!eqn) return 1;
+  if (!eqn) return 0;
   const compiled = compileExpression(eqn);
   if (!compiled) {
     console.warn(`[CraftBuddy] Failed to compile expression: ${eqn}`);

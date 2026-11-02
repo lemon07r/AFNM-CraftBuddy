@@ -963,10 +963,10 @@ pub fn get_variable_value(variables: &Variables, key: &str) -> f64 {
     0.0
 }
 
-/// Mirrors `evalExpression`: an empty formula is 1, an unusable formula is 0.
+/// Runtime `cy` (G:6127938): empty and unusable formulas evaluate to zero.
 pub fn eval_expression(eqn: &str, variables: &Variables) -> f64 {
     if eqn.is_empty() {
-        return 1.0;
+        return 0.0;
     }
     let Some(compiled) = compile_expression(eqn) else {
         return 0.0;

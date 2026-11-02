@@ -7,11 +7,19 @@ import {
   stackEventScenarios,
   buffGroupScenarios,
   successCaptureScenario,
+  emptyExpressionScenario,
 } from './fixtures/mechanics0719';
 import { CraftingState } from '../optimizer/state';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
 describe('AFNM 0.7.19 audited mechanics', () => {
+  it('seeds empty-expression state with zero, not a multiplicative identity', () => {
+    const { state, skill, config } = emptyExpressionScenario();
+    expect(
+      applySkill(state, skill, config)!.buffs.get('empty_expression_probe')
+        ?.internalState,
+    ).toEqual({ empty: 0 });
+  });
   it('captures success after synchronous buff-cost listeners', () => {
     const { state, skill, config } = successCaptureScenario();
     expect(applySkill(state, skill, config)!.completion).toBe(100);
