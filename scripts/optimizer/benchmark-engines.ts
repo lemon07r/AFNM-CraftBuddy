@@ -229,7 +229,7 @@ const FIXTURE_CONTRACTS: FixtureContract[] = [
     fixture: 'user-report-overcraft-endgame',
     mustRecommendOneOf: ['gentle_stabilize'],
     notes:
-      'runtime-findings §1 (G:14930153–14930735,14953475–14953685): late stability cleanup lets Gentle Stabilize repay overdraft and bank 44,604 perfection; Focus into First Peak ends at 37,115. Retain the banked-value regression, not the obsolete Focus opening.',
+      'docs/RUNTIME_EVIDENCE.md §19 (G:14930153–14930735,14953475–14953685): late stability cleanup lets Gentle Stabilize repay overdraft and bank 44,604 perfection; Focus into First Peak ends at 37,115. Retain the banked-value regression, not the obsolete Focus opening.',
   },
   {
     fixture: 'user-report-resonance-regression',
@@ -272,7 +272,7 @@ const FIXTURE_CONTRACTS: FixtureContract[] = [
     searchBudget: { maxNodes: 6000, timeBudgetMs: 120000 },
     mustRecommendOneOf: ['unstable_re-energisation'],
     notes:
-      'runtime-findings §1 (G:14930153–14930735,14953475–14953685): at stability 8, fusion pays 10 and only survives the 75% +7 recovery; support pays 5 and guarantees stability 3. Accept temporary heat zero to stabilize, then recover heat through fusion; fc0b411 predates verified overdraft.',
+      'docs/RUNTIME_EVIDENCE.md §19 (G:14930153–14930735,14953475–14953685): at stability 8, fusion pays 10 and only survives the 75% +7 recovery; support pays 5 and guarantees stability 3. Accept temporary heat zero to stabilize, then recover heat through fusion; fc0b411 predates verified overdraft.',
   },
   {
     fixture: 'low-stability-step-before',

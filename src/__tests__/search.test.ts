@@ -5293,10 +5293,16 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation!.skill.type).toBe('stabilize');
     expect(forcefulStabilize).toBeDefined();
     expect(invasiveRefine).toBeDefined();
-    // runtime-findings §1: 1 - 17 + 7 = -9 even when the recovery procs.
+    // docs/RUNTIME_EVIDENCE.md §19: 1 - 17 + 7 = -9 even when recovery procs.
     // This alternative now ends the craft, rather than continuing on a proc.
     expect(invasiveRefine!.requiresProbabilisticSurvival).toBe(false);
-    expect(calculateActionSurvivabilityFloor(input.state, invasiveRefine!.skill, input.config)).toMatchObject({ stability: 0, survivalProbability: 0 });
+    expect(
+      calculateActionSurvivabilityFloor(
+        input.state,
+        invasiveRefine!.skill,
+        input.config,
+      ),
+    ).toMatchObject({ stability: 0, survivalProbability: 0 });
     expect(
       allRecommendations.findIndex(
         (recommendation) => recommendation.skill.key === 'forceful_stabilize',
@@ -5512,18 +5518,20 @@ describe('scoreState (isolated)', () => {
     );
 
     expect(result.recommendation).not.toBeNull();
-    // runtime-findings §1: a Gentle Stabilize tick pays back overdraft before
+    // docs/RUNTIME_EVIDENCE.md §19: Gentle Stabilize repays overdraft before
     // cleanup (7 - 9 + 6.25 -> 4), enabling a longer line. Focus -> First Peak
     // instead ends at 37,115 perfection (7 - 27 -> 0).
     expect(result.recommendation!.skill.key).toBe('gentle_stabilize');
     expect(result.optimalRotation).toEqual([
-      'Gentle Stabilize', 'Focus', 'Repurpose Qi', 'Unstable Refine',
-      'Gentle Re-energisation', 'Unstable Refine',
+      'Gentle Stabilize',
+      'Focus',
+      'Repurpose Qi',
+      'Unstable Refine',
+      'Gentle Re-energisation',
+      'Unstable Refine',
     ]);
     expect(result.expectedFinalState?.stability).toBe(0);
-    expect(result.expectedFinalState?.perfection ?? 0).toBeGreaterThan(
-      37115,
-    );
+    expect(result.expectedFinalState?.perfection ?? 0).toBeGreaterThan(37115);
 
     // Terminal scores must no longer collapse onto one value: the craft-end
     // bonus-roll fraction now separates craft-ending lines by the value they
@@ -5648,9 +5656,15 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation!.skill.type).toBe('stabilize');
     expect(forcefulStabilize).toBeDefined();
     expect(invasiveRefine).toBeDefined();
-    // runtime-findings §1: 8 - 17 + 7 = -2 even on the recovery branch.
+    // docs/RUNTIME_EVIDENCE.md §19: 8 - 17 + 7 = -2 even on the recovery branch.
     expect(invasiveRefine!.requiresProbabilisticSurvival).toBe(false);
-    expect(calculateActionSurvivabilityFloor(input.state, invasiveRefine!.skill, input.config)).toMatchObject({ stability: 0, survivalProbability: 0 });
+    expect(
+      calculateActionSurvivabilityFloor(
+        input.state,
+        invasiveRefine!.skill,
+        input.config,
+      ),
+    ).toMatchObject({ stability: 0, survivalProbability: 0 });
     expect(
       allRecommendations.findIndex(
         (recommendation) => recommendation.skill.key === 'forceful_stabilize',
@@ -5916,17 +5930,32 @@ describe('scoreState (isolated)', () => {
       'unstable_re-energisation',
     );
     expect(result.recommendation).not.toBeNull();
-    // runtime-findings §1 supersedes fc0b411's heat-only preference: fusion
-    // overdraws (8 - 10), survives only on the +7 proc, and has floor 0.
+    // docs/RUNTIME_EVIDENCE.md §19 supersedes fc0b411's heat-only preference:
+    // fusion overdraws (8 - 10), survives only on the +7 proc, and has floor 0.
     // Support pays 5, has floor 3, and can restore heat after stabilizing.
     expect(result.recommendation!.skill.type).toBe('support');
     expect(result.recommendation!.skill.key).toBe('unstable_re-energisation');
     expect(unstableReEnergisation).toBeDefined();
     expect(result.recommendation!.requiresProbabilisticSurvival).toBe(false);
-    const fusion = input.config.skills.find((skill) => skill.key === 'explosive_fusion')!;
-    expect(calculateActionSurvivabilityFloor(input.state, fusion, input.config)).toMatchObject({ stability: 0, survivalProbability: 0.75 });
-    expect(calculateActionSurvivabilityFloor(input.state, result.recommendation!.skill, input.config)).toMatchObject({ stability: 3, survivalProbability: 1 });
-    expect(result.optimalRotation?.slice(0, 4)).toEqual(['Unstable Re-energisation', 'Harmonious Stabilize', 'Delayed Fusion', 'Explosive Fusion']);
+    const fusion = input.config.skills.find(
+      (skill) => skill.key === 'explosive_fusion',
+    )!;
+    expect(
+      calculateActionSurvivabilityFloor(input.state, fusion, input.config),
+    ).toMatchObject({ stability: 0, survivalProbability: 0.75 });
+    expect(
+      calculateActionSurvivabilityFloor(
+        input.state,
+        result.recommendation!.skill,
+        input.config,
+      ),
+    ).toMatchObject({ stability: 3, survivalProbability: 1 });
+    expect(result.optimalRotation?.slice(0, 4)).toEqual([
+      'Unstable Re-energisation',
+      'Harmonious Stabilize',
+      'Delayed Fusion',
+      'Explosive Fusion',
+    ]);
   });
 });
 

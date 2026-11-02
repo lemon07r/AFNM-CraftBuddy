@@ -1575,14 +1575,37 @@ string positions and should be re-resolved after a game update.
 
 ### Stability cleanup, not per-application clamping
 
-`G:14930153–14930735` adds/subtracts stability without a zero floor or upper
-cap; payment calls the same applier (`G:14946058`). Buffs and harmony run
+`r7c` (`G:14930153`) subtracts via `r.stability+=l` (`G:14930317`) and restores
+via `r.stability+=t` (`G:14930735`), without a zero floor or upper cap;
+payment calls the same applier (`G:14946058`). Buffs and harmony run
 before cleanup (`G:14952843–14953475`); `G:14953685` finally bounds stability
 to zero/recipe stability minus penalty, then floors it. Thus 1 − 10 + 7 ends
 at 0, not 7; 8/max 10 + 5 − 5 ends at 8, not 5. Max-stability effects also
 do not immediately cap current stability. Qi differs: ordinary payment and
 restoration clamp immediately (`G:14935853–14936307`). Local early stability
 bounds and the separate floor helper were confirmed gaps at inspection time.
+
+### Percentage conditions read running progress
+
+Technique/mastery effect applier `y7c` checks
+`ZS(e.condition,t,a,0,r,i)` with the already-mutated progress object `r`
+(`G:14941612–14941690`). The supplied review coordinate `14941271` identifies
+this region when slicing decoded text, not Buffer bytes. `ZS`
+(`G:6332600–6333380`) reads stability, completion and perfection from that live
+object, divided by `recipeStats.stability`, `.completion` and `.perfection`.
+Thus stability gates see payment and earlier effects; completion/perfection
+gates see earlier bar applications. These are recipe targets, not the current
+decayed stability maximum or overcraft bar caps. CraftBuddy captures recipe
+stability as `initialMaxStability`.
+
+By contrast, pool conditions use snapshot `n.pool/n.maxpool`, named-buff
+conditions use snapshot `n[buff.name]`, and expression conditions evaluate
+against that same variable scope (plus `stacks`/`count`). The ordinary buff
+executor also passes live progress to `ZS` (`G:14938012`); this evidence does
+not certify CraftBuddy's separate ordinary/triggered buff condition scopes or
+fully synchronous trigger interleaving. The focused correction covers running
+technique percentage gates in both gains and transitions, retaining the
+existing expected-state approximation for earlier chance effects.
 
 ### Discordance precedes the entire forecast queue
 
@@ -1608,6 +1631,16 @@ emit loss. Direct harmony-created/replaced buffs and Completion Bonus can
 bypass those helpers/events. Dispatch is synchronous, checks held positive
 stacks and guards re-entry by trigger/buff name; numeric `amount` enters scope,
 string buffName does not (`G:14950331–14950464`).
+
+Nonpositive gain-helper results remain held: the ordinary buff executor and
+pre-existing-name turn loop have no positive-stack guard
+(`G:14940600–14941200`, `G:14952843`), and cleanup does not remove them.
+Their ordinary effects and stat contributions can therefore still matter.
+The count-variable builder `K1i` explicitly skips `stacks<=0` (`G:6329953`),
+as do triggered listeners (`G:14950531`); this is not a blanket deletion rule.
+Extraction and search keys must retain such entries even though count aliases
+omit them. Explicit consume/negate or a buff's own negative stack tick can
+remove the instance through the helpers above.
 
 Both technique/mastery and buff executors implement `modifyBuffGroup`
 (`G:14939530–14939911`, `G:14943100–14943481`). Match exact buffType **or name**,
