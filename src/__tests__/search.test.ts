@@ -220,6 +220,72 @@ const FORCEFUL_STABILIZE = createCustomSkill({
 describe('greedySearch', () => {
   const config = createTestConfig();
 
+  it.each([greedySearch, lookaheadSearch])(
+    'keeps goals-met roots live below actual caps and reports goals independently',
+    (search) => {
+      const state = new CraftingState({
+        qi: 100,
+        stability: 50,
+        completion: 100,
+        perfection: 100,
+      });
+      const liveConfig = createTestConfig({
+        maxCompletion: 1000,
+        maxPerfection: 1000,
+      });
+      const live = search(state, liveConfig, 100, 100);
+      expect(live.status).toBe('live');
+      expect(live.targetsMet).toBe(true);
+      expect(live.recommendation).not.toBeNull();
+      const blocked = search(state, { ...liveConfig, skills: [] }, 100, 100);
+      expect(blocked.status).toBe('blocked');
+      expect(blocked.targetsMet).toBe(true);
+      expect(blocked.recommendation).toBeNull();
+      const resolved = search(
+        new CraftingState({
+          qi: 100,
+          stability: 0,
+          completion: 100,
+          perfection: 100,
+        }),
+        { ...liveConfig, skills: [] },
+        100,
+        100,
+      );
+      expect(resolved.status).toBe('autoResolved');
+      expect(resolved.recommendation).toBeNull();
+    },
+  );
+
+  it('treats Wait as an ordinary costed technique, not free resolution', () => {
+    const wait = createCustomSkill({
+      name: 'Wait',
+      key: 'wait',
+      type: 'support',
+      stabilityCost: 10,
+      consumesTurn: true,
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 30,
+      completion: 100,
+      perfection: 100,
+    });
+    const liveConfig = createTestConfig({
+      skills: [wait],
+      maxCompletion: 1000,
+      maxPerfection: 1000,
+    });
+    const result = greedySearch(state, liveConfig, 100, 100);
+    expect(result.status).toBe('live');
+    expect(result.recommendation?.skill.key).toBe('wait');
+    expect(result.recommendation?.effectiveCosts.stability).toBe(10);
+    expect(result.recommendation?.endsCraft).toBe(false);
+    const successor = applySkill(state, wait, liveConfig, [], 100)!;
+    expect(successor.stability).toBe(20);
+    expect(successor.step).toBe(state.step + 1);
+  });
+
   it('should return targetsMet when targets are already met', () => {
     const state = new CraftingState({
       qi: 100,
@@ -231,11 +297,8 @@ describe('greedySearch', () => {
     const result = greedySearch(state, config, 100, 100);
 
     expect(result.targetsMet).toBe(true);
-    // Auto-finish horizon: recommend Finish Craft rather than a null no-op.
-    expect(
-      result.recommendation === null ||
-        result.recommendation.skill.actionKind === 'finish',
-    ).toBe(true);
+    expect(result.status).toBe('autoResolved');
+    expect(result.recommendation).toBeNull();
   });
 
   it('should return isTerminal when no skills can be applied', () => {
@@ -468,10 +531,8 @@ describe('lookaheadSearch', () => {
     const result = lookaheadSearch(state, config, 100, 100, 3);
 
     expect(result.targetsMet).toBe(true);
-    expect(
-      result.recommendation === null ||
-        result.recommendation.skill.actionKind === 'finish',
-    ).toBe(true);
+    expect(result.status).toBe('autoResolved');
+    expect(result.recommendation).toBeNull();
   });
 
   it('should return targetsMet for completion-only crafts when completion target is reached', () => {
@@ -485,10 +546,8 @@ describe('lookaheadSearch', () => {
     const result = lookaheadSearch(state, config, 100, 0, 3);
 
     expect(result.targetsMet).toBe(true);
-    expect(
-      result.recommendation === null ||
-        result.recommendation.skill.actionKind === 'finish',
-    ).toBe(true);
+    expect(result.status).toBe('autoResolved');
+    expect(result.recommendation).toBeNull();
   });
 
   it('should return targetsMet for perfection-only crafts when perfection target is reached', () => {
@@ -502,10 +561,8 @@ describe('lookaheadSearch', () => {
     const result = lookaheadSearch(state, config, 0, 100, 3);
 
     expect(result.targetsMet).toBe(true);
-    expect(
-      result.recommendation === null ||
-        result.recommendation.skill.actionKind === 'finish',
-    ).toBe(true);
+    expect(result.status).toBe('autoResolved');
+    expect(result.recommendation).toBeNull();
   });
 
   it('should return isTerminal when no skills can be applied', () => {
@@ -1333,15 +1390,18 @@ describe('finish craft policy', () => {
     });
 
     const result = lookaheadSearch(state, config, 130, 130, 4);
-    const finishCraft = result.alternativeSkills.find(
-      (recommendation) => recommendation.skill.actionKind === 'finish',
-    );
+    const candidates = [result.recommendation!, ...result.alternativeSkills];
 
     expect(result.recommendation?.skill.name).toBe('Energised Fusion');
     expect(result.recommendation?.skill.actionKind).not.toBe('finish');
     // Finish Craft is only available when the runtime would auto-end the craft.
     // This mid-craft state is still live, so voluntary early finish is absent.
-    expect(finishCraft).toBeUndefined();
+    expect(result.status).toBe('live');
+    expect(
+      candidates.every((rec) =>
+        config.skills.some((skill) => skill.key === rec.skill.key),
+      ),
+    ).toBe(true);
   });
 
   it('keeps pursuing a guaranteed completion line when it is better than finishing early', () => {
@@ -1464,7 +1524,7 @@ describe('finish craft policy', () => {
     expect(result.recommendation).toBeNull();
   });
 
-  it('offers Finish Craft exactly when the runtime would auto-finish', () => {
+  it('reports autoResolved without a move when the runtime would auto-finish', () => {
     const config = createTestConfig({
       minStability: 0,
       skills: [
@@ -1489,12 +1549,13 @@ describe('finish craft policy', () => {
 
     const result = lookaheadSearch(state, config, 100, 100, 2);
 
-    expect(result.recommendation?.skill.actionKind).toBe('finish');
-    expect(result.recommendation?.endsCraft).toBe(true);
-    expect(result.recommendation?.projectedSuccessChance).toBe(1);
+    expect(result.status).toBe('autoResolved');
+    expect(result.recommendation).toBeNull();
+    expect(result.alternativeSkills).toEqual([]);
+    expect(result.outcomeProjection?.willAutoFinish).toBe(true);
   });
 
-  it('does not offer Finish Craft after the craft is already dead', () => {
+  it('classifies zero stability as autoResolved before checking legality', () => {
     const config = createTestConfig({
       minStability: 0,
       skills: [energizedFusion, simpleRefine],
@@ -1508,6 +1569,7 @@ describe('finish craft policy', () => {
     });
 
     const result = lookaheadSearch(state, config, 130, 130, 4);
+    expect(result.status).toBe('autoResolved');
 
     expect(result.isTerminal).toBe(true);
     expect(result.recommendation).toBeNull();
@@ -1561,12 +1623,15 @@ describe('finish craft policy', () => {
     });
 
     const result = lookaheadSearch(state, config, 130, 130, 4);
-    const finishCraft = result.alternativeSkills.find(
-      (recommendation) => recommendation.skill.actionKind === 'finish',
-    );
+    const candidates = [result.recommendation!, ...result.alternativeSkills];
 
     // Not at auto-finish flats yet, so Finish Craft stays unavailable.
-    expect(finishCraft).toBeUndefined();
+    expect(result.status).toBe('live');
+    expect(
+      candidates.every((rec) =>
+        config.skills.some((skill) => skill.key === rec.skill.key),
+      ),
+    ).toBe(true);
     expect(result.targetsMet).toBe(false);
     expect(result.recommendation?.skill.name).toBe('Simple Refine');
   });
@@ -1734,14 +1799,19 @@ describe('finish craft policy', () => {
     });
 
     const result = lookaheadSearch(state, config, 100, 100, 4);
-    const finishCraft = result.alternativeSkills.find(
-      (recommendation) => recommendation.skill.actionKind === 'finish',
-    );
+    const candidates = [result.recommendation!, ...result.alternativeSkills];
 
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.name).toBe('Forceful Stabilize');
     // Auto-finish flats are the max caps (200); 100/100 is still live.
-    expect(finishCraft).toBeUndefined();
+    expect(result.status).toBe('live');
+    // Base success is secured, but the cap-clamped Sublime goals are still unmet.
+    expect(result.targetsMet).toBe(false);
+    expect(
+      candidates.every((rec) =>
+        config.skills.some((skill) => skill.key === rec.skill.key),
+      ),
+    ).toBe(true);
   });
 
   it('treats an auto-finishing action as terminal instead of leftover perfection spam', () => {
@@ -5709,21 +5779,21 @@ describe('scoreState (isolated)', () => {
       ): recommendation is NonNullable<typeof result.recommendation> =>
         Boolean(recommendation),
     );
-    const finishCraft = allRecommendations.find(
-      (recommendation) => recommendation.skill.key === '__finish_craft__',
-    );
 
     expect(snapshot.output?.recommendation?.skill?.key).toBe(
       '__finish_craft__',
     );
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.actionKind).not.toBe('finish');
-    // Finish Craft is only offered at the runtime auto-finish horizon.
-    // This snapshot is still mid-runway, so voluntary finish is absent.
-    expect(finishCraft).toBeUndefined();
+    expect(result.status).toBe('live');
+    expect(
+      allRecommendations.every((rec) =>
+        input.config.skills.some((skill) => skill.key === rec.skill.key),
+      ),
+    ).toBe(true);
   });
 
-  it('replays the user fairy recovery snapshot and ranks live continuation above Finish Craft', () => {
+  it('reads historical Finish evidence but recommends only real live recovery actions', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'user-report-fairy-recovery.snapshot.json',
     );
@@ -5754,9 +5824,6 @@ describe('scoreState (isolated)', () => {
       ): recommendation is NonNullable<typeof result.recommendation> =>
         Boolean(recommendation),
     );
-    const finishCraft = allRecommendations.find(
-      (recommendation) => recommendation.skill.key === '__finish_craft__',
-    );
     const fairyRecovery = allRecommendations.find(
       (recommendation) => recommendation.skill.key === "fairy's_blessing",
     );
@@ -5771,8 +5838,12 @@ describe('scoreState (isolated)', () => {
       "fairy's_blessing",
       'overbearing_stabilization',
     ]).toContain(result.recommendation!.skill.key);
-    // Mid-craft recovery: no auto-finish yet, so Finish Craft stays off the list.
-    expect(finishCraft).toBeUndefined();
+    expect(result.status).toBe('live');
+    expect(
+      allRecommendations.every((rec) =>
+        input.config.skills.some((skill) => skill.key === rec.skill.key),
+      ),
+    ).toBe(true);
     expect(fairyRecovery).toBeDefined();
   });
 

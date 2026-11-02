@@ -1,7 +1,6 @@
 import {
   BuffType,
   CraftingState,
-  FINISH_CRAFT_KEY,
   mergePartitionedResults,
   partitionRootSkillKeys,
   reviveSearchInput,
@@ -161,7 +160,7 @@ describe('searchBackend wire format', () => {
 });
 
 describe('partitionRootSkillKeys', () => {
-  const keys = ['a', 'b', 'c', 'd', 'e', FINISH_CRAFT_KEY];
+  const keys = ['a', 'b', 'c', 'd', 'e', 'wait'];
 
   it('returns a copy of all keys for a single partition', () => {
     const partition = partitionRootSkillKeys(keys, 0, 1);
@@ -174,7 +173,7 @@ describe('partitionRootSkillKeys', () => {
       partitionRootSkillKeys(keys, index, 4),
     );
     expect(partitions[0]).toEqual(['a', 'e']);
-    expect(partitions[1]).toEqual(['b', FINISH_CRAFT_KEY]);
+    expect(partitions[1]).toEqual(['b', 'wait']);
     expect(partitions[2]).toEqual(['c']);
     expect(partitions[3]).toEqual(['d']);
     const flat = partitions.reduce<string[]>(
@@ -224,6 +223,7 @@ describe('mergePartitionedResults', () => {
       .map(([key, score]) => makeCandidate(key, score))
       .sort((a, b) => b.score - a.score);
     return {
+      status: ordered.length ? 'live' : 'blocked',
       recommendation: ordered[0] ?? null,
       alternativeSkills: ordered.slice(1),
       isTerminal: ordered.length === 0,
@@ -302,20 +302,27 @@ describe('mergePartitionedResults', () => {
     expect(merged.alternativeSkills[0]?.qualityRating).toBeLessThanOrEqual(100);
   });
 
-  it('does not promote synthetic finish solely because a better live line is probabilistic', () => {
+  it('merges autoResolved before candidates without exposing an executable action', () => {
     const risky = makePartial([['live', 100]], { nodes: 1, hits: 0, depth: 2 });
     risky.recommendation!.yieldsToSafeAlternative = true;
-    const finish = makePartial([[FINISH_CRAFT_KEY, 50]], {
+    const resolved = makePartial([], {
       nodes: 1,
       hits: 0,
       depth: 2,
     });
-    expect(
-      mergePartitionedResults([risky, finish]).recommendation?.skill.key,
-    ).toBe('live');
+    resolved.status = 'autoResolved';
+    for (const partials of [
+      [risky, resolved],
+      [resolved, risky],
+    ]) {
+      const merged = mergePartitionedResults(partials);
+      expect(merged.status).toBe('autoResolved');
+      expect(merged.recommendation).toBeNull();
+      expect(merged.alternativeSkills).toEqual([]);
+    }
   });
 
-  it('orders safe, risky and finish candidates the same in every partition order', () => {
+  it('orders real safe and risky candidates the same in every partition order', () => {
     const build = (): SearchResult[] => {
       const safe = makePartial([['safe', 50]], { nodes: 1, hits: 0, depth: 2 });
       const risky = makePartial([['risky', 100]], {
@@ -324,12 +331,12 @@ describe('mergePartitionedResults', () => {
         depth: 2,
       });
       risky.recommendation!.yieldsToSafeAlternative = true;
-      const finish = makePartial([[FINISH_CRAFT_KEY, 75]], {
+      const wait = makePartial([['wait', 75]], {
         nodes: 1,
         hits: 0,
         depth: 2,
       });
-      return [safe, risky, finish];
+      return [safe, risky, wait];
     };
     const permutations = [
       [0, 1, 2],
@@ -347,7 +354,7 @@ describe('mergePartitionedResults', () => {
       );
     });
     for (const order of orders) {
-      expect(order).toEqual([FINISH_CRAFT_KEY, 'safe', 'risky']);
+      expect(order).toEqual(['wait', 'safe', 'risky']);
     }
   });
 
@@ -438,10 +445,7 @@ describe('search backend client fallback', () => {
       scope: 'test-scope',
       threads: 1,
       baseSeed: 0,
-      rootSkillKeys: [
-        ...input.config.skills.map((skill) => skill.key),
-        FINISH_CRAFT_KEY,
-      ],
+      rootSkillKeys: [...input.config.skills.map((skill) => skill.key)],
       input: serializeSearchInput(input),
     });
 

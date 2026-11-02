@@ -180,9 +180,13 @@ export interface OutcomeProjection {
 }
 
 export interface SearchResult {
+  /** Resolution is independent of goal achievement and action legality. */
+  status: 'live' | 'autoResolved' | 'blocked';
   recommendation: SkillRecommendation | null;
   alternativeSkills: SkillRecommendation[];
+  /** Compatibility flag: true for either automatic resolution or blocked legality. */
   isTerminal: boolean;
+  /** Whether the root meets the effective goals; never a resolution instruction. */
   targetsMet: boolean;
   /**
    * Outcome the searched-from state is on track for. Optional so older replay
@@ -211,6 +215,8 @@ export interface SearchResult {
     qi: number;
     turnsRemaining: number;
     projectedSuccessChance?: number;
+    targetsMet?: boolean;
+    outcomeProjection?: OutcomeProjection;
   };
   /** Search performance metrics */
   searchMetrics?: {
@@ -377,33 +383,6 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
 };
 
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
-export const FINISH_CRAFT_KEY = '__finish_craft__';
-const FINISH_CRAFT_NAME = 'Finish Craft';
-const ZERO_GAINS: GainPreview = Object.freeze({
-  completion: 0,
-  perfection: 0,
-  stability: 0,
-});
-const ZERO_COSTS: ActionCostPreview = Object.freeze({
-  qi: 0,
-  stability: 0,
-});
-const FINISH_CRAFT_SKILL: SkillDefinition = Object.freeze({
-  name: FINISH_CRAFT_NAME,
-  key: FINISH_CRAFT_KEY,
-  qiCost: 0,
-  stabilityCost: 0,
-  baseCompletionGain: 0,
-  basePerfectionGain: 0,
-  stabilityGain: 0,
-  maxStabilityChange: 0,
-  buffType: BuffType.NONE,
-  buffDuration: 0,
-  buffMultiplier: 1,
-  type: 'support',
-  actionKind: 'finish',
-  consumesTurn: false,
-});
 
 // ── Scoring weights ─────────────────────────────────────────────────────────
 // Each constant documents its magnitude relative to other scoring layers.
@@ -733,7 +712,7 @@ function buildScoringContext(
           skill.consumesTurn !== undefined
             ? skill.consumesTurn
             : skill.actionKind !== 'item';
-        if (!consumesTurn || skill.actionKind === 'finish') {
+        if (!consumesTurn) {
           return null;
         }
 
@@ -1194,17 +1173,10 @@ export function normalizeForecastConditionQueue(
 }
 
 function actionConsumesTurn(skill: SkillDefinition): boolean {
-  if (skill.actionKind === 'finish') {
-    return false;
-  }
   if (skill.consumesTurn !== undefined) {
     return skill.consumesTurn;
   }
   return skill.actionKind !== 'item';
-}
-
-function isFinishAction(skill: SkillDefinition): boolean {
-  return skill.actionKind === 'finish' || skill.key === FINISH_CRAFT_KEY;
 }
 
 /**
@@ -2896,7 +2868,7 @@ function hasFatalTechniqueFailure(
 ): boolean {
   // Expected stability can stay positive when success restores stability, so
   // the failure transition is the only reliable test.
-  if (skill.actionKind === 'item' || isFinishAction(skill)) return false;
+  if (skill.actionKind === 'item') return false;
   const expected = calculateSkillGains(state, skill, config, conditionEffects);
   const onSuccess = calculateSkillGains(
     state,
@@ -2981,7 +2953,7 @@ function hasGuaranteedSafeStabilizeAction(
   currentCondition: CraftingConditionType,
 ): boolean {
   return availableSkills.some((skill) => {
-    if (skill.type !== 'stabilize' || isFinishAction(skill)) {
+    if (skill.type !== 'stabilize') {
       return false;
     }
     const floor = calculateActionSurvivabilityFloor(
@@ -3013,22 +2985,14 @@ function computeScoreTieWindow(totalTargetMagnitude: number): number {
  * craft below target is not viable: it ranks with the gambles by score, and
  * without any viable safe line candidates keep score order, so a certain
  * failure never beats a winnable gamble. When no line is unsafe, candidates
- * also keep score order. Finish Craft must not jump ahead of a
- * better continuation solely because that continuation is unsafe, so finish
- * actions are placed by score against the safety-ordered live lines. The
- * result does not depend on input order.
+ * also keep score order. The result does not depend on input order.
  */
 export function orderRecommendationsBySafety<T extends SkillRecommendation>(
   recommendations: readonly T[],
   compareByScore: (a: T, b: T) => number,
   isUnsafe: (recommendation: T) => boolean,
 ): T[] {
-  const live: T[] = [];
-  const finishes: T[] = [];
-  for (const recommendation of recommendations) {
-    if (isFinishAction(recommendation.skill)) finishes.push(recommendation);
-    else live.push(recommendation);
-  }
+  const live = [...recommendations];
   const yieldsToViableLine = (recommendation: T): boolean =>
     isUnsafe(recommendation) || recommendation.endsCraftBelowTarget === true;
   const applySafetyTier =
@@ -3041,21 +3005,7 @@ export function orderRecommendationsBySafety<T extends SkillRecommendation>(
     }
     return compareByScore(a, b);
   });
-  if (finishes.length === 0) return live;
-  finishes.sort(compareByScore);
-  const ordered: T[] = [];
-  let liveIndex = 0;
-  for (const finish of finishes) {
-    while (
-      liveIndex < live.length &&
-      compareByScore(live[liveIndex], finish) <= 0
-    ) {
-      ordered.push(live[liveIndex++]);
-    }
-    ordered.push(finish);
-  }
-  for (; liveIndex < live.length; liveIndex++) ordered.push(live[liveIndex]);
-  return ordered;
+  return live;
 }
 
 /** Candidate-set-relative score coordinates, not outcome probabilities. */
@@ -3173,10 +3123,6 @@ function generateReasoning(
   targetPerfection: number,
   options: { readonly endsCraft?: boolean } = {},
 ): string {
-  if (isFinishAction(skill)) {
-    return 'Best available option';
-  }
-
   const endsCraft = options.endsCraft === true;
   const reasons: string[] = [];
 
@@ -3243,14 +3189,6 @@ function generateReasoning(
   }
 
   return reasons.length > 0 ? reasons.join('; ') : 'Best available option';
-}
-
-function generateFinishReasoning(successChance: number): string {
-  const successPct = Math.round(successChance * 100);
-  if (successPct >= 100) {
-    return 'Guaranteed craft success available now';
-  }
-  return `End the craft now for ${successPct}% success chance`;
 }
 
 /**
@@ -3437,9 +3375,6 @@ function populateSetupHints(
   const limit = Math.min(SETUP_HINT_CANDIDATE_LIMIT, recommendations.length);
   for (let index = 0; index < limit; index++) {
     const rec = recommendations[index];
-    if (isFinishAction(rec.skill)) {
-      continue;
-    }
     const after = applySkill(
       state,
       rec.skill,
@@ -3568,76 +3503,26 @@ function runGreedySearch(
     normalizeConditionType(currentConditionType);
   const stateWillAutoFinish = (candidate: CraftingState): boolean =>
     willAutoFinish(candidate, outcomeBands);
-  const getFinishAction = (
-    candidate: CraftingState,
-  ): (SkillRecommendation & UnsafeCandidateClassification) | null => {
-    // Runtime has no voluntary early finish. Only offer Finish Craft when the
-    // auto-finish predicate already holds. Dead crafts (stability <= 0) are
-    // terminal without a finish action.
-    if (candidate.stability <= 0 || !stateWillAutoFinish(candidate)) {
-      return null;
-    }
-    const projectedSuccessChance = calculateFinishSuccessChance(
-      candidate,
-      targetCompletion,
-    );
-    if (projectedSuccessChance <= 0) {
-      return null;
-    }
-
+  if (stateWillAutoFinish(state)) {
     return {
-      skill: FINISH_CRAFT_SKILL,
-      expectedGains: { ...ZERO_GAINS },
-      immediateGains: { ...ZERO_GAINS },
-      effectiveCosts: { ...ZERO_COSTS },
-      score: scoreFinishedOutcome(
-        candidate,
-        targetCompletion,
-        targetPerfection,
-        isSublime,
-        targetMult,
-        config.maxCompletion,
-        config.maxPerfection,
-        scoringCtx,
-        cfg.goalPriorityBias,
-        cfg.overcraftAmbition,
-        cfg.perfectionBandGoal,
-        cfg.completionBandCeiling,
-      ),
-      reasoning: generateFinishReasoning(projectedSuccessChance),
-      projectedSuccessChance,
-      endsCraft: true,
-      isTerminal: false,
-      isTerminalUnmet: false,
-      requiresProbabilisticSurvival: false,
-    };
-  };
-
-  const finishAction = getFinishAction(state);
-
-  // Auto-finish horizon: craft is about to end — recommend Finish Craft.
-  if (finishAction) {
-    return {
-      recommendation: finishAction,
+      status: 'autoResolved',
+      recommendation: null,
       alternativeSkills: [],
-      isTerminal: false,
+      isTerminal: true,
       targetsMet: goalsMet(state, modeCompGoal, modePerfGoal),
     };
   }
 
-  // Goals banked but craft still live (e.g. overcraft caps above tier flats):
-  // keep searching. Only report targetsMet with no move when nothing remains.
+  // Goals banked but craft still live (e.g. caps above tier flats): keep searching.
 
   // Check if terminal state
-  if (
-    isTerminalState(state, config, normalizedCurrentCondition) &&
-    !finishAction
-  ) {
+  if (isTerminalState(state, config, normalizedCurrentCondition)) {
     return {
+      status: 'blocked',
       recommendation: null,
       alternativeSkills: [],
       isTerminal: true,
-      targetsMet: false,
+      targetsMet: goalsMet(state, modeCompGoal, modePerfGoal),
       blockedReasons: getBlockedSkillReasons(
         state,
         config,
@@ -3663,16 +3548,15 @@ function runGreedySearch(
       return cached;
     }
 
-    const displayState = isFinishAction(recommendation.skill)
-      ? state
-      : (applySkill(
-          state,
-          recommendation.skill,
-          config,
-          conditionEffects,
-          targetCompletion,
-          normalizedCurrentCondition,
-        ) ?? state);
+    const displayState =
+      applySkill(
+        state,
+        recommendation.skill,
+        config,
+        conditionEffects,
+        targetCompletion,
+        normalizedCurrentCondition,
+      ) ?? state;
     const metrics: CandidateTieBreakMetrics = {
       immediateProgress: calculateImmediateProgressTowardGoals(
         state,
@@ -3806,44 +3690,43 @@ function runGreedySearch(
     // Auto-finish horizon: score via finished outcome and stop the craft.
     // Goal-met-but-not-auto-finishing stays on the live scorer (no finish
     // penalties) so resonance/overcraft snapshots do not regress.
-    const score =
-      terminalState.isTerminal || endsByAutoFinish
-        ? scoreFinishedOutcome(
-            newState,
-            targetCompletion,
-            targetPerfection,
-            isSublime,
-            targetMult,
-            config.maxCompletion,
-            config.maxPerfection,
-            scoringCtx,
-            cfg.goalPriorityBias,
-            cfg.overcraftAmbition,
-            cfg.perfectionBandGoal,
-            cfg.completionBandCeiling,
-          )
-        : scoreState(
-            newState,
-            targetCompletion,
-            targetPerfection,
-            isSublime,
-            targetMult,
-            isTraining,
-            config.maxCompletion,
-            config.maxPerfection,
-            scoringCtx,
-            cfg.goalPriorityBias,
-            cfg.overcraftAmbition,
-            cfg.perfectionBandGoal,
-            cfg.completionBandCeiling,
-          );
+    const score = endsByAutoFinish
+      ? scoreFinishedOutcome(
+          newState,
+          targetCompletion,
+          targetPerfection,
+          isSublime,
+          targetMult,
+          config.maxCompletion,
+          config.maxPerfection,
+          scoringCtx,
+          cfg.goalPriorityBias,
+          cfg.overcraftAmbition,
+          cfg.perfectionBandGoal,
+          cfg.completionBandCeiling,
+        )
+      : scoreState(
+          newState,
+          targetCompletion,
+          targetPerfection,
+          isSublime,
+          targetMult,
+          isTraining,
+          config.maxCompletion,
+          config.maxPerfection,
+          scoringCtx,
+          cfg.goalPriorityBias,
+          cfg.overcraftAmbition,
+          cfg.perfectionBandGoal,
+          cfg.completionBandCeiling,
+        );
     const reasoning = generateReasoning(
       skill,
       state,
       expectedGains,
       targetCompletion,
       targetPerfection,
-      { endsCraft: terminalState.isTerminal || endsByAutoFinish },
+      { endsCraft: endsByAutoFinish },
     );
 
     evaluatedMoves.push({
@@ -3853,17 +3736,13 @@ function runGreedySearch(
       effectiveCosts,
       score,
       reasoning,
-      endsCraft: terminalState.isTerminal || endsByAutoFinish,
+      endsCraft: endsByAutoFinish,
       endsCraftBelowTarget:
-        (terminalState.isTerminal || endsByAutoFinish) &&
+        endsByAutoFinish &&
         !goalsMet(newState, targetCompletion, targetPerfection),
       requiresProbabilisticSurvival,
       ...terminalState,
     });
-  }
-
-  if (finishAction) {
-    evaluatedMoves.push(finishAction);
   }
 
   const scoredSkills: SkillRecommendation[] = evaluatedMoves.map(
@@ -3879,10 +3758,11 @@ function runGreedySearch(
 
   if (rankedSkills.length === 0) {
     return {
+      status: 'blocked',
       recommendation: null,
       alternativeSkills: [],
       isTerminal: true,
-      targetsMet: false,
+      targetsMet: goalsMet(state, modeCompGoal, modePerfGoal),
       blockedReasons: getBlockedSkillReasons(
         state,
         config,
@@ -3900,10 +3780,11 @@ function runGreedySearch(
   );
 
   return {
+    status: 'live',
     recommendation: rankedSkills[0],
     alternativeSkills: rankedSkills.slice(1),
     isTerminal: false,
-    targetsMet: false,
+    targetsMet: goalsMet(state, modeCompGoal, modePerfGoal),
   };
 }
 
@@ -4173,10 +4054,7 @@ function runLookaheadSearch(
     // Finished-path scorer only when the craft is actually ending. A goal-met
     // node that will NOT auto-finish must keep the live scoreState so
     // resonance/overcraft continuation is not hit with finish penalties.
-    if (
-      isTerminalState(candidate, config, conditionAtDepth) ||
-      stateWillAutoFinish(candidate)
-    ) {
+    if (stateWillAutoFinish(candidate)) {
       return scoreFinishedOutcome(
         candidate,
         targetCompletion,
@@ -4275,15 +4153,6 @@ function runLookaheadSearch(
     requiresProbabilisticSurvival: boolean;
     fatalTechniqueFailure: boolean;
   } => {
-    if (isFinishAction(skill)) {
-      return {
-        searchState: displayState,
-        survivabilityFloor: null,
-        requiresProbabilisticSurvival: false,
-        fatalTechniqueFailure: false,
-      };
-    }
-
     const goalsMetAfterAction = targetsMetForCurrentMode(displayState);
     const baseSuccessSecuredAfterAction = goalsMet(
       displayState,
@@ -4370,62 +4239,6 @@ function runLookaheadSearch(
         ? Math.max(1, scoringCtx.avgStabilityCostPerTurn)
         : 0,
     };
-  };
-  const getFinishAction = (
-    candidate: CraftingState,
-  ): SearchMoveCandidate | null => {
-    // Previously offered when goals were unmet and projectedSuccessChance > 0
-    // (voluntary early finish). The runtime has no manual finish — gate on
-    // willAutoFinish instead. Dead crafts stay terminal without this action.
-    if (candidate.stability <= 0 || !stateWillAutoFinish(candidate)) {
-      return null;
-    }
-
-    const projectedSuccessChance = calculateFinishSuccessChance(
-      candidate,
-      targetCompletion,
-    );
-    if (projectedSuccessChance <= 0) {
-      return null;
-    }
-
-    return {
-      skill: FINISH_CRAFT_SKILL,
-      nextState: candidate,
-      searchState: candidate,
-      survivabilityFloor: null,
-      orderingScore: scoreFinishedOutcome(
-        candidate,
-        targetCompletion,
-        targetPerfection,
-        isSublime,
-        targetMult,
-        config.maxCompletion,
-        config.maxPerfection,
-        scoringCtx,
-        cfg.goalPriorityBias,
-        cfg.overcraftAmbition,
-        cfg.perfectionBandGoal,
-        cfg.completionBandCeiling,
-      ),
-      immediateProgress: 0,
-      requiresProbabilisticSurvival: false,
-      projectedSuccessChance,
-    };
-  };
-  const scoreStateConsideringFinish = (
-    candidate: CraftingState,
-    conditionAtDepth: CraftingConditionType,
-  ): number => {
-    const continuationScore = scoreStateWithTerminalPenalty(
-      candidate,
-      conditionAtDepth,
-    );
-    const finishCandidate = getFinishAction(candidate);
-    if (!finishCandidate) {
-      return continuationScore;
-    }
-    return Math.max(continuationScore, finishCandidate.orderingScore);
   };
   // The working table is always per call. A caller-supplied cross-step table
   // acts as a second level underneath it: it only ever holds completed-pass
@@ -4543,7 +4356,7 @@ function runLookaheadSearch(
     )?.score;
     return typeof crossStep === 'number' && Number.isFinite(crossStep)
       ? crossStep
-      : scoreStateConsideringFinish(candidate, conditionAtDepth);
+      : scoreStateWithTerminalPenalty(candidate, conditionAtDepth);
   };
 
   function estimatePostMoveStateScore(
@@ -4680,11 +4493,6 @@ function runLookaheadSearch(
       });
     }
 
-    const finishCandidate = getFinishAction(currentState);
-    if (finishCandidate) {
-      candidates.push(finishCandidate);
-    }
-
     const filteredCandidates = candidates;
 
     filteredCandidates.sort((a, b) => {
@@ -4743,40 +4551,30 @@ function runLookaheadSearch(
     return filteredCandidates;
   }
 
-  const rootFinishAction = getFinishAction(state);
-
-  // Auto-finish horizon at the root: craft ends now — recommend Finish Craft.
-  if (rootFinishAction) {
+  if (stateWillAutoFinish(state)) {
     return {
-      recommendation: {
-        skill: rootFinishAction.skill,
-        expectedGains: { ...ZERO_GAINS },
-        immediateGains: { ...ZERO_GAINS },
-        effectiveCosts: { ...ZERO_COSTS },
-        score: rootFinishAction.orderingScore,
-        reasoning: generateFinishReasoning(
-          rootFinishAction.projectedSuccessChance ?? 0,
-        ),
-        projectedSuccessChance: rootFinishAction.projectedSuccessChance,
-        endsCraft: true,
-      },
+      status: 'autoResolved',
+      recommendation: null,
       alternativeSkills: [],
-      isTerminal: false,
+      isTerminal: true,
       targetsMet: targetsMetForCurrentMode(state),
       searchMetrics: metrics,
     };
   }
 
   // Check if terminal state (use current condition type for filtering)
-  if (
-    isTerminalState(state, config, normalizedCurrentCondition) &&
-    !rootFinishAction
-  ) {
+  if (isTerminalState(state, config, normalizedCurrentCondition)) {
     return {
+      status: 'blocked',
       recommendation: null,
       alternativeSkills: [],
       isTerminal: true,
-      targetsMet: false,
+      targetsMet: targetsMetForCurrentMode(state),
+      blockedReasons: getBlockedSkillReasons(
+        state,
+        config,
+        normalizedCurrentCondition,
+      ),
       searchMetrics: metrics,
     };
   }
@@ -4852,13 +4650,18 @@ function runLookaheadSearch(
       );
     }
 
-    const stateIsTerminal =
-      isTerminalState(currentState, config, currentConditionAtDepth) &&
-      !getFinishAction(currentState);
+    const stateIsTerminal = isTerminalState(
+      currentState,
+      config,
+      currentConditionAtDepth,
+    );
 
     // Base case: depth exhausted or terminal
     if (remainingDepth === 0 || stateIsTerminal) {
-      return scoreStateConsideringFinish(currentState, currentConditionAtDepth);
+      return scoreStateWithTerminalPenalty(
+        currentState,
+        currentConditionAtDepth,
+      );
     }
 
     // Auto-finish horizon: craft ends here — finished scorer, no further search.
@@ -4932,7 +4735,10 @@ function runLookaheadSearch(
       true,
     );
     if (orderedCandidates.length === 0) {
-      return scoreStateConsideringFinish(currentState, currentConditionAtDepth);
+      return scoreStateWithTerminalPenalty(
+        currentState,
+        currentConditionAtDepth,
+      );
     }
 
     // Apply adaptive beam search: use narrower beam for deep searches
@@ -4949,9 +4755,7 @@ function runLookaheadSearch(
       const { skill, searchState: newState } = candidate;
 
       let score = 0;
-      if (isFinishAction(skill)) {
-        score = candidate.orderingScore;
-      } else if (stateWillAutoFinish(newState)) {
+      if (stateWillAutoFinish(newState)) {
         // Action ends the craft via auto-finish — finished scorer, no recurse.
         score = scoreFinishedOutcome(
           newState,
@@ -5010,7 +4814,7 @@ function runLookaheadSearch(
     }
 
     if (!Number.isFinite(bestScore)) {
-      bestScore = scoreStateConsideringFinish(
+      bestScore = scoreStateWithTerminalPenalty(
         currentState,
         currentConditionAtDepth,
       );
@@ -5029,13 +4833,6 @@ function runLookaheadSearch(
     conditionQueueAtDepth: CraftingConditionType[],
     skill: SkillDefinition,
   ): number {
-    if (isFinishAction(skill)) {
-      return (
-        getFinishAction(newState)?.orderingScore ??
-        scoreStateConsideringFinish(newState, conditionAtDepth)
-      );
-    }
-
     if (stateWillAutoFinish(newState)) {
       return scoreFinishedOutcome(
         newState,
@@ -5092,7 +4889,7 @@ function runLookaheadSearch(
     nextCondition: CraftingConditionType;
     nextQueue: CraftingConditionType[];
   } {
-    if (isFinishAction(skill) || !actionConsumesTurn(skill)) {
+    if (!actionConsumesTurn(skill)) {
       return {
         nextCondition: conditionAtDepth,
         nextQueue: conditionQueueAtDepth,
@@ -5136,20 +4933,16 @@ function runLookaheadSearch(
     startDepthIndex: number = 0,
     startConditionAtDepth: CraftingConditionType = normalizedCurrentCondition,
     startConditionQueueAtDepth: CraftingConditionType[] = initialConditionQueue,
-  ): { path: string[]; finalState: CraftingState; finishedByChoice: boolean } {
+  ): { path: string[]; finalState: CraftingState } {
     const path: string[] = [];
     let currentState = startState;
     let currentDepth = 0;
     let conditionAtDepth = startConditionAtDepth;
     let conditionQueueAtDepth = startConditionQueueAtDepth;
-    let finishedByChoice = false;
 
     while (
       currentDepth < maxDepth &&
-      !(
-        isTerminalState(currentState, config, conditionAtDepth) &&
-        !getFinishAction(currentState)
-      )
+      !isTerminalState(currentState, config, conditionAtDepth)
     ) {
       if (stateWillAutoFinish(currentState)) {
         break;
@@ -5197,38 +4990,30 @@ function runLookaheadSearch(
         )?.bestMove ??
         null;
       if (cachedBestMove) {
-        if (cachedBestMove === FINISH_CRAFT_KEY) {
-          const finishAction = getFinishAction(currentState);
-          if (finishAction) {
-            chosenSkill = finishAction.skill;
-            chosenNextState = finishAction.searchState;
-          }
-        } else {
-          const cachedSkill = skills.find(
-            (skill) => skill.key === cachedBestMove,
+        const cachedSkill = skills.find(
+          (skill) => skill.key === cachedBestMove,
+        );
+        if (cachedSkill) {
+          const nextState = applySkill(
+            currentState,
+            cachedSkill,
+            config,
+            conditionEffectsAtDepth,
+            targetCompletion,
+            conditionAtDepth,
           );
-          if (cachedSkill) {
-            const nextState = applySkill(
+          if (nextState !== null) {
+            const { searchState } = buildSearchStateForContinuation(
               currentState,
               cachedSkill,
-              config,
+              nextState,
               conditionEffectsAtDepth,
-              targetCompletion,
               conditionAtDepth,
+              hasGuaranteedSafeStabilize,
+              minimumGuaranteedContinuationStability,
             );
-            if (nextState !== null) {
-              const { searchState } = buildSearchStateForContinuation(
-                currentState,
-                cachedSkill,
-                nextState,
-                conditionEffectsAtDepth,
-                conditionAtDepth,
-                hasGuaranteedSafeStabilize,
-                minimumGuaranteedContinuationStability,
-              );
-              chosenSkill = cachedSkill;
-              chosenNextState = searchState;
-            }
+            chosenSkill = cachedSkill;
+            chosenNextState = searchState;
           }
         }
       }
@@ -5291,8 +5076,7 @@ function runLookaheadSearch(
       // ends here. Skipping this assignment on auto-finish left finalState one
       // action behind the rotation (e.g. False Fusion setup without the push).
       currentState = chosenNextState;
-      if (isFinishAction(chosenSkill) || stateWillAutoFinish(chosenNextState)) {
-        finishedByChoice = true;
+      if (stateWillAutoFinish(chosenNextState)) {
         break;
       }
 
@@ -5308,7 +5092,7 @@ function runLookaheadSearch(
       currentDepth++;
     }
 
-    return { path, finalState: currentState, finishedByChoice };
+    return { path, finalState: currentState };
   }
 
   /**
@@ -5331,16 +5115,15 @@ function runLookaheadSearch(
       return cached;
     }
 
-    const displayState = isFinishAction(recommendation.skill)
-      ? state
-      : (applySkill(
-          state,
-          recommendation.skill,
-          config,
-          rootConditionEffects,
-          targetCompletion,
-          normalizedCurrentCondition,
-        ) ?? state);
+    const displayState =
+      applySkill(
+        state,
+        recommendation.skill,
+        config,
+        rootConditionEffects,
+        targetCompletion,
+        normalizedCurrentCondition,
+      ) ?? state;
     const metrics: CandidateTieBreakMetrics = {
       immediateProgress: calculateImmediateProgressTowardGoals(
         state,
@@ -5401,13 +5184,10 @@ function runLookaheadSearch(
     nextConditionQueueAtDepth: CraftingConditionType[],
     useDeepLookahead: boolean = false,
   ): SkillRecommendation['followUpSkill'] | undefined {
-    if (targetsMetForCurrentMode(stateAfterSkill)) {
+    if (stateWillAutoFinish(stateAfterSkill)) {
       return undefined;
     }
-    if (
-      isTerminalState(stateAfterSkill, config, conditionAtDepth) &&
-      !getFinishAction(stateAfterSkill)
-    ) {
+    if (isTerminalState(stateAfterSkill, config, conditionAtDepth)) {
       return undefined;
     }
 
@@ -5437,22 +5217,6 @@ function runLookaheadSearch(
       )?.bestMove ??
       null;
     if (cachedBestMove) {
-      if (cachedBestMove === FINISH_CRAFT_KEY) {
-        const finishAction = getFinishAction(stateAfterSkill);
-        if (finishAction) {
-          return {
-            name: finishAction.skill.name,
-            type: finishAction.skill.type,
-            actionKind: finishAction.skill.actionKind,
-            icon: finishAction.skill.icon,
-            expectedGains: { ...ZERO_GAINS },
-            immediateGains: { ...ZERO_GAINS },
-            effectiveCosts: { ...ZERO_COSTS },
-            projectedSuccessChance: finishAction.projectedSuccessChance,
-          };
-        }
-      }
-
       const cachedSkill = skills.find((skill) => skill.key === cachedBestMove);
       if (cachedSkill) {
         const { expectedGains, immediateGains, effectiveCosts } =
@@ -5497,24 +5261,14 @@ function runLookaheadSearch(
     if (!useDeepLookahead || maxRemainingDepth <= 0) {
       const fallbackCandidate = orderedFollowUpCandidates[0];
       const followUpSkill = fallbackCandidate.skill;
-      const finishProjectedSuccessChance = isFinishAction(followUpSkill)
-        ? fallbackCandidate.projectedSuccessChance
-        : undefined;
-      const { expectedGains, immediateGains, effectiveCosts } = isFinishAction(
-        followUpSkill,
-      )
-        ? {
-            expectedGains: { ...ZERO_GAINS },
-            immediateGains: { ...ZERO_GAINS },
-            effectiveCosts: { ...ZERO_COSTS },
-          }
-        : calculateRecommendationGains(
-            stateAfterSkill,
-            followUpSkill,
-            config,
-            followUpConditionEffects,
-            fallbackCandidate.searchState,
-          );
+      const { expectedGains, immediateGains, effectiveCosts } =
+        calculateRecommendationGains(
+          stateAfterSkill,
+          followUpSkill,
+          config,
+          followUpConditionEffects,
+          fallbackCandidate.searchState,
+        );
       return {
         name: followUpSkill.name,
         type: followUpSkill.type,
@@ -5523,7 +5277,6 @@ function runLookaheadSearch(
         expectedGains,
         immediateGains,
         effectiveCosts,
-        projectedSuccessChance: finishProjectedSuccessChance,
       };
     }
 
@@ -5550,21 +5303,14 @@ function runLookaheadSearch(
       const followUp = candidate.skill;
       const nextState = candidate.searchState;
 
-      const { expectedGains, immediateGains, effectiveCosts } = isFinishAction(
-        followUp,
-      )
-        ? {
-            expectedGains: { ...ZERO_GAINS },
-            immediateGains: { ...ZERO_GAINS },
-            effectiveCosts: { ...ZERO_COSTS },
-          }
-        : calculateRecommendationGains(
-            stateAfterSkill,
-            followUp,
-            config,
-            followUpConditionEffects,
-            nextState,
-          );
+      const { expectedGains, immediateGains, effectiveCosts } =
+        calculateRecommendationGains(
+          stateAfterSkill,
+          followUp,
+          config,
+          followUpConditionEffects,
+          nextState,
+        );
       const followUpScore = evaluateFutureScoreAfterSkill(
         nextState,
         Math.max(0, depthToSearch - 1 - depthIndex),
@@ -5673,57 +5419,44 @@ function runLookaheadSearch(
         unsafeRecommendationKeys.add(skill.key);
       }
 
-      const isFinish = isFinishAction(skill);
       const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
         newState,
         normalizedCurrentCondition,
         initialConditionQueue,
         skill,
       );
-      const terminalState = isFinish
-        ? { isTerminal: false, isTerminalUnmet: false }
-        : classifyTerminalState(
-            newState,
-            config,
-            firstMoveConditionState.nextCondition,
-            modeCompGoal,
-            modePerfGoal,
-          );
-      const endsCraft =
-        isFinish || terminalState.isTerminal || stateWillAutoFinish(newState);
+      const terminalState = classifyTerminalState(
+        newState,
+        config,
+        firstMoveConditionState.nextCondition,
+        modeCompGoal,
+        modePerfGoal,
+      );
+      const endsCraft = stateWillAutoFinish(newState);
 
-      const { expectedGains, immediateGains, effectiveCosts } = isFinish
-        ? {
-            expectedGains: { ...ZERO_GAINS },
-            immediateGains: { ...ZERO_GAINS },
-            effectiveCosts: { ...ZERO_COSTS },
-          }
-        : calculateRecommendationGains(
-            state,
-            skill,
-            config,
-            currentConditionEffects,
-            newState,
-          );
-      const reasoning = isFinish
-        ? generateFinishReasoning(candidate.projectedSuccessChance ?? 0)
-        : generateReasoning(
-            skill,
-            state,
-            expectedGains,
-            targetCompletion,
-            targetPerfection,
-            { endsCraft },
-          );
+      const { expectedGains, immediateGains, effectiveCosts } =
+        calculateRecommendationGains(
+          state,
+          skill,
+          config,
+          currentConditionEffects,
+          newState,
+        );
+      const reasoning = generateReasoning(
+        skill,
+        state,
+        expectedGains,
+        targetCompletion,
+        targetPerfection,
+        { endsCraft },
+      );
 
-      const immediateScore = isFinish
-        ? candidate.orderingScore
-        : estimatePostMoveStateScore(
-            newState,
-            skill,
-            normalizedCurrentCondition,
-            initialConditionQueue,
-          );
+      const immediateScore = estimatePostMoveStateScore(
+        newState,
+        skill,
+        normalizedCurrentCondition,
+        initialConditionQueue,
+      );
 
       evaluatedFirstMoves.push({
         skill,
@@ -5737,9 +5470,7 @@ function runLookaheadSearch(
         projectedSuccessChance: candidate.projectedSuccessChance,
         endsCraft,
         endsCraftBelowTarget:
-          endsCraft &&
-          !isFinish &&
-          !goalsMet(newState, targetCompletion, targetPerfection),
+          endsCraft && !goalsMet(newState, targetCompletion, targetPerfection),
         requiresProbabilisticSurvival: candidate.requiresProbabilisticSurvival,
         ...terminalState,
       });
@@ -5854,10 +5585,6 @@ function runLookaheadSearch(
       index++
     ) {
       const rec = recommendations[index];
-      if (isFinishAction(rec.skill)) {
-        rec.followUpSkill = undefined;
-        continue;
-      }
       const displayStateAfterSkill = applySkill(
         state,
         rec.skill,
@@ -6040,10 +5767,11 @@ function runLookaheadSearch(
   if (scoredSkills.length === 0) {
     metrics.timeTakenMs = Date.now() - startTime;
     return {
+      status: 'blocked',
       recommendation: null,
       alternativeSkills: [],
       isTerminal: true,
-      targetsMet: false,
+      targetsMet: targetsMetForCurrentMode(state),
       blockedReasons: getBlockedSkillReasons(
         state,
         config,
@@ -6083,16 +5811,14 @@ function runLookaheadSearch(
     config,
     normalizedCurrentCondition,
   );
-  const stateAfterFirstMoveDisplay = isFinishAction(bestFirstMove)
-    ? state
-    : applySkill(
-        state,
-        bestFirstMove,
-        config,
-        currentConditionEffects,
-        targetCompletion,
-        normalizedCurrentCondition,
-      );
+  const stateAfterFirstMoveDisplay = applySkill(
+    state,
+    bestFirstMove,
+    config,
+    currentConditionEffects,
+    targetCompletion,
+    normalizedCurrentCondition,
+  );
   const rootAvailableSkillsForRotation = getAvailableSkills(
     state,
     config,
@@ -6139,24 +5865,13 @@ function runLookaheadSearch(
       initialConditionQueue,
       bestFirstMove,
     );
-    const finishedByChoice = isFinishAction(bestFirstMove);
-    const {
-      path,
-      finalState,
-      finishedByChoice: pathFinishedByChoice,
-    } = finishedByChoice
-      ? {
-          path: [] as string[],
-          finalState: stateAfterFirstMove,
-          finishedByChoice: true,
-        }
-      : findOptimalPath(
-          stateAfterFirstMove,
-          Math.max(0, usedDepth - 1),
-          1,
-          firstMoveConditionState.nextCondition,
-          firstMoveConditionState.nextQueue,
-        );
+    const { path, finalState } = findOptimalPath(
+      stateAfterFirstMove,
+      Math.max(0, usedDepth - 1),
+      1,
+      firstMoveConditionState.nextCondition,
+      firstMoveConditionState.nextQueue,
+    );
     optimalRotation = [bestFirstMove.name, ...path];
 
     // Ensure the top recommendation's follow-up matches the rotation.
@@ -6176,19 +5891,7 @@ function runLookaheadSearch(
         const secondSkill = config.skills.find(
           (s) => s.name === rotationSecondSkillName,
         );
-        if (rotationSecondSkillName === FINISH_CRAFT_NAME) {
-          topRec.followUpSkill = {
-            name: FINISH_CRAFT_NAME,
-            type: FINISH_CRAFT_SKILL.type,
-            actionKind: FINISH_CRAFT_SKILL.actionKind,
-            icon: FINISH_CRAFT_SKILL.icon,
-            expectedGains: { ...ZERO_GAINS },
-            immediateGains: { ...ZERO_GAINS },
-            effectiveCosts: { ...ZERO_COSTS },
-            projectedSuccessChance:
-              getFinishAction(stateAfterFirstMove)?.projectedSuccessChance,
-          };
-        } else if (secondSkill) {
+        if (secondSkill) {
           const secondConditionEffects = getConditionEffectsForConfig(
             config,
             firstMoveConditionState.nextCondition,
@@ -6230,20 +5933,21 @@ function runLookaheadSearch(
       0,
       effectivePerfGoal - finalState.perfection,
     );
-    const projectedSuccessChance =
-      finalState.stability > 0
-        ? calculateFinishSuccessChance(finalState, targetCompletion)
-        : 0;
-    const turnsRemaining =
-      finishedByChoice || pathFinishedByChoice
-        ? 0
-        : estimateTurnsRemainingFromContext(
-            compRemaining,
-            perfRemaining,
-            scoringCtx,
-          );
+    const projectedSuccessChance = calculateFinishSuccessChance(
+      finalState,
+      targetCompletion,
+    );
+    const turnsRemaining = stateWillAutoFinish(finalState)
+      ? 0
+      : estimateTurnsRemainingFromContext(
+          compRemaining,
+          perfRemaining,
+          scoringCtx,
+        );
 
     expectedFinalState = {
+      targetsMet: targetsMetForCurrentMode(finalState),
+      outcomeProjection: buildOutcomeProjection(finalState, outcomeBands),
       completion: finalState.completion,
       perfection: finalState.perfection,
       stability: finalState.stability,
@@ -6258,10 +5962,11 @@ function runLookaheadSearch(
   metrics.timeTakenMs = Date.now() - startTime;
 
   return {
+    status: 'live',
     recommendation: rankedSkills[0],
     alternativeSkills: rankedSkills.slice(1),
     isTerminal: false,
-    targetsMet: false,
+    targetsMet: targetsMetForCurrentMode(state),
     optimalRotation,
     optimalRotationLabels: optimalRotation.map(rotationLabelForName),
     expectedFinalState,
