@@ -80,8 +80,8 @@ export interface SkillDefinition {
   type: TechniqueType;
   /** Icon/image path for the skill (from game's CraftingTechnique.icon) */
   icon?: string;
-  /** Distinguishes technique actions from items and search-local pseudo actions. */
-  actionKind?: 'skill' | 'item' | 'finish';
+  /** Distinguishes real technique actions from quick-access items. */
+  actionKind?: 'skill' | 'item';
   /** Optional raw game technique payload for native availability prechecks. */
   nativeTechnique?: unknown;
   /** Whether this skill scales with control */

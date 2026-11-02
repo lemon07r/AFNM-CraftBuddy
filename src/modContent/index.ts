@@ -44,7 +44,6 @@ import {
   preloadNativeMctsPolicyEngine,
   buildCanonicalNativeVariables,
   CrossStepSearchCache,
-  FINISH_CRAFT_KEY,
   serializeSearchInput,
   type SearchBackendInput,
   type HarmonyData,
@@ -538,10 +537,8 @@ function syncAutoCraftController(): void {
 function buildExecutionRequestForRecommendation(
   recommendation: SkillRecommendation,
 ): AutoCraftExecutionRequest {
-  const actionKind = (recommendation.skill.actionKind ?? 'skill') as
-    | 'skill'
-    | 'item'
-    | 'finish';
+  const actionKind =
+    recommendation.skill.actionKind === 'item' ? 'item' : 'skill';
 
   return {
     kind: actionKind,
@@ -569,6 +566,7 @@ function executeDisplayedRecommendation(
 
   const request = buildExecutionRequestForRecommendation(recommendation);
   const snapshot = buildAutoCraftSnapshot();
+  if (snapshot.result?.status !== 'live') return;
 
   try {
     const execution = autoCraftExecutor.execute(request, snapshot);
@@ -1963,10 +1961,7 @@ function updateRecommendation(
         scope: crossStepScope ?? 'unscoped',
         threads,
         baseSeed: searchEpoch,
-        rootSkillKeys: [
-          ...config.skills.map((skill) => skill.key),
-          FINISH_CRAFT_KEY,
-        ],
+        rootSkillKeys: [...config.skills.map((skill) => skill.key)],
         input: serializeSearchInput(backendInput),
       });
       if (

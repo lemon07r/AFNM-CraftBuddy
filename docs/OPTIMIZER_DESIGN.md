@@ -19,7 +19,7 @@ Band widths grow by 1.3×: cumulative boundaries are approximately 100%, 230%, 3
 
 An additive weighted sum cannot replace the conjunction: excess in one bar must not buy a tier whose other bar is missing. Basic is a real finished floor but is suppressed as a live checkpoint while targeting perfect/sublime.
 
-`willAutoFinish` is stability <= 0 or **both actual bar caps**, not five completion bands. There is no manual Finish. Search currently has a synthetic non-turn-consuming finish candidate to price craft-end EV at a frontier, and automation maps a finish request to the real, 10-stability `Wait` technique. Those semantics are not equivalent; removing that pseudo-action/execution mismatch is v7 work, not a native finish feature. Already-resolved states are terminal and cannot be improved by further stat spam.
+`willAutoFinish` is stability <= 0 or **both actual bar caps**, not five completion bands. There is no manual Finish, and search has no finish pseudo-action: candidates are real techniques (and, under the item policy, items). A successor that auto-resolves is scored with `scoreFinishedOutcome`. `SearchResult.status` is classified in order: `autoResolved` (the predicate already holds), `blocked` (no legal action), otherwise `live`. Meeting the goals does not mean the craft has resolved; goal achievement stays separate metadata. `Wait` is an ordinary technique costing 10 stability.
 
 ### Ambition and bias
 
@@ -48,7 +48,7 @@ Success and crit use expected gains, with progress expectation **`p * min(gain, 
 
 The visible condition queue is normalized to length three; beyond it search uses probability-weighted distributions. The runtime/native condition path and local fallback are not interchangeable for discordance yet (known gap).
 
-Immediate survival is not flattened into EV. `calculateActionSurvivabilityFloor` estimates guaranteed stability, but has a known payment/mastery/cleanup divergence from the actual transition. Separately, a real forced-failure transition ending below target sets `requiresProbabilisticSurvival`. Safety precedence applies when a viable safe live alternative exists; a certain-failure line does not outrank a winnable gamble simply because it is “certain”. Worker merging preserves the same flags and score ordering. Synthetic finish is placed by score against safety-ordered live lines, not promoted solely by safety.
+Immediate survival is not flattened into EV. `calculateActionSurvivabilityFloor` estimates guaranteed stability, but has a known payment/mastery/cleanup divergence from the actual transition. Separately, a real forced-failure transition ending below target sets `requiresProbabilisticSurvival`. Safety precedence applies when a viable safe live alternative exists; a certain-failure line does not outrank a winnable gamble simply because it is “certain”. Worker merging preserves the same flags and score ordering.
 
 Chance-conditioned payment buffs use transient independent branches for expected current payment; they do not create a probability-aware persistent future-buff model.
 

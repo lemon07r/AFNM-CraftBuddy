@@ -28,7 +28,6 @@ import { CraftingState, type CraftingStateData } from './state';
 import type { OptimizerConfig } from './skills';
 import {
   findBestSkill,
-  FINISH_CRAFT_KEY,
   orderRecommendationsBySafety,
   recomputeQualityRatings,
   type CraftingConditionType,
@@ -36,8 +35,6 @@ import {
   type SearchResult,
   type SkillRecommendation,
 } from './search';
-
-export { FINISH_CRAFT_KEY };
 
 // ── Worker protocol ─────────────────────────────────────────────────────────
 // Shared by the worker entry (`src/worker/searchWorker.ts`) and the
@@ -266,8 +263,7 @@ function stripInProcessOnlySearchConfig(
 
 /**
  * Deterministic stride partition of the root candidate key space. The client
- * partitions every key that could appear at the root (roster + the synthetic
- * finish action); unavailable keys simply never materialize as candidates.
+ * partitions real roster keys; unavailable keys never materialize as candidates.
  */
 export function partitionRootSkillKeys(
   allRootKeys: readonly string[],
@@ -296,9 +292,11 @@ function compareMergedScores(
 
 /**
  * Reassemble the per-partition results into one result. Deterministic given
- * the same partials: candidates from every partition are pooled, deduped by
- * skill key, sorted by survival safety and score with a key tiebreak, and quality ratings are
- * recomputed over the merged range (they are relative to the candidate set).
+ * the same partials: an autoResolved partial short-circuits with no actions.
+ * Otherwise only live partials contribute candidates, which are deduped by
+ * skill key and sorted by survival safety and score with a key tiebreak.
+ * Quality ratings are recomputed over the merged range. The merged status is
+ * live when candidates remain, or blocked otherwise; targetsMet is independent.
  */
 export function mergePartitionedResults(
   partials: readonly SearchResult[],
@@ -307,9 +305,18 @@ export function mergePartitionedResults(
     return partials[0];
   }
 
+  // Resolution describes the shared root, never a candidate to execute.
+  const resolved = partials.find(
+    (partial) => partial.status === 'autoResolved',
+  );
+  if (resolved) {
+    return { ...resolved, recommendation: null, alternativeSkills: [] };
+  }
+
   const pooled = new Map<string, SkillRecommendation>();
   const sourcePartials = new Map<SkillRecommendation, SearchResult>();
   for (const partial of partials) {
+    if (partial.status !== 'live') continue;
     const candidates = [
       ...(partial.recommendation ? [partial.recommendation] : []),
       ...partial.alternativeSkills,
@@ -361,6 +368,7 @@ export function mergePartitionedResults(
       : undefined;
 
   return {
+    status: anyCandidates ? 'live' : 'blocked',
     recommendation: merged[0] ?? null,
     alternativeSkills: merged.slice(1),
     isTerminal:

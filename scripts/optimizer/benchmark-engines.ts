@@ -48,6 +48,8 @@ interface BenchmarkConfig {
 
 interface FixtureContract {
   fixture: string;
+  /** Representation invariant: a live root must recommend a roster action. */
+  mustRecommendRealAction?: boolean;
   mustRecommendOneOf?: string[];
   mustNotRecommend?: string[];
   preferredTypes?: string[];
@@ -80,6 +82,8 @@ interface FixtureContract {
 }
 
 interface BenchmarkRunResult {
+  status?: 'live' | 'autoResolved' | 'blocked';
+  recommendationIsRealAction?: boolean;
   fixture: string;
   config: string;
   configLabel: string;
@@ -290,13 +294,13 @@ const FIXTURE_CONTRACTS: FixtureContract[] = [
   },
   {
     fixture: 'user-report-premature-finish-runway',
-    notes: 'Optimizer should continue crafting instead of finishing early.',
-    mustNotRecommend: ['__finish_craft__'],
+    notes: 'Live craft must continue with a real roster action.',
+    mustRecommendRealAction: true,
   },
   {
     fixture: 'user-report-fairy-recovery',
-    notes: 'Live continuation should rank above Finish Craft.',
-    mustNotRecommend: ['__finish_craft__'],
+    notes: 'Live recovery must recommend a real roster action.',
+    mustRecommendRealAction: true,
   },
   {
     fixture: 'user-report-live-workshop-step-1',
@@ -348,6 +352,13 @@ function evaluateContract(
         }`,
       );
     }
+  }
+
+  if (
+    contract.mustRecommendRealAction &&
+    (result.status !== 'live' || !result.recommendationIsRealAction)
+  ) {
+    reasons.push('expected a live result recommending a real roster action');
   }
 
   if (contract.mustNotRecommend && contract.mustNotRecommend.length > 0) {
@@ -568,6 +579,13 @@ function runBenchmark(options: {
           allRecs.length >= 2 ? allRecs[0].score - allRecs[1].score : 0;
 
         runResult = {
+          status: result.status,
+          recommendationIsRealAction:
+            !!recommendation &&
+            recommendation.skill.actionKind !== 'item' &&
+            input.config.skills.some(
+              (skill) => skill.key === recommendation.skill.key,
+            ),
           fixture: fixtureName,
           config: cfg.id,
           configLabel: contract?.searchBudget

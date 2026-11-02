@@ -413,6 +413,7 @@ describe('native MCTS bridge', () => {
 
     expect(input.search.iterations).toBe(48);
     expect(input.search.max_nodes).toBe(240);
+    expect(input.search.time_budget_ms).toBe(150);
     expect(nativeMctsTesting.deriveMctsIterations({ timeBudgetMs: 150 })).toBe(
       64,
     );

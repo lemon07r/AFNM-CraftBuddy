@@ -604,36 +604,14 @@ describe('optimizer replay state snapshots', () => {
     );
   });
 
-  it('serializes finish recommendations with action kind and projected success chance', () => {
+  it('serializes automatic resolution without an executable recommendation', () => {
     const snapshot = buildResultSnapshot({
-      recommendation: {
-        skill: {
-          name: 'Finish Craft',
-          key: '__finish_craft__',
-          type: 'support',
-          actionKind: 'finish',
-          qiCost: 0,
-          stabilityCost: 0,
-          baseCompletionGain: 0,
-          basePerfectionGain: 0,
-          stabilityGain: 0,
-          maxStabilityChange: 0,
-          buffType: BuffType.NONE,
-          buffDuration: 0,
-          buffMultiplier: 1,
-        },
-        expectedGains: { completion: 0, perfection: 0, stability: 0 },
-        immediateGains: { completion: 0, perfection: 0, stability: 0 },
-        effectiveCosts: { qi: 0, stability: 0 },
-        score: 128,
-        reasoning: 'End the craft now for 69% success chance',
-        projectedSuccessChance: 0.69,
-        endsCraft: true,
-      },
+      status: 'autoResolved',
+      recommendation: null,
       alternativeSkills: [],
-      isTerminal: false,
+      isTerminal: true,
       targetsMet: false,
-      optimalRotation: ['Finish Craft'],
+      optimalRotation: [],
       expectedFinalState: {
         completion: 90,
         perfection: 40,
@@ -653,13 +631,8 @@ describe('optimizer replay state snapshots', () => {
     });
 
     expect(snapshot).toMatchObject({
-      recommendation: {
-        skill: {
-          actionKind: 'finish',
-        },
-        projectedSuccessChance: 0.69,
-        endsCraft: true,
-      },
+      status: 'autoResolved',
+      recommendation: null,
       expectedFinalState: {
         projectedSuccessChance: 0.69,
       },

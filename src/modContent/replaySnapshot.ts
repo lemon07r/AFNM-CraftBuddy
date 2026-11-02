@@ -78,6 +78,8 @@ export interface OptimizerReplayAutoCraftSnapshot {
 }
 
 export interface OptimizerReplayOutputSnapshot {
+  /** Absent in historical captures, whose recorded actions are evidence only. */
+  status?: SearchResult['status'];
   recommendation?: {
     skill?: {
       key?: string;
@@ -392,6 +394,7 @@ export function buildResultSnapshot(
   result: SearchResult,
 ): OptimizerReplayOutputSnapshot {
   return {
+    status: result.status,
     isTerminal: result.isTerminal,
     targetsMet: result.targetsMet,
     recommendation: summarizeRecommendation(result.recommendation),

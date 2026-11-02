@@ -866,7 +866,7 @@ const SingleSkillBox = memo(function SingleSkillBox({
 }: {
   name: string;
   type: string;
-  actionKind?: 'skill' | 'item' | 'finish';
+  actionKind?: 'skill' | 'item';
   gains: { completion: number; perfection: number; stability: number };
   projectedGains?: {
     completion: number;
@@ -886,7 +886,7 @@ const SingleSkillBox = memo(function SingleSkillBox({
   interactive?: boolean;
   onClick?: () => void;
 }) {
-  const visualType = actionKind === 'finish' ? 'finish' : type;
+  const visualType = type;
   const typeColor = getSkillTypeColor(visualType);
   const iconSize = isFollowUp ? 'small' : isPrimary ? 'large' : 'medium';
   const canClickIcon =
@@ -1979,15 +1979,18 @@ const FinalStateSection = memo(function FinalStateSection({
     maxStability?: number;
     turnsRemaining: number;
     projectedSuccessChance?: number;
+    targetsMet?: boolean;
   };
   targetCompletion: number;
   targetPerfection: number;
   turnsCount: number;
   compact?: boolean;
 }) {
+  // Older replay results predate `targetsMet`; fall back to the raw bars.
   const targetsMet =
-    state.completion >= targetCompletion &&
-    state.perfection >= targetPerfection;
+    state.targetsMet ??
+    (state.completion >= targetCompletion &&
+      state.perfection >= targetPerfection);
 
   return (
     <Box
@@ -2074,7 +2077,7 @@ const FinalStateSection = memo(function FinalStateSection({
             fontSize: compact ? '0.74rem' : undefined,
           }}
         >
-          Finish chance: {formatSuccessChance(state.projectedSuccessChance)}
+          Outcome success: {formatSuccessChance(state.projectedSuccessChance)}
         </Typography>
       )}
 
@@ -2271,6 +2274,13 @@ export function RecommendationPanel({
       }),
     [result?.outcomeProjection, craftingType],
   );
+  // `tier` is the guaranteed floor; only call the craft failed when even the
+  // bonus rolls cannot rescue it.
+  const resolvedFailed =
+    result?.outcomeProjection?.tier === 'failed' &&
+    result.outcomeProjection.optimisticTier === 'failed';
+  const resolvedColor = resolvedFailed ? colors.error : colors.completion;
+  const ResolvedIcon = resolvedFailed ? WarningIcon : CheckCircleIcon;
   const autoUseNotice = useMemo(() => buildAutoUseNotice(autoMode), [autoMode]);
   const setupHint = useMemo(
     () => buildSetupSummary(result?.recommendation?.setupFor),
@@ -2396,9 +2406,9 @@ export function RecommendationPanel({
       });
     }
 
-    if (result.targetsMet) {
+    if (result.status === 'autoResolved') {
       return renderAutoShell({
-        variant: 'success',
+        variant: resolvedFailed ? 'error' : 'success',
         contentPaddingBottom: versionFooterPadding,
         content: (
           <>
@@ -2435,21 +2445,22 @@ export function RecommendationPanel({
                 px: 1.05,
                 py: 0.95,
                 borderRadius: 1.45,
-                border: `1px solid rgba(101, 232, 157, 0.34)`,
-                background:
-                  'linear-gradient(180deg, rgba(18, 54, 39, 0.86), rgba(9, 28, 20, 0.86))',
+                border: resolvedFailed
+                  ? '1px solid rgba(255, 107, 107, 0.34)'
+                  : '1px solid rgba(101, 232, 157, 0.34)',
+                background: resolvedFailed
+                  ? 'linear-gradient(180deg, rgba(54, 18, 18, 0.86), rgba(28, 9, 9, 0.86))'
+                  : 'linear-gradient(180deg, rgba(18, 54, 39, 0.86), rgba(9, 28, 20, 0.86))',
               }}
             >
               <FlexRow gap={0.75} align="center">
-                <CheckCircleIcon
-                  sx={{ color: colors.completion, fontSize: 20 }}
-                />
+                <ResolvedIcon sx={{ color: resolvedColor, fontSize: 20 }} />
                 <Box sx={{ minWidth: 0 }}>
                   <Typography
                     variant="body2"
-                    sx={{ color: colors.completion, fontWeight: 700 }}
+                    sx={{ color: resolvedColor, fontWeight: 700 }}
                   >
-                    Targets secured
+                    {resolvedFailed ? 'Craft failed' : 'Craft resolved'}
                   </Typography>
                   <Typography
                     variant="caption"
@@ -2460,8 +2471,9 @@ export function RecommendationPanel({
                       lineHeight: 1.35,
                     }}
                   >
-                    AutoBuddy has nothing left to optimize here. Finish the
-                    craft or move into the next recipe.
+                    {resolvedFailed
+                      ? 'The craft ended with a failed outcome. No further input is needed.'
+                      : 'The game resolves the craft automatically. No further input is needed.'}
                   </Typography>
                 </Box>
               </FlexRow>
@@ -2646,14 +2658,17 @@ export function RecommendationPanel({
     );
   }
 
-  // Targets met - Success state
-  if (result.targetsMet) {
+  // Actual resolution can be either a successful or failed outcome.
+  if (result.status === 'autoResolved') {
     return (
-      <PanelContainer variant="success" compact={compactMode}>
+      <PanelContainer
+        variant={resolvedFailed ? 'error' : 'success'}
+        compact={compactMode}
+      >
         <FlexRow gap={1} sx={{ mb: 1 }}>
-          <CheckCircleIcon sx={{ color: colors.completion, fontSize: 24 }} />
-          <Typography variant="h6" sx={{ color: colors.completion }}>
-            Targets Met!
+          <ResolvedIcon sx={{ color: resolvedColor, fontSize: 24 }} />
+          <Typography variant="h6" sx={{ color: resolvedColor }}>
+            {resolvedFailed ? 'Craft failed' : 'Craft resolved'}
           </Typography>
         </FlexRow>
         <Typography variant="body2" sx={{ color: colors.textSecondary }}>
@@ -2675,11 +2690,16 @@ export function RecommendationPanel({
 
         <Typography
           variant="body2"
-          sx={{ color: colors.completionLight, mt: 1 }}
+          sx={{
+            color: resolvedFailed ? colors.error : colors.completionLight,
+            mt: 1,
+          }}
         >
-          {outcomeSummary?.autoFinish.active
-            ? 'The craft resolves itself from here - there is no manual finish action.'
-            : 'Every band this tier needs is banked.'}
+          {resolvedFailed
+            ? 'The craft ended with a failed outcome. No further input is needed.'
+            : outcomeSummary?.autoFinish.active
+              ? 'The craft resolves itself from here - there is no manual finish action.'
+              : 'Every band this tier needs is banked.'}
         </Typography>
         {autoMode && (showAutoModePanel || autoMode.phase !== 'off') && (
           <Box sx={{ mt: 1.25 }}>
@@ -2838,20 +2858,20 @@ export function RecommendationPanel({
           />
 
           {/* Optimal rotation preview */}
-          {showOptimalRotation && (result.optimalRotationLabels ??
-            result.optimalRotation) && (
-            <RotationSection
-              rotation={
-                result.optimalRotationLabels ?? result.optimalRotation ?? []
-              }
-              maxDisplay={
-                compactMode
-                  ? Math.min(maxRotationDisplay, 4)
-                  : maxRotationDisplay
-              }
-              compact={compactMode}
-            />
-          )}
+          {showOptimalRotation &&
+            (result.optimalRotationLabels ?? result.optimalRotation) && (
+              <RotationSection
+                rotation={
+                  result.optimalRotationLabels ?? result.optimalRotation ?? []
+                }
+                maxDisplay={
+                  compactMode
+                    ? Math.min(maxRotationDisplay, 4)
+                    : maxRotationDisplay
+                }
+                compact={compactMode}
+              />
+            )}
 
           {/* Expected final state */}
           {showExpectedFinalState && result.expectedFinalState && (

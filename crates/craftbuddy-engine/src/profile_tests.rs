@@ -218,7 +218,7 @@ fn profile_component_microbench() {
 
         let started = Instant::now();
         for _ in 0..CALLS {
-            std::hint::black_box(engine.score_state(state));
+            std::hint::black_box(engine.score_state(state, &condition));
         }
         let score_ns = started.elapsed().as_nanos() as f64 / CALLS as f64;
 

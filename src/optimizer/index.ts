@@ -137,7 +137,6 @@ export type { TranspositionCache } from './crossStepCache';
 // worker/client protocol messages. The mod layer talks to these through
 // `src/modContent/searchBackendClient.ts`.
 export {
-  FINISH_CRAFT_KEY,
   mergePartitionedResults,
   partitionRootSkillKeys,
   reviveSearchInput,

@@ -16,7 +16,6 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
-  FINISH_CRAFT_KEY,
   mergePartitionedResults,
   reviveSearchInput,
   runSearchBackendInput,
@@ -69,10 +68,7 @@ async function runWorkerPoolSearch(
   scope: string,
 ): Promise<TimedResult> {
   const plain = serializeSearchInput(input);
-  const rootSkillKeys = [
-    ...input.config.skills.map((skill) => skill.key),
-    FINISH_CRAFT_KEY,
-  ];
+  const rootSkillKeys = [...input.config.skills.map((skill) => skill.key)];
   const epoch = Date.now();
   const started = performance.now();
   const partials = await Promise.all(

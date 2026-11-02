@@ -37,8 +37,7 @@ const MAX_STATE_ADVANCE_RETRIES = 1;
 /** How long to wait before re-checking a craft state that could not be read. */
 const PAUSE_RETRY_MS = 750;
 
-type AutoCraftExecutionKind = 'skill' | 'item' | 'finish';
-const GUARANTEED_FINISH_EPSILON = 1e-9;
+type AutoCraftExecutionKind = 'skill' | 'item';
 
 function resolveExecutionKind(
   skill:
@@ -50,33 +49,7 @@ function resolveExecutionKind(
     | undefined,
 ): AutoCraftExecutionKind {
   if (skill?.actionKind === 'item') return 'item';
-  if (
-    skill?.actionKind === 'finish' ||
-    skill?.key === '__finish_craft__' ||
-    skill?.name === 'Finish Craft'
-  ) {
-    return 'finish';
-  }
   return 'skill';
-}
-
-function hasGuaranteedFinishAvailable(result: SearchResult): boolean {
-  const candidates = [
-    result.recommendation,
-    ...result.alternativeSkills,
-  ].filter(
-    (candidate): candidate is NonNullable<SearchResult['recommendation']> =>
-      candidate !== null,
-  );
-
-  return candidates.some((candidate) => {
-    if (resolveExecutionKind(candidate.skill) !== 'finish') {
-      return false;
-    }
-    return (
-      (candidate.projectedSuccessChance ?? 0) >= 1 - GUARANTEED_FINISH_EPSILON
-    );
-  });
 }
 
 function recommendationEndsCraft(
@@ -86,10 +59,7 @@ function recommendationEndsCraft(
     return false;
   }
 
-  return (
-    recommendation.endsCraft === true ||
-    resolveExecutionKind(recommendation.skill) === 'finish'
-  );
+  return recommendation.endsCraft === true;
 }
 
 export interface AutoCraftExecutionRequest {
@@ -216,10 +186,7 @@ function isPolicyAllowed(
   actionKind: AutoCraftExecutionKind,
 ): boolean {
   if (actionKind === 'skill') return true;
-  if (actionKind === 'finish') {
-    return policy === 'techniquesAndFinish' || policy === 'fullActionSpace';
-  }
-  return policy === 'fullActionSpace';
+  return policy === 'includeItems';
 }
 
 function resolveActionPlan(
@@ -241,7 +208,10 @@ function resolveActionPlan(
     };
   }
 
-  if (snapshot.result.outcomeProjection?.willAutoFinish) {
+  if (
+    snapshot.result.status === 'autoResolved' ||
+    snapshot.result.outcomeProjection?.willAutoFinish
+  ) {
     // There is no finish action: once this predicate holds the game resolves the
     // craft by itself. Sending anything else here would only spend stability the
     // craft no longer needs.
@@ -255,41 +225,19 @@ function resolveActionPlan(
     };
   }
 
-  if (snapshot.result.targetsMet) {
-    if (isPolicyAllowed(policy, 'finish')) {
-      return {
-        kind: 'execute',
-        request: {
-          kind: 'finish',
-          actionName: 'Finish Craft',
-          reason: 'Targets are already met.',
-        },
-        title: 'Finish Craft',
-        detail: 'Targets are met. Auto mode is finishing the craft.',
-      };
-    }
+  if (snapshot.result.status === 'blocked') {
     return {
       kind: 'stop',
-      phase: 'unsupported',
-      tone: 'success',
-      title: 'Manual finish required',
+      phase: 'stopped',
+      tone: 'warning',
+      title: 'Auto mode stopped',
       detail:
-        'Targets are met, but the current auto policy does not finish crafts automatically.',
+        'No legal actions remain. The craft has not automatically resolved; check stability, qi, and technique requirements.',
     };
   }
 
   const recommendation = snapshot.result.recommendation;
   if (!recommendation) {
-    if (snapshot.result.isTerminal) {
-      return {
-        kind: 'stop',
-        phase: 'stopped',
-        tone: 'warning',
-        title: 'Auto mode stopped',
-        detail:
-          'No valid actions remain. Check stability, qi, or finish the craft manually.',
-      };
-    }
     return {
       kind: 'wait',
       phase: 'armed',
@@ -317,30 +265,13 @@ function resolveActionPlan(
     };
   }
 
-  if (
-    !isPolicyAllowed(policy, 'finish') &&
-    recommendationEndsCraft(recommendation)
-  ) {
+  if (policy === 'techniquesOnly' && recommendationEndsCraft(recommendation)) {
     return {
       kind: 'stop',
       phase: 'unsupported',
       tone: 'success',
-      title: 'Manual finish required',
+      title: 'Paused before craft ends',
       detail: `The best move is ${recommendation.skill.name}, but it would end the craft, so auto mode stopped before resolving it.`,
-    };
-  }
-
-  if (
-    !isPolicyAllowed(policy, 'finish') &&
-    hasGuaranteedFinishAvailable(snapshot.result)
-  ) {
-    return {
-      kind: 'stop',
-      phase: 'unsupported',
-      tone: 'success',
-      title: 'Manual finish required',
-      detail:
-        'The craft can already be finished successfully, so auto mode stopped before cashing it out.',
     };
   }
 
@@ -358,8 +289,7 @@ function resolveActionPlan(
       };
     }
 
-    const policyLabel =
-      actionKind === 'finish' ? 'finish crafts' : 'use item actions';
+    const policyLabel = 'use item actions';
     return {
       kind: 'stop',
       phase: 'unsupported',
@@ -377,7 +307,7 @@ function resolveActionPlan(
       skill: recommendation.skill,
       reason: recommendation.reasoning,
     },
-    title: actionKind === 'finish' ? 'Finish Craft' : recommendation.skill.name,
+    title: recommendation.skill.name,
     detail: recommendation.reasoning,
   };
 }
@@ -842,14 +772,8 @@ export function createAutoCraftController({
     setUiState({
       phase: 'executing',
       tone: 'active',
-      statusTitle:
-        request.kind === 'finish'
-          ? 'Finishing craft'
-          : 'Executing recommendation',
-      statusDetail:
-        request.kind === 'finish'
-          ? request.reason
-          : `Using ${request.actionName} automatically.`,
+      statusTitle: 'Executing recommendation',
+      statusDetail: `Using ${request.actionName} automatically.`,
       lastActionName: request.actionName,
       isRunning: true,
       canStop: true,
@@ -902,10 +826,7 @@ export function createAutoCraftController({
       phase: 'ready',
       tone: 'active',
       statusTitle: 'Ready to act',
-      statusDetail:
-        request.kind === 'finish'
-          ? request.reason
-          : `Preparing to use ${request.actionName}.`,
+      statusDetail: `Preparing to use ${request.actionName}.`,
       isRunning: true,
       canStop: true,
     });
@@ -1022,17 +943,7 @@ export function createAutoCraftController({
         }
 
         cancelWaitingTimeout();
-        const completedRequest = awaitingRequest;
         clearAwaitingState();
-        if (completedRequest?.kind === 'finish') {
-          finalizeStoppedState(
-            'completed',
-            'success',
-            'Craft finished',
-            'Auto mode advanced the craft to resolution and is waiting for the next craft.',
-          );
-          return;
-        }
         if (uiState.stopRequested) {
           finalizeStoppedState(
             'stopped',

@@ -275,7 +275,7 @@ function buildAutoFinishRow(
     active: true,
     label: `Auto-finishing as ${tierLabel}`,
     detail:
-      'This craft resolves itself on the next input - there is no manual finish action, so nothing further can be banked.',
+      'This craft resolves automatically without further input - there is no manual finish action, so nothing further can be banked.',
     tone: buildTierTone(projection.tier, projection.targetTier),
   };
 }

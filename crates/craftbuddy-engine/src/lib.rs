@@ -24,8 +24,22 @@ use outcome::{
     OutcomeClassification, OutcomeTier, EXPONENTIAL_SCALING_FACTOR,
 };
 
-const FINISH_CRAFT_KEY: &str = "__finish_craft__";
-const FINISH_CRAFT_NAME: &str = "Finish Craft";
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = performance, js_name = now)]
+    fn monotonic_ms() -> f64;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn monotonic_ms() -> f64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_secs_f64()
+        * 1000.0
+}
 const RESOURCE_TIEBREAKER: f64 = 0.001;
 
 // Conjunctive goal-score weights. Mirrors `SCORING` in
@@ -677,6 +691,8 @@ impl Default for HarmonyCostMultipliers {
 
 #[derive(Clone, Debug, Deserialize)]
 struct MctsSearchConfig {
+    #[serde(default = "default_time_budget_ms")]
+    time_budget_ms: f64,
     #[serde(default = "default_iterations")]
     iterations: usize,
     #[serde(default = "default_rollout_depth")]
@@ -692,6 +708,7 @@ struct MctsSearchConfig {
 impl Default for MctsSearchConfig {
     fn default() -> Self {
         Self {
+            time_budget_ms: default_time_budget_ms(),
             iterations: default_iterations(),
             rollout_depth: default_rollout_depth(),
             exploration: default_exploration(),
@@ -724,7 +741,7 @@ struct SkillPolicy {
 
 #[derive(Clone, Debug)]
 struct Action {
-    skill_index: Option<usize>,
+    skill_index: usize,
     key: String,
     name: String,
 }
@@ -749,10 +766,27 @@ struct Engine {
     input: MctsInput,
     rng: SmallRng,
     score_scale: f64,
+    deadline_ms: f64,
 }
 
 impl Engine {
-    fn new(input: MctsInput) -> Self {
+    fn new(mut input: MctsInput) -> Self {
+        input.state.finished = input.state.finished
+            || outcome::will_auto_finish(
+                input.state.completion,
+                input.state.perfection,
+                input.state.stability,
+                &build_outcome_bands(
+                    input.target_completion,
+                    input.target_perfection,
+                    input.config.is_sublime_craft,
+                    input.config.max_completion,
+                    input.config.max_perfection,
+                    input.config.perfection_band_goal,
+                    input.config.completion_band_ceiling,
+                ),
+                None,
+            );
         let seed = if input.search.seed == 0 {
             build_seed(&input)
         } else {
@@ -763,12 +797,14 @@ impl Engine {
             input,
             rng: SmallRng::new(seed),
             score_scale,
+            deadline_ms: f64::INFINITY,
         }
     }
 
     fn run(&mut self) -> MctsResult {
         let mut nodes = Vec::<Node>::new();
         let root_queue = normalize_queue(&self.input.forecasted_conditions);
+        self.deadline_ms = monotonic_ms() + self.input.search.time_budget_ms.max(0.0);
         let root_untried = self.ordered_legal_actions(
             &self.input.state,
             &self.input.current_condition,
@@ -793,7 +829,10 @@ impl Engine {
         let max_nodes = self.input.search.max_nodes.max(1);
         let iterations = self.input.search.iterations.max(1);
         for _ in 0..iterations {
-            if nodes.len() >= max_nodes {
+            if nodes.len() >= max_nodes
+                || monotonic_ms() >= self.deadline_ms
+                || nodes[0].state.finished
+            {
                 break;
             }
             profile_count!(Iteration);
@@ -902,10 +941,10 @@ impl Engine {
         start_depth: usize,
     ) -> f64 {
         let mut depth = start_depth;
-        while depth < self.input.search.rollout_depth && !state.finished {
-            if self.goals_met(&state) {
-                break;
-            }
+        while depth < self.input.search.rollout_depth
+            && !state.finished
+            && monotonic_ms() < self.deadline_ms
+        {
             let actions = self.ordered_legal_actions(&state, &condition, &queue);
             if actions.is_empty() {
                 break;
@@ -914,9 +953,10 @@ impl Engine {
             match self.apply_action(&state, &condition, &queue, &action) {
                 Some((next_state, next_condition, next_queue)) => {
                     profile_count!(RolloutStep);
-                    let consumed_turn = action
-                        .skill_index
-                        .and_then(|idx| self.input.skills.get(idx))
+                    let consumed_turn = self
+                        .input
+                        .skills
+                        .get(action.skill_index)
                         .map(|skill| skill.consumes_turn)
                         .unwrap_or(false);
                     state = next_state;
@@ -925,14 +965,11 @@ impl Engine {
                     if consumed_turn {
                         depth += 1;
                     }
-                    if action.skill_index.is_none() {
-                        break;
-                    }
                 }
                 None => break,
             }
         }
-        self.score_state(&state)
+        self.score_state(&state, &condition)
     }
 
     fn pick_rollout_action(
@@ -979,7 +1016,15 @@ impl Engine {
         queue: &[String],
     ) -> Vec<Action> {
         profile_count!(OrderedLegalActions);
-        if state.finished || state.stability <= 0.0 || self.goals_met(state) {
+        if state.finished
+            || outcome::will_auto_finish(
+                state.completion,
+                state.perfection,
+                state.stability,
+                &self.outcome_bands(),
+                None,
+            )
+        {
             return Vec::new();
         }
         // One buff resolution for the whole action space. It used to run once
@@ -987,29 +1032,22 @@ impl Engine {
         // which profiling measured at ~12,300 resolutions per search.
         let env = self.action_env();
         let active = effects::resolve_active_buffs(state, env.config, env.skills);
-        let mut actions: Vec<Action> = self
+        let actions: Vec<Action> = self
             .input
             .skills
             .iter()
             .enumerate()
             .filter(|(idx, skill)| self.can_apply_skill(state, *idx, skill, condition, &active))
             .map(|(idx, skill)| Action {
-                skill_index: Some(idx),
+                skill_index: idx,
                 key: skill.key.clone(),
                 name: skill.name.clone(),
             })
             .collect();
 
-        if self.finish_success_chance(state) > 0.0 {
-            actions.push(Action {
-                skill_index: None,
-                key: FINISH_CRAFT_KEY.to_string(),
-                name: FINISH_CRAFT_NAME.to_string(),
-            });
-        }
-
         let mut scored: Vec<(f64, Action)> = actions
             .into_iter()
+            .take_while(|_| monotonic_ms() < self.deadline_ms)
             .map(|action| {
                 let score = self
                     .preview_action_score(state, condition, queue, &action, &active)
@@ -1035,7 +1073,7 @@ impl Engine {
     ) -> Option<f64> {
         profile_count!(PreviewActionScore);
         let mut rng = SmallRng::new(0x9E37_79B9_7F4A_7C15);
-        let (next_state, _, _) = self.apply_action_with_rng(
+        let (next_state, next_condition, _) = self.apply_action_with_rng(
             state,
             condition,
             queue,
@@ -1043,7 +1081,7 @@ impl Engine {
             &mut rng,
             Some(active_buffs),
         )?;
-        Some(self.score_state(&next_state))
+        Some(self.score_state(&next_state, &next_condition))
     }
 
     /// Legality, delegated to the shared port of `canApplySkill` so technique,
@@ -1091,14 +1129,7 @@ impl Engine {
         // avoids re-resolving once per candidate transition.
         active_buffs: Option<&[ActiveBuff]>,
     ) -> Option<(EngineState, String, Vec<String>)> {
-        if action.skill_index.is_none() {
-            profile_count!(StateClone);
-            let mut finished = state.clone();
-            finished.finished = true;
-            return Some((finished, normalize_condition(condition), queue.to_vec()));
-        }
-
-        let skill_index = action.skill_index?;
+        let skill_index = action.skill_index;
         let skill = self.input.skills.get(skill_index)?;
 
         let condition = normalize_condition(condition);
@@ -1162,9 +1193,23 @@ impl Engine {
         Some((next, next_condition, next_queue))
     }
 
-    fn score_state(&self, state: &EngineState) -> f64 {
+    fn score_state(&self, state: &EngineState, condition: &str) -> f64 {
         profile_count!(ScoreState);
         if state.finished {
+            return self.score_finished_outcome(state);
+        }
+        // A blocked craft is unresolved, but its bars cannot progress. Check
+        // legality directly: ordered_legal_actions previews scores recursively
+        // and may also stop early at the search deadline.
+        let env = self.action_env();
+        let active = effects::resolve_active_buffs(state, env.config, env.skills);
+        if !self
+            .input
+            .skills
+            .iter()
+            .enumerate()
+            .any(|(idx, skill)| self.can_apply_skill(state, idx, skill, condition, &active))
+        {
             return self.score_finished_outcome(state);
         }
 
@@ -1368,16 +1413,6 @@ impl Engine {
         expected_score - state.step as f64 * STEP_PENALTY
     }
 
-    fn finish_success_chance(&self, state: &EngineState) -> f64 {
-        let outcomes = bonus_outcomes(state.completion, self.input.target_completion);
-        let fail = outcomes
-            .iter()
-            .filter(|outcome| self.input.target_completion > 0.0 && outcome.guaranteed <= 0)
-            .map(|outcome| outcome.probability)
-            .sum::<f64>();
-        clamp(1.0 - fail, 0.0, 1.0)
-    }
-
     fn condition_effects(&self, condition: &str) -> ConditionEffectSummary {
         self.input
             .condition_effects
@@ -1444,12 +1479,6 @@ impl Engine {
             ),
             bands,
         }
-    }
-
-    fn goals_met(&self, state: &EngineState) -> bool {
-        let goals = self.goals();
-        (goals.mode_completion <= 0.0 || state.completion >= goals.mode_completion)
-            && (goals.mode_perfection <= 0.0 || state.perfection >= goals.mode_perfection)
     }
 
     fn goal_priority_weights(
@@ -2942,6 +2971,10 @@ fn default_iterations() -> usize {
     12_000
 }
 
+fn default_time_budget_ms() -> f64 {
+    2000.0
+}
+
 fn default_rollout_depth() -> usize {
     32
 }
@@ -3102,6 +3135,7 @@ mod tests {
             forecasted_conditions: vec!["neutral".to_string(), "neutral".to_string()],
             condition_effects: HashMap::new(),
             search: MctsSearchConfig {
+                time_budget_ms: 2000.0,
                 iterations: 1_000,
                 rollout_depth: 8,
                 exploration: 1.0,
@@ -3119,6 +3153,117 @@ mod tests {
         assert!(result.nodes > 1);
         assert!(!result.skill_policies.is_empty());
         assert!(result.best_skill_key.is_some());
+    }
+
+    #[test]
+    fn blocked_successor_uses_final_bars_without_claiming_resolution() {
+        let mut input = basic_input();
+        input.state.qi = 20.0;
+        input.state.perfection = 100.0;
+        input.target_completion = 100.0;
+        input.target_perfection = 100.0;
+        input.config.max_completion = Some(1000.0);
+        input.config.max_perfection = Some(1000.0);
+        input.skills.truncate(2);
+        input.skills[0].qi_cost = 20.0;
+        input.skills[0].base_completion_gain = 99.0;
+        input.skills[0].scales_with_intensity = false;
+        input.skills[1].qi_cost = 10.0;
+        input.skills[1].base_completion_gain = 60.0;
+        input.skills[1].base_perfection_gain = 0.0;
+        input.skills[1].scales_with_control = false;
+        let engine = Engine::new(input);
+        let actions = engine.ordered_legal_actions(&engine.input.state, "neutral", &[]);
+        let dead_end = actions
+            .iter()
+            .find(|action| action.skill_index == 0)
+            .unwrap();
+        let continuation = actions
+            .iter()
+            .find(|action| action.skill_index == 1)
+            .unwrap();
+        let mut rng = SmallRng::new(42);
+        let (blocked, _, _) = engine
+            .apply_action_with_rng(
+                &engine.input.state,
+                "neutral",
+                &[],
+                dead_end,
+                &mut rng,
+                None,
+            )
+            .unwrap();
+        assert!(blocked.stability > 0.0);
+        assert!(!blocked.finished);
+        assert!(engine
+            .ordered_legal_actions(&blocked, "neutral", &[])
+            .is_empty());
+        assert_eq!(
+            engine.score_state(&blocked, "neutral"),
+            engine.score_finished_outcome(&blocked)
+        );
+        let (playable, _, _) = engine
+            .apply_action_with_rng(
+                &engine.input.state,
+                "neutral",
+                &[],
+                continuation,
+                &mut rng,
+                None,
+            )
+            .unwrap();
+        assert!(!engine
+            .ordered_legal_actions(&playable, "neutral", &[])
+            .is_empty());
+        let (completed, _, _) = engine
+            .apply_action_with_rng(&playable, "neutral", &[], continuation, &mut rng, None)
+            .unwrap();
+        assert!(
+            engine.score_state(&completed, "neutral") > engine.score_state(&blocked, "neutral")
+        );
+    }
+
+    #[test]
+    fn met_goals_remain_live_until_actual_caps() {
+        let mut input = basic_input();
+        input.state.completion = input.target_completion;
+        input.state.perfection = input.target_perfection;
+        input.config.max_completion = Some(1000.0);
+        input.config.max_perfection = Some(1000.0);
+        let engine = Engine::new(input);
+        assert!(!engine.input.state.finished);
+        let actions = engine.ordered_legal_actions(&engine.input.state, "neutral", &[]);
+        assert!(!actions.is_empty());
+        assert!(actions
+            .iter()
+            .all(|action| action.skill_index < engine.input.skills.len()));
+    }
+
+    #[test]
+    fn already_resolved_root_has_no_actions() {
+        for stability in [0.0, 60.0] {
+            let mut input = basic_input();
+            input.state.stability = stability;
+            input.state.completion = 1000.0;
+            input.state.perfection = 1000.0;
+            let mut engine = Engine::new(input);
+            assert!(engine.input.state.finished);
+            let result = engine.run();
+            assert_eq!(result.iterations, 0);
+            assert!(result.skill_policies.is_empty());
+        }
+    }
+
+    #[test]
+    fn mcts_stops_at_deadline_even_with_large_iteration_and_node_limits() {
+        let mut input = basic_input();
+        input.search.iterations = 10_000_000;
+        input.search.max_nodes = 10_000_000;
+        input.search.time_budget_ms = 5.0;
+        let started = std::time::Instant::now();
+        let result = Engine::new(input).run();
+        assert!(result.iterations < 10_000_000);
+        assert!(started.elapsed().as_millis() < 500, "deadline was ignored");
     }
 
     #[test]
@@ -3487,7 +3632,8 @@ mod tests {
         balanced.perfection = 184.0;
 
         assert!(
-            engine.score_state(&balanced) > engine.score_state(&over_completed),
+            engine.score_state(&balanced, "neutral")
+                > engine.score_state(&over_completed, "neutral"),
             "balanced sublime state must outscore an over-completed perfect state"
         );
     }
@@ -3496,22 +3642,17 @@ mod tests {
     /// engine must not keep planning actions from that state.
     #[test]
     fn states_past_the_finish_flats_are_terminal() {
-        let mut engine = Engine::new(sublime_scoring_input());
-        let mut state = engine.input.state.clone();
-        state.completion = 5000.0;
-        state.perfection = 5000.0;
-        let action = Action {
-            skill_index: Some(0),
-            key: engine.input.skills[0].key.clone(),
-            name: engine.input.skills[0].name.clone(),
-        };
-        let (next, condition, queue) = engine
-            .apply_action(&state, "neutral", &[], &action)
-            .expect("action is legal");
-        assert!(next.finished, "auto-finish predicate should end the craft");
+        let mut input = sublime_scoring_input();
+        input.state.completion = 5000.0;
+        input.state.perfection = 5000.0;
+        let engine = Engine::new(input);
+        assert!(
+            engine.input.state.finished,
+            "already-resolved roots need no further action"
+        );
         assert!(
             engine
-                .ordered_legal_actions(&next, &condition, &queue)
+                .ordered_legal_actions(&engine.input.state, "neutral", &[])
                 .is_empty(),
             "a finished craft offers no further actions"
         );
