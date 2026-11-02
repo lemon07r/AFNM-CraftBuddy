@@ -16,7 +16,7 @@ Subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedet
 
 ## During a craft
 
-The panel shows the recommended action, expected gains/costs, reasoning and ranked alternatives. It follows conditions, buffs, mastery, toxicity and all nine harmonies, and coexists with the game's native auto-use loadout rather than spending the same pill twice.
+The panel shows the next action with its gains and costs, the outcome it is working towards and upcoming conditions. The plan, other actions and automatic crafting sit in sections you can expand. It follows conditions, buffs, mastery, toxicity and all nine harmonies, and coexists with the game's native auto-use loadout rather than spending the same pill twice.
 
 Outcome rows show the tier you are aiming for, each bar's bands and the bar holding the next tier back. There is no manual Finish button: crafts resolve when stability runs out or both bars reach their actual caps.
 
@@ -30,16 +30,16 @@ Outcome rows show the tier you are aiming for, each bar's bands and the bar hold
 
 ## Settings
 
-Open the panel's gear icon for the settings slide-over.
+Open settings from the panel's gear icon or from CraftBuddy's entry in the game's mod options screen; both edit the same settings.
 
 ![CraftBuddy settings](pictures/settings.png)
 
-- **Fast** is the default preset. **Instant** uses the lowest budget; Balanced, High Accuracy and Max spend more search effort. “Instant” is not a zero-latency guarantee.
-- Presets set depth, time, nodes and beam together. Raising one slider alone can waste work or reduce search quality; manual changes apply when you release the slider.
-- **Goal Priority** biases completion or perfection without changing tier requirements.
-- **Push Extra Bands** rewards progress beyond the secured tier. **Perfection Band Goal** asks for more perfection; **Completion Band Ceiling** stops rewarding completion beyond the chosen band, never below the tier requirement. Zero means Auto.
+- **Fast** is the default preset. **Instant** uses the lowest budget; Balanced, High accuracy and Max spend more search effort. “Instant” is not a zero-latency guarantee.
+- Presets set all four **Advanced search** sliders (turns to look ahead, time per turn, states to explore, branches to keep) together. Raising one slider alone can waste work or reduce search quality; manual changes apply when you release the slider.
+- **Prefer perfection or completion** biases the search without changing tier requirements.
+- **Aim for extra bands** rewards progress beyond the secured tier. **Perfection band goal** asks for more perfection; **Completion band ceiling** stops rewarding completion beyond the chosen band, never below the tier requirement. Zero means Auto.
 - Band widths grow by 1.3×: two bands are about 230% of the recipe target, not 200%. Sublime requires two bands on each bar.
-- Recommendations use the established TypeScript search. Display and worker-thread options are also available.
+- Recommendations use the established TypeScript search. Display options and background workers are also available.
 
 Search stops at its time or node limit. Equal millisecond settings can reach different frontiers on different machines; reproducible comparisons use fixed node budgets with a nonbinding clock, not a promise that a preset always picks the same action.
 

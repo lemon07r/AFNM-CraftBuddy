@@ -47,7 +47,7 @@ Condition transitions, known-technique resolution, completion-bonus naming, over
 
 CraftBuddy has no native action-cost wrapper; costs are locally simulated. Native `getActionCost` is an individual preview, not the finalized mastery-aware payment oracle requested in [API requests](API_REQUESTS.md). Likewise, declaration/probe presence for condition/stat helpers is not proof that a production path calls them. Native scaling is deliberately not used inside search because a live provider can disagree on hypothetical future-state variables.
 
-`onReduxAction` runs during the reducer; read-only observation there avoids nested-dispatch hazards. `modAPI.gameData.registerOptionsUI` and top-level `modAPI.injectUI` are available, but current mounting uses `overlayMount.ts`, not those APIs. Localization through `actions.addTranslation` and a native overlay host are candidates, not completed migrations.
+`onReduxAction` runs during the reducer; read-only observation there avoids nested-dispatch hazards. The overlay mounts through `overlayMount.ts`. The settings also register as a native options screen through `modAPI.gameData.registerOptionsUI` (on `gameData` in the installed bundle, despite the published types); both views share one settings store via `subscribeSettings`. Top-level `modAPI.injectUI` is available but unused. Localization through `actions.addTranslation` and a native overlay host are candidates, not completed migrations.
 
 ### Automation
 
