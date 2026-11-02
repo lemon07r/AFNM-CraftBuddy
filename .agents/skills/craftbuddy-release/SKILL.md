@@ -1,63 +1,45 @@
 ---
 name: craftbuddy-release
-description: CraftBuddy release and Workshop publishing workflow. Activate when bumping versions, packaging, uploading to Steam Workshop item 3661729323, pushing release commits, tagging GitHub releases, changing Workshop description copy, or for any Steam Workshop upload mechanics.
+description: Use when bumping versions, packaging a release, changing Workshop copy, uploading to Workshop, or pushing release tags.
 ---
 
-# CraftBuddy Release
+# Release CraftBuddy
 
-Use this for release operations only after implementation validation is complete. See `docs/project/RELEASE_PROCESS.md` for the full detailed reference.
+This is the release procedure. Validation details live in `docs/DEVELOPMENT.md`, not a second release checklist.
 
-## Version Sources
+## Prepare
 
-Update both version strings together:
+- Update `package.json`, add a concise newest-first section to `CHANGELOG.md`, and refresh `docs/WORKSHOP_DESCRIPTION.md` when public copy changes. The UI harness reads the package version automatically.
+- A major bump fits incompatible mechanics/scoring/terminal semantics; a minor bump fits a game retarget that keeps the architecture. Historical examples are in the changelog.
+- For a retarget, update the current contracts and append runtime evidence; keep dated performance measurements dated instead of presenting them as new speed claims.
+- Keep one rolling “What's New” Workshop section. `bun run docs:check` checks version/changelog agreement and the **8,000-character body limit**; the upload wrapper also refuses oversized descriptions before building/uploading.
 
-- `package.json`
-- `scripts/ui/agent-browser-harness.tsx`
+## Publish in this order
 
-## Release Order
-
-1. Finish code/docs and do a lean docs pass.
-2. Run validation:
+1. Validate the finished tree:
    ```bash
-   bun run docs:inventory   # first, if docs changed
    bun run release:validate
    ```
-3. Commit the release changes, then push `main`.
-4. Upload to Workshop item `3661729323`:
+   For mechanics/Rust changes, regenerate the differential corpus and run both sides plus `bun run optimizer:bench` as described in the development matrix. The release gate does not run Cargo or benchmark contracts. A harness build is useful for UI changes; live testing is an escalation, not an automatic release step.
+2. Review the diff and commit the release (for example `chore(release): vX.Y.Z`). Keep generated outputs and local Steam files out of the commit.
+3. Push the release commit on main:
    ```bash
-   bun run workshop:upload -- --change-note "vX.Y.Z - What changed" --description-file docs/project/WORKSHOP_DESCRIPTION.md
+   git push origin main
    ```
-   Description sync is explicit. When public copy is unchanged, omit `--description-file`; the wrapper then leaves the existing Workshop description alone.
-5. Push tag `vX.Y.Z` to trigger `.github/workflows/release.yml` and GitHub Release artifact upload.
-6. Confirm package version, tag, Workshop note, and uploaded zip all match.
+4. With **Steam running and logged into the owning account**, and sibling repo **`../ModUploader-AFNM`** available, upload:
+   ```bash
+   bun run workshop:upload -- --change-note "vX.Y.Z - What changed" --description-file docs/WORKSHOP_DESCRIPTION.md
+   ```
+   The wrapper rebuilds CraftBuddy, prepares the sibling uploader, and updates item `3661729323`. Description sync is explicit: omit `--description-file` if the existing public body should stay unchanged. `--skip-build` / `--skip-uploader-prepare` are useful only when those artifacts are already current.
+5. After Workshop succeeds, tag the pushed release commit:
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+   `.github/workflows/release.yml` builds the tag and creates the GitHub Release with the zip. Pushing main alone does not create that release or upload to Workshop.
+6. Confirm package version, tag, Workshop change note and uploaded build agree.
 
-## Workshop Upload Mechanics
+## Failure clues
 
-- The wrapper builds CraftBuddy unless `--skip-build` is passed.
-- Prepares sibling `../ModUploader-AFNM` unless `--skip-uploader-prepare` is passed.
-- Uses Workshop item `3661729323` by default.
-- Requires Steam running and logged into the owning account.
-- Never commit Steam credentials, login files, or local uploader artifacts.
-- Do not sync title/description unless explicitly intended.
-- Preview images should stay small; the uploader can compress large images.
-- **Steam caps the description at 8,000 characters.** Exceeding it fails late, with Steam reporting only `a parameter is invalid` / `GenericFailure` after the zip has already uploaded - the uploader then prints its usage text, which looks like a bad flag but is not. Check the length of `WORKSHOP_DESCRIPTION.md`'s body (frontmatter excluded) before uploading:
-  ```bash
-  bun -e 'const t=require("fs").readFileSync("docs/project/WORKSHOP_DESCRIPTION.md","utf8").trim();const b=t.startsWith("---")?t.slice(t.indexOf("\n---",3)+4).trim():t;console.log(b.length,"/ 8000")'
-  ```
-  Keep the rolling `What's New in v6` section concise rather than adding a separate block for every v6.x release; the full per-release history lives in `docs/project/RELEASE_NOTES_*.md`.
-
-## Gotchas
-
-1. **Do not tag before Workshop upload is ready**: the GitHub workflow only creates GitHub artifacts, not Workshop uploads.
-2. **Push the release commit before tagging**: tags must point at the committed release state on `origin/main`.
-3. **Version strings must match**: package and UI harness are both user-visible release surfaces.
-4. **Description sync is explicit**: do not pass `--description-file` unless Workshop copy intentionally changed.
-
-## References
-
-- `docs/project/RELEASE_PROCESS.md`
-- `scripts/workshop-upload.ts`
-- `docs/project/WORKSHOP_DESCRIPTION.md`
-- `../ModUploader-AFNM`
-- `pre-commit-validation` skill — validation before publishing
-- `conventional-git` skill — release commit/tag naming
+- Steam's `GenericFailure` / “a parameter is invalid” followed by uploader usage text has previously meant an oversized description, not a bad CLI flag.
+- A stale copied zip can mask a source fix during installed-client checks; rebuild and recopy when using the runtime skill's escalation path.

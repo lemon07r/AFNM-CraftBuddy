@@ -1,102 +1,38 @@
 ---
 name: craftbuddy-optimizer
-description: CraftBuddy optimizer/search/MCTS workflow. Activate for changes to src/optimizer, crates/craftbuddy-engine, recommendation quality, scoring, move ordering, simulation tests, replay snapshots, or optimizer performance.
+description: Use for optimizer mechanics, recommendation quality, scoring, Rust parity, replay regressions, or performance work.
 ---
 
-# CraftBuddy Optimizer
+# Optimizer work
 
-Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN.md` remains the detailed source of truth; this skill is the action checklist. Modelled game version: AFNM **0.7.19-ac29603**.
+Start with the relevant section of `docs/OPTIMIZER_DESIGN.md`; current contracts and gaps are in `docs/MECHANICS_PARITY.md`. A failing replay or focused test is usually more useful than another ranking constant.
 
-## Activate When
+## Easy-to-miss contracts
 
-- Editing `src/optimizer/*` or `crates/craftbuddy-engine/*`
-- Changing scoring, move ordering, condition branching, finish policy, harmony, or MCTS behavior
-- Investigating a bad recommendation, replay snapshot, or long-craft performance issue
+- Prefer fixing transition/scoring inputs over a parallel ordering heuristic: several compensating constants recreated the old heuristic soup.
+- Keep game access in the adapter, so hypothetical states stay pure. Integration/UI use `src/optimizer/index.ts`; workers and tests may use internals.
+- `src/optimizer/outcome.ts` owns TS bands, tiers and auto-finish; `crates/craftbuddy-engine/src/outcome.rs` is an independent parity-tested mirror, not a TS consumer.
+- Decree scores **each bar change** and can flip focus within a turn. Preserve the ordered TS/Rust folds and `needsBarContributions()` / `needs_bar_contributions()` gates, which avoid allocations for other harmonies. The expected-event and intra-turn scaling approximations remain documented gaps.
+- Preserve the 0.7.17 phases: toxicity/droplets/buff payment → chance capture → effect masteries → recomputed Qi/stability payment → success effects → pre-action-name buff ticks → harmony → cleanup. New buff names do not tick immediately.
+- Returning Cycle accrues **reported** payment even on failure, drains before stabilize release, and grants ordinary Returned Precision. A flat harmony bonus cannot substitute for this transition.
+- Carry `overcraftAmbition`, `perfectionBandGoal` and `completionBandCeiling` through every score, stale-settings and cache boundary: a changed goal changes score meaning.
+- Strip explicit `null` at the Rust bridge: one non-optional null used to reject the whole payload and silently disable the prior (`nativeMcts.test.ts`).
+- Prefer node budgets for reproducibility. TS also stops on `Date.now()`, so identical millisecond settings are not deterministic work. For neutral refactors, record then compare `bun run optimizer:digest -- --out tmp/baseline.json` / `bun run optimizer:digest -- --compare tmp/baseline.json`.
+- `docs/ENGINE_DECISIONS.md` records measured dead ends: mutate/undo (clone was 4.70%), packed keys (1.0–1.4%), larger MCTS budgets and wider beams. Remeasure if the workload changes rather than treating those results as permanent prohibitions.
+- Keep benchmark contracts tied to runtime evidence; a green benchmark obtained by tuning a constant is not a model correction.
 
-## Architecture Boundaries
+## Test selection
 
-1. `src/optimizer/*` is pure simulation/search. It must not read the game runtime, DOM, Redux, or settings storage directly.
-2. `src/modContent/*` converts live game objects into optimizer config/state/actions, and reaches the optimizer only through `src/optimizer/index.ts`. Add to the barrel instead of importing a submodule.
-3. `src/optimizer/outcome.ts` is the **only** authority for band thresholds, tier requirements and the auto-finish predicate. Search, the Rust engine (`outcome.rs`) and the panel all consume it; recomputing a threshold anywhere else is a defect.
-4. The Rust engine models the same mechanics and the same action space as TypeScript (proven by the differential corpus), but its search output is a root **policy prior**. TypeScript owns final ranking, cache entries and the returned recommendation.
+Run a named Jest file with `bun run jest src/__tests__/<file>.test.ts`.
 
-## Safe Change Workflow
-
-1. Read the relevant section of `docs/project/OPTIMIZER_DESIGN.md`.
-2. Reproduce the issue with a focused unit, simulation, or replay test before changing logic.
-3. Fix the underlying scoring/transition/order layer; do not add a parallel heuristic lane.
-4. Run targeted tests while iterating, then `bun run test` before completion.
-5. Run `bun run build` if TypeScript/Rust/WASM source or generated WASM changes.
-6. If mechanics/parity docs change, update docs and run `bun run docs:check`.
-7. If you notice stale or inaccurate optimizer docs/skills while working, correct them in the same pass; do not leave known bad guidance for future agents.
-
-## Scoring Rules
-
-- **Goals are conjunctive.** Tier value comes from `classifyOutcome`, gated by `Math.min(completionMargin, perfectionMargin)`. No weight may be able to raise the effective tier by piling points onto one bar — that failure mode is exactly what the 0.7.5 rework removed.
-- Keep the documented commensurability: a tier step (`TIER_VALUE_SCALE`, `2x` magnitude) strictly exceeds the whole within-tier stack, and death (`3x`) exceeds a tier step.
-- Scale bonuses and penalties with craft target magnitude; avoid hardcoded constants that only fit one craft size.
-- If the active goal is met, survivability penalties must not apply.
-- Step efficiency matters: shorter paths beat longer equivalent-goal paths.
-- Resource tie-breakers after targets are met must stay tiny (`0.001` class), never large enough to justify extra turns.
-- Death must be worse than any progress path; runway gap penalties are proportional and uncapped.
-- Harmony and condition quality earn value through their effect on the reachable tier, not as flat additive bonuses.
-
-## Move Ordering Rules
-
-- `buildOrderedMoveCandidates()` is the authoritative beam-ordering path.
-- Rank moves from post-action state via `estimatePostMoveStateScore()` and existing tie-breakers.
-- Do not hard-filter legal skills before evaluation.
-- Do not add separate first-move or recommendation-only heuristics that can disagree with recursive search.
-- If a move class is under-ranked, fix transition/scoring inputs that feed the live ordering path.
-
-## Rotation Display Rules
-
-- `findOptimalPath()` should reconstruct from transposition-table `{ score, bestMove }` entries.
-- Greedy fallback is only for cache misses.
-- Do not re-evaluate every skill at every follow-up step; that diverges from the tree search at shallow remaining depth.
-
-## Test Selection
-
-| Change | Tests |
+| Change | Useful focused checks |
 | --- | --- |
-| Multi-turn recommendation behavior | `craftSimulation.test.ts` |
-| Search scoring/order/cache edge | `search.test.ts` |
-| Bands, tiers, auto-finish | `outcome.test.ts`, `outcomeProjection.test.ts` |
-| Transition, buffs, masteries, action costs | `skills.test.ts` |
-| Formula or runtime parity | `gameAccuracy.test.ts`, `runtimeParity.test.ts` |
-| Harmony subsystem | `harmony.test.ts`, `harmonyRegistry.test.ts`, plus simulations |
-| Eccentric Decree / bar-change ordering | `harmony.test.ts`, plus the Rust fold in `crates/craftbuddy-engine/src/lib.rs` via `bun run wasm:test` |
-| Replay export/import fidelity | replay snapshot fixtures/helpers |
-| Any mechanics change | regenerate with `bun run optimizer:differential-corpus`, then `engineDifferential.test.ts` **and** `bun run wasm:test` |
-| Rust engine | `bun run wasm:test`; `bun run build` for the inline WASM bundle |
+| Scoring, ordering, caches | `search.test.ts`; multi-turn cases in `craftSimulation.test.ts` |
+| Bands, tiers, termination | `outcome.test.ts`, `outcomeProjection.test.ts` |
+| Effects, costs, masteries | `skills.test.ts`, `runtime0717.test.ts`, `runtimeParity.test.ts`, `gameAccuracy.test.ts` |
+| Harmony | `harmony.test.ts`, `harmonyRegistry.test.ts`, `returningCycle.test.ts`, simulations |
+| Bridge or worker wire | `nativeMcts.test.ts`, `searchBackend.test.ts` |
+| Any mechanics change | `bun run optimizer:differential-corpus`, then `engineDifferential.test.ts` and `bun run wasm:test` |
+| Rust engine | `bun run wasm:test`; `bun run build` rebuilds inline WASM |
 
-## Gotchas
-
-1. **Heuristic soup compounds**: if a fix needs 3+ tuned constants or a heuristic to counter another heuristic, step back and fix the model.
-2. **Condition effects affect ordering**: order by actual condition-modified gains, not raw base gains.
-3. **There is no manual finish**: the craft resolves when stability <= 0 or both actual bar caps are reached. `willAutoFinish` has no five-band overcraft shortcut (removed in 6.9.0; runtime evidence §18.4 supersedes §12.5). The internal `Finish Craft` pseudo-action exists only to price craft-end EV inside search; never treat it as an action a player or automation presses, and never let further stat spam "improve" an already-resolved state.
-4. **Wall-clock budget is not deterministic**: prefer node-budget or completed-frontier assertions for regressions.
-5. **Native MCTS cannot override clear TypeScript scores**: it may only help with near-tie root ordering inside the configured score window.
-6. **Never send an explicit `null` across the Rust bridge**: one `null` on a non-optional field fails the whole payload and silently disables the prior. `nativeMcts.test.ts` guards this.
-7. **Do not re-attempt measured dead ends**: compact Rust state with mutate/undo (clone is 4.7% of a transition) and the packed numeric cache key (1.0-1.4% of the budget) were both rejected with data. See `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`.
-8. **Never tune a constant to make a benchmark contract pass.** Contracts change only with recorded runtime-oracle evidence.
-9. **Eccentric Decree scores per bar change, not once per turn**: 0.7.6 moved its state machine out of end-of-turn `processEffect` into an `onBarChange` hook fired inside every `applyCompletion`/`applyPerfection`, so one turn can award several harmony steps (+5 focused, -15 stray since 0.7.8) and flip the focused bar part-way through. `processEccentricDecree` in `src/optimizer/harmony.ts` is an ordered fold over `BarChangeEvent[]`, mirrored over `BarChange` in the Rust engine; event order is part of the mechanic, so keep both folds identical and regenerate the differential corpus after any change.
-10. **`needsBarContributions()` is a live gate, not dead code**: bar-change events are collected only when the craft's harmony is `eccentricDecree`. Leave the gate in `src/optimizer/skills.ts` and `needs_bar_contributions()` in `crates/craftbuddy-engine/src/effects.rs` alone; it keeps every other harmony allocation-free.
-11. **Internal names and display names differ**: key `false_fusion` / internal `name` `False Fusion` displays as "Strive for Completion". Search, caches, tests and fixtures key on `name`; only user-facing strings go through `techniqueDisplayName()` (exported from `src/optimizer/index.ts`).
-12. **Band targets are user-settable since 6.4.0**: `perfectionBandGoal` and `completionBandCeiling` (`0` = auto, clamped to 8) enter only through `buildOutcomeBands`, `deriveBandGoals` (raises the perfection goal, never lowers it) and `computeOvercraftExtras` (bounds completion extras, never below the tier requirement). They move the goal the search works toward, not the outcome model: `TIER_REQUIREMENTS`, band thresholds, tier classification and `willAutoFinish` stay untouched, and both fields must stay mirrored in the Rust `EngineConfig` as snake_case.
-
-13. **Preserve 0.7.17 phases**: pay toxicity/droplets/buff costs, capture success chance, apply effect masteries, recompute/pay Qi and stability, then success effects. Tick only pre-action buff names, then resolve harmony. Chance-conditioned payment buffs are folded as transient payment branches, not persistent search branches; no probability-aware future-buff redesign is part of this retarget.
-14. **Returning Cycle is a transition, not a scoring heuristic**: fixed starting charge size, accrual from reported payment even on failure, drain before stabilize release, ordinary Returned Precision stacks ticking on later actions. Mirror TS/Rust and preserve the payload through replay/bridge. `runtime0717.test.ts` and `returningCycle.test.ts` cover the edge cases.
-15. **Ambition settings must reach every scoring/cache boundary**: all terminal calls pass `perfectionBandGoal` and `completionBandCeiling`; stale-settings detection and cross-step cache scope include those plus `overcraftAmbition` (`recommendationContext.ts`). A settings change cannot reuse differently valued scores.
-16. **Fatal failure is not secured progress**: a technique whose real failure transition ends below target is `requiresProbabilisticSurvival`; keep that precedence before score in worker merges. The separate floor helper still computes payment before buff consumption and lacks effect masteries, so it can disagree with `applySkill`; that known gap is not fixed by the failure check.
-
-## References
-
-- `docs/project/OPTIMIZER_DESIGN.md`
-- `docs/project/MECHANICS_PARITY.md`
-- `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
-- `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md`
-- `docs/project/TESTING.md`
-- `src/optimizer/outcome.ts`
-- `src/__tests__/craftSimulation.test.ts`
-- `src/__tests__/search.test.ts`
+The iteration/hand-off/release matrix is in `docs/DEVELOPMENT.md`. Recommendation and performance changes also benefit from the replay benchmark; run wall-clock measurements separately from CPU-heavy tests.

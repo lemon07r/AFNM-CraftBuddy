@@ -1,1 +1,1 @@
-Read `AGENTS.md` for repository guidelines, then `docs/project/START_HERE_FOR_AGENTS.md` for technical context.
+Start with `AGENTS.md`; load a task-specific skill only when useful.
