@@ -7,14 +7,17 @@ import {
 import { buildOutcomeSummary } from '../utils/outcomeSummary';
 import {
   currentOutcomeCopy,
+  displayedAlternatives,
   expectedGainsLabel,
   gainsLabel,
   isPlayableRecommendation,
   isPlayableAction,
+  planDisplayContent,
   relativeChoiceLabel,
   rotationDisplayNames,
   successPercentage,
 } from '../utils/recommendationPresentation';
+import { DEFAULT_SETTINGS } from '../settings';
 
 const recommendation: SkillRecommendation = {
   skill: {
@@ -59,6 +62,93 @@ const result: SearchResult = {
   status: 'live',
   outcomeProjection: projection,
 };
+
+describe('saved display preferences', () => {
+  const planned: SearchResult = {
+    ...result,
+    optimalRotation: ['False Fusion', 'False Fusion', 'False Fusion'],
+    expectedFinalState: {
+      completion: 260,
+      perfection: 230,
+      stability: 10,
+      maxStability: 60,
+      qi: 20,
+      turnsRemaining: 1,
+    },
+  };
+  it('limits planned steps and respects both section toggles independently', () => {
+    expect(
+      planDisplayContent(planned, {
+        ...DEFAULT_SETTINGS,
+        maxRotationDisplay: 2,
+      }),
+    ).toEqual({
+      rotation: ['Strive for Completion', 'Strive for Completion'],
+      followUp: null,
+      final: planned.expectedFinalState,
+    });
+    expect(
+      planDisplayContent(planned, {
+        ...DEFAULT_SETTINGS,
+        showOptimalRotation: false,
+      }),
+    ).toEqual({
+      rotation: [],
+      followUp: null,
+      final: planned.expectedFinalState,
+    });
+    expect(
+      planDisplayContent(planned, {
+        ...DEFAULT_SETTINGS,
+        showExpectedFinalState: false,
+      }).final,
+    ).toBeUndefined();
+  });
+  it('also hides the fallback follow-up when planned steps are disabled or limited to zero', () => {
+    const followUp = {
+      ...result,
+      recommendation: {
+        ...recommendation,
+        followUpSkill: {
+          name: 'Simple Refine',
+          type: 'refine',
+          immediateGains: recommendation.immediateGains,
+          expectedGains: recommendation.expectedGains,
+          effectiveCosts: recommendation.effectiveCosts,
+        },
+      },
+    };
+    expect(planDisplayContent(followUp).followUp).toBe('Simple Refine');
+    expect(
+      planDisplayContent(followUp, {
+        ...DEFAULT_SETTINGS,
+        showOptimalRotation: false,
+      }).followUp,
+    ).toBeNull();
+    expect(
+      planDisplayContent(followUp, {
+        ...DEFAULT_SETTINGS,
+        maxRotationDisplay: 0,
+      }).followUp,
+    ).toBeNull();
+  });
+  it('filters legacy finish actions before applying the alternatives limit', () => {
+    const legacy = {
+      ...recommendation,
+      skill: { ...recommendation.skill, actionKind: 'finish' },
+    } as unknown as SkillRecommendation;
+    const choices = {
+      ...result,
+      alternativeSkills: [legacy, recommendation, recommendation],
+    };
+    expect(displayedAlternatives(choices)).toEqual([recommendation]);
+    expect(displayedAlternatives(choices, 2)).toEqual([
+      recommendation,
+      recommendation,
+    ]);
+    expect(displayedAlternatives(choices, 0)).toEqual([]);
+  });
+});
 
 describe('playable recommendations', () => {
   it('does not offer old synthetic finish recommendations', () => {

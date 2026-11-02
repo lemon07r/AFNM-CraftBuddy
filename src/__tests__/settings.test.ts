@@ -337,6 +337,30 @@ describe('settings search budget', () => {
     expect(reloaded.preferredAutoModePolicy).toBe('includeItems');
   });
 
+  it('preserves saved plan visibility, step limits and alternative limits', () => {
+    const display = {
+      showOptimalRotation: false,
+      showExpectedFinalState: false,
+      maxRotationDisplay: 2,
+      maxAlternatives: 4,
+    };
+    saveSettings(display);
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
+    expect(loadSettings()).toMatchObject(display);
+  });
+
+  it.each([0, 1, 2, 3, 4, 5])(
+    'accepts %s other actions to list',
+    (maxAlternatives) => {
+      expect(saveSettings({ maxAlternatives }).maxAlternatives).toBe(
+        maxAlternatives,
+      );
+    },
+  );
+
   it('defaults both ambition band settings to auto', () => {
     const loaded = loadSettings();
 

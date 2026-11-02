@@ -91,7 +91,7 @@ Both use bands ("stars") and default to [b]Auto[/b], following your target outco
 [b]Why bars "stop" around 200%:[/b] band widths grow by 1.3x each, so the bands land at roughly 100% / 230% / 399% / 619% / 904% of the recipe target. Sublime needs two bands on both bars — about 230% — and once that is banked the craft has met its gate. If you want to push further, that is what these two targets are for.
 
 [h2]Display Options[/h2]
-Show or hide the panel, use compact spacing and choose whether to show upcoming conditions. The plan, other actions and automatic crafting are collapsible sections on the panel.
+Show or hide the panel, use compact spacing and choose whether to show upcoming conditions, planned steps and the planned end state. [b]Other actions to list[/b] sets the alternatives limit from 0 to 5 (default 1). The plan, other actions and automatic crafting are collapsible sections on the panel; saved planned-step limits are respected.
 
 [hr][/hr]
 

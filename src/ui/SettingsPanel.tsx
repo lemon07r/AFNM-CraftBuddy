@@ -329,11 +329,32 @@ export function SettingsBody({
           help="Denser spacing; all actions and details remain available. Ctrl+Shift+M also toggles this."
         />
         <ToggleSetting
+          label="Show planned steps"
+          checked={settings.showOptimalRotation}
+          onChange={(showOptimalRotation) => commit({ showOptimalRotation })}
+        />
+        <ToggleSetting
+          label="Show planned end state"
+          checked={settings.showExpectedFinalState}
+          onChange={(showExpectedFinalState) =>
+            commit({ showExpectedFinalState })
+          }
+        />
+        <ToggleSetting
           label="Show conditions"
           checked={settings.showForecastedConditions}
           onChange={(showForecastedConditions) =>
             commit({ showForecastedConditions })
           }
+        />
+        <ChoiceGroup
+          label="Other actions to list"
+          value={String(settings.maxAlternatives)}
+          options={[0, 1, 2, 3, 4, 5].map((value) => ({
+            id: String(value),
+            label: String(value),
+          }))}
+          onChange={(value) => commit({ maxAlternatives: Number(value) })}
         />
       </Box>
 

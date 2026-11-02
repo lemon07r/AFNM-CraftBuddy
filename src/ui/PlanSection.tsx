@@ -1,11 +1,11 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { techniqueDisplayName, type SearchResult } from '../optimizer';
+import type { SearchResult } from '../optimizer';
+import type { CraftBuddySettings } from '../settings';
 import type { OutcomeSummary } from '../utils/outcomeSummary';
 import {
-  isPlayableAction,
   isPlayableRecommendation,
-  rotationDisplayNames,
+  planDisplayContent,
 } from '../utils/recommendationPresentation';
 import { formatLargeNumber } from '../utils/largeNumbers';
 import { Disclosure } from './components';
@@ -14,17 +14,33 @@ import { colors } from './theme';
 export function PlanSection({
   result,
   summary,
+  settings,
   maxCompletionCap,
   maxPerfectionCap,
 }: {
   result: SearchResult;
   summary: OutcomeSummary | null;
+  settings?: CraftBuddySettings;
   maxCompletionCap?: number;
   maxPerfectionCap?: number;
 }) {
-  const rotation = rotationDisplayNames(result);
-  const final = result.expectedFinalState;
-  const followUp = result.recommendation?.followUpSkill;
+  const { rotation, final, followUp } = planDisplayContent(result, settings);
+  const reasoning =
+    result.recommendation && isPlayableRecommendation(result.recommendation)
+      ? result.recommendation.reasoning
+      : null;
+  const hasCaps =
+    maxCompletionCap !== undefined || maxPerfectionCap !== undefined;
+  if (
+    rotation.length === 0 &&
+    !followUp &&
+    !final &&
+    !reasoning &&
+    !summary?.optimisticTierLabel &&
+    !summary?.harmony &&
+    !hasCaps
+  )
+    return null;
   return (
     <Disclosure title="Plan">
       <Typography variant="body2" sx={{ color: colors.textSecondary }}>
@@ -46,10 +62,9 @@ export function PlanSection({
           ))}
         </Box>
       ) : (
-        followUp &&
-        isPlayableAction(followUp) && (
+        followUp && (
           <Typography variant="body2" sx={{ mt: 1 }}>
-            Then: {techniqueDisplayName(followUp)}
+            Then: {followUp}
           </Typography>
         )
       )}
@@ -68,16 +83,11 @@ export function PlanSection({
           </Typography>
         </Box>
       )}
-      {result.recommendation &&
-        isPlayableRecommendation(result.recommendation) &&
-        result.recommendation.reasoning && (
-          <Typography
-            variant="body2"
-            sx={{ color: colors.textSecondary, mt: 1 }}
-          >
-            {result.recommendation.reasoning}
-          </Typography>
-        )}
+      {reasoning && (
+        <Typography variant="body2" sx={{ color: colors.textSecondary, mt: 1 }}>
+          {reasoning}
+        </Typography>
+      )}
       {summary?.optimisticTierLabel && (
         <Typography variant="body2" sx={{ mt: 1 }}>
           Current bonus possibility: {summary.optimisticTierLabel}.
@@ -91,7 +101,7 @@ export function PlanSection({
           {summary.harmony.label} · {summary.harmony.detail}
         </Typography>
       )}
-      {(maxCompletionCap !== undefined || maxPerfectionCap !== undefined) && (
+      {hasCaps && (
         <Typography
           variant="caption"
           sx={{ display: 'block', mt: 1, color: colors.textSecondary }}

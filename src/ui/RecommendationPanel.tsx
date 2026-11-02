@@ -13,7 +13,10 @@ import {
   buildOutcomeSummary,
   buildSetupSummary,
 } from '../utils/outcomeSummary';
-import { isPlayableRecommendation } from '../utils/recommendationPresentation';
+import {
+  displayedAlternatives,
+  isPlayableRecommendation,
+} from '../utils/recommendationPresentation';
 import { SettingsPanel } from './SettingsPanel';
 import {
   ActionButton,
@@ -107,6 +110,9 @@ export const RecommendationPanel = memo(function RecommendationPanel({
   const loading = !result || isCalculating;
   const rec = result?.recommendation;
   const canUse = !loading && !settingsStale && !autoMode?.armed;
+  const alternatives = result
+    ? displayedAlternatives(result, settings?.maxAlternatives)
+    : [];
   const stop =
     autoMode && (autoMode.armed || autoMode.canStop || autoMode.isRunning) ? (
       <ActionButton
@@ -261,17 +267,14 @@ export const RecommendationPanel = memo(function RecommendationPanel({
           <PlanSection
             result={result}
             summary={outcome}
+            settings={settings}
             maxCompletionCap={maxCompletionCap}
             maxPerfectionCap={maxPerfectionCap}
           />
-          <Disclosure
-            title={`Other actions${result.alternativeSkills.length ? ` (${result.alternativeSkills.filter(isPlayableRecommendation).length})` : ''}`}
-          >
-            {result.alternativeSkills.filter(isPlayableRecommendation)
-              .length ? (
-              result.alternativeSkills
-                .filter(isPlayableRecommendation)
-                .map((alternative) => (
+          {settings?.maxAlternatives !== 0 && (
+            <Disclosure title={`Other actions (${alternatives.length})`}>
+              {alternatives.length ? (
+                alternatives.map((alternative) => (
                   <ActionRecommendation
                     key={alternative.skill.key ?? alternative.skill.name}
                     rec={alternative}
@@ -279,12 +282,16 @@ export const RecommendationPanel = memo(function RecommendationPanel({
                     onUse={canUse ? onRecommendationAction : undefined}
                   />
                 ))
-            ) : (
-              <Typography variant="body2" sx={{ color: colors.textSecondary }}>
-                No other actions in this search.
-              </Typography>
-            )}
-          </Disclosure>
+              ) : (
+                <Typography
+                  variant="body2"
+                  sx={{ color: colors.textSecondary }}
+                >
+                  No other actions in this search.
+                </Typography>
+              )}
+            </Disclosure>
+          )}
         </>
       )}
 

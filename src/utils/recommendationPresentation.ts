@@ -5,6 +5,7 @@ import {
 } from '../optimizer';
 import type { OutcomeSummary } from './outcomeSummary';
 import { formatLargeNumber } from './largeNumbers';
+import { DEFAULT_SETTINGS, type CraftBuddySettings } from '../settings';
 
 const GAIN_KEYS = ['completion', 'perfection', 'stability'] as const;
 
@@ -114,4 +115,45 @@ export function rotationDisplayNames(result: SearchResult): string[] {
         ? techniqueDisplayName(skill)
         : techniqueDisplayName({ name });
     });
+}
+
+export function planDisplayContent(
+  result: SearchResult,
+  settings: Pick<
+    CraftBuddySettings,
+    'showOptimalRotation' | 'showExpectedFinalState' | 'maxRotationDisplay'
+  > = DEFAULT_SETTINGS,
+): {
+  rotation: string[];
+  followUp: string | null;
+  final: SearchResult['expectedFinalState'];
+} {
+  const showSteps =
+    settings.showOptimalRotation && settings.maxRotationDisplay > 0;
+  const rotation = showSteps
+    ? rotationDisplayNames(result).slice(0, settings.maxRotationDisplay)
+    : [];
+  const followUp = result.recommendation?.followUpSkill;
+  return {
+    rotation,
+    followUp:
+      showSteps &&
+      rotation.length === 0 &&
+      followUp &&
+      isPlayableAction(followUp)
+        ? techniqueDisplayName(followUp)
+        : null,
+    final: settings.showExpectedFinalState
+      ? result.expectedFinalState
+      : undefined,
+  };
+}
+
+export function displayedAlternatives(
+  result: SearchResult,
+  maxAlternatives = DEFAULT_SETTINGS.maxAlternatives,
+): SkillRecommendation[] {
+  return result.alternativeSkills
+    .filter(isPlayableRecommendation)
+    .slice(0, maxAlternatives);
 }

@@ -42,6 +42,7 @@ Open settings from the panel's gear icon or from CraftBuddy's entry in the game'
 - **Aim for extra bands** rewards progress beyond the secured tier. **Perfection band goal** asks for more perfection; **Completion band ceiling** stops rewarding completion beyond the chosen band, never below the tier requirement. Zero means Auto.
 - Band widths grow by 1.3×: two bands are about 230% of the recipe target, not 200%. Sublime requires two bands on each bar.
 - Recommendations use the established TypeScript search. Display options and background workers are also available.
+- **Display** can hide planned steps or the planned end state independently, and **Other actions to list** sets how many alternatives appear (0–5, default 1). Saved planned-step limits are still respected.
 
 Search stops at its time or node limit. Equal millisecond settings can reach different frontiers on different machines; reproducible comparisons use fixed node budgets with a nonbinding clock, not a promise that a preset always picks the same action.
 
