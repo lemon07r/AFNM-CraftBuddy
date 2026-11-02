@@ -1687,7 +1687,15 @@ fn threshold_for_guaranteed_count(target: f64, guaranteed: i32) -> f64 {
     if target <= 0.0 || guaranteed <= 0 {
         return 0.0;
     }
-    band_threshold(target, guaranteed)
+    // Unfloored ladder sum, matching the runtime's band classification;
+    // `band_threshold` floors for goal/cap arithmetic only.
+    let mut total = 0.0;
+    let mut current = target;
+    for _ in 0..guaranteed {
+        total += current;
+        current = (current * EXPONENTIAL_SCALING_FACTOR).floor();
+    }
+    total
 }
 fn expected_crit_multiplier(crit_chance: f64, crit_multiplier: f64) -> f64 {
     let excess_crit = (crit_chance - 100.0).max(0.0);
@@ -2953,6 +2961,12 @@ fn default_max_nodes() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolved_band_thresholds_keep_fractional_widths() {
+        assert_eq!(threshold_for_guaranteed_count(100.0, 2), 230.0);
+        assert_eq!(threshold_for_guaranteed_count(7.5, 2), 16.5);
+    }
 
     fn basic_input() -> MctsInput {
         MctsInput {

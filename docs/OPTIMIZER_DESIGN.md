@@ -66,7 +66,7 @@ Extra perfection bands scale stacks by 20% of base per band beyond the tier base
 
 Live horizon leaves bank **guaranteed** extras only: fractional noise was measured to displace real buff setup. Terminal scoring includes bonus-roll fractions because the craft has resolved; otherwise different craft-ending gains tie and a Qi tie-breaker can prefer a zero-gain ender. Keep the soft overshoot penalty in both modes to distinguish overshooting live lines.
 
-Harmony earns value through future outcomes and subsystem quality (heat distance, inscription blocks, alchemical charge, resonance state), not an invented flat harmony reward. `buildScoringContext` samples productive usable moves for representative runway gains.
+Harmony earns value through future outcomes and subsystem quality (heat distance, inscription blocks, alchemical charge, resonance state), not an invented flat harmony reward. `buildScoringContext` samples productive usable moves for representative runway gains and keeps each move's (completion, perfection) rate, damped to the per-bar averages and reduced to the non-dominated set. Remaining turns are the smallest count that covers both bars' remaining work using at most two of those rates (the optimum of the fractional two-bar covering problem), so a dual-bar move counts once and two single-bar moves never run concurrently. Without per-move rates the estimate falls back to the larger of the per-bar and total-work bounds. Work, runway and shortfall use the effective goals (band goal and completion ceiling), not raw targets.
 
 ## Rust prior and workers
 

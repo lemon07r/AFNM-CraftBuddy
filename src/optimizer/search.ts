@@ -47,6 +47,7 @@ import {
 } from './gameTypes';
 import {
   bandThreshold,
+  BAND_GROWTH_RATIO,
   buildOutcomeBands,
   classifyOutcome,
   computeOvercraftExtras,
@@ -1369,8 +1370,17 @@ function getThresholdForGuaranteedBonusCount(
     return 0;
   }
 
+  // Unfloored ladder sum: the runtime classifies bands by subtracting each
+  // width from the raw value (Game.js `JS`), so a fractional first width
+  // keeps its fraction. `bandThreshold` floors for goal/cap arithmetic only.
   const cappedCount = Math.max(0, Math.floor(guaranteedCount));
-  return bandThreshold(target, cappedCount);
+  let threshold = 0;
+  let currentTarget = target;
+  for (let index = 0; index < cappedCount; index++) {
+    threshold += currentTarget;
+    currentTarget = Math.floor(currentTarget * BAND_GROWTH_RATIO);
+  }
+  return threshold;
 }
 
 function getProgressTowardRawGoal(
