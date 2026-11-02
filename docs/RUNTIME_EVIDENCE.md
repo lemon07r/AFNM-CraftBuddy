@@ -1709,6 +1709,14 @@ rule. CraftBuddy's scalar restore compatibility path therefore follows the
 same realized-delta and zero-event semantics. Earlier local documentation
 claiming a zero restoration emitted no event was incorrect.
 
+CraftBuddy's ordinary/triggered buff pool executor still defers its pool
+write and dispatches nonzero requested amounts. An experimental correction
+to use the same immediate pool application passed 12 targeted regressions
+and the 32-entry fixed-work digest, but changed 13 existing non-companion
+transition scenarios. It was reverted to preserve the companion-only golden
+scope; both that gap and legacy non-companion technique net aggregation are
+recorded in [mechanics parity](MECHANICS_PARITY.md#known-gaps).
+
 #### Bar overflow and companion ordering
 
 In the current 0.7.19 bundle, perfection applier `s7c` (`G:14932019`) and
