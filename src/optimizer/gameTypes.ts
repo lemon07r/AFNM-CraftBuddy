@@ -128,6 +128,7 @@ export type BuffEffectKind =
   | 'createBuff'
   | 'addStack'
   | 'changeToxicity'
+  | 'modifyBuffGroup'
   | 'setState';
 
 /**
@@ -147,7 +148,8 @@ export interface BuffEffect {
   key?: string;
   keys?: string[];
   value?: Scaling;
-  mode?: 'set' | 'add';
+  group?: string;
+  mode?: 'set' | 'add' | 'all' | 'highest' | 'lowest' | 'random';
 }
 
 /**
@@ -162,7 +164,9 @@ export type CraftingBuffTrigger =
   | 'stabilitySpent'
   | 'stabilityRestored'
   | 'completionGained'
-  | 'perfectionGained';
+  | 'perfectionGained'
+  | `stackGained.${string}`
+  | `stackLost.${string}`;
 
 export interface CraftingTriggeredEffectBlock {
   trigger: CraftingBuffTrigger | string;
@@ -266,6 +270,7 @@ export type TechniqueEffectKind =
   | 'pool'
   | 'createBuff'
   | 'consumeBuff'
+  | 'modifyBuffGroup'
   | 'cleanseToxicity';
 
 /**
@@ -277,6 +282,8 @@ export interface TechniqueEffect {
   stacks?: Scaling;
   buff?: BuffDefinition;
   condition?: CraftingTechniqueCondition;
+  group?: string;
+  mode?: 'all' | 'highest' | 'lowest' | 'random';
 }
 
 /**
@@ -803,7 +810,7 @@ export function evalExpression(
   eqn: string,
   variables: ScalingVariables,
 ): number {
-  if (!eqn) return 1;
+  if (!eqn) return 0;
   const compiled = compileExpression(eqn);
   if (!compiled) {
     console.warn(`[CraftBuddy] Failed to compile expression: ${eqn}`);

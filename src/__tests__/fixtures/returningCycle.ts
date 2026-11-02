@@ -81,6 +81,49 @@ export function returningCycleScenarios() {
   });
   const stabilize = retargetSkill({ type: 'stabilize', qiCost: 15 });
   add('release', release, stabilize);
+  const watcher = {
+    name: 'Precision observer',
+    stacks: 1,
+    definition: {
+      name: 'Precision observer',
+      canStack: true,
+      effects: [],
+      triggeredEffects: [
+        {
+          trigger: 'stackGained.Returned Precision',
+          effects: [
+            {
+              kind: 'setState' as const,
+              key: 'gained',
+              mode: 'add' as const,
+              value: { value: 1, eqn: 'amount' },
+            },
+          ],
+        },
+        {
+          trigger: 'stackLost.Returned Precision',
+          effects: [
+            {
+              kind: 'setState' as const,
+              key: 'lost',
+              mode: 'add' as const,
+              value: { value: 1, eqn: 'amount' },
+            },
+          ],
+        },
+      ],
+    },
+  };
+  add(
+    'release-silent',
+    release.copy({
+      buffs: new Map([
+        ['returned_precision', precisionBuff(3)],
+        ['precision_observer', watcher],
+      ]),
+    }),
+    stabilize,
+  );
   add('failed-release', release, { ...stabilize, successChance: 0 });
   add(
     'release-after-decay',

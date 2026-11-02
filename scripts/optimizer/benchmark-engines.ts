@@ -227,9 +227,9 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
 const FIXTURE_CONTRACTS: FixtureContract[] = [
   {
     fixture: 'user-report-overcraft-endgame',
-    mustRecommendOneOf: ['focus'],
+    mustRecommendOneOf: ['gentle_stabilize'],
     notes:
-      'Near-terminal overcraft endgame: Focus into Golden Path: First Peak banks ~2.4k more perfection than ending the craft immediately. Guards the regression where every craft-ending action scored bit-identically and the qi tie-breaker picked a zero-gain ender.',
+      'docs/RUNTIME_EVIDENCE.md §19 (G:14930153–14930735,14953475–14953685): late stability cleanup lets Gentle Stabilize repay overdraft and bank 44,604 perfection; Focus into First Peak ends at 37,115. Retain the banked-value regression, not the obsolete Focus opening.',
   },
   {
     fixture: 'user-report-resonance-regression',
@@ -270,8 +270,9 @@ const FIXTURE_CONTRACTS: FixtureContract[] = [
     // Bind this recovery contract to 6,000 nodes (depth 6), like its Jest guard,
     // retaining every assertion rather than treating machine speed as safety.
     searchBudget: { maxNodes: 6000, timeBudgetMs: 120000 },
-    preferredTypes: ['fusion'],
-    notes: 'Heat=1: do not walk forge heat to zero.',
+    mustRecommendOneOf: ['unstable_re-energisation'],
+    notes:
+      'docs/RUNTIME_EVIDENCE.md §19 (G:14930153–14930735,14953475–14953685): at stability 8, fusion pays 10 and only survives the 75% +7 recovery; support pays 5 and guarantees stability 3. Accept temporary heat zero to stabilize, then recover heat through fusion; fc0b411 predates verified overdraft.',
   },
   {
     fixture: 'low-stability-step-before',

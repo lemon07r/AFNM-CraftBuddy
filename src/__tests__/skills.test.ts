@@ -2497,11 +2497,11 @@ describe('Restoring Brilliance stability gain bug', () => {
     );
 
     expect(nextState).not.toBeNull();
-    expect(nextState!.stability).toBe(5.25);
+    expect(nextState!.stability).toBe(0);
     expect(survivabilityFloor).toEqual({
       stability: 0,
       maxStability: 59,
-      survivalProbability: 0.75,
+      survivalProbability: 0,
     });
   });
 });

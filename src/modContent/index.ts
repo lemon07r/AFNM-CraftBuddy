@@ -35,6 +35,7 @@ import {
   SkillDefinition,
   SkillMastery,
   getBonusAndChance,
+  getBuffDiscordantConditions,
   normalizeForecastConditionQueue,
   setConditionTransitionProvider,
   VISIBLE_CONDITION_QUEUE_LENGTH,
@@ -754,6 +755,7 @@ function buildOptimizerReplayInputSnapshot(params: {
     params.forecastedConditionTypes as any,
     params.state.harmony,
     VISIBLE_CONDITION_QUEUE_LENGTH,
+    getBuffDiscordantConditions(params.state.buffs),
   ).map((entry) => String(entry));
 
   return {
@@ -1695,7 +1697,9 @@ function updateRecommendation(
       const key = normalizeBuffKey(buff?.name);
       if (!key) continue;
       const stacks = buff?.stacks ?? 0;
-      if (stacks > 0) {
+      // Runtime keeps nonpositive createBuff results: ordinary effects and
+      // held-buff flags can still matter until an explicit consume/negate.
+      if (Number.isFinite(stacks)) {
         // 0.7.7+ buffs carry live trigger-written state (e.g. True Bifang
         // Flame's blaze). Capture it so stat scaling off those keys evaluates
         // against the real values instead of zero.

@@ -8,6 +8,7 @@
 use super::effects::*;
 use super::*;
 use serde_json::json;
+use std::collections::BTreeMap;
 
 fn scaling(value: serde_json::Value) -> Scaling {
     serde_json::from_value(value).expect("scaling should deserialize")
@@ -78,6 +79,94 @@ fn apply_0717(
         ConditionEffectSummary::default(),
         100.0,
     )
+}
+
+#[test]
+fn audited_discordance_precedes_every_queue_branch() {
+    for last in ["", "positive", "negative", "veryPositive", "veryNegative"] {
+        let queue = if last.is_empty() {
+            vec![]
+        } else {
+            vec![last.to_string()]
+        };
+        let distribution: BTreeMap<_, _> =
+            generated_condition_distribution("positive", &queue, 100.0, 0.7)
+                .into_iter()
+                .collect();
+        for (condition, expected) in [
+            ("neutral", 0.3),
+            ("veryPositive", 0.09),
+            ("veryNegative", 0.09),
+            ("positive", 0.39),
+            ("negative", 0.13),
+        ] {
+            assert!((distribution[condition] - expected).abs() < 1e-12);
+        }
+    }
+    let distribution: BTreeMap<_, _> = generated_condition_distribution("neutral", &[], 200.0, 2.0)
+        .into_iter()
+        .collect();
+    assert!((distribution["positive"] - 0.91).abs() < 1e-12);
+}
+
+#[test]
+fn audited_stability_intermediates_persist_until_cleanup() {
+    for (start, cost, gain, tick, expected) in [
+        (1.0, 10.0, 0.0, 7.0, 0.0),
+        (1.0, 10.0, 0.0, 12.0, 3.0),
+        (58.0, 0.0, 5.0, -5.0, 58.0),
+        (8.0, 0.0, 0.0, 6.25, 14.0),
+    ] {
+        let mut state = base_state();
+        state.stability = start;
+        state.buffs = serde_json::from_value(json!([{"key":"tick", "stacks":1,"definition":{
+            "name":"Tick", "effects":[{"kind":"stability", "amount":{"value":tick}}]
+        }}]))
+        .unwrap();
+        let subject = skill(merge(
+            minimal_skill("stability"),
+            json!({
+                "stability_cost":cost, "effects":[{"kind":"stability", "amount":{"value":gain}}]
+            }),
+        ));
+        assert_eq!(
+            apply_0717(&state, subject, &base_config())
+                .unwrap()
+                .stability,
+            expected
+        );
+    }
+}
+
+#[test]
+fn audited_cleanup_rounds_realized_outcomes_and_preserves_maximum_repair_excess() {
+    let mut state = base_state();
+    state.stability = 8.0;
+    let subject = skill(merge(
+        minimal_skill("cleanup"),
+        json!({"effects":[
+            {"kind":"stability", "amount":{"value":6.25}},
+            {"kind":"maxStability", "amount":{"value":10}},
+            {"kind":"maxStability", "amount":{"value":-5}}
+        ]}),
+    ));
+    let next = apply_0717(&state, subject, &base_config()).unwrap();
+    assert_eq!((next.stability, next.stability_penalty), (14.0, 0.0));
+    state.stability = 48.0;
+    state.initial_max_stability = 56.0;
+    state.stability_penalty = 5.0;
+    let subject = skill(merge(
+        minimal_skill("chance"),
+        json!({"prevents_max_stability_decay":true,"effects":[
+            {"kind":"stability", "amount":{"value":7}, "condition":{"kind":"chance", "percentage":75}}
+        ]}),
+    ));
+    assert_eq!(
+        apply_0717(&state, subject, &base_config())
+            .unwrap()
+            .stability,
+        50.25
+    );
 }
 
 #[test]
@@ -747,8 +836,8 @@ fn rng_placeholder_resolves_to_the_expected_value() {
 #[test]
 fn rejects_unsafe_or_unparsable_expressions() {
     let variables = vars(&[("control", 10.0)]);
-    // An empty formula is neutral, not zero.
-    assert_eq!(eval_expression("", &variables), 1.0);
+    // Runtime cy (G:6127938) explicitly returns zero for an empty expression.
+    assert_eq!(eval_expression("", &variables), 0.0);
     // Assignment, blocked keywords and disallowed characters all collapse to 0.
     assert_eq!(eval_expression("control = 5", &variables), 0.0);
     assert_eq!(eval_expression("return control", &variables), 0.0);

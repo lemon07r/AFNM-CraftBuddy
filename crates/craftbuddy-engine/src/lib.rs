@@ -156,6 +156,8 @@ struct EngineState {
     #[serde(default)]
     harmony: f64,
     #[serde(default)]
+    condition_generation_harmony: Option<f64>,
+    #[serde(default)]
     harmony_data: HarmonyData,
     #[serde(default)]
     cooldowns: Vec<i32>,
@@ -1129,7 +1131,13 @@ impl Engine {
             // 0.7.7+ Uncontrollable Flames: the queue roll reads the strongest
             // discordantConditions value across the post-action buffs.
             let discordance = effects::buff_discordant_conditions(&next.buffs);
-            advance_condition(&condition, queue, next.harmony, discordance, rng)
+            advance_condition(
+                &condition,
+                queue,
+                next.condition_generation_harmony.unwrap_or(next.harmony),
+                discordance,
+                rng,
+            )
         } else {
             (condition, queue.to_vec())
         };
@@ -2564,18 +2572,30 @@ fn generated_condition_distribution(
 ) -> Vec<(String, f64)> {
     let current = normalize_condition(current_condition);
     let queue = normalize_queue(next_conditions);
-    let clamped_harmony = clamp(harmony, -100.0, 100.0);
-    let negative_delta = if clamped_harmony < 0.0 {
-        clamped_harmony.abs() / 100.0
+    let negative_delta = if harmony < 0.0 {
+        harmony.abs() / 100.0
     } else {
         0.0
     };
-    let positive_delta = if clamped_harmony > 0.0 {
-        clamped_harmony.abs() / 100.0
+    let positive_delta = if harmony > 0.0 {
+        harmony.abs() / 100.0
     } else {
         0.0
     };
     let last_condition = queue.last().map(|s| s.as_str());
+    if discordance > 0.0 {
+        let active = clamp(discordance, 0.0, 1.0);
+        let extreme = active * clamp(0.18 / discordance, 0.0, 1.0);
+        let mild = active - extreme;
+        let positive = clamp(0.5 + harmony / 100.0 * 0.25, 0.0, 1.0);
+        return normalize_distribution(vec![
+            ("neutral".to_string(), 1.0 - active),
+            ("veryPositive".to_string(), extreme / 2.0),
+            ("veryNegative".to_string(), extreme / 2.0),
+            ("positive".to_string(), mild * positive),
+            ("negative".to_string(), mild * (1.0 - positive)),
+        ]);
+    }
     match last_condition {
         Some("veryPositive") | Some("veryNegative") => {
             return vec![("neutral".to_string(), 1.0)];
@@ -2614,21 +2634,13 @@ fn generated_condition_distribution(
             1.0,
         )
     };
-    let positive_chance = clamp((clamped_harmony + 100.0) / 200.0, 0.0, 1.0);
-    // 0.7.7+ discordant gate (runtime: `if (Math.random() >= d) return neutral`
-    // at the stay-neutral decision): a would-be neutral outcome only stays
-    // neutral (1 - d) of the time; the rest falls through to the harmony roll.
-    let effective_change_probability =
-        change_probability + (1.0 - change_probability) * clamp(discordance, 0.0, 1.0);
+    let positive_chance = clamp((harmony + 100.0) / 200.0, 0.0, 1.0);
     normalize_distribution(vec![
-        ("neutral".to_string(), 1.0 - effective_change_probability),
-        (
-            "positive".to_string(),
-            effective_change_probability * positive_chance,
-        ),
+        ("neutral".to_string(), 1.0 - change_probability),
+        ("positive".to_string(), change_probability * positive_chance),
         (
             "negative".to_string(),
-            effective_change_probability * (1.0 - positive_chance),
+            change_probability * (1.0 - positive_chance),
         ),
     ])
 }

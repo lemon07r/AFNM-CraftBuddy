@@ -196,6 +196,8 @@ export interface CraftingStateData {
   buffs: Map<string, TrackedBuff>;
   /** Harmony value (-100 to 100) for sublime crafts */
   harmony: number;
+  /** Harmony read by the just-completed turn's forecast roll, before cleanup. */
+  conditionGenerationHarmony?: number;
   /** Harmony type data for sublime craft mechanics */
   harmonyData?: HarmonyData;
   /** Current turn/step number */
@@ -249,6 +251,7 @@ export class CraftingState implements CraftingStateData {
   readonly consumedPillsThisTurn: number;
   readonly buffs: Map<string, TrackedBuff>;
   readonly harmony: number;
+  readonly conditionGenerationHarmony?: number;
   readonly harmonyData?: HarmonyData;
   readonly step: number;
   readonly completionBonus: number;
@@ -305,6 +308,7 @@ export class CraftingState implements CraftingStateData {
       this.buffs = new Map();
     }
     this.harmony = data.harmony ?? 0;
+    this.conditionGenerationHarmony = data.conditionGenerationHarmony;
     this.harmonyData = data.harmonyData
       ? cloneHarmonyData(data.harmonyData)
       : undefined;
@@ -382,6 +386,8 @@ export class CraftingState implements CraftingStateData {
         overrides.consumedPillsThisTurn ?? this.consumedPillsThisTurn,
       buffs: overrides.buffs ?? this.buffs,
       harmony: overrides.harmony ?? this.harmony,
+      conditionGenerationHarmony:
+        overrides.conditionGenerationHarmony ?? this.conditionGenerationHarmony,
       harmonyData: overrides.harmonyData ?? this.harmonyData,
       step: overrides.step ?? this.step,
       completionBonus: overrides.completionBonus ?? this.completionBonus,
@@ -535,7 +541,6 @@ export class CraftingState implements CraftingStateData {
     // Flame's blaze) changes stat scaling, so it must be part of the key or
     // states that differ only there would collide in the transposition table.
     const buffStr = Array.from(this.buffs.entries())
-      .filter(([_, v]) => v.stacks > 0)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => {
         const base = `${k}:${v.stacks}`;
@@ -576,6 +581,11 @@ export class CraftingState implements CraftingStateData {
       ? stableStringify(this.nativeVariables)
       : '';
     this._cacheKey = `${this.qi}:${this.stability}:${this.initialMaxStability}:${this.stabilityPenalty}:${this.controlBuffTurns}:${ctrlMult}:${this.intensityBuffTurns}:${intMult}:${this.toxicity}:${this.harmony}:${harmonyDataKey}:${critChanceKey}:${critMultKey}:${successBonusKey}:${poolCostFlatKey}:${poolCostKey}:${stabCostKey}:${compBonusKey}:${nativeVarsKey}:${this.consumedPillsThisTurn}:${cooldownStr}:${itemStr}:${buffStr}`;
+    if (
+      this.conditionGenerationHarmony !== undefined &&
+      this.conditionGenerationHarmony !== this.harmony
+    )
+      this._cacheKey += `:${this.conditionGenerationHarmony}`;
     return this._cacheKey;
   }
 

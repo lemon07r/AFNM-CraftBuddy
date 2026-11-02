@@ -85,6 +85,7 @@ interface NativeMctsState {
   toxicity: number;
   max_toxicity: number;
   harmony: number;
+  condition_generation_harmony?: number;
   harmony_data: NativeHarmonyData;
   cooldowns: number[];
   completion_bonus: number;
@@ -724,6 +725,13 @@ export function buildNativeMctsInput(params: {
       toxicity: finiteNumber(state.toxicity),
       max_toxicity: finiteNumber(state.maxToxicity),
       harmony: finiteNumber(state.harmony),
+      ...(state.conditionGenerationHarmony !== undefined
+        ? {
+            condition_generation_harmony: finiteNumber(
+              state.conditionGenerationHarmony,
+            ),
+          }
+        : {}),
       harmony_data: convertHarmonyData(state.harmonyData),
       cooldowns: skills.map((skill) =>
         finiteNumber(state.getCooldown(skill.key)),

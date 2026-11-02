@@ -1575,14 +1575,66 @@ string positions and should be re-resolved after a game update.
 
 ### Stability cleanup, not per-application clamping
 
-`G:14930153–14930735` adds/subtracts stability without a zero floor or upper
-cap; payment calls the same applier (`G:14946058`). Buffs and harmony run
+`r7c` (`G:14930153`) subtracts via `r.stability+=l` (`G:14930317`) and restores
+via `r.stability+=t` (`G:14930735`), without a zero floor or upper cap;
+payment calls the same applier (`G:14946058`). Buffs and harmony run
 before cleanup (`G:14952843–14953475`); `G:14953685` finally bounds stability
 to zero/recipe stability minus penalty, then floors it. Thus 1 − 10 + 7 ends
 at 0, not 7; 8/max 10 + 5 − 5 ends at 8, not 5. Max-stability effects also
 do not immediately cap current stability. Qi differs: ordinary payment and
 restoration clamp immediately (`G:14935853–14936307`). Local early stability
 bounds and the separate floor helper were confirmed gaps at inspection time.
+
+### Benchmark contracts moved by late cleanup
+
+Two fixed-work contracts changed because of the cleanup timing above, each
+checked by replaying the fixture's lines under the corrected transitions:
+
+- `user-report-overcraft-endgame` now requires Gentle Stabilize. Late overdraft
+  repayment lets its six-action restoration line bank 44,604 perfection;
+  Focus into First Peak resolves at 37,115. The restoration buff does not tick
+  on its creation turn.
+- `forge-heat-runway-step-3` now requires Unstable Re-energisation. At
+  stability 8, Explosive Fusion pays 10 and survives only the 75% +7 recovery
+  (floor 0, 25% fatal); the support technique pays 5 and guarantees 3, then
+  stabilizes and restores heat through fusion.
+
+### Percentage conditions read running progress
+
+`b7c` makes one success check after payment and returns immediately on failure
+before its `for(let c of e.effects)y7c(...)` loop (`G:14946058–14947800`).
+All technique effects therefore share that action roll; chance conditions
+inside `ZS` remain separate draws. Stability/maximum cleanup must preserve
+this correlation rather than independently resampling action success per
+effect.
+
+Payment callbacks are synchronous: `r7c` dispatches `D2('stabilitySpent',...)`
+after the subtraction (`G:14930153–14930735`), and `u7c` dispatches
+`D2('poolSpent',...)` after the clamped Qi delta (`G:14935853–14936730`).
+`b7c` invokes both before its success check/effect loop (`G:14946058–14947800`).
+CraftBuddy's deferred payment listeners remain a known phase-ordering gap;
+stack-event support does not imply all resource callbacks run at their runtime
+mutation sites.
+
+Technique/mastery effect applier `y7c` checks
+`ZS(e.condition,t,a,0,r,i)` with the already-mutated progress object `r`
+(`G:14941612–14941690`). The supplied review coordinate `14941271` identifies
+this region when slicing decoded text, not Buffer bytes. `ZS`
+(`G:6332600–6333380`) reads stability, completion and perfection from that live
+object, divided by `recipeStats.stability`, `.completion` and `.perfection`.
+Thus stability gates see payment and earlier effects; completion/perfection
+gates see earlier bar applications. These are recipe targets, not the current
+decayed stability maximum or overcraft bar caps. CraftBuddy captures recipe
+stability as `initialMaxStability`.
+
+By contrast, pool conditions use snapshot `n.pool/n.maxpool`, named-buff
+conditions use snapshot `n[buff.name]`, and expression conditions evaluate
+against that same variable scope (plus `stacks`/`count`). The ordinary buff
+executor also passes live progress to `ZS` (`G:14938012`); this evidence does
+not certify CraftBuddy's separate ordinary/triggered buff completion/perfection scopes or
+fully synchronous trigger interleaving. The focused correction covers running
+technique percentage gates in both gains and transitions, retaining the
+existing expected-state approximation for earlier chance effects.
 
 ### Discordance precedes the entire forecast queue
 
@@ -1593,6 +1645,16 @@ split mild positive/negative by `0.5 + 0.25*harmony/100`. Only d=0 reaches the
 ordinary forecast branches. No explicit harmony/d probability clamp occurs
 here. At d=.7/harmony +100: neutral .30, extremes .09 each, positive .39,
 negative .13. Local late-neutral ordering and mild probabilities differed.
+
+`Uncontrollable Flames` is the only stock `discordantConditions` definition
+(`G:6190302–6190554`): nonstackable, empty ordinary effects, no expiry. Its six
+stock references are equipped `kind: 'flame'` ranks
+(`G:6190554,6191334,6192144,6192953,6193759,6194587`), whose buffs are granted
+by the equipment initialization loop (`G:14956450–14957050`). No stock
+mid-craft grant was found. TS therefore snapshots this permanent stock value
+once per search; arbitrary createBuff/consumeBuff payloads can change it,
+however, and runtime/Rust reread held buffs after actions. Such dynamic custom
+discordance is not covered by the TS root snapshot.
 
 ### Stack mutations and group effects
 
@@ -1608,6 +1670,16 @@ emit loss. Direct harmony-created/replaced buffs and Completion Bonus can
 bypass those helpers/events. Dispatch is synchronous, checks held positive
 stacks and guards re-entry by trigger/buff name; numeric `amount` enters scope,
 string buffName does not (`G:14950331–14950464`).
+
+Nonpositive gain-helper results remain held: the ordinary buff executor and
+pre-existing-name turn loop have no positive-stack guard
+(`G:14940600–14941200`, `G:14952843`), and cleanup does not remove them.
+Their ordinary effects and stat contributions can therefore still matter.
+The count-variable builder `K1i` explicitly skips `stacks<=0` (`G:6329953`),
+as do triggered listeners (`G:14950531`); this is not a blanket deletion rule.
+Extraction and search keys must retain such entries even though count aliases
+omit them. Explicit consume/negate or a buff's own negative stack tick can
+remove the instance through the helpers above.
 
 Both technique/mastery and buff executors implement `modifyBuffGroup`
 (`G:14939530–14939911`, `G:14943100–14943481`). Match exact buffType **or name**,

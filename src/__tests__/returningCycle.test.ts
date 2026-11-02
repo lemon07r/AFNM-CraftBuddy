@@ -39,6 +39,13 @@ function run(name: string) {
 }
 
 describe('Returning Cycle (RUNTIME_EVIDENCE §17.5; G:318992-319082)', () => {
+  it('releases precision silently but emits its ordinary decay loss', () => {
+    const next = run('release-silent');
+    expect(next.getBuffStacks('returned_precision')).toBe(22);
+    expect(next.buffs.get('precision_observer')?.internalState).toEqual({
+      lost: 1,
+    });
+  });
   it.each(['accrue', 'failed-accrue'])(
     'credits reported payment on %s and drains newly earned charges',
     (name) => {

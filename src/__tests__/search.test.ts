@@ -9,6 +9,7 @@ import {
   DEFAULT_SKILLS,
   applySkill,
   calculateSkillGains,
+  calculateActionSurvivabilityFloor,
   getAvailableSkills,
   getConditionEffectsForConfig,
 } from '../optimizer/skills';
@@ -5292,7 +5293,16 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation!.skill.type).toBe('stabilize');
     expect(forcefulStabilize).toBeDefined();
     expect(invasiveRefine).toBeDefined();
-    expect((invasiveRefine as any).requiresProbabilisticSurvival).toBe(true);
+    // docs/RUNTIME_EVIDENCE.md §19: 1 - 17 + 7 = -9 even when recovery procs.
+    // This alternative now ends the craft, rather than continuing on a proc.
+    expect(invasiveRefine!.requiresProbabilisticSurvival).toBe(false);
+    expect(
+      calculateActionSurvivabilityFloor(
+        input.state,
+        invasiveRefine!.skill,
+        input.config,
+      ),
+    ).toMatchObject({ stability: 0, survivalProbability: 0 });
     expect(
       allRecommendations.findIndex(
         (recommendation) => recommendation.skill.key === 'forceful_stabilize',
@@ -5508,19 +5518,20 @@ describe('scoreState (isolated)', () => {
     );
 
     expect(result.recommendation).not.toBeNull();
-    // Stability is 7, so the craft is ending - but the best line banks one
-    // more Golden Path: Third Peak support proc first (Focus, then Golden
-    // Path: First Peak) instead of ending a turn early. The recorded build
-    // ended immediately at 34,687 perfection; the replayed line must bank
-    // strictly more by the time the craft resolves.
-    expect(result.recommendation!.skill.key).toBe('focus');
-    expect(result.recommendation!.followUpSkill?.name).toBe(
-      'Golden Path: First Peak',
-    );
+    // docs/RUNTIME_EVIDENCE.md §19: Gentle Stabilize repays overdraft before
+    // cleanup (7 - 9 + 6.25 -> 4), enabling a longer line. Focus -> First Peak
+    // instead ends at 37,115 perfection (7 - 27 -> 0).
+    expect(result.recommendation!.skill.key).toBe('gentle_stabilize');
+    expect(result.optimalRotation).toEqual([
+      'Gentle Stabilize',
+      'Focus',
+      'Repurpose Qi',
+      'Unstable Refine',
+      'Gentle Re-energisation',
+      'Unstable Refine',
+    ]);
     expect(result.expectedFinalState?.stability).toBe(0);
-    expect(result.expectedFinalState?.perfection ?? 0).toBeGreaterThan(
-      recordedOutput?.expectedFinalState?.perfection ?? 0,
-    );
+    expect(result.expectedFinalState?.perfection ?? 0).toBeGreaterThan(37115);
 
     // Terminal scores must no longer collapse onto one value: the craft-end
     // bonus-roll fraction now separates craft-ending lines by the value they
@@ -5645,7 +5656,15 @@ describe('scoreState (isolated)', () => {
     expect(result.recommendation!.skill.type).toBe('stabilize');
     expect(forcefulStabilize).toBeDefined();
     expect(invasiveRefine).toBeDefined();
-    expect((invasiveRefine as any).requiresProbabilisticSurvival).toBe(true);
+    // docs/RUNTIME_EVIDENCE.md §19: 8 - 17 + 7 = -2 even on the recovery branch.
+    expect(invasiveRefine!.requiresProbabilisticSurvival).toBe(false);
+    expect(
+      calculateActionSurvivabilityFloor(
+        input.state,
+        invasiveRefine!.skill,
+        input.config,
+      ),
+    ).toMatchObject({ stability: 0, survivalProbability: 0 });
     expect(
       allRecommendations.findIndex(
         (recommendation) => recommendation.skill.key === 'forceful_stabilize',
@@ -5911,14 +5930,32 @@ describe('scoreState (isolated)', () => {
       'unstable_re-energisation',
     );
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.type).toBe('fusion');
-    expect(result.recommendation!.skill.key).not.toBe(
-      'unstable_re-energisation',
-    );
+    // docs/RUNTIME_EVIDENCE.md §19 supersedes fc0b411's heat-only preference:
+    // fusion overdraws (8 - 10), survives only on the +7 proc, and has floor 0.
+    // Support pays 5, has floor 3, and can restore heat after stabilizing.
+    expect(result.recommendation!.skill.type).toBe('support');
+    expect(result.recommendation!.skill.key).toBe('unstable_re-energisation');
     expect(unstableReEnergisation).toBeDefined();
-    expect(result.recommendation!.score).toBeGreaterThan(
-      unstableReEnergisation!.score,
-    );
+    expect(result.recommendation!.requiresProbabilisticSurvival).toBe(false);
+    const fusion = input.config.skills.find(
+      (skill) => skill.key === 'explosive_fusion',
+    )!;
+    expect(
+      calculateActionSurvivabilityFloor(input.state, fusion, input.config),
+    ).toMatchObject({ stability: 0, survivalProbability: 0.75 });
+    expect(
+      calculateActionSurvivabilityFloor(
+        input.state,
+        result.recommendation!.skill,
+        input.config,
+      ),
+    ).toMatchObject({ stability: 3, survivalProbability: 1 });
+    expect(result.optimalRotation?.slice(0, 4)).toEqual([
+      'Unstable Re-energisation',
+      'Harmonious Stabilize',
+      'Delayed Fusion',
+      'Explosive Fusion',
+    ]);
   });
 });
 
