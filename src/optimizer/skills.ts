@@ -4782,6 +4782,11 @@ function applySkillTransition(
 
   let techniquePoolDelta = 0;
   let techniqueMaxStabilityDelta = 0;
+  // Cap headroom belongs to the one successful action, not its weighted mean.
+  const techniqueCapProgress = {
+    completion: state.completion,
+    perfection: state.perfection,
+  };
   const techniqueProgress: LiveProgress = {
     completion: state.completion,
     perfection: state.perfection,
@@ -4897,14 +4902,17 @@ function applySkillTransition(
     let amount = application.amount * factor;
     if (isBar) {
       const completion = effect.kind === 'completion';
+      const bar = completion ? 'completion' : 'perfection';
       const before = completion ? runningCompletion : runningPerfection;
       const cap = completion ? config.maxCompletion : config.maxPerfection;
-      amount = safeFloor(
-        Math.min(
-          application.amount,
-          cap === undefined ? Infinity : Math.max(0, cap - before),
-        ) * factor,
+      const cappedAmount = Math.min(
+        application.amount,
+        cap === undefined
+          ? Infinity
+          : Math.max(0, cap - techniqueCapProgress[bar]),
       );
+      techniqueCapProgress[bar] += cappedAmount * conditionProbability;
+      amount = safeFloor(cappedAmount * factor);
       if (completion) {
         gains.completion += amount;
         runningCompletion += amount;

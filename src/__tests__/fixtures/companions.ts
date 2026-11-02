@@ -31,7 +31,31 @@ export function companionScenarios() {
     ...companionReviewScenarios(),
     ...companionPreviewScenarios(),
     ...companionRestoreScenarios(),
+    ...companionCapScenarios(),
   ];
+}
+
+export function companionCapScenarios() {
+  return ['su', 'han'].map((companion) => {
+    const base = companion === 'su' ? suScenarios()[0] : hanScenarios()[0];
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      successChance: 0.5,
+      effects: [
+        { kind: 'completion', amount: { value: 100 } },
+        { kind: 'completion', amount: { value: 100 } },
+        { kind: 'perfection', amount: { value: 100 } },
+        { kind: 'perfection', amount: { value: 100 } },
+      ],
+    });
+    return {
+      name: `companion-shared-cap-${companion}`,
+      state: base.state,
+      skill,
+      config: retargetConfig(skill, { maxCompletion: 100, maxPerfection: 100 }),
+    };
+  });
 }
 
 export function companionRestoreScenarios() {
@@ -42,6 +66,7 @@ export function companionRestoreScenarios() {
         : hanScenarios()[0];
       const observer: BuffDefinition = {
         name: 'Qi restore observer',
+        canStack: false,
         effects: [],
         stats: { qiBoost: { value: 50 } },
         triggeredEffects: [

@@ -10,9 +10,25 @@ import {
   companionReviewScenarios,
   companionPreviewScenarios,
   companionRestoreScenarios,
+  companionCapScenarios,
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('companion shared-success caps', () => {
+  it.each(companionCapScenarios())(
+    'spends cap headroom only in the successful branch: $name',
+    ({ state, skill, config }) => {
+      // One 50% success: both bars finish at 100 on success and 0 on failure.
+      const next = applySkill(state, skill, config)!;
+      const preview = calculateSkillGains(state, skill, config);
+      expect(next.completion).toBe(50);
+      expect(next.perfection).toBe(50);
+      expect(preview.completion).toBe(50);
+      expect(preview.perfection).toBe(50);
+    },
+  );
+});
 
 describe('ordered scalar Qi restoration', () => {
   it.each(companionRestoreScenarios())(
