@@ -4688,6 +4688,7 @@ function applySkillTransition(
     actionVars.critchance,
     actionVars.critmultiplier,
   );
+  stabilityProjection.beginTechnique(actionSuccessChance);
   if (skill.effects && skill.effects.length > 0) {
     for (const effect of skill.effects) {
       if (!effect) continue;
@@ -4718,10 +4719,10 @@ function applySkillTransition(
             actionVars,
             0,
           );
-          stabilityProjection.change(
+          stabilityProjection.changeTechnique(
             applyGainBoost(raw, actionVars.stabilityBoost),
             0,
-            factor,
+            conditionResult.probability,
           );
           break;
         }
@@ -4742,7 +4743,7 @@ function applySkillTransition(
           break;
         }
         case 'maxStability':
-          stabilityProjection.change(
+          stabilityProjection.changeTechnique(
             0,
             -(maxStabilitySealed
               ? Math.min(
@@ -4760,7 +4761,7 @@ function applySkillTransition(
                   actionVars,
                   0,
                 )),
-            factor,
+            conditionResult.probability,
           );
           techniqueMaxStabilityDelta +=
             evaluateScalingWithMasteryUpgrades(
@@ -4812,6 +4813,8 @@ function applySkillTransition(
       }
     }
   }
+
+  stabilityProjection.endTechnique();
 
   function executeBuffEffect(
     effect: BuffEffect,

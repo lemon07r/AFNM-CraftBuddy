@@ -22,6 +22,8 @@ The 0.7.17 order, re-audited in 0.7.19, is:
 
 Stability may remain negative or above its maximum through effects, buffs and harmony; **only final cleanup clamps it**. Example: start 1, pay 10, buff restore 7 → -9 → -2 → final 0, not 7. Start 8/max 10, technique +5 then buff -5 → final 8, not 5. Qi is different: ordinary spending/restoration clamps immediately to zero/derived maxpool and tracks actual clamped deltas. Cleanup increments the stability penalty (unless exempt), ceils and bounds it, bounds stability, then floors, and both engines apply that per realized outcome before averaging chance branches (`src/optimizer/stability.ts`).
 
+Technique stability and maximum-stability effects share one action-success branch; their own chance conditions still branch independently inside that successful action. Thus start 1, pay 10, then successful +20 and −20 always ends at zero, not a mean containing impossible partial-success outcomes. This turn-local projection does not make future buff state or trigger dispatch fully branch-local.
+
 | Surface | Contract/model |
 | --- | --- |
 | Cost channels | Independent zero-based Qi/stability reduction and penalty channels; stack-scaled contributions folded once, with runtime flat/condition/harmony order. Legacy compatibility must not floor untouched fractional modern baselines. |

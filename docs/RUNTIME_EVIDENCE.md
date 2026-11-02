@@ -1587,6 +1587,13 @@ bounds and the separate floor helper were confirmed gaps at inspection time.
 
 ### Percentage conditions read running progress
 
+`b7c` makes one success check after payment and returns immediately on failure
+before its `for(let c of e.effects)y7c(...)` loop (`G:14946058–14947800`).
+All technique effects therefore share that action roll; chance conditions
+inside `ZS` remain separate draws. Stability/maximum cleanup must preserve
+this correlation rather than independently resampling action success per
+effect.
+
 Technique/mastery effect applier `y7c` checks
 `ZS(e.condition,t,a,0,r,i)` with the already-mutated progress object `r`
 (`G:14941612–14941690`). The supplied review coordinate `14941271` identifies

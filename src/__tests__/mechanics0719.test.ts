@@ -11,11 +11,20 @@ import {
   emptyExpressionScenario,
   liveProgressConditionScenarios,
   nonpositiveBuffScenarios,
+  sharedSuccessScenarios,
 } from './fixtures/mechanics0719';
 import { CraftingState } from '../optimizer/state';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
 describe('AFNM 0.7.19 audited mechanics', () => {
+  it.each(sharedSuccessScenarios())(
+    'shares one success roll while retaining effect chance rolls: $name',
+    ({ state, skill, config, expectedStability }) => {
+      const next = applySkill(state, skill, config)!;
+      expect(next.stability).toBe(expectedStability);
+      expect(next.stabilityPenalty).toBe(0);
+    },
+  );
   it.each(nonpositiveBuffScenarios())(
     'keeps held nonpositive buffs without enabling listeners/counts: $name',
     ({ state, skill, config }) => {

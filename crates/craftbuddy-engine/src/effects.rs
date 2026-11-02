@@ -2388,35 +2388,77 @@ fn dispatch_stack_events(
 /// TypeScript simulator threads through `applySkill`.
 #[derive(Default)]
 struct StabilityProjection {
-    outcomes: Vec<(f64, f64, f64)>,
+    outcomes: Vec<(f64, f64, f64, bool)>,
 }
 
 impl StabilityProjection {
     fn new(stability: f64, penalty: f64) -> Self {
         Self {
-            outcomes: vec![(stability, penalty, 1.0)],
+            outcomes: vec![(stability, penalty, 1.0, true)],
+        }
+    }
+    fn begin_technique(&mut self, probability: f64) {
+        if probability >= 1.0 {
+            return;
+        }
+        self.outcomes = std::mem::take(&mut self.outcomes)
+            .into_iter()
+            .flat_map(|(s, p, weight, _)| {
+                let mut branches = Vec::with_capacity(2);
+                if probability > 0.0 {
+                    branches.push((s, p, weight * probability, true));
+                }
+                if probability < 1.0 {
+                    branches.push((s, p, weight * (1.0 - probability), false));
+                }
+                branches
+            })
+            .collect();
+    }
+    fn end_technique(&mut self) {
+        for outcome in &mut self.outcomes {
+            outcome.3 = true;
         }
     }
     fn change(&mut self, stability: f64, penalty: f64, probability: f64) {
+        self.change_scoped(stability, penalty, probability, false);
+    }
+    fn change_technique(&mut self, stability: f64, penalty: f64, probability: f64) {
+        self.change_scoped(stability, penalty, probability, true);
+    }
+    fn change_scoped(
+        &mut self,
+        stability: f64,
+        penalty: f64,
+        probability: f64,
+        success_only: bool,
+    ) {
         if probability <= 0.0 || (stability == 0.0 && penalty == 0.0) {
             return;
         }
         if probability >= 1.0 {
             for outcome in &mut self.outcomes {
+                if success_only && !outcome.3 {
+                    continue;
+                }
                 outcome.0 += stability;
                 outcome.1 += penalty;
             }
             return;
         }
-        let mut next = Vec::<(f64, f64, f64)>::new();
-        for &(s, p, weight) in &self.outcomes {
+        let mut next = Vec::<(f64, f64, f64, bool)>::new();
+        for &(s, p, weight, succeeded) in &self.outcomes {
+            if success_only && !succeeded {
+                next.push((s, p, weight, succeeded));
+                continue;
+            }
             for value in [
-                (s, p, weight * (1.0 - probability)),
-                (s + stability, p + penalty, weight * probability),
+                (s, p, weight * (1.0 - probability), succeeded),
+                (s + stability, p + penalty, weight * probability, succeeded),
             ] {
                 if let Some(old) = next
                     .iter_mut()
-                    .find(|old| old.0 == value.0 && old.1 == value.1)
+                    .find(|old| old.0 == value.0 && old.1 == value.1 && old.3 == value.3)
                 {
                     old.2 += value.2;
                 } else {
@@ -2427,9 +2469,9 @@ impl StabilityProjection {
         self.outcomes = next;
     }
     fn finish(&self, maximum: f64, decay: bool, cleanup: bool) -> (f64, f64) {
-        self.outcomes
-            .iter()
-            .fold((0.0, 0.0), |(stability, penalty), &(s, p, probability)| {
+        self.outcomes.iter().fold(
+            (0.0, 0.0),
+            |(stability, penalty), &(s, p, probability, _)| {
                 let p = if cleanup {
                     (p + if decay { 1.0 } else { 0.0 })
                         .ceil()
@@ -2443,7 +2485,8 @@ impl StabilityProjection {
                     s
                 };
                 (stability + probability * s, penalty + probability * p)
-            })
+            },
+        )
     }
 }
 
@@ -3961,6 +4004,7 @@ fn apply_skill_transition(
                     state.stability - cost,
                     state.stability_penalty,
                     *probability,
+                    true,
                 )
             })
             .collect();
@@ -4020,6 +4064,7 @@ fn apply_skill_transition(
         get_variable_value(&action_vars, "critchance"),
         get_variable_value(&action_vars, "critmultiplier"),
     );
+    buffs.stability.begin_technique(action_success_chance);
     for effect in &skill.effects {
         let evaluation = evaluate_live_progress_condition(
             effect.condition.as_ref(),
@@ -4051,10 +4096,10 @@ fn apply_skill_transition(
                     &action_vars,
                     0.0,
                 );
-                buffs.stability.change(
+                buffs.stability.change_technique(
                     apply_gain_boost(raw, get_variable_value(&action_vars, "stabilityBoost")),
                     0.0,
-                    factor,
+                    evaluation.probability,
                 );
             }
             "pool" => {
@@ -4079,14 +4124,14 @@ fn apply_skill_transition(
                     &action_vars,
                     0.0,
                 );
-                buffs.stability.change(
+                buffs.stability.change_technique(
                     0.0,
                     -if max_stability_sealed {
                         raw.min(0.0)
                     } else {
                         raw
                     },
-                    factor,
+                    evaluation.probability,
                 );
                 technique_max_stability_delta += evaluate_scaling_with_upgrades(
                     effect.amount.as_ref(),
@@ -4161,6 +4206,8 @@ fn apply_skill_transition(
             config.max_toxicity,
         );
     }
+
+    buffs.stability.end_technique();
 
     // 0.7.7+ triggered buff effects (the runtime `_6` dispatcher). The runtime
     // fires triggers as each change lands - cost payment, technique

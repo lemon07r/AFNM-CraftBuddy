@@ -11,6 +11,7 @@ export function mechanics0719Scenarios() {
     successCaptureScenario(),
     ...liveProgressConditionScenarios(),
     ...nonpositiveBuffScenarios(),
+    ...sharedSuccessScenarios(),
     ...stackEventScenarios(),
     ...buffGroupScenarios(),
     ...[
@@ -78,6 +79,48 @@ export function emptyExpressionScenario() {
     skill,
     config: retargetConfig(skill),
   };
+}
+
+export function sharedSuccessScenarios() {
+  return [
+    'opposing-stability',
+    'opposing-maximum',
+    'independent-conditions',
+  ].map((edge) => {
+    const maximum = edge === 'opposing-maximum';
+    const independent = edge === 'independent-conditions';
+    const effects: TechniqueEffect[] = [
+      {
+        kind: maximum ? 'maxStability' : 'stability',
+        amount: { value: maximum ? -40 : 20 },
+      },
+      {
+        kind: maximum ? 'maxStability' : 'stability',
+        amount: { value: maximum ? 40 : independent ? -10 : -20 },
+      },
+    ];
+    if (independent)
+      for (const effect of effects)
+        effect.condition = { kind: 'chance', percentage: 50 };
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: maximum || independent ? 0 : 10,
+      successChance: 0.5,
+      preventsMaxStabilityDecay: true,
+      effects,
+    });
+    return {
+      name: `0719-shared-success-${edge}`,
+      state: new CraftingState({
+        qi: 100,
+        stability: maximum ? 50 : independent ? 20 : 1,
+        initialMaxStability: independent ? 30 : 60,
+      }),
+      skill,
+      config: retargetConfig(skill),
+      expectedStability: maximum ? 50 : independent ? 21.25 : 0,
+    };
+  });
 }
 
 export function nonpositiveBuffScenarios() {

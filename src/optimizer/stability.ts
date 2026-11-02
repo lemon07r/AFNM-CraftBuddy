@@ -4,16 +4,60 @@ export class StabilityProjection {
     stability: number;
     penalty: number;
     probability: number;
+    techniqueSucceeded?: boolean;
   }>;
 
   constructor(stability: number, penalty: number) {
     this.outcomes = [{ stability, penalty, probability: 1 }];
   }
 
-  change(stability: number, penalty = 0, probability = 1): void {
+  /** One action success roll shared by every technique resource effect. */
+  beginTechnique(probability: number): void {
+    if (probability >= 1) return;
+    this.outcomes = this.outcomes.flatMap((outcome) => [
+      ...(probability > 0
+        ? [
+            {
+              ...outcome,
+              probability: outcome.probability * probability,
+              techniqueSucceeded: true,
+            },
+          ]
+        : []),
+      ...(probability < 1
+        ? [
+            {
+              ...outcome,
+              probability: outcome.probability * (1 - probability),
+              techniqueSucceeded: false,
+            },
+          ]
+        : []),
+    ]);
+  }
+
+  endTechnique(): void {
+    for (const outcome of this.outcomes) delete outcome.techniqueSucceeded;
+  }
+
+  changeTechnique(
+    stability: number,
+    penalty: number,
+    probability: number,
+  ): void {
+    this.change(stability, penalty, probability, true);
+  }
+
+  change(
+    stability: number,
+    penalty = 0,
+    probability = 1,
+    successOnly = false,
+  ): void {
     if (probability <= 0 || (stability === 0 && penalty === 0)) return;
     if (probability >= 1) {
       for (const outcome of this.outcomes) {
+        if (successOnly && outcome.techniqueSucceeded === false) continue;
         outcome.stability += stability;
         outcome.penalty += penalty;
       }
@@ -21,18 +65,23 @@ export class StabilityProjection {
     }
     const next = new Map<string, (typeof this.outcomes)[number]>();
     const add = (value: (typeof this.outcomes)[number]) => {
-      const key = `${value.stability}:${value.penalty}`;
+      const key = `${value.stability}:${value.penalty}:${value.techniqueSucceeded ?? ''}`;
       const old = next.get(key);
       if (old) old.probability += value.probability;
       else next.set(key, value);
     };
     for (const outcome of this.outcomes) {
+      if (successOnly && outcome.techniqueSucceeded === false) {
+        add({ ...outcome });
+        continue;
+      }
       if (probability < 1)
         add({
           ...outcome,
           probability: outcome.probability * (1 - probability),
         });
       add({
+        ...outcome,
         stability: outcome.stability + stability,
         penalty: outcome.penalty + penalty,
         probability: outcome.probability * probability,
