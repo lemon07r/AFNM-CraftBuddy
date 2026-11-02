@@ -3,7 +3,7 @@ title: Optimizer Next Steps Handoff
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: src/optimizer/*, crates/craftbuddy-engine/*, src/__tests__/*, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 30
@@ -16,7 +16,7 @@ related_files:
 
 # Optimizer Next Steps Handoff
 
-Baseline for the next agent working on recommendation accuracy or speed, current target AFNM **0.7.17** / CraftBuddy **6.8.0**. It records what is settled and what is genuinely still open. Current mechanics and phase/cost throughput are in `MECHANICS_PARITY.md` and `ENGINE_PERFORMANCE.md`; historical optimization measurements below are not fresh 0.7.17 speed claims.
+Baseline for the next agent working on recommendation accuracy or speed, current target AFNM **0.7.19** / CraftBuddy **6.9.0**. It records what is settled and what is genuinely still open. Current mechanics and historical phase/cost throughput are in `MECHANICS_PARITY.md` and `ENGINE_PERFORMANCE.md`; historical optimization measurements below are not fresh 0.7.19 speed claims.
 
 ## Start here
 
@@ -30,6 +30,7 @@ Baseline for the next agent working on recommendation accuracy or speed, current
 | --- | --- |
 | Outcome tiers are conjunctive; `outcome.ts` owns every threshold | The additive weighted scorer is what mis-played sublime crafts. Re-introducing a weight that can raise a tier is a regression, not a tuning choice. |
 | There is no manual finish action | Runtime-verified in 0.7.5 and again in 0.7.6. `Wait` is a normal technique costing 10 stability. |
+| Auto-finish requires stability <= 0 or both actual bar caps | 0.7.19 audit §18.4 confirms §17.7. The five-band shortcut was a pre-existing mismatch, removed in 6.9.0; the refund ceiling is not a termination rule. |
 | Harmony is player-selected, now nine types, each with a complexity multiplier | Runtime-verified; includes Captivating Cadence and Returning Cycle; no item-kind inference. |
 | Rust models the same action space, but TypeScript owns final ranking | Parity is proven by the corpus; split authority over ranking is not worth the divergence risk. |
 | Compact Rust state with mutate/undo | Measured: clone is 4.70% of a transition, so the ceiling was under 5%. Rejected. |
@@ -44,6 +45,7 @@ Baseline for the next agent working on recommendation accuracy or speed, current
 2. **Per-harmony item effects (`harmonyAugment`).** Unmodelled by choice: they change what the finished item does, not which action is best. If the game ever makes them affect in-craft state, this becomes real work.
 3. **Native cost-preview helpers.** Still internally modelled; see `docs/dev-requests/STATUS.md` Q3.
 4. **Eccentric Decree per-bar-change fidelity.** 0.7.6 scores it per bar application; CraftBuddy folds expected values instead of discrete applications, and a mid-technique focus flip does not retune that same turn's remaining effect magnitudes. Both limits are stated in `docs/project/MECHANICS_PARITY.md`. Closing either needs real snapshots first.
+5. **Survivability floor and existing effect gaps.** The floor helper pays before buff consumption and omits effect masteries; 6.9.0's real failure-transition check does not repair it. `modifyBuffGroup`, companion interceptors/prevention and technique-level triggers also remain incomplete; see `MECHANICS_PARITY.md`.
 
 `user-report-resonance-regression` is closed: the original defect was the success-weighted-progress bug above. In 6.8.0 the runtime-correct pre-action-name tick rule changed runner-up scores; its depth-sensitive `mustRankBefore` clause was removed with evidence, while `mustNotRecommend: ['explosive_fusion']` remains. Heat-one keeps all assertions with an approved 6,000-node fixture budget. Do not tune constants for either; see `ENGINE_PERFORMANCE.md`.
 

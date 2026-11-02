@@ -3,7 +3,7 @@ title: Mod API Integration
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: src/modContent/index.ts, src/modContent/craftingStoreState.ts, src/modContent/craftingContext.ts, src/modContent/harmonyState.ts, src/modContent/nativeAutoUse.ts, src/modContent/craftStateSignature.ts, src/modContent/autoCraftExecutor.ts
 review_cycle_days: 30
@@ -41,7 +41,7 @@ Deep reference for the runtime boundary. For the working checklist load the `cra
 
 ## Game-version behaviour that affects integration
 
-Target build **0.7.17-d8ae6ce**. `docs/project/RUNTIME_EVIDENCE.md` records the audit, including historical 0.7.5/0.7.6 origins and the 0.7.17 phase/cost changes in §17.
+Target build **0.7.19-ac29603**. `docs/project/RUNTIME_EVIDENCE.md` records the audit, including historical 0.7.5/0.7.6 origins, the 0.7.17 phase/cost changes in §17 and their 0.7.19 re-audit in §18. The new equipment-reharmonizing hooks are equipment-only and not adopted; Practice-Furnace uses the normal pre-craft loadout selector.
 
 ### Harmony resolution
 
@@ -68,6 +68,7 @@ The game applies the player's crafting auto-use loadout (`player.player.currentC
 Integration consequences:
 
 - `readNativeAutoUseStatus(store)` resolves `{ active, slotCount, coveredItemNames, pillsPerRound, availableToxicity, trainingMode }` defensively from `unknown`.
+- `player.player.craftingAutoUseEnabled === false` makes a configured loadout inactive; an absent toggle retains the runtime's enabled default.
 - Covered item names are removed from the optimizer's action space, and `fullActionSpace` degrades to techniques + finish with a visible reason, so the two systems never consume the same pill.
 - **Execution path is a correctness decision, not a reliability one.** With a loadout active, a technique must be executed through the in-game control so the hook runs; dispatching `crafting/executeTechnique` straight to the store would silently skip the player's items, so automation stops (`NativeAutoUseUnreachableError`) rather than bypassing it. With no loadout the direct dispatch stays preferred: it is equivalent for the craft and far more precise than DOM matching.
 - `trainingMode !== undefined` means the game applies items **without** removing them from the inventory — inventory-diff verification must not read that as a mismatch.
@@ -79,7 +80,9 @@ There is no `Finish Craft` action, re-verified absent in 0.7.6; the craft resolv
 
 ### Dispatch-time state verification
 
-`craftStateSignature.ts` builds a canonical signature over step, qi, completion, perfection, stability, max stability, toxicity, condition, the forecast queue, buffs, cooldowns, the **available-technique roster**, quick-access inventory, harmony value, a canonical `harmonyData` digest, and `consumedPills`. A monotonic `craftStateRevision` is derived from it and attached to every auto-mode snapshot.
+`craftStateSignature.ts` builds a canonical signature over step, qi, completion, perfection, stability, max stability, toxicity, condition, the forecast queue, buffs, cooldowns, the **available-technique roster**, quick-access inventory, harmony value, a canonical `harmonyData` digest, and `consumedPills` from the crafting slice (not `progressState`). A monotonic `craftStateRevision` is derived from it and attached to every auto-mode snapshot.
+
+`recommendationContext.ts` tracks search-setting freshness and cross-step score-cache scope, including `overcraftAmbition`, `perfectionBandGoal` and `completionBandCeiling`. Budget fields affect stale recommendations but are excluded from the score-cache scope.
 
 The executor re-verifies immediately before dispatch — the controller's own fingerprint check happens ~90 ms earlier and is never repeated:
 
@@ -102,7 +105,7 @@ The executor re-verifies immediately before dispatch — the controller's own fi
 - Crafting stats: `poolCostFlat`, `pillsPerRound`, `resistance`, `maxtoxicity`
 - `noQiCost` technique field, `craftingTeamUpOverride` companion buffs
 - `currentCraftingAutoUseLoadout` / `storedCraftingAutoUseLoadouts`
-- Progress state: `harmonyTypeData`, `consumedPills`, `pillTracking`, `trainingMode`
+- Progress state: `harmonyTypeData`; crafting state: `consumedPills`, `pillTracking`, `trainingMode`
 
 Not part of the auto-use system: `CRAFTING_AUTO_USE_PILL` / `CRAFTING_AUTO_USE_REAGENT` are react-dnd drag types for the loadout editor rows.
 

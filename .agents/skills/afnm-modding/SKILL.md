@@ -5,7 +5,7 @@ description: CraftBuddy orientation for Ascend From Nine Mountains mod work. Act
 
 # AFNM-CraftBuddy Orientation
 
-Use this as the entry skill for CraftBuddy work. It routes to narrower skills and keeps always-loaded context small. Target game version: AFNM **0.7.17-d8ae6ce**.
+Use this as the entry skill for CraftBuddy work. It routes to narrower skills and keeps always-loaded context small. Target game version: AFNM **0.7.19-ac29603**.
 
 ## Activate When
 
@@ -56,7 +56,7 @@ Use this as the entry skill for CraftBuddy work. It routes to narrower skills an
 2. **`disable_steam` breaks Workshop mods if left behind**: live testing must delete the sentinel after launch testing.
 3. **Search fixes need regression proof**: recommendation changes should have simulation/replay tests, not just tuned constants.
 4. **Wall-clock budgets are machine-dependent**: assert completed depth/frontier or node-budget behavior, not one machine's partial frontier.
-5. **The 0.7.5 rework set the fundamentals, still true in 0.7.17**: harmony is player-selected (now nine types) with complexity multipliers, outcome tiers are conjunctive band gates, there is no manual Finish Craft, and the game applies its own crafting auto-use loadout before every technique.
+5. **The 0.7.5 rework set the fundamentals, still true in 0.7.19**: harmony is player-selected (now nine types) with complexity multipliers, outcome tiers are conjunctive band gates, there is no manual Finish Craft, and the game applies its enabled crafting auto-use loadout before every technique. Auto-finish needs stability <= 0 or both actual caps, never a five-band shortcut (runtime evidence §18.4 supersedes §12.5).
 6. **Thresholds live in one place**: never recompute a band, tier or auto-finish check outside `src/optimizer/outcome.ts`.
 7. **Harmony no longer always resolves once per turn**: since 0.7.6, Eccentric Decree scores per individual bar change (`onBarChange`), so one turn can award several harmony steps (+5 focused, -15 stray since 0.7.8) and switch its focused bar mid-turn. Model it as an ordered fold over bar-change events, and leave the `needsBarContributions()` / `needs_bar_contributions()` gate alone — it is a live allocation guard, not dead code.
 8. **Display names diverge from internal names**: key `false_fusion`, internal `name` `False Fusion`, shown to players as "Strive for Completion". User-facing strings must go through `techniqueDisplayName()` (from `src/optimizer/index.ts`); keys, lookups and tests keep using `name`. The auto-craft DOM click fallback is the one place that needs both spellings, since the button carries the display name.
@@ -67,6 +67,7 @@ Use this as the entry skill for CraftBuddy work. It routes to narrower skills an
 13. **Completion Bonus is a Perfection Boost source since 0.7.10**: the synthetic `"Completion Bonus"` buff now grants `perfectionBoost: { value: 10, scaling: 'stacks' }` instead of `.1` control per stack, and the game added four percent stats — `completionBoost`, `perfectionBoost`, `stabilityBoost`, `qiBoost` — that floor the gain after crit and multiply by `1 + boost/100` on positive amounts only. Both engines seed `perfectionBoost = completionBonus x 10` and skip the buff during the generic stat fold; never let both paths add it. Costs and harmony scoring never see the boosts.
 
 14. **0.7.17 changed payment and buff timing**: independent zero-based cost reduction/penalty channels replace the old percentage model; effect masteries run before recomputed payment, even on failed actions; only pre-action buff names tick. Preserve droplets and Returning Cycle state in extraction, cloning, replay and the Rust bridge. Returning Cycle uses reported payment, drains before release and grants an ordinary Returned Precision buff; never add a flat scoring bonus. See `MECHANICS_PARITY.md` and runtime evidence §17.
+15. **6.9.0 preserves ambition and safety across boundaries**: all terminal scores, stale-settings detection and cross-step cache scope include the ambition settings; worker merging keeps survival precedence before score. The separate survivability-floor helper still pays before buff consumption and omits effect masteries — do not claim it is phase-exact. See `MECHANICS_PARITY.md` known limitations and runtime evidence §18 for the 0.7.19 re-audit.
 
 ## References
 
@@ -76,7 +77,8 @@ Use this as the entry skill for CraftBuddy work. It routes to narrower skills an
 - `docs/project/RUNTIME_EVIDENCE.md` — verified runtime behaviour
 - `docs/project/RELEASE_NOTES_6.3.0.md` — the 0.7.8 retarget
 - `docs/project/RELEASE_NOTES_6.1.0.md` — the 0.7.6 retarget (historical)
-- `docs/project/RELEASE_NOTES_6.8.0.md` — latest release: the 0.7.17 retarget and Returning Cycle
+- `docs/project/RELEASE_NOTES_6.9.0.md` — latest release: the 0.7.19 retarget and recommendation fixes
+- `docs/project/RELEASE_NOTES_6.8.0.md` — the 0.7.17 retarget and Returning Cycle (historical)
 - `docs/project/RELEASE_NOTES_6.6.0.md` — the 0.7.10 retarget and Perfection Boost rework (historical)
 - `docs/project/RELEASE_NOTES_6.4.0.md` — ambition targets and auto-mode recovery (historical)
 - `docs/project/RELEASE_NOTES_6.0.0.md` — what the 0.7.5 rework changed (historical)

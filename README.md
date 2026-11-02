@@ -18,7 +18,7 @@ A mod for **Ascend From Nine Mountains** that calculates and displays the recomm
 - Large-number-safe parsing and formatting for late-game values
 - Snapshot export for bug reports and replayable optimizer debugging
 
-CraftBuddy **6.8.0**, built for game version **0.7.17-d8ae6ce**.
+CraftBuddy **6.9.0**, built for game version **0.7.19-ac29603**.
 
 ![CraftBuddy Workshop Preview](pictures/workshop_preview.png)
 
@@ -47,7 +47,7 @@ During any craft, the panel shows:
 - brief reasoning, including when an action is setting up a gated technique
 - alternatives
 
-Crafts finish on their own once both bars are far enough along, so CraftBuddy tells you when the craft will auto-finish instead of asking you to confirm anything.
+Crafts finish on their own when stability runs out or both bars reach their actual caps, so CraftBuddy tells you when the craft will auto-finish instead of asking you to confirm anything.
 
 ![CraftBuddy GUI](pictures/gui.png)
 
@@ -85,7 +85,7 @@ Depth, time, nodes, and beam width are coupled search-budget controls: pushing o
 If the sibling uploader repo is available at `../ModUploader-AFNM`, you can publish the current build directly from this repo:
 
 ```bash
-bun run workshop:upload -- --change-note "v6.8.0 - AFNM 0.7.17 compatibility and Returning Cycle support" --description-file docs/project/WORKSHOP_DESCRIPTION.md
+bun run workshop:upload -- --change-note "v6.9.0 - AFNM 0.7.19 compatibility and recommendation fixes" --description-file docs/project/WORKSHOP_DESCRIPTION.md
 ```
 
 That rebuilds CraftBuddy, prepares `ModUploader-AFNM`, and updates workshop item `3661729323`. Steam must be running and logged in locally.
@@ -143,8 +143,8 @@ Output zip: `builds/afnm-craftbuddy.zip`
 - Integration layer (`src/modContent/*`) reads crafting state from game/Redux root state, with DOM/cache fallback paths for resilience.
 - Optimizer (`src/optimizer/*`, behind a single `index.ts` facade) simulates candidate actions and runs lookahead search.
 - `src/optimizer/outcome.ts` is the single authority for band thresholds, outcome tiers, and the auto-finish predicate.
-- Search combines deterministic simulation with expected-value modeling for probabilistic outcomes, plus a guaranteed survivability floor so a craft is never bet on a recovery proc.
-- A Rust/WASM engine (`crates/craftbuddy-engine/`) models the same mechanics and supplies a search prior; the differential corpus has 172 scenarios / 1,549 cases (1,347 legal transitions, plus 202 illegal-action checks).
+- Search combines deterministic simulation with expected-value modeling and survivability guardrails that prefer guaranteed routes over fatal technique-failure gambles; the separate floor helper has a known payment-phase limitation noted below.
+- A Rust/WASM engine (`crates/craftbuddy-engine/`) models the same mechanics and supplies a search prior; the differential corpus has 177 scenarios / 1,554 cases (1,352 legal transitions, plus 202 illegal-action checks).
 - UI (`src/ui/*`) renders the recommendation, outcome rows, and alternatives.
 
 ## Technical notes
@@ -166,11 +166,12 @@ CraftBuddy prefers direct game data when available and uses documented fallback 
 - Post-craft outcomes (per-harmony item effects, material returns) are not modeled: they cannot change which action is best this turn
 - The panel is English-only
 - Search is wall-clock budgeted, so reachable depth varies by machine; the recommendation for a fixed budget is deterministic
+- The survivability floor can disagree with the real transition when buff consumption or effect masteries change payment; see `docs/project/MECHANICS_PARITY.md` for this and other model gaps
 
 ## Documentation
 
 - Authoritative project docs: `docs/project/`
-- Latest release notes: `docs/project/RELEASE_NOTES_6.8.0.md`; release history: `CHANGELOG.md`
+- Latest release notes: `docs/project/RELEASE_NOTES_6.9.0.md`; release history: `CHANGELOG.md`
 - Dev API request tracking: `docs/dev-requests/`
 - Curated AFNM reference subset: `docs/reference/`
 - Agent entrypoint: `docs/project/START_HERE_FOR_AGENTS.md`

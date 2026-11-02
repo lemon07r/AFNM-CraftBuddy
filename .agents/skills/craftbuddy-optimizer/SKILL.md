@@ -5,7 +5,7 @@ description: CraftBuddy optimizer/search/MCTS workflow. Activate for changes to 
 
 # CraftBuddy Optimizer
 
-Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN.md` remains the detailed source of truth; this skill is the action checklist. Modelled game version: AFNM **0.7.17-d8ae6ce**.
+Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN.md` remains the detailed source of truth; this skill is the action checklist. Modelled game version: AFNM **0.7.19-ac29603**.
 
 ## Activate When
 
@@ -74,7 +74,7 @@ Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN
 
 1. **Heuristic soup compounds**: if a fix needs 3+ tuned constants or a heuristic to counter another heuristic, step back and fix the model.
 2. **Condition effects affect ordering**: order by actual condition-modified gains, not raw base gains.
-3. **There is no manual finish**: since 0.7.5 the craft resolves itself when `willAutoFinish` holds, which makes that state terminal. The internal `Finish Craft` pseudo-action exists only to price craft-end EV inside search; never treat it as an action a player or automation presses, and never let further stat spam "improve" an already-resolved state.
+3. **There is no manual finish**: the craft resolves when stability <= 0 or both actual bar caps are reached. `willAutoFinish` has no five-band overcraft shortcut (removed in 6.9.0; runtime evidence §18.4 supersedes §12.5). The internal `Finish Craft` pseudo-action exists only to price craft-end EV inside search; never treat it as an action a player or automation presses, and never let further stat spam "improve" an already-resolved state.
 4. **Wall-clock budget is not deterministic**: prefer node-budget or completed-frontier assertions for regressions.
 5. **Native MCTS cannot override clear TypeScript scores**: it may only help with near-tie root ordering inside the configured score window.
 6. **Never send an explicit `null` across the Rust bridge**: one `null` on a non-optional field fails the whole payload and silently disables the prior. `nativeMcts.test.ts` guards this.
@@ -87,6 +87,8 @@ Use this before touching recommendation behavior. `docs/project/OPTIMIZER_DESIGN
 
 13. **Preserve 0.7.17 phases**: pay toxicity/droplets/buff costs, capture success chance, apply effect masteries, recompute/pay Qi and stability, then success effects. Tick only pre-action buff names, then resolve harmony. Chance-conditioned payment buffs are folded as transient payment branches, not persistent search branches; no probability-aware future-buff redesign is part of this retarget.
 14. **Returning Cycle is a transition, not a scoring heuristic**: fixed starting charge size, accrual from reported payment even on failure, drain before stabilize release, ordinary Returned Precision stacks ticking on later actions. Mirror TS/Rust and preserve the payload through replay/bridge. `runtime0717.test.ts` and `returningCycle.test.ts` cover the edge cases.
+15. **Ambition settings must reach every scoring/cache boundary**: all terminal calls pass `perfectionBandGoal` and `completionBandCeiling`; stale-settings detection and cross-step cache scope include those plus `overcraftAmbition` (`recommendationContext.ts`). A settings change cannot reuse differently valued scores.
+16. **Fatal failure is not secured progress**: a technique whose real failure transition ends below target is `requiresProbabilisticSurvival`; keep that precedence before score in worker merges. The separate floor helper still computes payment before buff consumption and lacks effect masteries, so it can disagree with `applySkill`; that known gap is not fixed by the failure check.
 
 ## References
 

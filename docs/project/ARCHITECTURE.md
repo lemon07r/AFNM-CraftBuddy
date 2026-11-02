@@ -3,7 +3,7 @@ title: Architecture
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: src/mod.ts, src/modContent/*, src/optimizer/*, crates/craftbuddy-engine/*, src/ui/*, src/settings/*, src/utils/*
 review_cycle_days: 30
@@ -18,7 +18,7 @@ related_files:
 ## Layers
 
 ```text
-AFNM 0.7.17 runtime ──►  src/modContent/*  ──►  src/optimizer (facade)  ──►  search + Rust engine
+AFNM 0.7.19 runtime ──►  src/modContent/*  ──►  src/optimizer (facade)  ──►  search + Rust engine
                                 │                        │
                                 └──►  src/ui/*  ◄─────────┘  (via SearchResult.outcomeProjection)
 ```
@@ -78,6 +78,7 @@ Four rules define the shape:
 | `hotkeys.ts` | panel/compact/snapshot keyboard shortcuts |
 | `nativeAutoUse.ts` | the native crafting auto-use contract: loadout status, covered items, and a projection mirroring the runtime slot selector |
 | `craftStateSignature.ts` | canonical live-craft signature, its diff, and the monotonic `craftStateRevision` |
+| `recommendationContext.ts` | stale-settings detection and cross-step score-cache scope, including ambition settings |
 | `autoCraftController.ts` | auto-mode state machine: arming, policy resolution, settle/wait phases, state-advance timeout recovery, recalculate-vs-retry-vs-pause decisions |
 | `autoCraftExecutor.ts` | the dispatch bridge, including dispatch-time state verification and execution-path selection |
 | `autoCraftErrors.ts` | typed failures: `StaleCraftStateError`, `UnverifiableCraftStateError`, `NativeAutoUseConflictError`, `NativeAutoUseUnreachableError` |

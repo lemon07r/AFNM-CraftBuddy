@@ -3,7 +3,7 @@ title: Optimizer Engine Findings
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: crates/craftbuddy-engine/*, src/optimizer/nativeMcts.ts, src/optimizer/search.ts, src/settings/index.ts, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 30
@@ -16,11 +16,16 @@ related_files:
 
 # Optimizer Engine Findings
 
-What is actually true about the Rust/WASM engine, current target AFNM **0.7.17**, and which candidate improvements have already been measured and rejected. Read this before proposing engine work.
+What is actually true about the Rust/WASM engine, current target AFNM **0.7.19**, and which candidate improvements have already been measured and rejected. Read this before proposing engine work.
 
 Raw measurements, reproduction commands and the profiling harness live in `docs/project/ENGINE_PERFORMANCE.md`. This file is the decision record.
 
 ## Current state
+
+**6.9.0:** the 0.7.19 runtime audit retains the phase/Cycle model below. Both
+engines remove the stale five-band auto-finish shortcut; TypeScript also fixes
+terminal ambition propagation, fatal-failure survival ranking and cache scope.
+See `RELEASE_NOTES_6.9.0.md` for validation and the remaining floor-helper gap.
 
 **6.8.0 review:** both engines now include 0.7.17 cost channels, droplets,
 mastery/payment phases, pre-action-name buff ticks and Returning Cycle. The
@@ -38,7 +43,7 @@ changed. Current throughput evidence (~0.58 vs HEAD ~0.41 ms/node) is in
 | --- | --- |
 | Does Rust model the same mechanics as TypeScript? | **Yes.** Effect trees, generic active buffs, mastery, Soulflame triggers and stack consumption, toxicity, and pill/reagent actions all live in `crates/craftbuddy-engine/src/effects.rs`; `outcome.rs` mirrors the conjunctive outcome model. |
 | Does Rust see the same action space? | **Yes.** `buildNativeMctsInput` no longer filters `actionKind !== 'item'`, and serialises effects, mastery, granted buffs, buff gates, `items`, `consumedPillsThisTurn` and buffs. |
-| Is that parity proven? | **Yes** — 177 scenarios / 1,554 cases, with 1,352 legal transitions and 202 illegal-action checks asserted on both sides. Current release results are in `RELEASE_NOTES_6.8.0.md`; 3 profiling harnesses remain intentionally ignored. |
+| Is that parity proven? | **Yes** — 177 scenarios / 1,554 cases, with 1,352 legal transitions and 202 illegal-action checks asserted on both sides. Current release results are in `RELEASE_NOTES_6.9.0.md`; 3 profiling harnesses remain intentionally ignored. |
 | Is Rust the authority for recommendations? | **No, deliberately.** It supplies a root MCTS policy prior for near-tie ordering. TypeScript owns final ranking and stays the differential oracle and the no-WASM fallback. |
 | Is the recommendation deterministic? | **Yes**, and now directly tested (`differential_tests::mcts_search_is_deterministic`). It was not before 0.7.5. |
 
@@ -247,9 +252,10 @@ same scope signature as the sync backend (caches are never shared).
   are unavailable at the root simply never materialize. Each worker searches
   its slice at the full depth/budget.
 - Partial results merge by pooling every ranked candidate, deduping by skill
-  key (higher score wins), sorting by score with a key tiebreak, and
+  key and sorting by survival precedence, then score with a key tiebreak, and
   recomputing quality ratings over the merged range (ratings are relative to
-  the candidate set). Work metrics (nodes, cache hits, pruned) sum; frontier
+  the candidate set). A synthetic finish cannot displace a better live line
+  solely on safety grounds. Work metrics (nodes, cache hits, pruned) sum; frontier
   markers (depth, time) take the max. The native MCTS prior is root-parallel:
   worker `i` runs `seed = baseSeed + i`.
 - Per-candidate deep scores are absolute, not relative to the root sibling

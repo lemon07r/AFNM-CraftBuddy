@@ -3,9 +3,9 @@ title: Runtime Evidence
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
-last_verified: 2026-10-22
-source_of_truth: installed AFNM 0.7.17 runtime bundle (scripts/installed-game-runtime.js); earlier sections identify their historical builds
+game_version: 0.7.19-ac29603
+last_verified: 2026-11-02
+source_of_truth: installed AFNM 0.7.19 runtime bundle (scripts/installed-game-runtime.js); earlier sections identify their historical builds
 review_cycle_days: 90
 related_files:
   - docs/project/MECHANICS_PARITY.md
@@ -26,7 +26,7 @@ related_files:
 # Runtime Evidence
 
 Findings extracted from the **installed** AFNM runtime, most recently
-**0.7.17-d8ae6ce** (section 17). Earlier sections retain their historical build
+**0.7.19-ac29603** (section 18). Earlier sections retain their historical build
 citations. The runtime is the sole authority here: where a tooltip, a
 patch note, or an earlier CraftBuddy note disagrees with the code below, the code
 below wins.
@@ -45,14 +45,15 @@ bun run runtime:extract                     # unpacks app.asar into tmp/installe
 bun run runtime:grep -- "<pattern>"         # searches the extracted bundle
 ```
 
-`runtime:oracle` reports `gameVersion: 0.7.10-9bf9078`, extracted to
+The historical section-16 oracle reported `gameVersion: 0.7.10-9bf9078`, extracted to
 `tmp/installed-game-runtime/1182767661-1788139699386/`. The 0.7.6 findings below
 were produced by diffing the 0.7.6 build (`1172405719-1785155522026/`) against
 `0.7.5-d764178` (`1170135731-1784964316349/`); the 0.7.7/0.7.8 findings
 (section 14) were verified against the 0.7.8 build (`1168651333-1786309913280/`),
 the 0.7.9 findings (section 15) diff that 0.7.8 build against the 0.7.9 build
 (`1172235715-1787523522327/`), and the 0.7.10 findings (section 16) diff that
-0.7.9 build against the current extraction.
+0.7.9 build against that extraction. For the current 0.7.19 bundle identity and
+byte anchors, see §18.
 
 The two crafting-relevant chunks are `dist-electron/Game.js` (~4.5 MB) and
 `dist-electron/_rolldown_dynamic_import_helper.js`, which grew from ~12.8 MB in
@@ -740,7 +741,12 @@ weights derive from. `maxQualityTier = 3 + realmIndex(player.realm) +
 (realmIndex(recipe.realm) - 3)` caps how far quality can scale, so perfection
 extras have diminishing value past that cap on quality-kind recipes.
 
-### 12.5 Auto-finish predicate for overcraft crafts (re-verified)
+### 12.5 Auto-finish predicate for overcraft crafts (historical; superseded)
+
+**Superseded by §17.7 and §18.4.** This 0.7.6 screen predicate is historical,
+not the current termination rule. The 0.7.17 and 0.7.19 runtime helper ends only
+on stability <= 0 or both actual caps. CraftBuddy 6.9.0 removes the stale
+five-band shortcut in both engines.
 
 The craft-complete flag in the 0.7.6 `Game.js`:
 
@@ -757,9 +763,8 @@ Ue=(e.progressState?.stability??0)<=0||e.recipe&&e.recipeStats&&e.progressState&
 
 Decoded: finish when stability runs out, or both bars reach their caps, or —
 for `canOvercraft` recipes — completion holds **5 guaranteed bands** and
-perfection reaches its cap. `src/optimizer/outcome.ts::willAutoFinish` already
-mirrors all three branches, including the 5-band overcraft branch; no change
-was needed there.
+perfection reaches its cap. CraftBuddy mirrored all three branches at the time;
+that claim no longer describes `src/optimizer/outcome.ts::willAutoFinish`.
 
 ## 13. Blob-URL search workers (Phase 2.4 capability verification)
 
@@ -1423,5 +1428,153 @@ exceeded their review periods; for example, `docs/DOC_INVENTORY.md:6-8` records
 check pass. Source tests, WASM/build/corpus generation, benchmarks, and live UI
 checks were not run in this read-only implementation audit. Only this evidence
 document was changed in the repository; no phase-2 work or commit was started.
+
+## 18. AFNM 0.7.19 retarget audit (CraftBuddy 6.9.0)
+
+### 18.1 Provenance and scope
+
+Reviewed 2026-11-02 against **0.7.19-ac29603**, identified by the extracted
+game package. Original `dist-electron/Game.js`: **24,118,016 bytes**, SHA-256
+`cf3241d70240f2e21f0827ae176f5ba16255109a726fdb7dbdc3d9dacee2256f`.
+Reproduce extraction with the commands above; the inspected extraction was
+`tmp/installed-game-runtime/3245624483-1793613141284/`.
+
+This condenses the static retarget audit, not a live UI test or exhaustive
+parity certification. No 0.7.17 bundle was available for a direct diff:
+"unchanged" means agreement with recorded §14–§17 claims and the earlier
+declarations, not historical byte identity. Exact technique/buff roster deltas
+cannot be dated from this audit. The 0.7.18 "Fixes" / 0.7.19 "Battles" patch
+notes supply change dating; no new mid-craft arithmetic migration was found.
+The verified `afnm-types` 0.7.17 → 0.7.19 comparison leaves `crafting*.d.ts`
+unchanged; CraftBuddy now pins 0.7.19.
+
+### 18.2 Byte anchors
+
+Coordinates are zero-based **Buffer byte offsets**, not JavaScript string
+offsets, in the original bundle identified above. Search text disambiguates
+minified symbols across rebuilds.
+
+| Subject | Byte anchor | Search text |
+| --- | ---: | --- |
+| Cost multiplier | 6321504 | `` n1i=(e=0,t=0) `` |
+| Cost-channel combination | 6321365 | `` t1i=(e,t,n)=> `` |
+| Cost calculation / harmony floor | 8585670 | `` zko=(e,t,n,r)=> `` |
+| Returning Cycle | 6346485 | `` j0i=`returningCycle.webp` `` |
+| Nine-harmony registry | 6352033 | `` eC={forge:PQi `` |
+| Condition generator | 14951802 | `` F7c=(e,t)=> `` |
+| Native auto-use callback | 17668103 | `` currentCraftingAutoUseLoadout?.slots `` |
+| Native auto-use slot selector | 17663914 | `` OBu=(e,t,n,r,i,a,o=!0)=> `` |
+| Droplet action | 4724073 | `` name:`Stablizing Circuit` `` |
+| Wait | 4723793 | `` name:`Wait`,icon:Wzr `` |
+| Converging Jade | 7030313 | `` name:`Converging Jade Cauldron (${e})` `` |
+| Room scaling | 6130458 | `` e.scalesWithRoomEffectiveness `` |
+| Extra state keys | 14940131 | `` for(let t of l.keys) `` |
+| Preview mastery filtering | 15087041 | `` n.condition?.kind===`chance` `` |
+| Separate replicated-pill results | 17831496 | `` replicatedPills:l `` |
+| Replicated-pill unit sampler | 17560383 | `` ARu=(e,t,n=Math.random)=> `` |
+| Completion Bonus stack boost | 14954673 | `` perfectionBoost:{value:10,stat:void 0,scaling:`stacks`} `` |
+| Quality cap boost | 6333696 | `` Z1i=e=> `` |
+| Crafting stat registry | 5075593 | `` Mm=[`maxpool` `` |
+| Crafting Qi resource applier | 14935853 | `` u7c=(e,t,n,r,i,a,o)=> `` |
+| Crafting action execution | 14943504 | `` b7c=(e,t,n,r,i)=> `` |
+| Crafting end-of-turn | 14952674 | `` I7c=(e,t,n,r,i,a,o)=> `` |
+| Auto-finish predicate | 6334373 | `` n0i=(e,t,n,r,i=0)=> `` |
+| Outcome tier gates | 17786711 | `` MUu=(e,t,n)=> `` |
+| Material refund cap | 17830638 | `` Math.max(0,Math.min((a-1)*20,80)) `` |
+| Eccentric Decree bar hook | 6335009 | `` c0i=(e,t,n,r,i)=> `` |
+| Numeric expression coercion | 6124207 | `` bKi=e=> `` |
+| Shared expression evaluator | 6127938 | `` cy=(e,t)=> `` |
+| Crafting effect interceptors | 14941751 | `` for(let c of e.craftingEffectInterceptors??[]) `` |
+| Stability-loss prevention | 14929654 | `` n7c=(e,t)=> `` |
+| Combat barrier-debt buff | 15662030 | `` name:`Barrier Debt` `` |
+| Equipment reharmonize requirement hook | 14280918 | `` nT.getHooks().onDeriveEquipmentReharmonizeRequirement `` |
+| Equipment reharmonize completion hook | 14283520 | `` nT.getHooks().onCompleteEquipmentReharmonize `` |
+| Crafting ModAPI utilities | 23994878 | `` getVariablesFromCraftingEntity:YS `` |
+
+### 18.3 Recorded mechanics still present
+
+- **Payment and ticks (§17.2–§17.4):** independent zero-based reduction/penalty
+  channels, rounded nonnegative costs and separate harmony flooring remain.
+  Toxicity → droplets → buff payment → success-chance capture → effect masteries
+  → recomputed Qi/stability payment → success-only effects remains the order.
+  Failure still reports payment; only pre-action buff names tick before harmony.
+  Chance masteries retain the 10%-chance/30%-per-tier versus deterministic
+  2%-per-tier distinction; preview strips chance-conditioned entries.
+- **Returning Cycle (§17.5):** fixed raw-starting-maxpool charge size, reported
+  payment credited even on failure, uncapped charges, drain before Stabilize
+  release, retained remainder and ordinary Returned Precision timing all match.
+- **Scaling, buffs and harmony (§14–§17):** additive item effectiveness, room
+  opt-in, nested stepping/rounding, scope merge order, `setState.keys` quirks,
+  Converging Jade, Invasion duration stacks, seal behavior and per-bar Eccentric
+  Decree remain. All nine harmony complexities and Cadence chain/repeat rules
+  match the recorded model. Completion Bonus still supplies +10 perfectionBoost
+  per stack; positive gain boosts and fourth-argument quality caps remain.
+- **Conditions and outcomes (§17.7):** discordance precedes forecast-queue
+  branches; the older §14.5 stay-neutral-only explanation is incomplete.
+  Conjunctive tier gates, <=80% material refunds and consumed-unit pill sampling
+  without replacement remain; `replicatedPills` is still a separate result field.
+- **Actions and integration:** Circuit still requires 3 actual droplets; Wait
+  has no Qi cost and costs 10 stability. No literal `Finish Craft` occurs in the
+  bundle. Native auto-use retains the enabled toggle, resolved loadout, ten-rule
+  selector, budgets, training definedness and pre-technique dispatch. Button
+  role, translated `displayName ?? name` aria-label and guarded callback persist;
+  this is not a visibility, localization or click-sequence test.
+
+The Qi applier `u7c` has raw extracted-expression SHA-256
+`59ae1187b6d18f9b7766357ae787ba2c5329d016f2dfcdd0dc3b8cc902205d4f`.
+Renaming only dependencies HR→sR, Jy→Ap, D2→d2 yields
+`2ebfb80d88796904f40c4236849b65b44c7e09f6b099c4ead693207eda175849`,
+matching the supplied 0.7.18 oracle hash. This proves extracted text identity
+modulo those aliases, not identity of all dependencies or the 0.7.17 body.
+
+### 18.4 Auto-finish correction in CraftBuddy
+
+`n0i` at byte **6334373** ends a craft only when **stability <= 0**, or when
+**completion >= the actual completion cap AND perfection >= the actual
+perfection cap**. CraftingScreen calls this helper directly. There is no
+`canOvercraft` / five-completion-band shortcut in this predicate.
+
+§17.7 already records the same rule for 0.7.17. Thus the shortcut retained from
+§12.5 was a pre-existing CraftBuddy source/docs inconsistency, not a newly
+established 0.7.19 change. Commit `77b38e6` removes it from TypeScript
+`willAutoFinish` and Rust `will_auto_finish`, with regressions where the true
+completion cap exceeds five bands. The 80% refund ceiling is a separate reward
+rule, not an early-termination rule. No scoring constants or benchmark
+contracts changed for this correction.
+
+### 18.5 Shared evaluator, UI and ModAPI scope
+
+- The shared expression evaluator now normalizes numeric strings/booleans and
+  coerces unexpected text to 0 before numeric comparisons. CraftBuddy's local
+  constrained evaluator can differ on malformed string-valued scope input;
+  no realistic stock crafting divergence was established. This is robustness
+  hardening, not a new formula for valid numeric craft state.
+- The combat barrier-debt rework uses `combatState`/round context. Crafting
+  still checks/subtracts actual droplets and exposes no debt stat in its
+  23-stat registry. Do not import combat debt into Circuit legality.
+- Practice-Furnace preparation now contains the normal crafting-loadout
+  selector and still dispatches normal craft initialization. This is a
+  pre-craft UI path, not a replacement mid-craft reducer.
+- Crafting utilities, cap-getter calling shapes, existing crafting hooks,
+  snapshot/subscribe and UI injection exports remain compatible. Additive
+  `onDeriveEquipmentReharmonizeRequirement` and
+  `onCompleteEquipmentReharmonize` hooks affect equipment only; neither is
+  adopted by CraftBuddy for this retarget.
+
+### 18.6 Pre-existing gaps and audit limits
+
+The runtime implements `modifyBuffGroup` (including Elixir Renewal extending
+Pill buffs), companion technique-effect interceptors and stability-loss
+prevention, and technique-level triggered effects that the local model does
+not fully execute/extract. Those capabilities already exist in 0.7.17 public
+declarations; they are not newly introduced 0.7.19 migrations. Runtime
+`actionFailed`/crit triggers and per-name success PRD were also observed, but
+their introduction date is unverified and local success remains approximate.
+Craft-start effects alone are not necessarily a mid-craft gap because state is
+read after initialization. See `MECHANICS_PARITY.md` for current limitations.
+
+No direct historical bundle/data diff, live UI check or demonstrated malformed
+stock crafting payload was available. The audit establishes the inspected
+paths and anchors, not exhaustive cross-version equivalence.
 
 <!-- prettier-ignore-end -->

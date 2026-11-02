@@ -3,7 +3,7 @@ title: API Request Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: docs/dev-requests/API_EXPOSURE_REQUESTS.md
 review_cycle_days: 30
@@ -16,7 +16,7 @@ related_files:
 
 # API Request Status
 
-Reviewed against the **6.8.0** integration and installed AFNM **0.7.17-d8ae6ce** crafting audit. The native auto-use dispatch contract remains unchanged; the retarget keeps finalized payment simulation local rather than adopting a new API. Extraction details are in `docs/project/RUNTIME_EVIDENCE.md` §17. The 0.7.5/0.7.6 sections below retain their historical introductions; the current dependency is `afnm-types@0.7.17`.
+Reviewed against the **6.9.0** integration fixes and installed AFNM **0.7.19-ac29603** crafting audit. The native auto-use dispatch contract remains unchanged, with the enabled toggle now honored locally; finalized payment simulation stays local rather than adopting a new API. Evidence is in `docs/project/RUNTIME_EVIDENCE.md` §18. Crafting declarations are unchanged from 0.7.17; the new reharmonizing hooks are equipment-only and not adopted. The 0.7.5/0.7.6 sections below retain their historical introductions; the current dependency is `afnm-types@0.7.19`.
 
 ## 0.7.6 API changes
 
@@ -27,7 +27,7 @@ Reviewed against the **6.8.0** integration and installed AFNM **0.7.17-d8ae6ce**
 | Buff-interceptor stat filters | **Available, not adopted.** CraftBuddy observes state rather than intercepting it. |
 | Crafting loadouts now name their paired auto-use loadout (`craftingLoadout.craftingAutoUseLoadoutId`) | No change needed: the game resolves the pairing before CraftBuddy reads `currentCraftingAutoUseLoadout`. |
 | New `(This Effect)` self-reference auto-use slot condition | Unmodelled; falls to the conservative "will fire" default in `src/modContent/nativeAutoUse.ts`, which withholds a duplicate rather than causing one. Strengthens follow-up request 3 at the end of this document. |
-| `afnm-types` `0.7.6` | Historical retarget dependency; current `package.json` pins `0.7.17`. |
+| `afnm-types` `0.7.6` | Historical retarget dependency; current `package.json` pins `0.7.19`. |
 
 The Eccentric Decree per-bar-change hook and the Fallen Soulflame re-balance are mechanics changes, not API changes; see `docs/project/MECHANICS_PARITY.md`.
 

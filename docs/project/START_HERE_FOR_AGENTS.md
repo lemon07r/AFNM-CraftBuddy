@@ -3,7 +3,7 @@ title: Start Here For Agents
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: src/modContent/index.ts, src/optimizer/*, src/__tests__/*
 review_cycle_days: 30
@@ -18,11 +18,11 @@ related_files:
 
 # Start Here For Agents
 
-CraftBuddy **6.8.0** targets AFNM **0.7.17** (build `0.7.17-d8ae6ce`, `afnm-types@0.7.17`). There are nine player-selected harmonies. Claims about item-kind harmony inference, a manual `Finish Craft`, Completion Bonus granting control, or Rust not seeing items are obsolete.
+CraftBuddy **6.9.0** targets AFNM **0.7.19** (build `0.7.19-ac29603`, `afnm-types@0.7.19`). There are nine player-selected harmonies. Claims about item-kind harmony inference, a manual `Finish Craft`, Completion Bonus granting control, or Rust not seeing items are obsolete.
 
 Recent patches, in one line each: 0.7.6 moved Eccentric Decree to **per bar application** scoring (anything saying it awards harmony once at end of turn predates 0.7.6); 0.7.7/0.7.8 introduced stateful buffs, the Illume Crucible seal and discordant conditions; 0.7.9 reworked Purifying Flame into a `bonusMaximumQuality` cap boost and overhauled the Insight package; 0.7.10 replaced the Completion Bonus buff's per-stack control with `+10 perfectionBoost` per stack.
 
-The 0.7.17 retarget adds Returning Cycle, independent reduction/penalty cost channels, droplets, mastery-before-payment phases and pre-action-name buff ticking. General triggered effects and scaling additions are mirrored in TS/Rust. See `MECHANICS_PARITY.md` for the implementation and `RUNTIME_EVIDENCE.md` §17 for the runtime audit; do not redesign search branching or future probabilistic buffs as part of this retarget.
+The 0.7.17 retarget added Returning Cycle, independent reduction/penalty cost channels, droplets, mastery-before-payment phases and pre-action-name buff ticking. The 0.7.19 audit confirms those recorded rules still hold. CraftBuddy 6.9.0 corrects the stale five-band auto-finish shortcut, terminal ambition scoring, survival precedence and recommendation cache/settings scope; it is not a search redesign. See `MECHANICS_PARITY.md`, `RUNTIME_EVIDENCE.md` §17–§18 and `RELEASE_NOTES_6.9.0.md`, including the remaining survivability-floor payment-phase gap.
 
 ## Critical first read
 
@@ -62,11 +62,11 @@ The 0.7.17 retarget adds Returning Cycle, independent reduction/penalty cost cha
 
 These filenames are intentionally version-free: each carries its targeted build in a `game_version` frontmatter field, so a game patch is a content edit rather than a rename.
 
-- `docs/project/RUNTIME_EVIDENCE.md` — extracted runtime source through 0.7.17, including execution phases, cost channels, droplets, Returning Cycle and named buff changes. Authoritative; do not re-derive these from tooltips.
+- `docs/project/RUNTIME_EVIDENCE.md` — extracted runtime source through 0.7.19, including execution phases, cost channels, droplets, Returning Cycle and named buff changes. Authoritative; do not re-derive these from tooltips.
 - `docs/project/ENGINE_PERFORMANCE.md` — engine measurements, the profiling harness, and the optimizations rejected with data.
 - `docs/project/OPTIMIZER_ENGINE_FINDINGS.md` — engine decision record.
 - `docs/project/OPTIMIZER_NEXT_STEPS_HANDOFF.md` — what is settled vs open.
-- `docs/project/RELEASE_NOTES_6.8.0.md` — the current 0.7.17 retarget; `CHANGELOG.md` links release history. Earlier notes (including `6.7.0` → 0.7.12) are historical.
+- `docs/project/RELEASE_NOTES_6.9.0.md` — the current 0.7.19 retarget and recommendation fixes; `CHANGELOG.md` links release history. Earlier notes (including `6.8.0` → 0.7.17) are historical.
 
 ## Context rules
 

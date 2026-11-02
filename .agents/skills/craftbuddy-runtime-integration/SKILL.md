@@ -5,7 +5,7 @@ description: CraftBuddy runtime integration workflow. Activate for src/modConten
 
 # CraftBuddy Runtime Integration
 
-`src/modContent/index.ts` and neighboring modules are the only boundary between AFNM runtime objects and the optimizer/UI. Target runtime: AFNM **0.7.17-d8ae6ce**.
+`src/modContent/index.ts` and neighboring modules are the only boundary between AFNM runtime objects and the optimizer/UI. Target runtime: AFNM **0.7.19-ac29603**.
 
 Reach the optimizer only through `src/optimizer/index.ts`. If something is missing from the barrel, add it there rather than importing a submodule.
 
@@ -90,14 +90,17 @@ Add focused tests for controller state, replay parity, or integration regression
 8. **Never hardcode buff magnitudes**: 0.7.6 nerfed Fallen Soulflame (0.5 → 0.2 intensity/control per stack, pool 3 → 2, stability 2 → 1) and neither engine needed a change, because both read live buff definitions. Copying a number into code re-breaks that.
 9. **Harmony clones must cover every harmony's state**: `cloneHarmonyData` in `harmonyState.ts` was silently dropping `enhancingEcho` and `eccentricDecree` during hydration. When adding harmony state, extend the clone and its test in the same change.
 10. **User-facing technique names are not internal names**: key `false_fusion` / internal `name` `False Fusion` displays as "Strive for Completion". Format labels with `techniqueDisplayName()` from `src/optimizer/index.ts`; keep matching, dispatch and `craftingTechniqueFromKnown` on `name`. The one exception is the DOM click fallback: `buildSearchAliases` in `autoCraftExecutor.ts` must index **both** spellings, because the in-game button carries the display name.
+11. **Auto-use toggles and pill counters are separate fields**: `player.player.craftingAutoUseEnabled === false` makes the configured loadout inactive (absent defaults enabled); the revision signature reads `consumedPills` from crafting state, not `progressState`.
+12. **Ambition changes invalidate recommendations and score scope**: `recommendationContext.ts` includes `overcraftAmbition`, `perfectionBandGoal` and `completionBandCeiling` in stale-settings detection and cross-step cache scope. Keep budget fields out of the score scope.
 
-## 0.7.17 payload contract
+## 0.7.17 payload contract, re-audited for 0.7.19
 
 - Preserve `qiDroplets` / `maxQiDroplets`, `dropletCost`, `noQiCost`, and the independent zero-based Qi/stability reduction and penalty channels.
 - Keep effect `masteryEntries` separate from success-only technique effects; static construction-time masteries must not be applied twice.
 - Preserve scaling multipliers/rounding, buff `additionalVariables`, and `setState.keys`; general triggered effects are not limited to `setState`.
 - Hydrate and clone `returningCycle` (`charges`, `storedQi`, fixed `chargeSize`, `pulseKey`, `lastOutcome`) without resetting it on a poll; replay includes the same state and the ordinary Returned Precision definition.
 - Native auto-use still precedes technique dispatch. Do not bypass the in-game hook when a loadout is active.
+- The 0.7.19 re-audit is runtime evidence §18: unchanged crafting declarations, pre-craft Practice-Furnace loadout UI, no crafting adoption for equipment-only reharmonizing hooks. Combat barrier debt does not alter crafting droplets.
 
 ## References
 

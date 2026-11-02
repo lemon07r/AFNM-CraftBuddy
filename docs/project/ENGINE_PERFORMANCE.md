@@ -3,7 +3,7 @@ title: Rust Engine Performance and Neutrality Evidence
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: crates/craftbuddy-engine/src/profile_tests.rs, crates/craftbuddy-engine/src/profiling.rs, crates/craftbuddy-engine/src/effects.rs, scripts/optimizer/benchmark-engines.ts
 review_cycle_days: 90
@@ -17,11 +17,11 @@ related_files:
 
 # Rust Engine Performance and Neutrality Evidence
 
-Measurements behind the engine's performance work, current target AFNM **0.7.17-d8ae6ce**. The 6.0.0/6.1.0 numbers below are retained historical measurements, not new speed claims for 0.7.17. Read this before proposing another engine optimization — two obvious candidates were measured and rejected with data.
+Measurements behind the engine's performance work, current target AFNM **0.7.19-ac29603**. The 6.0.0/6.1.0 and 6.8.0 numbers below are retained historical measurements, not fresh speed claims for 0.7.19. Read this before proposing another engine optimization — two obvious candidates were measured and rejected with data.
 
 **The filename carries no version on purpose.** This file used to be `ENGINE_PERFORMANCE_075.md`. The targeted build now lives in the `game_version` frontmatter field, so a future game patch means editing this file's numbers, not renaming it and leaving a stale copy behind.
 
-The Rust optimization baseline is the **6.0.0** run below. It is deliberately kept rather than overwritten. The current TypeScript retarget measurement follows separately.
+The Rust optimization baseline is the **6.0.0** run below. It is deliberately kept rather than overwritten. The 6.8.0 TypeScript retarget measurement follows separately; 6.9.0 validation is recorded in `RELEASE_NOTES_6.9.0.md`, without a new throughput claim.
 
 ## 6.8.0: 0.7.17 TypeScript transition throughput
 

@@ -3,7 +3,7 @@ title: Optimizer Design
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: src/optimizer/outcome.ts, src/optimizer/search.ts, src/optimizer/skills.ts, src/optimizer/state.ts, src/optimizer/harmony.ts, src/optimizer/index.ts, src/optimizer/nativeMcts.ts, crates/craftbuddy-engine/*, src/settings/index.ts
 review_cycle_days: 30
@@ -17,7 +17,7 @@ related_files:
 
 # Optimizer Design
 
-How CraftBuddy decides what to do next in AFNM **0.7.17**. Use `.agents/skills/craftbuddy-optimizer/SKILL.md` for the action checklist; this is the reference.
+How CraftBuddy decides what to do next in AFNM **0.7.19**. Use `.agents/skills/craftbuddy-optimizer/SKILL.md` for the action checklist; this is the reference.
 
 ## Module boundary
 
@@ -58,7 +58,7 @@ Consequences that must not be re-litigated with weights:
 
 ## Terminal states: there is no manual finish
 
-AFNM has no `Finish Craft` action, re-verified in 0.7.6. The craft resolves itself the moment `willAutoFinish(state, bands)` holds — see `docs/project/RUNTIME_EVIDENCE.md` section 2 for the extracted predicate and the proof that `Wait` is a normal technique costing 10 stability, not a finish button.
+AFNM has no `Finish Craft` action. The craft resolves itself when stability <= 0 or both actual bar caps are reached. `willAutoFinish(state, bands)` mirrors this rule; 6.9.0 removes the stale five-band overcraft shortcut. See `docs/project/RUNTIME_EVIDENCE.md` §18.4 (superseding §12.5) and section 2 for `Wait`, a normal technique costing 10 stability, not a finish button.
 
 Search therefore:
 
@@ -97,16 +97,17 @@ Characteristics:
 - iterative deepening over one shared table; only fully completed deeper passes replace shallower results
 - beam-limited exploration with adaptive width at depth, and cached `bestMove` promotion so a deeper pass continues from the validated principal variation
 - node budget counts cache-miss frontier expansions, not cache probes
-- optional **cross-step table** (`CrossStepSearchCache` in `crossStepCache.ts`): `modContent` hands one table per craft scope (targets/caps/stats/roster/settings signature; budget fields excluded) and the search treats it as a second level under its per-call table. Exact-depth hits copy through, truncated-frontier fallbacks and PV promotion may consult it, and only completed passes merge back at search end, so a truncated search never publishes a partial frontier. Reuse is exact for unchanged-state redispatches (manual recalc, settings toggles) and structurally rare for step-advanced states: the key carries the realized condition-queue context (visible window + stochastic tail draws), which shifts every step — relaxing it would mix scoring contexts that genuinely differ. Hits are reported as `searchMetrics.crossStepHits`; measurements in `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
+- optional **cross-step table** (`CrossStepSearchCache` in `crossStepCache.ts`): `modContent` hands one table per craft scope (targets/caps/stats/roster/settings signature, including all three ambition settings; budget fields excluded) and the search treats it as a second level under its per-call table. Exact-depth hits copy through, truncated-frontier fallbacks and PV promotion may consult it, and only completed passes merge back at search end, so a truncated search never publishes a partial frontier. Reuse is exact for unchanged-state redispatches within the same scope and structurally rare for step-advanced states: the key carries the realized condition-queue context (visible window + stochastic tail draws), which shifts every step — relaxing it would mix scoring contexts that genuinely differ. Hits are reported as `searchMetrics.crossStepHits`; measurements in `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
 - conservative stable-recommendation early exit, reported as `searchMetrics.earlyExit`
-- optional **worker-pool backend** (`searchBackend.ts` + `src/worker/searchWorker.ts` + `src/modContent/searchBackendClient.ts`): the search input crosses to blob-URL workers in a plain-data wire format (transposition table and abort hook are stripped and reinstalled per worker), root candidates partition by stride (`key i % N`) when `searchThreads > 1`, and ranked partials merge by score with a key tiebreak (deep scores are absolute, so the merged ranking matches an unpartitioned search up to the per-partition early-exit frontier). The native MCTS prior is root-parallel with `seed = baseSeed + i`. A once-per-session smoke probe gates the pool; on failure the caller runs the synchronous engine unchanged. Cancellation is epoch-based: a newer dispatch posts cooperative cancels (polled via `SearchConfig.shouldAbort` at budget checks) and drops stale replies. Measurements in `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
+- optional **worker-pool backend** (`searchBackend.ts` + `src/worker/searchWorker.ts` + `src/modContent/searchBackendClient.ts`): the search input crosses to blob-URL workers in a plain-data wire format (transposition table and abort hook are stripped and reinstalled per worker), root candidates partition by stride (`key i % N`) when `searchThreads > 1`, and ranked partials merge by survival precedence, then score with a key tiebreak (except that a synthetic finish cannot displace a better live line solely on safety grounds). Deep scores are absolute. The native MCTS prior is root-parallel with `seed = baseSeed + i`. A once-per-session smoke probe gates the pool; on failure the caller runs the synchronous engine unchanged. Cancellation is epoch-based: a newer dispatch posts cooperative cancels (polled via `SearchConfig.shouldAbort` at budget checks) and drops stale replies. Measurements in `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`
 - `findOptimalPath()` reconstructs the displayed rotation from the table's `bestMove` chain, with greedy evaluation only on a cache miss
 - optional Rust/WASM MCTS **root policy prior** for large or sublime searches when the Experimental engine is selected (see below)
 
 ### Probability handling
 
 - Success and crit are expected values inside gains.
-- Immediate survival is _not_ flattened into EV: `calculateActionSurvivabilityFloor(...)` computes a guaranteed post-action stability floor, and a proc-dependent line is treated as unsafe while a guaranteed-safe alternative exists and goals are unsecured. Hard-stop branches (guaranteed floor `<= 0`) are collapsed before ranking; sublime continuation lines may stay probabilistic while their floor is non-terminal. This is the Qi/stability juggling behaviour players praised and it has dedicated survivability regression coverage — do not weaken it.
+- Immediate survival is _not_ flattened into EV: `calculateActionSurvivabilityFloor(...)` estimates a guaranteed post-action stability floor, and a proc-dependent line is treated as unsafe while a guaranteed-safe alternative exists and goals are unsecured. Hard-stop branches (floor `<= 0`) are collapsed before ranking; sublime continuation lines may stay probabilistic while their floor is non-terminal. **Known gap:** this helper pays before buff consumption and omits effect masteries, so it can disagree with the actual transition; see `MECHANICS_PARITY.md` known limitations.
+- Since 6.9.0, a technique whose real failure transition ends the craft below target carries `requiresProbabilisticSurvival`, so EV progress cannot outrank a guaranteed route. This check uses `applySkill` with failure forced; it does not repair the separate floor helper.
 - The condition queue is normalized to the game's visible length `3`; beyond it, transitions are probability-weighted (`enableConditionBranchingAfterForecast`, `conditionBranchLimit`, `conditionBranchMinProbability`).
 - Condition transitions come from `modAPI.utils.getNextCondition` with a legacy fallback.
 
@@ -212,14 +213,18 @@ which is the pre-6.4 behaviour bit-for-bit: `normalizeAmbitionBands` collapses
 anything non-finite or `<= 0` to `undefined`, and `src/settings/index.ts`
 clamps a stored value to `AMBITION_BAND_MAX` (`8`).
 
-They enter in exactly three places, all inside the outcome authority or the
-function that consumes it:
+Their goal/scoring effects enter through three helpers:
 
 | Entry point | Effect |
 | --- | --- |
 | `buildOutcomeBands` (`outcome.ts`) | normalizes both values onto the bands object as `ambitionPerfectionBands` / `ambitionCompletionCeilingBands`. Thresholds, flats and cap band counts are derived exactly as before. |
 | `deriveBandGoals` (`search.ts`) | raises the effective perfection goal to `bandThreshold(targetPerfection, goal)` when the requested band count exceeds `TIER_REQUIREMENTS[targetTier].perfection`, still passed through `clampGoalByCap`. It can only raise, never lower. |
 | `computeOvercraftExtras` (`outcome.ts`) | bounds completion extras by `Math.max(completionRequired, Math.min(capBandCount, sublime ? 5 : required, userCeiling))`, so extra completion past the chosen band stops earning score while the target tier stays reachable. Perfection extras stay uncapped — more stars is the point of the pair. |
+
+All terminal scoring call sites pass both band settings as of 6.9.0. Integration
+stale-settings detection and cross-step cache scope also include them and
+`overcraftAmbition` (`src/modContent/recommendationContext.ts`), so changing
+ambition cannot retain an old recommendation or reuse a differently valued score.
 
 What these settings deliberately do **not** touch: tier classification,
 `TIER_REQUIREMENTS`, band thresholds and `willAutoFinish`. They change the goal
@@ -282,5 +287,5 @@ For ~90-turn crafts, increase depth gradually, avoid maxing depth and beam toget
 - **One outcome authority.** Bands, tiers and the auto-finish predicate live only in `outcome.ts` (mirrored in Rust). Duplicating a threshold anywhere else is a defect, not an optimization.
 - **Conjunctive goals over tuned weights.** Gates, not weights, decide tiers; the weights only order candidates inside a tier.
 - **Pure optimizer core.** No game runtime, DOM, Redux or settings access in `src/optimizer/*`.
-- **EV with guaranteed-survival guardrails.** Expected value for gains and conditions, plus a deterministic survivability floor so a craft is never spent on a recovery proc when a guaranteed line exists.
+- **EV with survival guardrails.** Expected value for gains and conditions, plus failure-branch checks and a deterministic floor helper; its remaining payment-phase limitation is explicit above.
 - **Rust as prior, TypeScript as authority.** Parity is proven mechanically, but ranking authority stays in one place.

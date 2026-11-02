@@ -1,6 +1,6 @@
 ---
 title: Release Notes 6.7.0
-status: active
+status: historical
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.12-ad43f78

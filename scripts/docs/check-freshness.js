@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 const fs = require('fs');
-const { listMarkdownFiles, rel, parseFrontmatter, isMaintainedDoc } = require('./utils');
+const {
+  listMarkdownFiles,
+  rel,
+  parseFrontmatter,
+  isMaintainedDoc,
+} = require('./utils');
 
 const REQUIRED_FIELDS = [
   'title',
@@ -42,26 +47,38 @@ for (const file of listMarkdownFiles()) {
 
   const reviewCycle = Number(frontmatter.review_cycle_days);
   if (!Number.isFinite(reviewCycle) || reviewCycle <= 0) {
-    errors.push(`${relative}: invalid review_cycle_days '${frontmatter.review_cycle_days}'`);
+    errors.push(
+      `${relative}: invalid review_cycle_days '${frontmatter.review_cycle_days}'`,
+    );
     continue;
   }
 
   const lastVerifiedDate = parseDate(frontmatter.last_verified);
   if (!lastVerifiedDate) {
-    errors.push(`${relative}: invalid last_verified '${frontmatter.last_verified}' (expected YYYY-MM-DD)`);
+    errors.push(
+      `${relative}: invalid last_verified '${frontmatter.last_verified}' (expected YYYY-MM-DD)`,
+    );
     continue;
   }
 
-  const ageDays = Math.floor((today.getTime() - lastVerifiedDate.getTime()) / (1000 * 60 * 60 * 24));
+  // Historical records retain their original verification date, but must still
+  // provide valid metadata. Only the recurring age check no longer applies.
+  if (frontmatter.status === 'historical') continue;
+
+  const ageDays = Math.floor(
+    (today.getTime() - lastVerifiedDate.getTime()) / (1000 * 60 * 60 * 24),
+  );
   if (ageDays > reviewCycle) {
     errors.push(
-      `${relative}: stale (age ${ageDays} days > review_cycle_days ${reviewCycle})`
+      `${relative}: stale (age ${ageDays} days > review_cycle_days ${reviewCycle})`,
     );
   }
 }
 
 if (errors.length > 0) {
-  console.error(`Freshness/metadata checks failed (${errors.length} issue(s)):`);
+  console.error(
+    `Freshness/metadata checks failed (${errors.length} issue(s)):`,
+  );
   for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }

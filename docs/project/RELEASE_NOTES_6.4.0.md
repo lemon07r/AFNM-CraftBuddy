@@ -1,6 +1,6 @@
 ---
 title: Release Notes 6.4.0
-status: active
+status: historical
 authoritative: true
 owner: craftbuddy-maintainers
 game_version: 0.7.8-24a8210

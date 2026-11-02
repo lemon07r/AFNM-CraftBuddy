@@ -3,7 +3,7 @@ title: Testing Guide
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: src/__tests__/*, crates/craftbuddy-engine/*, package.json, scripts/docs/*, scripts/installed-game-runtime.js
 review_cycle_days: 30
@@ -20,7 +20,7 @@ related_files:
 
 See `AGENTS.md` for the compact command list. Key commands:
 
-- `bun run test` — full suite (budget several minutes; current counts belong in `RELEASE_NOTES_6.8.0.md`)
+- `bun run test` — full suite (budget several minutes; current counts belong in `RELEASE_NOTES_6.9.0.md`)
 - `bun run wasm:test` — Rust unit, effect-parity, and differential-corpus tests
 - `bun run wasm:build` — compile the Rust engine and generate the inline WASM module
 - `bun run optimizer:differential-corpus` — regenerate the cross-engine corpus
@@ -53,6 +53,7 @@ For validation workflow and which checks to run per change area, load the `pre-c
 | `engineDifferential.test.ts` | TypeScript side of the cross-engine differential corpus |
 | `nativeAutoUse.test.ts` | Loadout status reading, covered items, slot projection, toxicity ceiling, training mode |
 | `craftStateSignature.test.ts` | Signature coverage/diffing and `craftStateRevision` derivation |
+| `recommendationContext.test.ts` | Ambition settings invalidate stale recommendations and cross-step score-cache scope |
 | `autoCraftExecutor.test.ts` | Dispatch-time verification, typed errors, execution-path selection |
 | `overlayLayout.test.ts` | Safe-lane overlay sizing and occupied-rect geometry helpers |
 | `state.test.ts` | State invariants, cache key behavior |
@@ -123,11 +124,12 @@ Native MCTS is disabled under Jest unless `CRAFTBUDDY_ENABLE_WASM_MCTS_TESTS=1` 
 
 Auto mode can act on the live game, so its tests cover refusal as much as action:
 
-- a native loadout is detected with the correct covered items, `pillsPerRound` and toxicity headroom; an all-empty or unstocked loadout counts as inactive
+- a native loadout is detected with the correct covered items, `pillsPerRound` and toxicity headroom; an all-empty, unstocked or explicitly disabled loadout counts as inactive
 - with a loadout active, `fullActionSpace` is downgraded and no covered item is ever dispatched
 - live state moving between recommendation and dispatch produces `stale` with the changed fields, and the controller recalculates
 - unreadable state produces `unverifiable`, and automation pauses with an explanation and dispatches nothing
 - changing only harmony value, only `harmonyData`, or only the available-technique set each yields a new `craftStateRevision`
+- the consumed-pill counter is read from the crafting slice, not `progressState`
 - `trainingMode` applying items without removing them is not a mismatch
 
 ## Chance-based survivability testing

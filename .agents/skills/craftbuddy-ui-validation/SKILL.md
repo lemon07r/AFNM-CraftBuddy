@@ -5,7 +5,7 @@ description: CraftBuddy UI and validation workflow. Activate for src/ui changes,
 
 # CraftBuddy UI Validation
 
-Use the committed browser harness first for UI work. Live game UI validation is optional and disruptive. Target game version: AFNM **0.7.17-d8ae6ce**. The 6.8.0 mechanics retarget is not itself a live UI smoke-test claim.
+Use the committed browser harness first for UI work. Live game UI validation is optional and disruptive. Target game version: AFNM **0.7.19-ac29603**. The 6.9.0 static runtime audit is not itself a live UI smoke-test claim.
 
 ## Activate When
 

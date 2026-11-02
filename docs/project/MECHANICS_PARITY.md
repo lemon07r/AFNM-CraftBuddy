@@ -3,8 +3,8 @@ title: Mechanics Parity Status
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
-last_verified: 2026-10-22
+game_version: 0.7.19-ac29603
+last_verified: 2026-11-02
 source_of_truth: src/optimizer/outcome.ts, src/optimizer/skills.ts, src/optimizer/harmony.ts, src/optimizer/harmonyRegistry.ts, src/optimizer/gameTypes.ts, src/optimizer/state.ts, src/optimizer/search.ts, src/optimizer/nativeMcts.ts, src/modContent/harmonyState.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
@@ -16,22 +16,28 @@ related_files:
 
 # Mechanics Parity Status
 
-Which AFNM **0.7.17** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
+Which AFNM **0.7.19** crafting mechanics CraftBuddy models, how that is proven, and what is genuinely still approximate.
 
-Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` holds the extracted runtime source, currently for build `0.7.17-d8ae6ce`.
+Authority order: installed runtime bundle → tests → this document. When they disagree, the runtime wins and this file is wrong. `docs/project/RUNTIME_EVIDENCE.md` holds the extracted runtime source, currently for build `0.7.19-ac29603` (§18).
 
 ## How parity is proven
 
 | Layer | Proof |
 | --- | --- |
-| Formula/transition parity vs the game | `gameAccuracy.test.ts`, `runtimeParity.test.ts`, `skills.test.ts`, `harmony.test.ts`, plus `runtime0717.test.ts` and `returningCycle.test.ts` for the current retarget |
+| Formula/transition parity vs the game | `gameAccuracy.test.ts`, `runtimeParity.test.ts`, `skills.test.ts`, `harmony.test.ts`, plus `runtime0717.test.ts` and `returningCycle.test.ts` for the retained phase/Cycle model |
 | Outcome/band/tier model | `outcome.test.ts`, `outcomeProjection.test.ts` |
 | TypeScript ↔ Rust engine parity | the differential corpus: `src/__tests__/fixtures/differentialCorpus.ts` → `engineDifferential.test.ts` (TS side) and `crates/craftbuddy-engine/tests/differential_corpus.json` → `differential_tests.rs` (Rust side) |
 | Multi-turn behaviour | `craftSimulation.test.ts`, replay fixtures in `src/__tests__/__fixtures__/replay-snapshots/` |
 
 The corpus is schema v4 and covers **177 scenarios / 1,554 cases**: **1,352 legal transitions** and **202 illegal-action checks**. `expected` asserts qi, droplets and droplet cap, additive item effectiveness, stability, stability penalty, completion, perfection, toxicity, harmony, step, completion bonus, cooldowns, the active-buff set (including per-buff `internalState`), `items`, `consumedPillsThisTurn`, and a `harmonyData` digest. Regenerate with `bun run optimizer:differential-corpus`; never hand-edit the JSON.
 
-The 0.7.17 retarget adds focused TS/Rust tests for payment phases, new-name buff survival and Returning Cycle. Current release-gate results are recorded in `RELEASE_NOTES_6.8.0.md`; the three Rust profiling harnesses remain intentionally ignored during ordinary tests.
+The 0.7.17 retarget added focused TS/Rust tests for payment phases, new-name buff survival and Returning Cycle. Current validation results are recorded in `RELEASE_NOTES_6.9.0.md`; the three Rust profiling harnesses remain intentionally ignored during ordinary tests.
+
+## The 0.7.19 retarget
+
+The static audit in `RUNTIME_EVIDENCE.md` §18 finds the recorded §14–§17 mechanics still present; no direct 0.7.17 bundle diff or live UI test was available. Shared expression text-to-number hardening has no established stock crafting divergence. Combat barrier debt does not affect crafting droplets; the Practice-Furnace loadout selector is pre-craft UI, and the new reharmonizing hooks are equipment-only.
+
+CraftBuddy 6.9.0 fixes the pre-existing five-band auto-finish shortcut in both engines: only stability <= 0 or both actual caps end the craft. Terminal scores honor both ambition band settings. Fatal technique-failure branches are flagged probabilistic, and worker merging preserves survival precedence before score. Stale-settings detection and the cross-step cache scope include all three ambition settings. The live signature reads `consumedPills` from crafting state, and a disabled native auto-use toggle makes the loadout inactive. No scoring constants or benchmark contracts changed; the existing corpus remains unchanged.
 
 ## The 0.7.17 retarget
 
@@ -95,7 +101,7 @@ Everything else in 0.7.6 needed no model change: the Fallen Soulflame nerf is da
 | True Bifang Flame | `completionGained` → `blaze = max(blaze, floor(percentGained))`; +0.03 control per blaze | definition-driven; no special case |
 | Flame of the Azure Depths | `poolSpent` → charge accumulates `amount`, `stored` gains `floor(charge × 100 / maxpool)`, charge keeps the remainder; every action decays `stored` by 1 | definition-driven; the per-action decay is an ordinary `setState` per-turn effect |
 | Illume Crucible `sealedMaxStability` | Max stability falls by 1 every action even when the technique prevents decay, and **no** max stability restoration applies while held (runtime `E7o`/`D7o`) | `hasSealedMaxStabilityBuff` / `has_sealed_max_stability_buff` force the decay and drop positive `maxStabilityChange`, `restoresMaxStabilityToFull`, and technique/buff max-stability deltas in the action fold, the survivability floor, and the display frame |
-| `discordantConditions` (Uncontrollable Flames) | At the stay-neutral decision the runtime rolls `if (Math.random() >= d) return 'neutral'`: a would-be neutral outcome only holds `1 − d` of the time, the rest falls through to the harmony roll | `getBuffDiscordantConditions` takes the strongest `d` across held buffs; `getGeneratedConditionDistribution` / `generated_condition_distribution` apply `effectiveChange = change + (1 − change) × d` only at the final neutral/positive/negative block, matching the gate's placement |
+| `discordantConditions` (Uncontrollable Flames) | The runtime takes the highest held discordance and handles its branch before forecast-queue branches; the older stay-neutral-only account is incomplete (§17.7 / §18.3) | `getBuffDiscordantConditions` takes the strongest `d`; the local distribution applies `effectiveChange = change + (1 − change) × d` at a later neutral gate. This ordering discrepancy remains a known gap, not full runtime parity |
 | Eccentric Decree rebalance (0.7.8) | Stray bar change now costs **−15 harmony and −15 Qi Pool** (was −5/−5); the focused bar still awards +5 | constants updated in both engines; tests and corpus regenerated |
 
 Verified unchanged, so no model change: Turbid Qi (first stack at step 100, then every 3 steps, granted after the step bump), all seven harmony complexity multipliers, Formless Way's starting harmony of 33, and reagent toxicity gating.
@@ -179,7 +185,7 @@ Outcome layer (`src/optimizer/outcome.ts`):
 - band widths from the recipe's completion/perfection stats, each successive band costing `1.3x` the previous (runtime `qIa`)
 - `TIER_REQUIREMENTS`: `basic` = 1 completion band; `perfect` = 1 + 1; `sublime` = **2 + 2**, and only when the recipe has a distinct sublime item
 - fractional bonus-roll chance carried separately from guaranteed bands, so a near-miss is never reported as banked
-- `willAutoFinish` mirroring the runtime predicate, including the overcraft branch at `>= 5` guaranteed completion bands
+- `willAutoFinish` mirrors stability <= 0 or both actual completion/perfection caps; no five-band shortcut, even for overcraft recipes (`RUNTIME_EVIDENCE.md` §18.4 supersedes §12.5)
 - unilateral overcraft reward scaling (`computeOvercraftExtras`): each extra perfection band scales result stacks by `1 + (bands - baseline) * 0.2` (baseline 1 perfect / 2 sublime, plus +1 harmony-augment quality on the sublime path), each extra completion band refunds 20% of recipe cost capped at 80% (five bands, sublime-capable crafts only), all gated on the target tier being secured — `docs/project/RUNTIME_EVIDENCE.md` section 12
 
 Search layer (`src/optimizer/search.ts`): see `docs/project/OPTIMIZER_DESIGN.md`.
@@ -247,6 +253,10 @@ Stated plainly rather than tracked as pending work:
 5. **Wall-clock search depth is machine-dependent.** Presets are a budget envelope, not a determinism guarantee; the _recommendation_ is deterministic for a fixed budget, and that is now directly tested on the Rust side.
 6. **Eccentric Decree bar events are expected values, not the runtime's discrete applications**, and a mid-technique focus flip does not retune that same turn's remaining effect magnitudes. Both are spelled out above and hold in both engines.
 7. **Future chance-buff state is not probability-aware.** Current payment branches account for independent chance-conditioned payment effects, not a new probabilistic persistent-buff/search model.
+8. **The action survivability floor does not preserve all payment phases.** `calculateActionSurvivabilityFloor` computes payment before buff consumption and omits the effect-mastery phase, so its predicted stability can disagree with the real transition (observed examples: floor 1 vs transition 0, and floor 0 vs transition 16). The fatal technique-failure check uses the real transition, but does not repair this separate helper. This remains unfixed in 6.9.0.
+9. **Some existing runtime effect surfaces are unsupported.** `modifyBuffGroup`, companion technique-effect interceptors/stability-loss prevention, and technique-level triggered effects are not fully simulated/extracted. Their public declarations predate 0.7.19; see runtime evidence §18.6, not a new-update migration claim.
+10. **Discordance fallback ordering differs.** The runtime handles nonzero discordance before queue branches; the local late neutral gate is a pre-existing discrepancy (§17.7 / §18.3), not a newly changed 0.7.19 rule.
+11. **Malformed expression scope can differ.** The game's shared evaluator coerces unexpected text to 0; the local constrained evaluator does not normalize every input the same way. No realistic stock crafting payload demonstrating a divergence was established (§18.5).
 
 ## Non-goals
 

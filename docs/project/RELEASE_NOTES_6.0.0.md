@@ -1,6 +1,6 @@
 ---
 title: Release Notes 6.0.0
-status: active
+status: historical
 authoritative: true
 owner: craftbuddy-maintainers
 last_verified: 2026-07-26

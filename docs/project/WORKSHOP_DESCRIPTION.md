@@ -3,11 +3,12 @@ title: Workshop Description
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
-last_verified: 2026-10-22
+game_version: 0.7.19-ac29603
+last_verified: 2026-11-02
 source_of_truth: Steam Workshop item 3661729323, package.json, src/settings/index.ts, src/optimizer/search.ts, src/optimizer/outcome.ts, crates/craftbuddy-engine/*
 review_cycle_days: 30
 related_files:
+  - docs/project/RELEASE_NOTES_6.9.0.md
   - docs/project/RELEASE_NOTES_6.8.0.md
   - docs/project/RELEASE_PROCESS.md
   - docs/project/RELEASE_NOTES_6.7.0.md
@@ -23,22 +24,20 @@ related_files:
 
 CraftBuddy reads your live craft, simulates possible continuations, and recommends the next action — and [i]why[/i].
 
-[b]CraftBuddy 6.8.0 — updated for game version 0.7.17.[/b]
+[b]CraftBuddy 6.9.0 — updated for game version 0.7.19.[/b]
 
 [hr][/hr]
 
 [h1]What's New in v6[/h1]
-The v6 releases model how the game scores your craft:
+Latest in 6.9.0:
 
 [list]
-[*] [b]0.7.17 ready[/b] — all nine harmonies, including Returning Cycle: spending Qi builds charges, charges drain Qi and harmony, and Stabilize releases them for harmony and Returned Precision. Captivating Cadence chains remain supported.
-[*] [b]Updated payment and buff timing[/b] — independent cost reduction/penalty stats, Qi droplets, mastery effects before payment, and new buffs surviving their creation turn are modelled in both engines.
-[*] [b]Ambition targets[/b] — optional Perfection Band Goal and Completion Band Ceiling settings let you aim for more stars while keeping completion at the band you want.
-[*] [b]Auto-mode reliability[/b] — auto mode now recovers and retries when the game quietly ignores an action, and coexists cleanly with your auto-use loadout.
-[*] [b]Game-aware simulation[/b] — Perfection Boost stats, Purifying Flame quality caps, Illume Crucible, discordant flames, Eccentric Decree, and conjunctive outcome gates with auto-finish timing.
-[*] [b]Overcraft scoring[/b] — extra bands past the target tier are scored per bar the way the game rewards them (stacks, quality, material refunds).
-[*] [b]Background search[/b] — workers and early return on stable crafts keep the UI responsive.
-[*] [b]Dual engines[/b] — optional Rust/WASM assistance, with transition-for-transition mechanics checked against the TypeScript simulator.
+[*] [b]0.7.19 ready[/b] — audited crafting rules, with all nine harmonies including Returning Cycle and Captivating Cadence still supported.
+[*] [b]Correct auto-finish[/b] — no premature stop at five completion bands. The craft ends when stability runs out or both bars reach their actual caps.
+[*] [b]Your band goals stay in effect[/b] — Perfection Band Goal and Completion Band Ceiling now reach every craft-ending score. Changing ambition settings marks old recommendations stale.
+[*] [b]Safer choices[/b] — guaranteed routes take precedence over techniques whose failure would end below target, including when search uses multiple workers.
+[*] [b]Auto-use fixes[/b] — respects the game's crafting auto-use toggle and tracks consumed pills correctly. Thanks to PommesMitChips for the report.
+[*] [b]Game-accurate simulation[/b] — payment phases, droplets, buffs, quality caps, ambition targets and overcraft rewards remain modelled, with optional Rust/WASM assistance checked against the TypeScript simulator.
 [/list]
 
 [hr][/hr]
@@ -70,7 +69,7 @@ Open any crafting activity and CraftBuddy appears automatically. The panel shows
 [*] [b]Reasoning[/b] — why this action was chosen, including when it is setting up a gated technique
 [*] [b]Alternatives[/b] — other viable actions, ranked
 [/list]
-Crafts finish on their own once both bars are far enough along, so CraftBuddy tells you when the craft will auto-finish rather than asking you to press anything.
+CraftBuddy tells you when the craft will auto-finish; there is no manual finish button.
 
 [h2]Keyboard Shortcuts[/h2]
 [list]
@@ -95,7 +94,7 @@ Pick a preset to adjust all four search parameters together.
 [/list]
 
 [h2]Manual Search Controls[/h2]
-For advanced users. These four sliders are coupled — pushing one far above the others wastes search time and can even reduce recommendation quality.
+These sliders work together; pushing one far above the others can waste search time.
 [list]
 [*] [b]Lookahead Depth[/b]
 [*] [b]Search Time Budget[/b]
@@ -120,12 +119,12 @@ Toggle predicted rotation, final state estimates, upcoming conditions and altern
 [*] [b]Legacy engine[/b] — the established lookahead optimizer. Reliable and thoroughly tested for all crafting.
 [*] [b]Experimental engine[/b] — opt-in Rust/WASM assistance for difficult late-game, sublime and harmony-heavy crafts, modelling the same mechanics as the main engine.
 [/list]
-[b]Recommendation:[/b] keep Legacy for everyday crafting and try Experimental on tough late-game or sublime crafts. If Experimental ever gives a suspicious recommendation, switch back to Legacy in CraftBuddy settings.
+[b]Recommendation:[/b] keep Legacy for everyday crafting. Try Experimental for difficult crafts; switch back if a recommendation looks wrong.
 
 [hr][/hr]
 
 [h1]Snapshots — Help Improve CraftBuddy[/h1]
-Press [b]Ctrl+Shift+Y[/b] during any craft to export an optimizer replay snapshot. Snapshots capture the full craft state, your available techniques and the optimizer's reasoning — everything needed to reproduce and fix an issue.
+Press [b]Ctrl+Shift+Y[/b] during a craft to export its state, techniques and reasoning for a replayable bug report.
 
 [b]Please send a snapshot when:[/b]
 [list]

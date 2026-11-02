@@ -5,9 +5,9 @@ description: Verify CraftBuddy assumptions against the installed AFNM runtime. A
 
 # Runtime Oracle
 
-Use the installed AFNM bundle before trusting docs, types, historical notes, or screenshots. Current target: **0.7.17-d8ae6ce**.
+Use the installed AFNM bundle before trusting docs, types, historical notes, or screenshots. Current target: **0.7.19-ac29603**.
 
-The 0.7.17 phase/cost/droplet audit, Returning Cycle and named buff changes are already recorded in `RUNTIME_EVIDENCE.md` §17. Its initial-gap descriptions are pre-implementation evidence, not outstanding work. Selective ASAR extraction normalizes both slash styles before matching entries; do not restore whole-archive extraction for large installs.
+The 0.7.17 phase/cost/droplet audit, Returning Cycle and named buff changes are recorded in `RUNTIME_EVIDENCE.md` §17; §18 re-audits those rules for 0.7.19 with byte anchors and scope limits. Read §18.6 / `MECHANICS_PARITY.md` for remaining gaps rather than treating every historical §17 gap as current. Selective ASAR extraction normalizes both slash styles before matching entries; do not restore whole-archive extraction for large installs.
 
 ## Commands
 
@@ -47,6 +47,7 @@ Already extracted and written down — read `docs/project/RUNTIME_EVIDENCE.md` i
 5. **Record what you extract**: a verified snippet belongs in `docs/project/RUNTIME_EVIDENCE.md`, because `tmp/` is not committed and the next agent cannot see your terminal.
 6. **Harmony hook timing changed in 0.7.6**: Eccentric Decree scores from an `onBarChange` hook fired inside every completion/perfection application, not once per turn from `processEffect`. When auditing a harmony, grep for the per-application hook before assuming end-of-turn resolution.
 7. **Display names are a separate field**: 0.7.6 renamed "False Fusion" to "Strive for Completion" via `displayName` only. Grep by internal `name`/key (`False Fusion`, `false_fusion`); a UI-string search will miss it.
+8. **Auto-finish is not the refund ceiling**: 0.7.19 ends on stability <= 0 or both actual caps. §18.4 confirms §17.7 and supersedes §12.5's historical five-band shortcut; 6.9.0 removes that shortcut from both engines.
 
 ## References
 

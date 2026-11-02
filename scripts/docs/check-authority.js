@@ -5,12 +5,17 @@ const { listMarkdownFiles, rel, parseFrontmatter } = require('./utils');
 function validateRule(relative, frontmatter, expected) {
   if (!frontmatter) return `${relative}: missing frontmatter`;
   const errors = [];
-  if (frontmatter.status !== expected.status) {
-    errors.push(`${relative}: expected status '${expected.status}', got '${frontmatter.status}'`);
+  const statuses = Array.isArray(expected.status)
+    ? expected.status
+    : [expected.status];
+  if (!statuses.includes(frontmatter.status)) {
+    errors.push(
+      `${relative}: expected status '${statuses.join(' or ')}', got '${frontmatter.status}'`,
+    );
   }
   if (frontmatter.authoritative !== expected.authoritative) {
     errors.push(
-      `${relative}: expected authoritative '${expected.authoritative}', got '${frontmatter.authoritative}'`
+      `${relative}: expected authoritative '${expected.authoritative}', got '${frontmatter.authoritative}'`,
     );
   }
   return errors;
@@ -24,15 +29,26 @@ for (const file of listMarkdownFiles()) {
   const frontmatter = parseFrontmatter(text);
 
   if (relative.startsWith('docs/project/')) {
-    const result = validateRule(relative, frontmatter, { status: 'active', authoritative: true });
+    const result = validateRule(relative, frontmatter, {
+      status: /^docs\/project\/RELEASE_NOTES_[^/]+\.md$/.test(relative)
+        ? ['active', 'historical']
+        : 'active',
+      authoritative: true,
+    });
     if (typeof result === 'string') errors.push(result);
     else errors.push(...result);
   } else if (relative.startsWith('docs/dev-requests/')) {
-    const result = validateRule(relative, frontmatter, { status: 'active', authoritative: true });
+    const result = validateRule(relative, frontmatter, {
+      status: 'active',
+      authoritative: true,
+    });
     if (typeof result === 'string') errors.push(result);
     else errors.push(...result);
   } else if (relative.startsWith('docs/history/')) {
-    const result = validateRule(relative, frontmatter, { status: 'historical', authoritative: false });
+    const result = validateRule(relative, frontmatter, {
+      status: 'historical',
+      authoritative: false,
+    });
     if (typeof result === 'string') errors.push(result);
     else errors.push(...result);
   } else if (
@@ -40,7 +56,10 @@ for (const file of listMarkdownFiles()) {
     relative === 'docs/index.md' ||
     relative === 'docs/DOC_INVENTORY.md'
   ) {
-    const result = validateRule(relative, frontmatter, { status: 'active', authoritative: true });
+    const result = validateRule(relative, frontmatter, {
+      status: 'active',
+      authoritative: true,
+    });
     if (typeof result === 'string') errors.push(result);
     else errors.push(...result);
   }

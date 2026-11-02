@@ -3,7 +3,7 @@ title: Workstream Ownership (parallel delivery pattern)
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: git worktree layout, this document
 review_cycle_days: 30
@@ -18,7 +18,7 @@ related_files:
 
 The working agreement for running several delivery sessions in parallel. It was first recorded for the final phase of the 0.7.5 rework, and the branch names and gate numbers below are that phase's history — the **pattern** is what carries forward, and it was reused for the 0.7.6 / 6.1.0 retarget. Parallel agent sessions share one filesystem, so **isolated worktrees are mandatory, not optional**, and file ownership is exclusive.
 
-Reviewed for 6.8.0: the facade/outcome, native-auto-use and revision-verification contracts below still exist at the named paths. The branch matrix, tooling timings, delivery status and gate tables are **historical 6.0.0/6.1.0 records**, not current assignments or validation. Current ownership is the active task's explicit file contract; current gates are in `RELEASE_NOTES_6.8.0.md`. This review does not re-certify old branch ancestry or publishing credentials.
+Reviewed for 6.8.0: the facade/outcome, native-auto-use and revision-verification contracts below still exist at the named paths. The branch matrix, tooling timings, delivery status and gate tables are **historical 6.0.0/6.1.0 records**, not current assignments or validation. Current ownership is the active task's explicit file contract; current validation is in `RELEASE_NOTES_6.9.0.md`. The historical review does not re-certify old branch ancestry or publishing credentials.
 
 ## Shared contracts (landed first, on `main`)
 

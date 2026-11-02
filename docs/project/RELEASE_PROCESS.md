@@ -3,12 +3,12 @@ title: Release Process
 status: active
 authoritative: true
 owner: craftbuddy-maintainers
-game_version: 0.7.17-d8ae6ce
+game_version: 0.7.19-ac29603
 last_verified: 2026-10-22
 source_of_truth: package.json, scripts/workshop-upload.ts, scripts/installed-game-runtime.js, .github/workflows/release.yml, ../ModUploader-AFNM/package.json, ../ModUploader-AFNM/electron/main/cli.ts
 review_cycle_days: 30
 related_files:
-  - docs/project/RELEASE_NOTES_6.8.0.md
+  - docs/project/RELEASE_NOTES_6.9.0.md
   - AGENTS.md
   - docs/project/TESTING.md
   - scripts/workshop-upload.ts
@@ -39,7 +39,7 @@ Bump the **minor** version for a game-version retarget that keeps the scoring ar
 
 A major or feature release gets `docs/project/RELEASE_NOTES_<version>.md` covering what changed, what was measured and rejected, and the limitations that genuinely remain. Follow the structure of the newest existing notes: frontmatter, a short framing intro, `## Changed` with `###` subsections, `## Known limitations`, `## Upgrading`.
 
-Add the concise release summary and notes link to `CHANGELOG.md`; current release: **6.8.0 / AFNM 0.7.17-d8ae6ce**. Historical notes keep their original versions and measurements.
+Add the concise release summary and notes link to `CHANGELOG.md`; current release: **6.9.0 / AFNM 0.7.19-ac29603**. Mark superseded release notes `status: historical` while keeping their original versions, dates and measurements; only the newest notes remain active (see `DOCS_GOVERNANCE.md`).
 
 Mirror the player-facing subset into [`WORKSHOP_DESCRIPTION.md`](./WORKSHOP_DESCRIPTION.md)'s single rolling `[h1]What's New in vN[/h1]` section. Update that section in place for minor and patch releases instead of adding a separate block for every version; for the current major series, use `[h1]What's New in v6[/h1]`. Keep the full per-release history in `RELEASE_NOTES_<version>.md`. Also refresh the "Updated for game version" line near the top when the release retargets the game.
 
