@@ -335,10 +335,6 @@ export function SettingsBody({
             commit({ showForecastedConditions })
           }
         />
-        <Typography variant="caption" sx={{ color: colors.textSecondary }}>
-          Follow-ups and the planned end state are always available under Plan.
-          Other actions has its own expander.
-        </Typography>
       </Box>
 
       <Disclosure title="Advanced search">
