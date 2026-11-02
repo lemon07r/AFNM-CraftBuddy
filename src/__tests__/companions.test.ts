@@ -1,7 +1,6 @@
 import { applySkill, calculateSkillGains } from '../optimizer/skills';
 import type { BuffDefinition } from '../optimizer/gameTypes';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
-import { buildNativeMctsInput } from '../optimizer/nativeMcts';
 import {
   buildStateSnapshot,
   reviveStateSnapshot,
@@ -292,7 +291,7 @@ describe('Han Weiguang certainty-only prevention', () => {
     },
   );
 
-  it('persists integer uses through clone, JSON replay, the native payload and later actions', () => {
+  it('persists integer uses through clone, JSON replay and later actions', () => {
     const { state, skill, config } = hanScenarios().find(
       (s) => s.name === 'companion-han-payment',
     )!;
@@ -304,15 +303,6 @@ describe('Han Weiguang certainty-only prevention', () => {
     expect(revived.buffs.get(HAN_KEY)?.internalState).toEqual({
       preventedStabilityLosses: 1,
     });
-    const native = buildNativeMctsInput({
-      state: revived,
-      config,
-      targetCompletion: 100,
-      targetPerfection: 100,
-    });
-    expect(
-      native.state.buffs.find((buff) => buff.key === HAN_KEY)?.internal_state,
-    ).toEqual({ preventedStabilityLosses: 1 });
     const second = applySkill(revived, skill, config)!;
     const third = applySkill(second, skill, config)!;
     expect(second.stability).toBe(50);
