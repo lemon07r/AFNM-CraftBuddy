@@ -632,11 +632,14 @@ function estimateTurnsRemainingFromContext(
   // Joint productive-action estimate: both per-bar workloads and the total
   // workload must fit. Total gain counts a dual-bar action once, while the
   // per-bar bounds prevent a fast bar from hiding the slower binding bar.
-  return Math.ceil(Math.max(
-    completionRemaining / Math.max(1, ctx.avgCompletionGainPerTurn),
-    perfectionRemaining / Math.max(1, ctx.avgPerfectionGainPerTurn),
-    (completionRemaining + perfectionRemaining) / Math.max(1, ctx.avgGainPerTurn),
-  ));
+  return Math.ceil(
+    Math.max(
+      completionRemaining / Math.max(1, ctx.avgCompletionGainPerTurn),
+      perfectionRemaining / Math.max(1, ctx.avgPerfectionGainPerTurn),
+      (completionRemaining + perfectionRemaining) /
+        Math.max(1, ctx.avgGainPerTurn),
+    ),
+  );
 }
 
 /**
@@ -1476,7 +1479,9 @@ function evaluateCraftEndOutcomeDistribution(params: {
       const tier = tierForBands(
         targetCompletion > 0 ? completionOutcome.guaranteed : 1,
         targetPerfection > 0 ? perfectionOutcome.guaranteed : 0,
-        hasDistinctSublimeOutcome && targetCompletion > 0 && targetPerfection > 0,
+        hasDistinctSublimeOutcome &&
+          targetCompletion > 0 &&
+          targetPerfection > 0,
       );
       if (tier === 'failed') {
         failChance += probability;
@@ -2613,8 +2618,7 @@ function scoreFinishedOutcome(
 
   // Permanent shortfall once the craft has ended.
   score -=
-    (compRemaining + perfRemaining) *
-    SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
+    (compRemaining + perfRemaining) * SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
 
   const stepPenaltyWeight = Math.max(
     SCORING.STEP_PENALTY,
@@ -2982,12 +2986,27 @@ export function orderRecommendationsBySafety<T extends SkillRecommendation>(
   return ordered;
 }
 
+/** Candidate-set-relative score coordinates, not outcome probabilities. */
+export function recomputeQualityRatings(
+  candidates: SkillRecommendation[],
+): void {
+  if (candidates.length === 0) return;
+  const best = Math.max(...candidates.map((candidate) => candidate.score));
+  const worst = Math.min(...candidates.map((candidate) => candidate.score));
+  const range = best - worst;
+  for (const candidate of candidates) {
+    candidate.qualityRating =
+      range > 0 ? Math.round(((candidate.score - worst) / range) * 100) : 100;
+  }
+}
+
 function rankRecommendations(
   scored: SkillRecommendation[],
   scoreTieWindow: number = 0,
   unsafeKeys: ReadonlySet<string> = new Set(),
   tieBreaker?: (a: SkillRecommendation, b: SkillRecommendation) => number,
 ): SkillRecommendation[] {
+  recomputeQualityRatings(scored);
   for (const recommendation of scored) {
     if (unsafeKeys.has(recommendation.skill.key)) {
       recommendation.yieldsToSafeAlternative = true;
@@ -3039,11 +3058,18 @@ function rankRecommendations(
   const remaining = sorted.slice(1);
   const usedTypes = new Set<string>([sorted[0].skill.type]);
 
+  const safetyGroup = (candidate: SkillRecommendation): boolean =>
+    unsafeKeys.has(candidate.skill.key) ||
+    candidate.requiresProbabilisticSurvival === true ||
+    candidate.yieldsToSafeAlternative === true ||
+    candidate.endsCraftBelowTarget === true;
   while (remaining.length > 0) {
     const topScore = remaining[0].score;
+    const topSafetyGroup = safetyGroup(remaining[0]);
     const tieGroupEnd = remaining.findIndex(
       (candidate) =>
-        topScore - candidate.score > DIVERSITY_TIEBREAK_SCORE_WINDOW,
+        safetyGroup(candidate) !== topSafetyGroup ||
+        Math.abs(topScore - candidate.score) > DIVERSITY_TIEBREAK_SCORE_WINDOW,
     );
     const tieGroupLength = tieGroupEnd === -1 ? remaining.length : tieGroupEnd;
     const diverseIndex = remaining
@@ -3768,10 +3794,9 @@ function runGreedySearch(
     evaluatedMoves.push(finishAction);
   }
 
-  const scoredSkills: SkillRecommendation[] =
-    evaluatedMoves.map(
-      ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
-    );
+  const scoredSkills: SkillRecommendation[] = evaluatedMoves.map(
+    ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
+  );
 
   const rankedSkills = rankRecommendations(
     scoredSkills,
@@ -4910,7 +4935,6 @@ function runLookaheadSearch(
         bestCandidate = candidate;
         bestMoveKey = skill.key;
       }
-
     }
 
     if (!Number.isFinite(bestScore)) {
@@ -5650,9 +5674,7 @@ function runLookaheadSearch(
     }
 
     const scored: SkillRecommendation[] = orderRootRecommendations(
-      evaluatedFirstMoves.map(
-        ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
-      ),
+      evaluatedFirstMoves.map(({ isTerminal, isTerminalUnmet, ...rec }) => rec),
       unsafeRecommendationKeys,
     );
     unsafeRootRecommendationKeys = unsafeRecommendationKeys;
@@ -5959,24 +5981,6 @@ function runLookaheadSearch(
     };
   }
 
-  // Calculate quality ratings (0-100) based on score difference from best
-  const bestScore = scoredSkills[0].score;
-  const worstScore =
-    scoredSkills.length > 1
-      ? scoredSkills[scoredSkills.length - 1].score
-      : bestScore;
-  const scoreRange = bestScore - worstScore;
-
-  for (const rec of scoredSkills) {
-    if (scoreRange > 0) {
-      rec.qualityRating = Math.round(
-        ((rec.score - worstScore) / scoreRange) * 100,
-      );
-    } else {
-      rec.qualityRating = 100; // All skills are equally good
-    }
-  }
-
   const rankedSkills = rankRecommendations(
     scoredSkills,
     scoreTieWindow,
@@ -6258,5 +6262,6 @@ export const __testing = {
   getThresholdForGuaranteedBonusCount,
   buildScoringContext,
   estimateTurnsRemainingFromContext,
+  rankRecommendations,
   SCORING,
 } as const;
