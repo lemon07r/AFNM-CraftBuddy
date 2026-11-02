@@ -8,7 +8,7 @@ import {
   saveSettings,
   resetSettings,
   DEFAULT_AUTO_CRAFT_POLICY,
-  AUTO_CRAFT_POLICY_OPTIONS,
+  type AutoCraftPolicy,
   type CraftBuddySettings,
 } from '../../src/settings';
 import { type AutoCraftUiState } from '../../src/settings/autoCraft';
@@ -243,6 +243,20 @@ const legacyFixtureResult: HarnessResult = {
 
 function buildFixtureResult(state: string): HarnessResult {
   switch (state) {
+    case 'chance':
+      return {
+        ...fixtureResult,
+        recommendation: {
+          ...fixtureResult.recommendation!,
+          skill: skill('Simple Refine', 'refine', 18, 10),
+          immediateGains: { completion: 0, perfection: 10, stability: 0 },
+          expectedGains: { completion: 0, perfection: 5, stability: 0 },
+          effectiveCosts: { qi: 18, stability: 10 },
+          projectedSuccessChance: 0.5,
+          reasoning:
+            'Expected gains account for the technique’s 50% success chance.',
+        },
+      };
     case 'outcome-setup':
       return setupFixtureResult;
     case 'outcome-autofinish':
@@ -270,7 +284,8 @@ function buildFixtureResult(state: string): HarnessResult {
             ? []
             : [
                 {
-                  skillName: 'Simple Refine',
+                  skillName: 'False Fusion',
+                  displayName: 'Strive for Completion',
                   reason: 'qi',
                   details: 'Needs 18 Qi; 6 available.',
                 },
@@ -413,8 +428,8 @@ function FakeHudBlock({
   );
 }
 
-const CRAFT_ENDING_POLICY = AUTO_CRAFT_POLICY_OPTIONS[1].value;
-const ITEM_POLICY = AUTO_CRAFT_POLICY_OPTIONS[2].value;
+const CRAFT_ENDING_POLICY: AutoCraftPolicy = 'allowCraftEnding';
+const ITEM_POLICY: AutoCraftPolicy = 'includeItems';
 
 type AutoModePhaseFixture = Omit<
   AutoCraftUiState,
@@ -479,9 +494,6 @@ function buildAutoModePhaseFixture(state: string): AutoModePhaseFixture {
         stopRequested: true,
       };
     case 'auto-native-autouse':
-      // `policyNotice` / `nativeAutoUseActive` are supplied by the runtime
-      // workstream's controller; the panel reads them structurally, so the
-      // harness can exercise the row before that branch merges.
       return {
         policy: ITEM_POLICY,
         effectivePolicy: CRAFT_ENDING_POLICY,
@@ -632,7 +644,10 @@ function Harness() {
         setAutoMode((previous) => ({
           ...previous,
           policy,
-          effectivePolicy: policy,
+          effectivePolicy:
+            previous.nativeAutoUseActive && policy === 'includeItems'
+              ? 'allowCraftEnding'
+              : policy,
         }))
       }
       version={version}

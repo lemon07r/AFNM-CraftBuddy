@@ -6,15 +6,6 @@ import { ActionButton, Disclosure } from './components';
 import { ChoiceGroup } from './components/ChoiceGroup';
 import { colors } from './theme';
 
-// Presentation adapter accepts old persisted policy IDs until the search branch
-// migrates them. Never change permissions or normalize IDs in this UI layer.
-function policyLabel(id: string): string {
-  if (id === 'techniquesOnly') return 'Pause before craft ends';
-  if (id === 'allowCraftEnding' || id === 'techniquesAndFinish')
-    return 'Allow craft-ending techniques';
-  return 'Also use quick-access items';
-}
-
 export function AutomationSection({
   autoMode,
   onArm,
@@ -34,7 +25,7 @@ export function AutomationSection({
         value={autoMode.policy}
         options={AUTO_CRAFT_POLICY_OPTIONS.map((option) => ({
           id: option.value,
-          label: policyLabel(option.value),
+          label: option.label,
         }))}
         onChange={(id) => {
           const option = AUTO_CRAFT_POLICY_OPTIONS.find(

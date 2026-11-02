@@ -105,8 +105,11 @@ export function BlockedReasonsSection({
           key={`${reason.skillName}-${index}`}
           sx={{ color: colors.textSecondary, mt: 0.5 }}
         >
-          {techniqueDisplayName({ name: reason.skillName })}:{' '}
-          {reason.details || reason.reason}
+          {techniqueDisplayName({
+            name: reason.skillName,
+            displayName: reason.displayName,
+          })}
+          : {reason.details || reason.reason}
         </Typography>
       ))}
     </Box>
