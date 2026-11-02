@@ -2387,14 +2387,30 @@ export function calculateSkillGains(
     ((skill.actionKind !== 'item' && hasEffectInterceptors(state.buffs)) ||
       hasStabilityPrevention(state.buffs))
   ) {
-    const paymentCosts = calculateEffectiveActionCosts(
+    const prepared = prepareActionPhases(
       state,
       skill,
-      config.minStability,
-      conditionEffects,
       config,
+      conditionEffects,
+      config.targetCompletion ?? 0,
+      undefined,
+      config.targetPerfection ?? 0,
+      {
+        ...options,
+        successChance: includeExpectedValue ? options.successChance : 1,
+      },
     );
+    const paymentCosts =
+      prepared.context.paymentCosts ??
+      calculateEffectiveActionCosts(
+        prepared.state,
+        skill,
+        config.minStability,
+        conditionEffects,
+        config,
+      );
     const phase: ActionPhaseContext = {
+      ...prepared.context,
       preview: true,
       includeExpectedValue,
       paymentCosts:
@@ -2405,13 +2421,9 @@ export function calculateSkillGains(
               stabilityCost: options.stabilityCost,
               stabilityOutcomes: undefined,
             },
-      successChance: includeExpectedValue ? options.successChance : 1,
-      existingBuffNames: state.buffs,
-      barStart: state,
-      barContributions: [],
     };
     applySkillTransition(
-      state,
+      prepared.state,
       { ...skill, consumesTurn: false },
       config,
       conditionEffects,
@@ -2420,7 +2432,15 @@ export function calculateSkillGains(
       config.targetPerfection ?? 0,
       phase,
     );
-    return phase.previewGains!;
+    const gains = phase.previewGains!;
+    return {
+      ...gains,
+      completion:
+        gains.completion + prepared.state.completion - state.completion,
+      perfection:
+        gains.perfection + prepared.state.perfection - state.perfection,
+      stability: gains.stability + prepared.state.stability - state.stability,
+    };
   }
   const clampPredictedProgressGain = (
     gain: number,
@@ -4238,6 +4258,40 @@ export function applySkill(
   )
     return null;
 
+  const prepared = prepareActionPhases(
+    state,
+    skill,
+    config,
+    conditionEffects,
+    targetCompletion,
+    currentCondition,
+    targetPerfection,
+    options,
+  );
+  return applySkillTransition(
+    prepared.state,
+    skill,
+    config,
+    conditionEffects,
+    targetCompletion,
+    currentCondition,
+    targetPerfection,
+    prepared.context,
+  );
+}
+
+/** Shared setup, success capture and effect-mastery preparation for execution
+ * and companion previews. Only the final technique phase may be preview-only. */
+function prepareActionPhases(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ConditionEffect[],
+  targetCompletion: number,
+  currentCondition: string | undefined,
+  targetPerfection: number,
+  options: SkillGainOptions,
+): { state: CraftingState; context: ActionPhaseContext } {
   const existingBuffNames = getResolvedActiveBuffs(state, config);
   const hasMasteryEffects =
     skill.masteryEntries?.some((entry) => entry.kind === 'effect') ?? false;
@@ -4252,6 +4306,7 @@ export function applySkill(
       })
     : state;
   const context: ActionPhaseContext = {
+    includeExpectedValue: options.includeExpectedValue,
     existingBuffNames,
     successChance,
     barStart: state,
@@ -4346,17 +4401,7 @@ export function applySkill(
   // Keep HEAD's expected-stack approximation for future turns. Only the
   // current payment uses realized costs, rounded before probability mixing.
   context.paymentCosts = paymentCosts;
-  const result = applySkillTransition(
-    working,
-    skill,
-    config,
-    conditionEffects,
-    targetCompletion,
-    currentCondition,
-    targetPerfection,
-    context,
-  );
-  return result;
+  return { state: working, context };
 }
 
 function applySkillTransition(
@@ -4407,6 +4452,7 @@ function applySkillTransition(
       ))
       ? { completion: 0, perfection: 0, stability: 0 }
       : calculateSkillGains(state, skill, config, conditionEffects, {
+          includeExpectedValue: phase.includeExpectedValue,
           successChance: phase.successChance,
           stabilityCost: effectiveCosts.stabilityCost,
         });

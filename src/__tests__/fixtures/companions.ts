@@ -36,7 +36,68 @@ export function companionScenarios() {
     ...companionPoolScenarios(),
     ...companionDisciplinedScenarios(),
     ...companionCritScenarios(),
+    ...companionPhasePreviewScenarios(),
   ];
+}
+
+export function companionPhasePreviewScenarios() {
+  return ['mastery', 'setup'].map((edge) => {
+    const base = hanScenarios().find(
+      ({ name }) => name === 'companion-han-mastery-payment-order',
+    )!;
+    const buffs = new Map(base.state.buffs);
+    const skill = {
+      ...base.skill,
+      effects: [
+        ...base.skill.effects!,
+        {
+          kind: 'completion' as const,
+          amount: { value: 5 },
+          condition: {
+            kind: 'stability' as const,
+            mode: 'more' as const,
+            percentage: 80,
+          },
+        },
+      ],
+    };
+    if (edge === 'setup') {
+      const token: BuffDefinition = {
+        name: 'Setup token',
+        canStack: true,
+        effects: [],
+      };
+      buffs.set('setup_token', {
+        name: token.name,
+        stacks: 1,
+        definition: token,
+      });
+      const observer = buffs.get('loss_observer')!;
+      buffs.set('loss_observer', {
+        ...observer,
+        definition: {
+          ...observer.definition!,
+          triggeredEffects: [
+            ...observer.definition!.triggeredEffects!,
+            {
+              trigger: 'stackLost.Setup token',
+              effects: [{ kind: 'stability', amount: { value: -3 } }],
+            },
+          ],
+        },
+      });
+      skill.buffCost = { buffName: 'setup_token', amount: 1 };
+      skill.toxicityCost = 2;
+      skill.dropletCost = 1;
+    }
+    return {
+      name: `companion-phase-preview-${edge}`,
+      state: base.state.copy({ buffs, qiDroplets: 2 }),
+      skill,
+      config: retargetConfig(skill),
+      edge,
+    };
+  });
 }
 
 export function companionCritScenarios() {
@@ -123,7 +184,7 @@ export function companionDisciplinedScenarios() {
           ? [
               {
                 kind: 'consumeBuff' as const,
-                buff: { name: 'Unused' },
+                buff: { name: 'Unused', canStack: true, effects: [] },
                 stacks: { value: 1 },
               },
             ]

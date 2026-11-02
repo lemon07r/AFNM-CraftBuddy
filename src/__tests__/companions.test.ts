@@ -20,9 +20,29 @@ import {
   companionPoolScenarios,
   companionDisciplinedScenarios,
   companionCritScenarios,
+  companionPhasePreviewScenarios,
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('companion preview setup and mastery phases', () => {
+  it.each(companionPhasePreviewScenarios())(
+    'prepares prevention before technique gates: $name',
+    ({ state, skill, config, edge }) => {
+      const before = buildStateSnapshot(state, 'missing');
+      const next = applySkill(state, skill, config)!;
+      expect(next.stability).toBe(edge === 'setup' ? 35 : 45);
+      expect(next.completion).toBe(0);
+      expect(
+        next.buffs.get(HAN_KEY)?.internalState?.preventedStabilityLosses,
+      ).toBe(2);
+      const preview = calculateSkillGains(state, skill, config);
+      expect(preview.completion).toBe(0);
+      expect(preview.stability).toBe(-5);
+      expect(buildStateSnapshot(state, 'missing')).toEqual(before);
+    },
+  );
+});
 
 describe('companion expected crit parity', () => {
   it.each(companionCritScenarios())(
@@ -501,7 +521,11 @@ describe('Su Lianhua technique interception', () => {
       const next = applySkill(state, skill, config)!;
       expect(next.completion).toBe(completion);
       expect(next.perfection).toBe(perfection);
-      expect(preview.completion).toBe(edge === 'mastery-buff' ? 7 : completion);
+      // Mastery +3 intercepts to 4, then technique +5 intercepts to 7.
+      // The ordinary +5 buff tick belongs only to the full transition.
+      expect(preview.completion).toBe(
+        edge === 'mastery-buff' ? 4 + 7 : completion,
+      );
       expect(preview.perfection).toBe(perfection);
       expect(
         state.buffs.get("su_lianhua's_assistance")?.internalState,
