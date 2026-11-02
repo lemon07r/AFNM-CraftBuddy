@@ -81,6 +81,34 @@ fn apply_0717(
 }
 
 #[test]
+fn audited_stability_intermediates_persist_until_cleanup() {
+    for (start, cost, gain, tick, expected) in [
+        (1.0, 10.0, 0.0, 7.0, 0.0),
+        (1.0, 10.0, 0.0, 12.0, 3.0),
+        (58.0, 0.0, 5.0, -5.0, 58.0),
+    ] {
+        let mut state = base_state();
+        state.stability = start;
+        state.buffs = serde_json::from_value(json!([{"key":"tick", "stacks":1,"definition":{
+            "name":"Tick", "effects":[{"kind":"stability", "amount":{"value":tick}}]
+        }}]))
+        .unwrap();
+        let subject = skill(merge(
+            minimal_skill("stability"),
+            json!({
+                "stability_cost":cost, "effects":[{"kind":"stability", "amount":{"value":gain}}]
+            }),
+        ));
+        assert_eq!(
+            apply_0717(&state, subject, &base_config())
+                .unwrap()
+                .stability,
+            expected
+        );
+    }
+}
+
+#[test]
 fn review_fractional_cost_channels_do_not_apply_a_legacy_floor() {
     let mut state = base_state();
     state.qi_cost_reduction = Some(15.5);

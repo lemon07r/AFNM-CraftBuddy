@@ -12033,7 +12033,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 162,
-            "stability": 57,
+            "stability": 59,
             "stabilityPenalty": 1,
             "completion": 0,
             "perfection": 0,
@@ -117305,7 +117305,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 28,
-            "stability": 33,
+            "stability": 27,
             "stabilityPenalty": 12,
             "completion": 152,
             "perfection": 165,
@@ -121476,7 +121476,7 @@
             "stability": 25,
             "stabilityPenalty": 8,
             "completion": 164,
-            "perfection": 125,
+            "perfection": 147,
             "toxicity": 22,
             "harmony": 33,
             "step": 2,
@@ -121698,7 +121698,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 74,
-            "stability": 36,
+            "stability": 30,
             "stabilityPenalty": 8,
             "completion": 155,
             "perfection": 125,
@@ -131564,7 +131564,7 @@
             "stability": 22,
             "stabilityPenalty": 4,
             "completion": 121,
-            "perfection": 70,
+            "perfection": 95,
             "toxicity": 5,
             "harmony": 0,
             "step": 8,
@@ -133088,7 +133088,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 84,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 9,
             "completion": 98,
             "perfection": 220,
@@ -133153,7 +133153,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 79,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 9,
             "completion": 169,
             "perfection": 49,
@@ -133218,7 +133218,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 87,
-            "stability": 3,
+            "stability": 1,
             "stabilityPenalty": 9,
             "completion": 152,
             "perfection": 72,
@@ -133283,7 +133283,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 85,
-            "stability": 3,
+            "stability": 2,
             "stabilityPenalty": 9,
             "completion": 98,
             "perfection": 315,
@@ -133348,7 +133348,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 84,
-            "stability": 3,
+            "stability": 2,
             "stabilityPenalty": 9,
             "completion": 98,
             "perfection": 59,
@@ -133483,7 +133483,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 74,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 9,
             "completion": 127,
             "perfection": 87,
@@ -133613,7 +133613,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 69,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 9,
             "completion": 273,
             "perfection": 49,
@@ -133672,7 +133672,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 130,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 6,
             "completion": 98,
             "perfection": 49,
@@ -135127,7 +135127,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 17,
-            "stability": 30,
+            "stability": 24,
             "stabilityPenalty": 11,
             "completion": 36,
             "perfection": 89,
@@ -137942,7 +137942,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 59,
-            "stability": 6,
+            "stability": 4,
             "stabilityPenalty": 3,
             "completion": 139,
             "perfection": 190,
@@ -138021,7 +138021,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 58,
-            "stability": 6,
+            "stability": 4,
             "stabilityPenalty": 3,
             "completion": 254,
             "perfection": 118,
@@ -138411,7 +138411,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 48,
-            "stability": 6,
+            "stability": 3,
             "stabilityPenalty": 3,
             "completion": 187,
             "perfection": 171,
@@ -138579,7 +138579,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 119,
-            "stability": 6,
+            "stability": 5,
             "stabilityPenalty": 1,
             "completion": 139,
             "perfection": 118,
@@ -139651,7 +139651,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 69,
-            "stability": 6,
+            "stability": 0,
             "stabilityPenalty": 3,
             "completion": 88,
             "perfection": 208,
@@ -139734,7 +139734,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 84,
-            "stability": 6,
+            "stability": 0,
             "stabilityPenalty": 3,
             "completion": 244,
             "perfection": 32,
@@ -139812,7 +139812,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 75,
-            "stability": 6,
+            "stability": 3,
             "stabilityPenalty": 3,
             "completion": 135,
             "perfection": 47,
@@ -139890,7 +139890,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 70,
-            "stability": 6,
+            "stability": 4,
             "stabilityPenalty": 3,
             "completion": 88,
             "perfection": 278,
@@ -139973,7 +139973,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 84,
-            "stability": 6,
+            "stability": 4,
             "stabilityPenalty": 3,
             "completion": 88,
             "perfection": 32,
@@ -140144,7 +140144,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 45,
-            "stability": 6,
+            "stability": 0,
             "stabilityPenalty": 3,
             "completion": 157,
             "perfection": 121,
@@ -140310,7 +140310,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 60,
-            "stability": 6,
+            "stability": 0,
             "stabilityPenalty": 3,
             "completion": 512,
             "perfection": 32,
@@ -140388,7 +140388,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 142,
-            "stability": 6,
+            "stability": 0,
             "stabilityPenalty": 1,
             "completion": 88,
             "perfection": 32,
@@ -143170,7 +143170,7 @@
             "stability": 23,
             "stabilityPenalty": 12,
             "completion": 75,
-            "perfection": 102,
+            "perfection": 119,
             "toxicity": 6,
             "harmony": 0,
             "step": 101,
@@ -146272,7 +146272,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 68,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 9,
             "completion": 172,
             "perfection": 168,
@@ -146342,7 +146342,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 67,
-            "stability": 6,
+            "stability": 0,
             "stabilityPenalty": 9,
             "completion": 307,
             "perfection": 75,
@@ -146406,7 +146406,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 75,
-            "stability": 6,
+            "stability": 3,
             "stabilityPenalty": 9,
             "completion": 216,
             "perfection": 86,
@@ -146470,7 +146470,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 70,
-            "stability": 3,
+            "stability": 1,
             "stabilityPenalty": 9,
             "completion": 172,
             "perfection": 202,
@@ -146540,7 +146540,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 68,
-            "stability": 3,
+            "stability": 1,
             "stabilityPenalty": 9,
             "completion": 172,
             "perfection": 75,
@@ -146685,7 +146685,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 57,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 9,
             "completion": 230,
             "perfection": 138,
@@ -146755,7 +146755,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 74,
-            "stability": 3,
+            "stability": 2,
             "stabilityPenalty": 9,
             "completion": 172,
             "perfection": 75,
@@ -146835,7 +146835,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 119,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 6,
             "completion": 172,
             "perfection": 75,
@@ -149711,7 +149711,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 169,
-            "stability": 39,
+            "stability": 41,
             "stabilityPenalty": 12,
             "completion": 119,
             "perfection": 125,
@@ -149951,7 +149951,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 144,
-            "stability": 24,
+            "stability": 30,
             "stabilityPenalty": 12,
             "completion": 839,
             "perfection": 130,
@@ -151256,7 +151256,7 @@
             "stability": 26,
             "stabilityPenalty": 4,
             "completion": 183,
-            "perfection": 152,
+            "perfection": 192,
             "toxicity": 54,
             "harmony": 0,
             "step": 100,
@@ -156483,7 +156483,7 @@
             "stability": 24,
             "stabilityPenalty": 3,
             "completion": 129,
-            "perfection": 70,
+            "perfection": 87,
             "toxicity": 56,
             "harmony": 0,
             "step": 1,
@@ -165453,7 +165453,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 128,
-            "stability": 46,
+            "stability": 40,
             "stabilityPenalty": 11,
             "completion": 194,
             "perfection": 5,
@@ -169194,7 +169194,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 175,
-            "stability": 43,
+            "stability": 44,
             "stabilityPenalty": 10,
             "completion": 152,
             "perfection": 32,
@@ -170462,7 +170462,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 141,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 11,
             "completion": 168,
             "perfection": 438,
@@ -170554,7 +170554,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 139,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 11,
             "completion": 335,
             "perfection": 144,
@@ -171004,7 +171004,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 129,
-            "stability": 3,
+            "stability": 0,
             "stabilityPenalty": 11,
             "completion": 241,
             "perfection": 222,
@@ -171198,7 +171198,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 150,
-            "stability": 3,
+            "stability": 1,
             "stabilityPenalty": 8,
             "completion": 168,
             "perfection": 144,
@@ -188654,6 +188654,678 @@
               "cycleChargeSize": 10,
               "cyclePulseKey": 1,
               "cycleLastOutcome": "charge"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-overdraft",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 1,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "stability_tick",
+              "name": "Stability tick",
+              "stacks": 1,
+              "definition": {
+                "name": "Stability tick",
+                "canStack": true,
+                "effects": [
+                  {
+                    "kind": "stability",
+                    "amount": {
+                      "value": 7
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 0,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 10,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "stability",
+                "amount": {
+                  "value": 0
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 100,
+            "stability": 0,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "stability_tick",
+                "stacks": 1,
+                "internalState": {}
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-overdraft-rescue",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 1,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "stability_tick",
+              "name": "Stability tick",
+              "stacks": 1,
+              "definition": {
+                "name": "Stability tick",
+                "canStack": true,
+                "effects": [
+                  {
+                    "kind": "stability",
+                    "amount": {
+                      "value": 12
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 0,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 10,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "stability",
+                "amount": {
+                  "value": 0
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 100,
+            "stability": 3,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "stability_tick",
+                "stacks": 1,
+                "internalState": {}
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-temporary-excess",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 58,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "stability_tick",
+              "name": "Stability tick",
+              "stacks": 1,
+              "definition": {
+                "name": "Stability tick",
+                "canStack": true,
+                "effects": [
+                  {
+                    "kind": "stability",
+                    "amount": {
+                      "value": -5
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "refine",
+            "action_kind": "skill",
+            "qi_cost": 0,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 0,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "stability",
+                "amount": {
+                  "value": 5
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 100,
+            "stability": 58,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "stability_tick",
+                "stacks": 1,
+                "internalState": {}
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
             }
           }
         }

@@ -2510,6 +2510,7 @@ pub struct ActionEnv<'a> {
 /// upgrades can change the variables the *next* condition check reads, so the
 /// build/resolve pair runs twice when any upgrade rule fires.
 pub struct ResolvedAction {
+    condition_effects: crate::ConditionEffectSummary,
     pub success_chance: Option<f64>,
     pub variables: Variables,
     pub mastery: MasteryBonuses,
@@ -2548,6 +2549,7 @@ pub fn resolve_action(
         upgrades = resolved.1;
     }
     ResolvedAction {
+        condition_effects,
         success_chance: None,
         variables,
         mastery,
@@ -2813,10 +2815,43 @@ pub fn calculate_skill_gains(
         let record_bars =
             needs_bar_contributions(config) || has_triggered_effect_buffs(&state.buffs);
         let mut bar_contributions: Vec<BarContribution> = Vec::new();
+        let stability_cost = if skill.effects.iter().any(|effect| {
+            effect
+                .condition
+                .as_ref()
+                .is_some_and(|c| c.kind == "stability")
+        }) {
+            calculate_effective_action_costs(
+                env,
+                state,
+                skill,
+                resolved.condition_effects,
+                &state.buffs,
+            )
+            .stability_cost
+        } else {
+            0.0
+        };
 
         for effect in &skill.effects {
+            let mut condition_vars;
+            let variables = if effect
+                .condition
+                .as_ref()
+                .is_some_and(|c| c.kind == "stability")
+            {
+                condition_vars = scaling_vars.clone();
+                condition_vars.insert(
+                    "stability".to_string(),
+                    state.stability - stability_cost + stability_gain,
+                );
+                condition_vars.insert("maxstability".to_string(), state.initial_max_stability);
+                &condition_vars
+            } else {
+                &scaling_vars
+            };
             let evaluation =
-                evaluate_effect_condition(effect.condition.as_ref(), state, &scaling_vars, 0);
+                evaluate_effect_condition(effect.condition.as_ref(), state, variables, 0);
             if !evaluation.met || evaluation.probability <= 0.0 {
                 continue;
             }
@@ -3457,7 +3492,6 @@ fn apply_skill_transition(
     let max_stability_sealed = has_sealed_max_stability_buff(active_buffs);
     let mut penalty = state.stability_penalty;
     penalty = penalty.min(initial_max);
-    let mut new_max_stability = initial_max - penalty;
     if skill.max_stability_change != 0.0 {
         let effective_change = if max_stability_sealed && skill.max_stability_change > 0.0 {
             0.0
@@ -3465,18 +3499,13 @@ fn apply_skill_transition(
             skill.max_stability_change
         };
         penalty = (penalty - effective_change).max(0.0).min(initial_max);
-        new_max_stability = initial_max - penalty;
     }
     if skill.restores_max_stability_to_full && !max_stability_sealed {
         penalty = 0.0;
-        new_max_stability = initial_max;
     }
 
     let mut new_stability = state.stability - costs.stability_cost + gains.stability;
-    if phase.payment_costs.is_none() {
-        new_stability = new_stability.floor();
-    }
-    new_stability = clamp(new_stability, 0.0, new_max_stability);
+    // Stability is bounded only at turn cleanup; Qi clamps immediately.
 
     let mut new_toxicity = state.toxicity;
     if gains.toxicity_cleanse > 0.0 {
@@ -3722,7 +3751,7 @@ fn apply_skill_transition(
             dispatch_buff_triggers(
                 &mut buffs,
                 "stabilitySpent",
-                costs.stability_cost.min(state.stability),
+                costs.stability_cost,
                 0.0,
                 &action_vars,
                 state,
@@ -3833,6 +3862,11 @@ fn apply_skill_transition(
                 scaling_vars.extend(additional.iter().map(|(key, value)| (key.clone(), *value)));
             }
             scaling_vars.insert("pool".to_string(), new_qi);
+            scaling_vars.insert(
+                "stability".to_string(),
+                new_stability + buff_stability_delta + buffs.triggered.stability,
+            );
+            scaling_vars.insert("maxstability".to_string(), initial_max);
             scaling_vars.insert("maxpool".to_string(), qi_cap);
             scaling_vars.insert("toxicity".to_string(), new_toxicity);
             scaling_vars.insert("maxtoxicity".to_string(), config.max_toxicity);
@@ -3866,6 +3900,16 @@ fn apply_skill_transition(
                             .map(|(key, value)| (key.clone(), *value)),
                     );
                     scaling_vars.insert("stacks".to_string(), live_owner.stacks as f64);
+                    if effect
+                        .condition
+                        .as_ref()
+                        .is_some_and(|condition| condition.kind == "stability")
+                    {
+                        scaling_vars.insert(
+                            "stability".to_string(),
+                            new_stability + buff_stability_delta + buffs.triggered.stability,
+                        );
+                    }
                     let evaluation = evaluate_effect_condition(
                         effect.condition.as_ref(),
                         state,
@@ -4134,17 +4178,9 @@ fn apply_skill_transition(
             technique_max_stability_delta
         };
         penalty = (penalty - effective_delta).max(0.0).min(initial_max);
-        let bound = initial_max - penalty;
-        if new_stability > bound {
-            new_stability = bound;
-        }
     }
 
-    new_stability = clamp(
-        new_stability + buff_stability_delta,
-        0.0,
-        initial_max - penalty,
-    );
+    new_stability += buff_stability_delta;
     new_qi = clamp(new_qi + buff_pool_delta, 0.0, qi_cap);
     new_toxicity = (new_toxicity + buff_toxicity_delta).max(0.0);
     if buff_max_stability_delta != 0.0 {
@@ -4154,10 +4190,6 @@ fn apply_skill_transition(
             buff_max_stability_delta
         };
         penalty = (penalty - effective_delta).max(0.0).min(initial_max);
-        let bound = initial_max - penalty;
-        if new_stability > bound {
-            new_stability = bound;
-        }
     }
 
     profile_count!(StateClone);
@@ -4244,11 +4276,7 @@ fn apply_skill_transition(
             100.0,
         );
         if result.stability_delta != 0.0 {
-            next.stability = clamp(
-                next.stability + result.stability_delta,
-                0.0,
-                initial_max - next.stability_penalty,
-            );
+            next.stability += result.stability_delta;
         }
         if result.pool_delta != 0.0 {
             next.qi = clamp(next.qi + result.pool_delta, 0.0, qi_cap);
@@ -4271,10 +4299,6 @@ fn apply_skill_transition(
         if result.stability_penalty_delta != 0.0 {
             next.stability_penalty =
                 (next.stability_penalty + result.stability_penalty_delta).min(initial_max);
-            let bound = initial_max - next.stability_penalty;
-            if next.stability > bound {
-                next.stability = bound;
-            }
         }
     }
 
@@ -4299,7 +4323,9 @@ fn apply_skill_transition(
     // Preserve the expectation of chance-gated integer penalties, rather
     // than rounding their weighted average up to a certain extra loss.
     next.stability_penalty = next.stability_penalty.clamp(0.0, initial_max);
-    next.stability = clamp(next.stability, 0.0, initial_max - next.stability_penalty);
+    if consumes_turn {
+        next.stability = clamp(next.stability, 0.0, initial_max - next.stability_penalty);
+    }
     next
 }
 

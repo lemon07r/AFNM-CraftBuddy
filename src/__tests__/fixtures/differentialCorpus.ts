@@ -38,6 +38,7 @@ import type {
 } from '../../optimizer/gameTypes';
 import { HARMONY_TYPES } from '../../optimizer/harmonyRegistry';
 import { retargetScenarios } from './runtime0717';
+import { mechanics0719Scenarios } from './mechanics0719';
 import { returningCycleScenarios } from './returningCycle';
 
 // Freeze the v4 seeded pool: adding a registry entry must not remap existing
@@ -1882,7 +1883,11 @@ export function buildDifferentialCorpus(): DifferentialCorpus {
     ...randomScenarios(48),
     ...effectMechanicScenarios(),
     ...randomEffectScenarios(40),
-    ...[...retargetScenarios(), ...returningCycleScenarios()].map(
+    ...[
+      ...retargetScenarios(),
+      ...returningCycleScenarios(),
+      ...mechanics0719Scenarios(),
+    ].map(
       ({ name, state, config }): ScenarioSpec => ({
         name,
         state,

@@ -2395,13 +2395,30 @@ export function calculateSkillGains(
     const recordBars =
       needsBarContributions(config) || hasTriggeredEffectBuffs(state.buffs);
     const barContributions: BarContribution[] = [];
+    const stabilityCost = skill.effects.some(
+      (effect) => effect.condition?.kind === 'stability',
+    )
+      ? calculateEffectiveActionCosts(
+          state,
+          skill,
+          config.minStability,
+          conditionEffects,
+          config,
+        ).stabilityCost
+      : 0;
 
     for (const effect of skill.effects) {
       if (!effect) continue;
       const conditionResult = evaluateEffectCondition(
         effect.condition,
         state,
-        scalingVars,
+        effect.condition?.kind === 'stability'
+          ? {
+              ...scalingVars,
+              stability: state.stability - stabilityCost + stabilityGain,
+              maxstability: state.initialMaxStability,
+            }
+          : scalingVars,
         0,
       );
       if (!conditionResult.met || conditionResult.probability <= 0) {
@@ -2686,12 +2703,6 @@ export function calculateActionSurvivabilityFloor(
   const maxStabilitySealed = hasSealedMaxStabilityBuff(state.buffs);
 
   let newStabilityPenalty = state.stabilityPenalty;
-  if (
-    consumesTurn &&
-    (!skill.preventsMaxStabilityDecay || maxStabilitySealed)
-  ) {
-    newStabilityPenalty++;
-  }
   newStabilityPenalty = Math.min(
     newStabilityPenalty,
     state.initialMaxStability,
@@ -2882,7 +2893,7 @@ export function calculateActionSurvivabilityFloor(
     let outcomes = new Map<string, SurvivalOutcome>();
     addOutcome(outcomes, {
       probability: 1,
-      stability: Math.max(0, Math.floor(baseStability)),
+      stability: baseStability,
       maxStability: Math.max(0, Math.floor(baseMaxStability)),
     });
 
@@ -2902,13 +2913,7 @@ export function calculateActionSurvivabilityFloor(
             Math.floor(outcome.maxStability + event.maxStabilityDelta),
           ),
         );
-        const nextStability = Math.max(
-          0,
-          Math.min(
-            nextMaxStability,
-            Math.floor(outcome.stability + event.stabilityDelta),
-          ),
-        );
+        const nextStability = outcome.stability + event.stabilityDelta;
         addOutcome(nextOutcomes, {
           probability: outcome.probability * event.probability,
           stability: nextStability,
@@ -2920,7 +2925,7 @@ export function calculateActionSurvivabilityFloor(
 
     let survivalProbability = 0;
     for (const outcome of Array.from(outcomes.values())) {
-      if (outcome.stability > 0) {
+      if (Math.floor(Math.min(outcome.stability, outcome.maxStability)) > 0) {
         survivalProbability += outcome.probability;
       }
     }
@@ -2996,15 +3001,9 @@ export function calculateActionSurvivabilityFloor(
       }
     }
 
-    newStability = Math.floor(
-      clampStabilityToBounds(
-        newStability +
-          resolveGuaranteedContribution(
-            guaranteedDirectStabilityGain,
-            actionSuccessChance,
-          ),
-        newMaxStability,
-      ),
+    newStability += resolveGuaranteedContribution(
+      guaranteedDirectStabilityGain,
+      actionSuccessChance,
     );
   }
 
@@ -3136,9 +3135,6 @@ export function calculateActionSurvivabilityFloor(
   newQi = clampQi(newQi + guaranteedTechniquePoolDelta);
   newToxicity = Math.max(0, newToxicity + guaranteedTechniqueToxicityDelta);
   newStability += guaranteedTechniqueStabilityDelta;
-  newStability = Math.floor(newStability);
-  if (newStability < 0) newStability = 0;
-  if (newStability > newMaxStability) newStability = newMaxStability;
 
   let buffStabilityDelta = 0;
   let buffMaxStabilityDelta = 0;
@@ -3342,14 +3338,9 @@ export function calculateActionSurvivabilityFloor(
       Math.max(0, newStabilityPenalty - effectiveGuaranteedMaxStabilityDelta),
     );
     newMaxStability = state.initialMaxStability - newStabilityPenalty;
-    if (newStability > newMaxStability) {
-      newStability = newMaxStability;
-    }
   }
 
-  newStability = Math.floor(
-    clampStabilityToBounds(newStability + buffStabilityDelta, newMaxStability),
-  );
+  newStability += buffStabilityDelta;
   newQi = clampQi(newQi + buffPoolDelta);
   newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
   if (buffMaxStabilityDelta !== 0) {
@@ -3362,9 +3353,6 @@ export function calculateActionSurvivabilityFloor(
       Math.max(0, newStabilityPenalty - effectiveBuffMaxStabilityDelta),
     );
     newMaxStability = state.initialMaxStability - newStabilityPenalty;
-    if (newStability > newMaxStability) {
-      newStability = newMaxStability;
-    }
   }
 
   if (
@@ -3380,10 +3368,7 @@ export function calculateActionSurvivabilityFloor(
       skill.type,
     );
     if (harmonyResult.stabilityDelta !== 0) {
-      newStability = clampStabilityToBounds(
-        newStability + harmonyResult.stabilityDelta,
-        newMaxStability,
-      );
+      newStability += harmonyResult.stabilityDelta;
     }
     if (harmonyResult.stabilityPenaltyDelta !== 0) {
       newStabilityPenalty += harmonyResult.stabilityPenaltyDelta;
@@ -3392,20 +3377,30 @@ export function calculateActionSurvivabilityFloor(
         state.initialMaxStability,
       );
       newMaxStability = state.initialMaxStability - newStabilityPenalty;
-      if (newStability > newMaxStability) {
-        newStability = newMaxStability;
-      }
     }
   }
 
-  const finalStability = Math.max(0, Math.floor(newStability));
+  if (
+    consumesTurn &&
+    (!skill.preventsMaxStabilityDecay || maxStabilitySealed)
+  ) {
+    newStabilityPenalty++;
+  }
+  newStabilityPenalty = Math.min(
+    state.initialMaxStability,
+    Math.max(0, Math.ceil(newStabilityPenalty)),
+  );
+  newMaxStability = state.initialMaxStability - newStabilityPenalty;
+  const finalStability = Math.floor(
+    clampStabilityToBounds(newStability, newMaxStability),
+  );
   const finalMaxStability = Math.max(0, Math.floor(newMaxStability));
 
   return {
     stability: finalStability,
     maxStability: finalMaxStability,
     survivalProbability: calculateSurvivalProbability(
-      finalStability,
+      newStability,
       finalMaxStability,
     ),
   };
@@ -4309,10 +4304,8 @@ function applySkillTransition(
   // Calculate new stability (current stability, not max)
   let newStability = state.stability - effectiveStabilityCost + gains.stability;
 
-  // Clamp stability
-  if (!phase.paymentCosts) newStability = Math.floor(newStability);
-  if (newStability < 0) newStability = 0;
-  if (newStability > newMaxStability) newStability = newMaxStability;
+  // Stability can overdraw and exceed its ceiling until turn cleanup. Qi's
+  // immediate clamp above is intentionally different.
 
   // Handle toxicity for alchemy crafting
   let newToxicity = state.toxicity;
@@ -4599,7 +4592,13 @@ function applySkillTransition(
     const conditionResult = evaluateEffectCondition(
       effect.condition,
       state,
-      scalingVars,
+      effect.condition?.kind === 'stability'
+        ? {
+            ...scalingVars,
+            stability: newStability + buffStabilityDelta,
+            maxstability: state.initialMaxStability,
+          }
+        : scalingVars,
       liveOwner.stacks,
     );
     if (!conditionResult.met || conditionResult.probability <= 0) {
@@ -4769,10 +4768,7 @@ function applySkillTransition(
       dispatchBuffTriggers('poolSpent', -techniquePoolDelta);
     }
     if (effectiveStabilityCost > 0) {
-      dispatchBuffTriggers(
-        'stabilitySpent',
-        Math.min(state.stability, effectiveStabilityCost),
-      );
+      dispatchBuffTriggers('stabilitySpent', effectiveStabilityCost);
     }
     if (gains.stability > 0) {
       dispatchBuffTriggers('stabilityRestored', gains.stability);
@@ -4829,6 +4825,8 @@ function applySkillTransition(
       const scalingVars: ScalingVariables = {
         ...actionVars,
         roomEffectiveness: 0,
+        stability: newStability + buffStabilityDelta,
+        maxstability: state.initialMaxStability,
         pool: newQi,
         maxpool: qiCap,
         toxicity: newToxicity,
@@ -4927,15 +4925,10 @@ function applySkillTransition(
       state.initialMaxStability,
       Math.max(0, newStabilityPenalty - effectiveTechniqueMaxStabilityDelta),
     );
-    const newMax = state.initialMaxStability - newStabilityPenalty;
-    if (newStability > newMax) newStability = newMax;
   }
 
   // Apply buff per-turn state changes
-  newStability = clampStabilityToBounds(
-    newStability + buffStabilityDelta,
-    state.initialMaxStability - newStabilityPenalty,
-  );
+  newStability += buffStabilityDelta;
   newQi = clampQi(newQi + buffPoolDelta);
   newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
   if (buffMaxStabilityDelta !== 0) {
@@ -4947,8 +4940,6 @@ function applySkillTransition(
       state.initialMaxStability,
       Math.max(0, newStabilityPenalty - effectiveBuffMaxStabilityDelta),
     );
-    const newMax = state.initialMaxStability - newStabilityPenalty;
-    if (newStability > newMax) newStability = newMax;
   }
 
   // Process harmony effects for sublime crafts (runs in processTurn after technique)
@@ -5013,10 +5004,7 @@ function applySkillTransition(
 
     // Apply direct state changes from harmony (e.g., Inscription penalty, Resonance stability loss)
     if (harmonyResult.stabilityDelta !== 0) {
-      newStability = clampStabilityToBounds(
-        newStability + harmonyResult.stabilityDelta,
-        state.initialMaxStability - newStabilityPenalty,
-      );
+      newStability += harmonyResult.stabilityDelta;
     }
     if (harmonyResult.poolDelta !== 0) {
       newQi = clampQi(newQi + harmonyResult.poolDelta);
@@ -5038,9 +5026,6 @@ function applySkillTransition(
         newStabilityPenalty,
         state.initialMaxStability,
       );
-      // Reclamp stability after penalty increase
-      const newMax = state.initialMaxStability - newStabilityPenalty;
-      if (newStability > newMax) newStability = newMax;
     }
   }
 
@@ -5057,10 +5042,12 @@ function applySkillTransition(
     state.initialMaxStability,
     Math.max(0, newStabilityPenalty),
   );
-  newStability = clampStabilityToBounds(
-    newStability,
-    state.initialMaxStability - newStabilityPenalty,
-  );
+  if (consumesTurn) {
+    newStability = clampStabilityToBounds(
+      newStability,
+      state.initialMaxStability - newStabilityPenalty,
+    );
+  }
   if (recordBarChanges && !consumesTurn) {
     phase.barContributions.push(
       ...(gains.barContributions?.length
