@@ -10,6 +10,7 @@ import {
 import type { ButtonProps } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { colors, fonts, reducedMotionSx } from '../theme';
+import { OVERLAY_EDGE_MARGIN_PX } from '../../utils/overlayLayout';
 
 export const PanelContainer = memo(function PanelContainer({
   children,
@@ -27,7 +28,7 @@ export const PanelContainer = memo(function PanelContainer({
         width: '100%',
         minWidth: 0,
         boxSizing: 'border-box',
-        maxHeight: 'calc(100dvh - 20px)',
+        maxHeight: `calc(100dvh - ${OVERLAY_EDGE_MARGIN_PX * 2}px)`,
         overflowY: 'auto',
         overflowX: 'hidden',
         scrollbarWidth: 'thin',

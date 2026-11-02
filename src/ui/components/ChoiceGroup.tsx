@@ -73,10 +73,17 @@ export function ChoiceGroup({
             sx={{ m: 0, minWidth: 0, alignItems: 'flex-start', py: 0.25 }}
             control={<Radio />}
             label={
-              <Box sx={{ pt: 0.7 }}>
-                <Typography variant="body2">{option.label}</Typography>
+              <Box component="span" sx={{ pt: 0.7, display: 'block' }}>
+                <Typography
+                  component="span"
+                  variant="body2"
+                  sx={{ display: 'block' }}
+                >
+                  {option.label}
+                </Typography>
                 {option.detail && (
                   <Typography
+                    component="span"
                     variant="caption"
                     sx={{ color: colors.textSecondary, display: 'block' }}
                   >
