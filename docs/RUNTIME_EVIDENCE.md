@@ -1632,6 +1632,16 @@ ordinary forecast branches. No explicit harmony/d probability clamp occurs
 here. At d=.7/harmony +100: neutral .30, extremes .09 each, positive .39,
 negative .13. Local late-neutral ordering and mild probabilities differed.
 
+`Uncontrollable Flames` is the only stock `discordantConditions` definition
+(`G:6190302–6190554`): nonstackable, empty ordinary effects, no expiry. Its six
+stock references are equipped `kind: 'flame'` ranks
+(`G:6190554,6191334,6192144,6192953,6193759,6194587`), whose buffs are granted
+by the equipment initialization loop (`G:14956450–14957050`). No stock
+mid-craft grant was found. TS therefore snapshots this permanent stock value
+once per search; arbitrary createBuff/consumeBuff payloads can change it,
+however, and runtime/Rust reread held buffs after actions. Such dynamic custom
+discordance is not covered by the TS root snapshot.
+
 ### Stack mutations and group effects
 
 Actual event names are `stackGained.<buff name>` / `stackLost.<buff name>`

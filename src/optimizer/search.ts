@@ -3930,9 +3930,9 @@ function runLookaheadSearch(
 ): SearchResult {
   // Merge with default search config
   const cfg: SearchConfig = { ...DEFAULT_SEARCH_CONFIG, ...searchConfig };
-  // 0.7.7+ Uncontrollable Flames (Flame of Discordance): equipment-granted
-  // and permanent for the craft, so the discordance is computed once from the
-  // root state's buffs rather than per expanded node.
+  // Stock Uncontrollable Flames is equipment-granted and permanent for the
+  // craft, so snapshot discordance once from root buffs. Dynamic custom buff
+  // grants/removals are a documented gap (MECHANICS_PARITY, Dynamic discordance).
   if (cfg.conditionDiscordance === undefined) {
     cfg.conditionDiscordance = getBuffDiscordantConditions(state.buffs);
   }
