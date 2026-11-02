@@ -643,7 +643,7 @@ function Harness() {
     return (
       <CraftBuddyThemeProvider>
         <div style={{ padding: 24, maxWidth: 560, background: '#2a2520' }}>
-          <SettingsBody onSettingsChange={setSettings} version="6.9.0" />
+          <SettingsBody onSettingsChange={setSettings} version={version} />
         </div>
       </CraftBuddyThemeProvider>
     );
