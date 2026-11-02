@@ -2,6 +2,7 @@ import {
   applySkill,
   calculateActionSurvivabilityFloor,
   calculateSkillGains,
+  getConditionEffectsForConfig,
 } from '../optimizer/skills';
 import type { BuffDefinition } from '../optimizer/gameTypes';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
@@ -24,6 +25,10 @@ import {
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import type { DifferentialCorpus } from './fixtures/differentialCorpus';
+import { reviveSearchInput } from '../optimizer/searchBackend';
 
 describe('companion preview setup and mastery phases', () => {
   it.each(companionPhasePreviewScenarios())(
@@ -40,6 +45,287 @@ describe('companion preview setup and mastery phases', () => {
       expect(preview.completion).toBe(0);
       expect(preview.stability).toBe(-5);
       expect(buildStateSnapshot(state, 'missing')).toEqual(before);
+    },
+  );
+});
+
+const inertCorpus = JSON.parse(
+  readFileSync(join(__dirname, 'fixtures/transition_corpus.json'), 'utf8'),
+) as DifferentialCorpus;
+const inertSampleNames = [
+  'baseline-neutral',
+  'active-buffs',
+  'crit-and-overcrit',
+  'cost-modifiers',
+  'effects-baseline',
+  'effects-buff-stat-contributions',
+  'effects-action-type-hooks',
+  'effects-conditional-buff-effect',
+  'effects-bifang-blaze',
+  'effects-azure-depths',
+  '0717-mastery-before-cost-failed',
+  '0717-chance-mastery-as-is',
+  '0717-jade',
+  '0719-live-completion',
+  '0719-live-perfection',
+  '0719-shared-success-independent-conditions',
+  'random-effects-0',
+  'random-effects-1',
+  'random-effects-2',
+  'random-effects-3',
+  'decree-multi-award',
+];
+
+// Intentional runtime-backed differences from the legacy non-companion path.
+// Only the named fields differ; all 350 cases still compare every other field.
+// Each excluded field must actually differ, so stale/broadened masks fail.
+type InertExceptionField =
+  | 'stability'
+  | 'stabilitySpentAmount'
+  | 'stabilitySpentCalls'
+  | 'stabilityRestoredAmount'
+  | 'poolRestoredAmount';
+const inertExceptionGroups: ReadonlyArray<{
+  reason: string;
+  fields: readonly InertExceptionField[];
+  cases: readonly string[];
+}> = [
+  {
+    reason:
+      'Companion effects dispatch per-application stability events (runtime r7c G:14930153); the non-companion path reports only net restoration (MECHANICS_PARITY gap 12).',
+    fields: ['stabilitySpentAmount', 'stabilitySpentCalls'],
+    cases: [
+      'effects-baseline/effect_refine',
+      'effects-buff-stat-contributions/effect_refine',
+      'effects-action-type-hooks/effect_refine',
+      'effects-bifang-blaze/effect_refine',
+      'effects-azure-depths/effect_refine',
+      'effects-conditional-buff-effect/effect_refine',
+      'random-effects-0/effect_refine',
+      'random-effects-1/effect_refine',
+      'random-effects-3/effect_refine',
+    ].flatMap((name) =>
+      ['su', 'han'].map((companion) => `${name}/${companion}`),
+    ),
+  },
+  {
+    reason:
+      'Companion effects dispatch separate stability restoration/spending (runtime r7c G:14930153); the non-companion path nets these applications (MECHANICS_PARITY gap 12).',
+    fields: [
+      'stabilityRestoredAmount',
+      'stabilitySpentAmount',
+      'stabilitySpentCalls',
+    ],
+    cases: ['su', 'han'].map(
+      (companion) =>
+        `0719-shared-success-independent-conditions/retarget_probe/${companion}`,
+    ),
+  },
+  {
+    reason:
+      'Companion effects dispatch realized clamped pool deltas (runtime u7c G:14935853); the non-companion path reports requested/net amounts (MECHANICS_PARITY gap 10).',
+    fields: ['poolRestoredAmount'],
+    cases: [
+      ...[
+        'effects-baseline/restorative_pool',
+        'effects-buff-stat-contributions/restorative_pool',
+        'effects-action-type-hooks/restorative_pool',
+        'effects-bifang-blaze/restorative_pool',
+        'effects-azure-depths/restorative_pool',
+        'effects-conditional-buff-effect/restorative_pool',
+        'random-effects-0/restorative_pool',
+      ].flatMap((name) =>
+        ['su', 'han'].map((companion) => `${name}/${companion}`),
+      ),
+      'effects-baseline/qi_restoring_pill/han',
+      'random-effects-0/qi_restoring_pill/han',
+    ],
+  },
+  {
+    reason:
+      'Han-path applications reduce/floor negative stability even with zero prevention uses (runtime r7c G:14930153); legacy non-Han applications do not (MECHANICS_PARITY gap 12).',
+    fields: ['stability', 'stabilitySpentAmount'],
+    cases: [
+      ...['random-effects-0', 'random-effects-1', 'random-effects-3'].map(
+        (name) => `${name}/effect_refine/han`,
+      ),
+      ...[
+        'effect_fusion',
+        'conditional_surge',
+        'mastered_refine',
+        'kindle_soulflame',
+        'quench_soulflame',
+        'disciplined_touch',
+        'prime_false_fusion',
+        'restorative_pool',
+      ].map((key) => `random-effects-3/${key}/han`),
+    ],
+  },
+];
+const inertRuntimeExceptions = new Map<
+  string,
+  {
+    reasons: string[];
+    fields: Set<InertExceptionField>;
+  }
+>();
+for (const group of inertExceptionGroups) {
+  for (const name of group.cases) {
+    const exception = inertRuntimeExceptions.get(name) ?? {
+      reasons: [],
+      fields: new Set<InertExceptionField>(),
+    };
+    exception.reasons.push(group.reason);
+    for (const field of group.fields) exception.fields.add(field);
+    inertRuntimeExceptions.set(name, exception);
+  }
+}
+const inertCases = inertCorpus.scenarios
+  .filter(({ name }) => inertSampleNames.includes(name))
+  .flatMap((scenario) =>
+    scenario.cases.flatMap(({ skillIndex, skillKey }) =>
+      (['su', 'han'] as const).map((companion) => ({
+        scenario,
+        skillIndex,
+        companion,
+        name: `${scenario.name}/${skillKey}/${companion}`,
+      })),
+    ),
+  );
+
+describe('inert companion corpus differential', () => {
+  it('pins the sample and every field-specific runtime-backed exception', () => {
+    expect(
+      inertCorpus.scenarios.filter(({ name }) =>
+        inertSampleNames.includes(name),
+      ),
+    ).toHaveLength(21);
+    expect(inertCases).toHaveLength(350);
+    expect(inertRuntimeExceptions.size).toBe(44);
+    for (const [name, exception] of Array.from(
+      inertRuntimeExceptions.entries(),
+    )) {
+      expect(inertCases.some((entry) => entry.name === name)).toBe(true);
+      expect(exception.fields.size).toBeGreaterThan(0);
+      for (const reason of exception.reasons) {
+        expect(reason).toMatch(/runtime .+ G:149/);
+        expect(reason).toMatch(/MECHANICS_PARITY gap (10|12)/);
+      }
+    }
+  });
+  it.each(inertCases)(
+    'preserves resources, buffs and listener events: $name',
+    ({ scenario, skillIndex, companion, name }) => {
+      const input = reviveSearchInput(scenario.input);
+      const skill = input.config.skills[skillIndex];
+      const observer: BuffDefinition = {
+        name: 'Differential observer',
+        canStack: false,
+        effects: [],
+        triggeredEffects: (
+          [
+            'completionGained',
+            'perfectionGained',
+            'stabilityRestored',
+            'stabilitySpent',
+            'poolRestored',
+            'poolSpent',
+          ] as const
+        ).map((trigger) => ({
+          trigger,
+          effects: [
+            {
+              kind: 'setState',
+              key: `${trigger}Amount`,
+              mode: 'add',
+              value: { value: 1, eqn: 'amount' },
+            },
+            {
+              kind: 'setState',
+              key: `${trigger}Calls`,
+              mode: 'add',
+              value: { value: 1 },
+            },
+          ],
+        })),
+      };
+      const buffs = new Map(input.state.buffs);
+      buffs.set('differential_observer', {
+        name: observer.name,
+        stacks: 1,
+        definition: observer,
+      });
+      const state = input.state.copy({
+        step: input.state.step - (input.state.step % 3),
+        buffs,
+      });
+      const held = new Map(buffs);
+      const entry =
+        companion === 'su'
+          ? Array.from(suScenarios()[0].state.buffs.entries())[0]
+          : ([
+              HAN_KEY,
+              {
+                ...hanScenarios()[0].state.buffs.get(HAN_KEY)!,
+                definition: {
+                  ...hanScenarios()[0].state.buffs.get(HAN_KEY)!.definition!,
+                  stabilityLossPrevention: { uses: 0 },
+                },
+              },
+            ] as const);
+      held.set(entry[0], entry[1]);
+      const transition = (start: typeof state) =>
+        applySkill(
+          start,
+          skill,
+          input.config,
+          getConditionEffectsForConfig(input.config, input.currentCondition),
+          input.targetCompletion,
+          input.currentCondition,
+          input.targetPerfection,
+        );
+      const bare = transition(state);
+      const actual = transition(state.copy({ buffs: held }));
+      expect(Boolean(actual)).toBe(Boolean(bare));
+      if (!actual || !bare) return;
+      const exception = inertRuntimeExceptions.get(name);
+      const exceptedValue = (
+        next: NonNullable<typeof actual>,
+        field: InertExceptionField,
+      ) =>
+        field === 'stability'
+          ? next.stability
+          : next.buffs.get('differential_observer')?.internalState?.[field];
+      for (const field of Array.from(exception?.fields ?? [])) {
+        expect(exceptedValue(actual, field)).not.toEqual(
+          exceptedValue(bare, field),
+        );
+      }
+      const comparable = (next: NonNullable<typeof actual>) => {
+        const comparedBuffs = new Map(next.buffs);
+        comparedBuffs.delete(entry[0]);
+        const observed = comparedBuffs.get('differential_observer');
+        if (exception && observed?.internalState) {
+          const internalState = { ...observed.internalState };
+          for (const field of Array.from(exception.fields)) {
+            if (field !== 'stability') delete internalState[field];
+          }
+          comparedBuffs.set('differential_observer', {
+            ...observed,
+            internalState,
+          });
+        }
+        return {
+          completion: next.completion,
+          perfection: next.perfection,
+          stability: exception?.fields.has('stability')
+            ? undefined
+            : next.stability,
+          qi: next.qi,
+          buffs: comparedBuffs,
+        };
+      };
+      expect(comparable(actual)).toEqual(comparable(bare));
     },
   );
 });

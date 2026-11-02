@@ -1717,6 +1717,16 @@ transition scenarios. It was reverted to preserve the companion-only golden
 scope; both that gap and legacy non-companion technique net aggregation are
 recorded in [mechanics parity](MECHANICS_PARITY.md#known-gaps).
 
+The inert-companion corpus audit also checked `r7c` in the byte window
+`G:14929800–14931400`: for negative `e`, it computes
+`-Math.floor(Rko(-e, stabilityCostReduction, stabilityCostPenalty))`, checks
+prevention, writes the signed result, then dispatches `stabilitySpent` with
+its magnitude. The nonnegative branch writes the boosted amount and emits
+`stabilityRestored`. These are per-application events, not an aggregate
+net restore. This explains the explicitly enumerated legacy stability
+exceptions in the differential regression; it is not an inert-companion
+rounding exception.
+
 #### Bar overflow and companion ordering
 
 In the current 0.7.19 bundle, perfection applier `s7c` (`G:14932019`) and
