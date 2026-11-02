@@ -333,24 +333,12 @@ pub fn will_auto_finish(
     perfection: f64,
     stability: f64,
     bands: &OutcomeBands,
-    completion_bands_hint: Option<i32>,
+    _completion_bands_hint: Option<i32>,
 ) -> bool {
     if stability <= 0.0 {
         return true;
     }
-    let perfection_ready = perfection >= bands.perfection_finish_flat;
-    if completion >= bands.completion_finish_flat && perfection_ready {
-        return true;
-    }
-    if bands.can_overcraft && perfection_ready {
-        let completion_bands = completion_bands_hint.unwrap_or_else(|| {
-            get_bonus_and_chance(completion.max(0.0), bands.completion_target).guaranteed
-        });
-        if completion_bands >= 5 {
-            return true;
-        }
-    }
-    false
+    completion >= bands.completion_finish_flat && perfection >= bands.perfection_finish_flat
 }
 
 pub fn classify_outcome(
@@ -478,6 +466,13 @@ mod tests {
         assert!(!will_auto_finish(99.0, 80.0, 50.0, &bands, None));
         assert!(will_auto_finish(100.0, 80.0, 50.0, &bands, None));
         assert!(will_auto_finish(0.0, 0.0, 0.0, &bands, None));
+    }
+
+    #[test]
+    fn overcraft_continues_past_five_completion_bands_until_both_caps() {
+        let bands = build_outcome_bands(100.0, 100.0, true, Some(2000.0), Some(399.0), 0.0, 0.0);
+        assert!(!will_auto_finish(902.0, 399.0, 50.0, &bands, Some(5)));
+        assert!(will_auto_finish(2000.0, 399.0, 50.0, &bands, None));
     }
 
     /// The completion ceiling must clamp overcraft completion extras without

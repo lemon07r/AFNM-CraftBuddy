@@ -13,7 +13,7 @@
  *
  * - TypeScript beam search: root candidates are partitioned across workers
  *   by stride (`key i % N`), each worker searches its subset at full
- *   depth/budget, and ranked candidates merge by score with a skill-key
+ *   depth/budget, and ranked candidates merge by survival safety, score and a skill-key
  *   tiebreak. Per-candidate deep scores are absolute (not relative to the
  *   root sibling set), so the merged ranking matches an unpartitioned
  *   search up to the per-partition early-exit frontier.
@@ -281,6 +281,17 @@ function compareMergedCandidates(
   a: SkillRecommendation,
   b: SkillRecommendation,
 ): number {
+  const aUnsafe = a.requiresProbabilisticSurvival === true;
+  const bUnsafe = b.requiresProbabilisticSurvival === true;
+  if (aUnsafe !== bUnsafe) {
+    // Match search's safety precedence, including its exception for the
+    // synthetic finish action: finishing must not displace a better live line
+    // solely on safety grounds.
+    const safe = aUnsafe ? b : a;
+    if (safe.skill.key !== FINISH_CRAFT_KEY) {
+      return aUnsafe ? 1 : -1;
+    }
+  }
   if (b.score !== a.score) {
     return b.score - a.score;
   }
@@ -291,8 +302,8 @@ function recomputeQualityRatings(candidates: SkillRecommendation[]): void {
   if (candidates.length === 0) {
     return;
   }
-  const best = candidates[0].score;
-  const worst = candidates[candidates.length - 1].score;
+  const best = Math.max(...candidates.map((candidate) => candidate.score));
+  const worst = Math.min(...candidates.map((candidate) => candidate.score));
   const range = best - worst;
   for (const candidate of candidates) {
     candidate.qualityRating =
@@ -303,7 +314,7 @@ function recomputeQualityRatings(candidates: SkillRecommendation[]): void {
 /**
  * Reassemble the per-partition results into one result. Deterministic given
  * the same partials: candidates from every partition are pooled, deduped by
- * skill key, sorted by score with a key tiebreak, and quality ratings are
+ * skill key, sorted by survival safety and score with a key tiebreak, and quality ratings are
  * recomputed over the merged range (they are relative to the candidate set).
  */
 export function mergePartitionedResults(
@@ -315,7 +326,7 @@ export function mergePartitionedResults(
 
   const pooled = new Map<string, SkillRecommendation>();
   let winningPartial: SearchResult | undefined;
-  let bestScore = -Infinity;
+  let bestCandidate: SkillRecommendation | undefined;
   for (const partial of partials) {
     const candidates = [
       ...(partial.recommendation ? [partial.recommendation] : []),
@@ -323,11 +334,14 @@ export function mergePartitionedResults(
     ];
     for (const candidate of candidates) {
       const existing = pooled.get(candidate.skill.key);
-      if (!existing || candidate.score > existing.score) {
+      if (!existing || compareMergedCandidates(candidate, existing) < 0) {
         pooled.set(candidate.skill.key, candidate);
       }
-      if (candidate.score > bestScore) {
-        bestScore = candidate.score;
+      if (
+        !bestCandidate ||
+        compareMergedCandidates(candidate, bestCandidate) < 0
+      ) {
+        bestCandidate = candidate;
         winningPartial = partial;
       }
     }

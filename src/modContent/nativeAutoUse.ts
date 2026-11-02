@@ -345,6 +345,11 @@ export function readNativeAutoUseStatus(
   }
 
   const player = readRecord(readRecord(state.player)?.player);
+  // The runtime defaults an absent toggle to enabled, but a configured loadout
+  // does not own or consume items while crafting auto-use is disabled.
+  if (player?.craftingAutoUseEnabled === false) {
+    return INACTIVE_NATIVE_AUTO_USE;
+  }
   const slots = readSlots(
     readRecord(player?.currentCraftingAutoUseLoadout)?.slots,
   );

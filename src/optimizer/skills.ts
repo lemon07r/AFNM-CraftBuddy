@@ -4033,6 +4033,7 @@ export function applySkill(
   targetCompletion = 0,
   currentCondition?: string,
   targetPerfection = 0,
+  options: Pick<SkillGainOptions, 'successChance'> = {},
 ): CraftingState | null {
   if (
     !canApplySkill(
@@ -4054,8 +4055,8 @@ export function applySkill(
   const paysSetup = Boolean(
     skill.buffCost || skill.toxicityCost || skill.dropletCost,
   );
-  let successChance: number | undefined;
-  if (paysSetup || hasMasteryEffects) {
+  let successChance = options.successChance;
+  if (successChance === undefined && (paysSetup || hasMasteryEffects)) {
     const initialVars = buildPreMasteryActionVariables(
       state,
       config,

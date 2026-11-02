@@ -2855,6 +2855,52 @@ function shouldUseSurvivabilityFloorForContinuation(params: {
   );
 }
 
+/** EV progress cannot secure a craft that ends below target on technique failure. */
+function hasFatalTechniqueFailure(
+  state: CraftingState,
+  skill: SkillDefinition,
+  displayState: CraftingState,
+  config: OptimizerConfig,
+  conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
+  currentCondition: CraftingConditionType,
+  targetCompletion: number,
+  targetPerfection: number,
+): boolean {
+  if (displayState.stability > 0 || skill.actionKind === 'item') return false;
+  const expected = calculateSkillGains(state, skill, config, conditionEffects);
+  const onSuccess = calculateSkillGains(
+    state,
+    skill,
+    config,
+    conditionEffects,
+    {
+      successChance: 1,
+    },
+  );
+  if (
+    expected.completion >= onSuccess.completion &&
+    expected.perfection >= onSuccess.perfection
+  )
+    return false;
+  // Use the real transition: masteries still run, payment still happens and
+  // guaranteed buff/harmony effects can secure the goal even on failure.
+  const failure = applySkill(
+    state,
+    skill,
+    config,
+    conditionEffects,
+    targetCompletion,
+    currentCondition,
+    targetPerfection,
+    { successChance: 0 },
+  );
+  return (
+    failure !== null &&
+    failure.stability <= 0 &&
+    !goalsMet(failure, targetCompletion, targetPerfection)
+  );
+}
+
 function shouldDeprioritizeAgainstGuaranteedSafeStabilize(params: {
   currentStability: number;
   displayStability: number;
@@ -3464,6 +3510,8 @@ function runGreedySearch(
         scoringCtx,
         cfg.goalPriorityBias,
         cfg.overcraftAmbition,
+        cfg.perfectionBandGoal,
+        cfg.completionBandCeiling,
       ),
       reasoning: generateFinishReasoning(projectedSuccessChance),
       projectedSuccessChance,
@@ -3610,7 +3658,18 @@ function runGreedySearch(
     );
     const floorStability =
       survivabilityFloor?.stability ?? displayState.stability;
+    const fatalTechniqueFailure = hasFatalTechniqueFailure(
+      state,
+      skill,
+      displayState,
+      config,
+      conditionEffects,
+      normalizedCurrentCondition,
+      targetCompletion,
+      targetPerfection,
+    );
     const unsafeWithGuaranteedSafeAlternative =
+      fatalTechniqueFailure ||
       shouldDeprioritizeAgainstGuaranteedSafeStabilize({
         currentStability: state.stability,
         displayStability: displayState.stability,
@@ -3624,6 +3683,7 @@ function runGreedySearch(
       unsafeRecommendationKeys.add(skill.key);
     }
     const requiresProbabilisticSurvival =
+      fatalTechniqueFailure ||
       shouldUseSurvivabilityFloorForContinuation({
         currentStability: state.stability,
         displayStability: displayState.stability,
@@ -4146,6 +4206,16 @@ function runLookaheadSearch(
     const floorStability =
       survivabilityFloor?.stability ?? displayState.stability;
     const requiresProbabilisticSurvival =
+      hasFatalTechniqueFailure(
+        currentState,
+        skill,
+        displayState,
+        config,
+        conditionEffectsAtDepth,
+        currentConditionAtDepth,
+        targetCompletion,
+        targetPerfection,
+      ) ||
       shouldUseSurvivabilityFloorForContinuation({
         currentStability: currentState.stability,
         displayStability: displayState.stability,
@@ -4240,6 +4310,8 @@ function runLookaheadSearch(
         scoringCtx,
         cfg.goalPriorityBias,
         cfg.overcraftAmbition,
+        cfg.perfectionBandGoal,
+        cfg.completionBandCeiling,
       ),
       immediateProgress: 0,
       requiresProbabilisticSurvival: false,
@@ -4463,6 +4535,7 @@ function runLookaheadSearch(
         targetPerfection,
       );
       const unsafeWithGuaranteedSafeAlternative =
+        (requiresProbabilisticSurvival && nextState.stability <= 0) ||
         shouldDeprioritizeAgainstGuaranteedSafeStabilize({
           currentStability: currentState.stability,
           displayStability: nextState.stability,
@@ -4712,6 +4785,8 @@ function runLookaheadSearch(
         scoringCtx,
         cfg.goalPriorityBias,
         cfg.overcraftAmbition,
+        cfg.perfectionBandGoal,
+        cfg.completionBandCeiling,
       );
     }
 
@@ -4800,6 +4875,8 @@ function runLookaheadSearch(
           scoringCtx,
           cfg.goalPriorityBias,
           cfg.overcraftAmbition,
+          cfg.perfectionBandGoal,
+          cfg.completionBandCeiling,
         );
       } else if (!actionConsumesTurn(skill)) {
         score = search(
@@ -4893,6 +4970,8 @@ function runLookaheadSearch(
         scoringCtx,
         cfg.goalPriorityBias,
         cfg.overcraftAmbition,
+        cfg.perfectionBandGoal,
+        cfg.completionBandCeiling,
       );
     }
 

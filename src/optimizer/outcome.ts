@@ -23,9 +23,7 @@
  *
  *   shouldFinish =
  *     stability <= 0 ||
- *     (completion >= completionFinishFlat && perfection >= perfectionFinishFlat) ||
- *     (canOvercraft && hH(completion, target).guaranteed >= 5 &&
- *      perfection >= perfectionFinishFlat);
+ *     (completion >= completionFinishFlat && perfection >= perfectionFinishFlat);
  *
  * Tier decision, using *effective* band counts that include the fractional
  * bonus roll:
@@ -434,7 +432,7 @@ export function classifyOutcome(
     blockingRequirement,
     completionShortfall,
     perfectionShortfall,
-    willAutoFinish: willAutoFinish(state, bands, completionBand.guaranteed),
+    willAutoFinish: willAutoFinish(state, bands),
   };
 }
 
@@ -461,25 +459,14 @@ function requirementProgress(
 export function willAutoFinish(
   state: BarProgress,
   bands: OutcomeBands,
-  completionBandsHint?: number,
 ): boolean {
   if (state.stability <= 0) {
     return true;
   }
-  const perfectionReady = state.perfection >= bands.perfectionFinishFlat;
-  if (state.completion >= bands.completionFinishFlat && perfectionReady) {
-    return true;
-  }
-  if (bands.canOvercraft && perfectionReady) {
-    const completionBands =
-      completionBandsHint ??
-      getBonusAndChance(Math.max(0, state.completion), bands.completionTarget)
-        .guaranteed;
-    if (completionBands >= 5) {
-      return true;
-    }
-  }
-  return false;
+  return (
+    state.completion >= bands.completionFinishFlat &&
+    state.perfection >= bands.perfectionFinishFlat
+  );
 }
 
 /**

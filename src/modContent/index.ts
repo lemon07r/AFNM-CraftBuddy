@@ -79,10 +79,15 @@ import { createDomAutoCraftExecutor } from './autoCraftExecutor';
 import {
   diffCraftStateSignatures,
   readLiveCraftStateSignature,
-  serializeCanonicalValue,
   serializeHarmonyData,
   serializeTechniqueRoster,
 } from './craftStateSignature';
+import {
+  areSearchSettingsStale,
+  snapshotSearchSettings,
+  buildCrossStepCacheScope,
+  type LastSearchSettings,
+} from './recommendationContext';
 import {
   readNativeAutoUseStatus,
   type NativeAutoUseStatus,
@@ -282,56 +287,6 @@ setSearchBackendDiagnosticsHook((message) =>
   debugLog(`[CraftBuddy] ${message}`),
 );
 
-/**
- * Scope signature for the cross-step transposition cache: everything that
- * changes what a cached score means while staying constant across the steps
- * of one craft. Budget fields (time/nodes/beam) are deliberately excluded —
- * they change how much is explored, not what a state is worth.
- */
-function buildCrossStepCacheScope(
-  config: OptimizerConfig,
-  targetCompletion: number,
-  targetPerfection: number,
-  searchConfig: ReturnType<typeof getSearchConfig>,
-): string {
-  return serializeCanonicalValue({
-    targets: [targetCompletion, targetPerfection],
-    caps: [config.maxCompletion ?? null, config.maxPerfection ?? null],
-    stats: [
-      config.maxQi,
-      config.maxStability,
-      config.baseIntensity,
-      config.baseControl,
-      config.defaultBuffMultiplier,
-    ],
-    flags: [
-      config.isSublimeCraft === true,
-      config.trainingMode === true,
-      config.targetMultiplier ?? null,
-      config.conditionEffectType ?? null,
-      config.craftingType ?? null,
-      config.pillsPerRound ?? null,
-    ],
-    roster: (config.skills ?? [])
-      .map((skill) => skill.key)
-      .sort()
-      .join('|'),
-    scoring: [
-      searchConfig.goalPriorityBias,
-      searchConfig.overcraftAmbition !== false,
-    ],
-  });
-}
-
-// Track search-affecting settings for stale detection
-interface LastSearchSettings {
-  lookaheadDepth: number;
-  searchTimeBudgetMs: number;
-  searchMaxNodes: number;
-  searchBeamWidth: number;
-  searchGoalPriorityBias: number;
-  optimizerEngine: CraftBuddySettings['optimizerEngine'];
-}
 let lastSearchSettings: LastSearchSettings | null = null;
 
 const autoCraftExecutor = createDomAutoCraftExecutor({
@@ -351,37 +306,6 @@ const autoCraftController = createAutoCraftController({
     }
   },
 });
-
-/**
- * Check if current settings differ from last calculated settings.
- */
-function areSearchSettingsStale(): boolean {
-  if (!lastSearchSettings) return false;
-  return (
-    currentSettings.lookaheadDepth !== lastSearchSettings.lookaheadDepth ||
-    currentSettings.searchTimeBudgetMs !==
-      lastSearchSettings.searchTimeBudgetMs ||
-    currentSettings.searchMaxNodes !== lastSearchSettings.searchMaxNodes ||
-    currentSettings.searchBeamWidth !== lastSearchSettings.searchBeamWidth ||
-    currentSettings.searchGoalPriorityBias !==
-      lastSearchSettings.searchGoalPriorityBias ||
-    currentSettings.optimizerEngine !== lastSearchSettings.optimizerEngine
-  );
-}
-
-/**
- * Snapshot current search settings after a calculation completes.
- */
-function snapshotSearchSettings(): void {
-  lastSearchSettings = {
-    lookaheadDepth: currentSettings.lookaheadDepth,
-    searchTimeBudgetMs: currentSettings.searchTimeBudgetMs,
-    searchMaxNodes: currentSettings.searchMaxNodes,
-    searchBeamWidth: currentSettings.searchBeamWidth,
-    searchGoalPriorityBias: currentSettings.searchGoalPriorityBias,
-    optimizerEngine: currentSettings.optimizerEngine,
-  };
-}
 
 let lastDiagnosticsCheckCount = 0;
 const DIAGNOSTICS_CHECK_INTERVAL = 20;
@@ -2134,7 +2058,7 @@ function updateRecommendation(
       // Always clear calculating flag even if search throws.
       isCalculating = false;
       clearCraftStartPending();
-      snapshotSearchSettings();
+      lastSearchSettings = snapshotSearchSettings(currentSettings);
       checkIntegrationHealth();
       syncAutoCraftController();
       if (currentOptimizerReplayTurn) {
@@ -2283,7 +2207,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     maxToxicity,
     craftingType: currentCraftingType,
     isCalculating,
-    settingsStale: areSearchSettingsStale(),
+    settingsStale: areSearchSettingsStale(currentSettings, lastSearchSettings),
     onRecalculate: handleRecalculate,
     onRecommendationAction: executeDisplayedRecommendation,
     autoMode: autoCraftUiState,

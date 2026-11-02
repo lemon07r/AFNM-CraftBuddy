@@ -253,9 +253,7 @@ describe('willAutoFinish', () => {
     ).toBe(false);
   });
 
-  it('finishes via the overcraft branch at five completion bands', () => {
-    // A deep overcraft cap, so the plain completion >= flat branch cannot fire
-    // before the five-band branch does.
+  it('keeps overcrafting past five completion bands until both caps are met', () => {
     const deepBands = deriveOutcomeBands({
       ...sublimeConfig,
       maxCompletion: 2000,
@@ -270,7 +268,7 @@ describe('willAutoFinish', () => {
         { completion: 902, perfection: 399, stability: 50 },
         deepBands,
       ),
-    ).toBe(true);
+    ).toBe(false);
     // 901 is only four bands, so the craft keeps going.
     expect(
       willAutoFinish(
@@ -278,6 +276,12 @@ describe('willAutoFinish', () => {
         deepBands,
       ),
     ).toBe(false);
+    expect(
+      willAutoFinish(
+        { completion: 2000, perfection: 399, stability: 50 },
+        deepBands,
+      ),
+    ).toBe(true);
   });
 
   it('is surfaced on the classification', () => {

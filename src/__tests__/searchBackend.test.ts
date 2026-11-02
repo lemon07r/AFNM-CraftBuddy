@@ -276,6 +276,34 @@ describe('mergePartitionedResults', () => {
     expect(merged.alternativeSkills[0]?.skill.key).toBe('b');
   });
 
+  it('ranks guaranteed survival ahead of a higher-scoring probabilistic line', () => {
+    const risky = makePartial([['gamble', 100]], {
+      nodes: 1,
+      hits: 0,
+      depth: 2,
+    });
+    risky.recommendation!.requiresProbabilisticSurvival = true;
+    const safe = makePartial([['sure', 50]], { nodes: 1, hits: 0, depth: 2 });
+    const merged = mergePartitionedResults([risky, safe]);
+    expect(merged.recommendation?.skill.key).toBe('sure');
+    expect(merged.alternativeSkills[0]?.skill.key).toBe('gamble');
+    expect(merged.recommendation?.qualityRating).toBeGreaterThanOrEqual(0);
+    expect(merged.alternativeSkills[0]?.qualityRating).toBeLessThanOrEqual(100);
+  });
+
+  it('does not promote synthetic finish solely because a better live line is probabilistic', () => {
+    const risky = makePartial([['live', 100]], { nodes: 1, hits: 0, depth: 2 });
+    risky.recommendation!.requiresProbabilisticSurvival = true;
+    const finish = makePartial([[FINISH_CRAFT_KEY, 50]], {
+      nodes: 1,
+      hits: 0,
+      depth: 2,
+    });
+    expect(
+      mergePartitionedResults([risky, finish]).recommendation?.skill.key,
+    ).toBe('live');
+  });
+
   it('stays terminal only when every partition is terminal', () => {
     const empty = makePartial([], { nodes: 0, hits: 0, depth: 0 });
     const live = makePartial([['a', 1]], { nodes: 1, hits: 0, depth: 1 });

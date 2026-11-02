@@ -43,6 +43,57 @@ const {
 } = __testing;
 
 // Helper to create a basic test config
+describe('terminal scoring ambition', () => {
+  it('preserves the perfection band goal for an immediate finish at every depth', () => {
+    const finish = createCustomSkill({
+      key: 'finish',
+      type: 'fusion',
+      stabilityCost: 10,
+      baseCompletionGain: 100,
+      preventsMaxStabilityDecay: true,
+    });
+    const config = createTestConfig({
+      minStability: 0,
+      maxCompletion: 1000,
+      maxPerfection: 1000,
+      skills: [finish],
+    });
+    const state = new CraftingState({
+      qi: 100,
+      stability: 10,
+      initialMaxStability: 60,
+      perfection: 100,
+    });
+    const scores = [1, 2].map(
+      (depth) =>
+        findBestSkill(state, config, 100, 100, false, depth, 'neutral', [], {
+          perfectionBandGoal: 3,
+          completionBandCeiling: 1,
+          timeBudgetMs: 10000,
+          maxNodes: 10000,
+        }).recommendation?.score,
+    );
+    const terminal = applySkill(state, finish, config, [], 100)!;
+    const context = __testing.buildScoringContext(config, state, 'neutral');
+    const expected = scoreFinishedOutcome(
+      terminal,
+      100,
+      100,
+      false,
+      2,
+      1000,
+      1000,
+      context,
+      undefined,
+      true,
+      3,
+      1,
+    );
+    expect(scores[0]).toBeCloseTo(expected, 6);
+    expect(scores[1]).toBeCloseTo(scores[0]!, 6);
+  });
+});
+
 function createTestConfig(
   overrides: Partial<OptimizerConfig> = {},
 ): OptimizerConfig {
@@ -3365,6 +3416,65 @@ describe('tutorial regression scenarios', () => {
 });
 
 describe('survivability-first recommendation gate', () => {
+  it.each([0, 1, 2])(
+    'prefers guaranteed completion over a fatal gamble at depth %s',
+    (depth) => {
+      const gamble = createCustomSkill({
+        name: 'Gamble',
+        key: 'a_gamble',
+        type: 'fusion',
+        stabilityCost: 10,
+        successChance: 0.5,
+        baseCompletionGain: 200,
+        preventsMaxStabilityDecay: true,
+      });
+      const sure = createCustomSkill({
+        ...gamble,
+        name: 'Sure',
+        key: 'z_sure',
+        successChance: 1,
+        baseCompletionGain: 100,
+      });
+      const recover = createCustomSkill({
+        name: 'Recovery',
+        key: 'recovery',
+        type: 'stabilize',
+        stabilityGain: 20,
+        preventsMaxStabilityDecay: true,
+      });
+      const config = createTestConfig({
+        minStability: 0,
+        maxCompletion: 200,
+        maxPerfection: 0,
+        skills: [gamble, sure, recover],
+      });
+      const state = new CraftingState({
+        qi: 100,
+        stability: 10,
+        initialMaxStability: 60,
+      });
+      expect(applySkill(state, gamble, config)?.completion).toBe(100);
+      const result = findBestSkill(
+        state,
+        config,
+        100,
+        0,
+        false,
+        depth,
+        'neutral',
+        [],
+        {
+          timeBudgetMs: 10000,
+          maxNodes: 10000,
+        },
+      );
+      expect(result.recommendation?.skill.key).toBe('z_sure');
+      const risky = result.alternativeSkills.find(
+        (candidate) => candidate.skill.key === 'a_gamble',
+      );
+      expect(risky?.requiresProbabilisticSurvival).toBe(true);
+    },
+  );
   const energizedFusion = createCustomSkill({
     name: 'Energised Fusion',
     key: 'energised_fusion',

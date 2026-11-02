@@ -186,6 +186,7 @@ describe('readLiveCraftStateSignature', () => {
         consumedPills: 0,
       },
       recipeStats: { stability: 60 },
+      consumedPills: 0,
     },
     inventory: { items: [{ name: 'Qi Pill', stacks: 2 }] },
   };
@@ -199,6 +200,21 @@ describe('readLiveCraftStateSignature', () => {
     expect(reading.signature).toContain('harmony:6');
     expect(reading.signature).toContain('max:55');
     expect(reading.signature).toContain('techniques:simple_fusion');
+  });
+
+  it('detects pills consumed on the crafting state without a progress change', () => {
+    const before = readLiveCraftStateSignature(createStore(liveState));
+    const after = readLiveCraftStateSignature(
+      createStore({
+        ...liveState,
+        crafting: { ...liveState.crafting, consumedPills: 1 },
+      }),
+    );
+    expect(before.ok && after.ok).toBe(true);
+    if (!before.ok || !after.ok) return;
+    expect([
+      ...diffCraftStateSignatures(before.signature, after.signature),
+    ]).toEqual(['pills']);
   });
 
   it('is unverifiable when the store cannot be reached', () => {

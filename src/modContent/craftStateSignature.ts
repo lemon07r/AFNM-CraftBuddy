@@ -365,9 +365,7 @@ export function readLiveCraftStateSignature(
       const rawInternalState = readRecord(buff?.internalState);
       const internalState: Record<string, number> = {};
       if (rawInternalState) {
-        for (const [stateKey, stateValue] of Object.entries(
-          rawInternalState,
-        )) {
+        for (const [stateKey, stateValue] of Object.entries(rawInternalState)) {
           const numeric = readNumber(stateValue, Number.NaN);
           if (Number.isFinite(numeric)) {
             internalState[stateKey] = numeric;
@@ -400,7 +398,7 @@ export function readLiveCraftStateSignature(
     }),
     harmony: readNumber(progressState.harmony, 0),
     harmonyData: progressState.harmonyTypeData ?? null,
-    consumedPills: readNumber(progressState.consumedPills, 0),
+    consumedPills: readNumber(crafting.consumedPills, 0),
   });
 
   return { ok: true, signature, step: readNumber(progressState.step, 0) };

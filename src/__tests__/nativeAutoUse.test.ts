@@ -46,6 +46,25 @@ function buildState({
 }
 
 describe('readNativeAutoUseStatus', () => {
+  it.each([false, true, undefined])(
+    'honors the crafting auto-use enabled toggle (%s), defaulting to enabled',
+    (craftingAutoUseEnabled) => {
+      const state = buildState({ slots: [{ item: 'Qi Pill' }] });
+      const status = readNativeAutoUseStatus(
+        createStore({
+          ...state,
+          player: {
+            player: { ...state.player.player, craftingAutoUseEnabled },
+          },
+        }),
+        { getItemKind },
+      );
+      expect(status.active).toBe(craftingAutoUseEnabled !== false);
+      expect(isCoveredByNativeAutoUse(status, 'Qi Pill')).toBe(
+        craftingAutoUseEnabled !== false,
+      );
+    },
+  );
   it('reports an active loadout with covered names, pillsPerRound and toxicity headroom', () => {
     const status = readNativeAutoUseStatus(
       createStore(
@@ -269,7 +288,9 @@ describe('projectNativeAutoUse', () => {
       item: 'Qi Pill',
       blocks: [
         {
-          conditions: [{ kind: 'thisEffect', comparison: 'lessThan', value: 1 }],
+          conditions: [
+            { kind: 'thisEffect', comparison: 'lessThan', value: 1 },
+          ],
         },
       ],
       conditions: [{ kind: 'thisEffect' }],
