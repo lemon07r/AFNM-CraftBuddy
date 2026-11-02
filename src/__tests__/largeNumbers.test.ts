@@ -16,7 +16,6 @@ import {
   checkPrecision,
   parseGameNumber,
   MAX_SAFE_VALUE,
-  LARGE_NUMBER_THRESHOLD,
 } from '../utils/largeNumbers';
 
 describe('isSafeNumber', () => {
@@ -108,9 +107,11 @@ describe('formatLargeNumber', () => {
   it('should format small numbers with commas', () => {
     expect(formatLargeNumber(1234)).toBe('1,234');
     expect(formatLargeNumber(999)).toBe('999');
+    expect(formatLargeNumber(9999)).toBe('9,999');
   });
 
   it('should format thousands with K suffix', () => {
+    expect(formatLargeNumber(10000)).toBe('10K');
     expect(formatLargeNumber(12345)).toBe('12.35K');
     expect(formatLargeNumber(100000)).toBe('100K');
   });
@@ -167,6 +168,12 @@ describe('formatProgress', () => {
 
   it('should handle mixed sizes', () => {
     expect(formatProgress(5000, 100000)).toBe('5K/100K');
+    // Below the compact threshold the default locale formats each value.
+    expect(formatProgress(1234, 9999)).toBe(
+      `${(1234).toLocaleString()}/${(9999).toLocaleString()}`,
+    );
+    expect(formatProgress(1234, 10000)).toBe('1.2K/10K');
+    expect(formatProgress(10000, 1234)).toBe('10K/1.2K');
   });
 });
 
@@ -265,9 +272,5 @@ describe('constants', () => {
   it('should have reasonable MAX_SAFE_VALUE', () => {
     expect(MAX_SAFE_VALUE).toBeLessThan(Number.MAX_SAFE_INTEGER);
     expect(MAX_SAFE_VALUE).toBeGreaterThan(Number.MAX_SAFE_INTEGER - 10000000);
-  });
-
-  it('should have reasonable LARGE_NUMBER_THRESHOLD', () => {
-    expect(LARGE_NUMBER_THRESHOLD).toBe(10000);
   });
 });

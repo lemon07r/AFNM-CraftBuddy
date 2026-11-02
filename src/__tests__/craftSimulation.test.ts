@@ -326,8 +326,7 @@ function simulateCraft(
       condition,
       forecast,
       {
-        // Fixed work per turn (about what 500 ms reached on a developer
-        // machine) so results don't depend on runner speed.
+        // Fixed 400-node turns so results don't depend on runner speed.
         timeBudgetMs: FIXED_WORK_CLOCK_MS,
         maxNodes: 400,
         beamWidth: 8,
@@ -446,22 +445,6 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
     ).toBe(true);
   });
 
-  it('should complete a longer tutorial craft (comp=100, perf=100)', () => {
-    const state = new CraftingState({
-      qi: 194,
-      stability: 60,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
-
-    const sim = simulateCraft(state, config, 100, 100, neutralOnly, 30);
-    expect(sim.targetsMet).toBe(true);
-    expect(sim.status).not.toBe('blocked');
-    // Efficiency bound: ~9 fusion + ~7 refine + ~3-4 stabilize = ~19-20 turns
-    expect(sim.turnsUsed).toBeLessThanOrEqual(22);
-  });
-
   it('should never recommend stabilize at full stability', () => {
     const state = new CraftingState({
       qi: 194,
@@ -483,7 +466,7 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
     }
   });
 
-  it('should use stabilize to survive when stability is low', () => {
+  it('should complete a longer tutorial craft using stabilize when needed', () => {
     const state = new CraftingState({
       qi: 194,
       stability: 60,
@@ -494,6 +477,9 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
 
     const sim = simulateCraft(state, config, 100, 100, neutralOnly, 30);
 
+    expect(sim.targetsMet).toBe(true);
+    // Efficiency bound: ~9 fusion + ~7 refine + ~3-4 stabilize = ~19-20 turns
+    expect(sim.turnsUsed).toBeLessThanOrEqual(22);
     // In a long craft the optimizer must use stabilize at some point.
     const stabilizeTurns = sim.log.filter((t) => t.skillChosen === 'Stabilize');
     expect(stabilizeTurns.length).toBeGreaterThanOrEqual(1);
@@ -936,25 +922,7 @@ describe('craft simulation — survivability', () => {
 describe('craft simulation — mid-craft stability management', () => {
   const config = beginnerConfig();
 
-  it('should stabilize when stability cannot survive enough turns to finish (generous budget)', () => {
-    const state = new CraftingState({
-      qi: 194,
-      stability: 30,
-      initialMaxStability: 55,
-      stabilityPenalty: 5,
-      completion: 20,
-      perfection: 10,
-    });
-
-    const sim = simulateCraft(state, config, 60, 60, ['neutral'], 25, 6);
-    expect(sim.status).not.toBe('blocked');
-    expect(sim.targetsMet).toBe(true);
-
-    const firstFiveMoves = sim.history.slice(0, 5);
-    expect(firstFiveMoves).toContain('Stabilize');
-  });
-
-  it('should stabilize with realistic search budget (500ms, depth 28)', () => {
+  it('should stabilize early with fixed 400-node turns at depth 28', () => {
     const state = new CraftingState({
       qi: 194,
       stability: 30,
@@ -967,6 +935,7 @@ describe('craft simulation — mid-craft stability management', () => {
     const sim = simulateCraft(state, config, 60, 60, ['neutral'], 25, 28);
     expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
+    expect(sim.history.slice(0, 5)).toContain('Stabilize');
   });
 
   it('should use Forceful Stabilize when it is the only stabilize option', () => {

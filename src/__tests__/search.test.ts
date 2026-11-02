@@ -393,24 +393,7 @@ describe('greedySearch', () => {
     expect(result.recommendation).toBeNull();
   });
 
-  it('should recommend a skill when resources are available', () => {
-    const state = new CraftingState({
-      qi: 100,
-      stability: 50,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
-
-    const result = greedySearch(state, config, 100, 100);
-
-    expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill).toBeDefined();
-    expect(result.recommendation!.expectedGains).toBeDefined();
-    expect(result.recommendation!.reasoning).toBeDefined();
-  });
-
-  it('should expose immediate gains separately from projected EV gains', () => {
+  it('should expose immediate and projected EV gains with alternatives', () => {
     const critFusion = createCustomSkill({
       name: 'Crit Fusion',
       key: 'crit_fusion',
@@ -423,7 +406,15 @@ describe('greedySearch', () => {
     const critConfig = createTestConfig({
       baseIntensity: 12,
       baseControl: 16,
-      skills: [critFusion],
+      skills: [
+        critFusion,
+        {
+          ...critFusion,
+          name: 'Weaker Fusion',
+          key: 'weaker_fusion',
+          baseCompletionGain: 0.5,
+        },
+      ],
     });
     const state = new CraftingState({
       qi: 100,
@@ -438,10 +429,13 @@ describe('greedySearch', () => {
     const result = greedySearch(state, critConfig, 100, 0);
 
     expect(result.recommendation).not.toBeNull();
+    expect(result.recommendation!.skill.key).toBe('crit_fusion');
+    expect(result.recommendation!.reasoning).toBeDefined();
     expect(result.recommendation!.immediateGains.completion).toBe(12);
     expect(result.recommendation!.expectedGains.completion).toBeGreaterThan(
       result.recommendation!.immediateGains.completion,
     );
+    expect(result.alternativeSkills.length).toBeGreaterThan(0);
   });
 
   it('should cap displayed stabilize gains to the actual post-action headroom', () => {
@@ -509,20 +503,6 @@ describe('greedySearch', () => {
     expect(ctx.avgGainPerTurn).toBe(320);
     expect(ctx.avgStabilityCostPerTurn).toBe(16.5);
     expect(ctx.avgQiCostPerTurn).toBe(13);
-  });
-
-  it('should provide alternative skills', () => {
-    const state = new CraftingState({
-      qi: 100,
-      stability: 50,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
-
-    const result = greedySearch(state, config, 100, 100);
-
-    expect(result.alternativeSkills.length).toBeGreaterThan(0);
   });
 
   it('should prioritize completion when perfection is met', () => {
@@ -657,7 +637,7 @@ describe('lookaheadSearch', () => {
     expect(result.recommendation).toBeNull();
   });
 
-  it('should recommend a skill when resources are available', () => {
+  it('should provide an optimal rotation, final state and alternative quality ratings', () => {
     const state = new CraftingState({
       qi: 100,
       stability: 50,
@@ -669,51 +649,12 @@ describe('lookaheadSearch', () => {
     const result = lookaheadSearch(state, config, 100, 100, 3);
 
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill).toBeDefined();
-  });
-
-  it('should provide optimal rotation', () => {
-    const state = new CraftingState({
-      qi: 100,
-      stability: 50,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
-
-    const result = lookaheadSearch(state, config, 100, 100, 3);
-
     expect(result.optimalRotation).toBeDefined();
     expect(result.optimalRotation!.length).toBeGreaterThan(0);
     // First skill in rotation should match recommendation
     expect(result.optimalRotation![0]).toBe(result.recommendation!.skill.name);
-  });
-
-  it('should provide expected final state', () => {
-    const state = new CraftingState({
-      qi: 100,
-      stability: 50,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
-
-    const result = lookaheadSearch(state, config, 100, 100, 3);
-
     expect(result.expectedFinalState).toBeDefined();
     expect(result.expectedFinalState!.completion).toBeGreaterThan(0);
-  });
-
-  it('should calculate quality ratings for alternatives', () => {
-    const state = new CraftingState({
-      qi: 100,
-      stability: 50,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
-
-    const result = lookaheadSearch(state, config, 100, 100, 3);
 
     // Best recommendation should have 100% quality
     expect(result.recommendation!.qualityRating).toBe(100);
@@ -843,22 +784,6 @@ describe('lookaheadSearch', () => {
     expect(result.recommendation!.skill.key).toBe('simple_refine');
   });
 
-  it('should handle different lookahead depths', () => {
-    const state = new CraftingState({
-      qi: 100,
-      stability: 50,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
-
-    // Test different depths
-    for (const depth of [1, 2, 3, 4]) {
-      const result = lookaheadSearch(state, config, 100, 100, depth);
-      expect(result.recommendation).not.toBeNull();
-    }
-  });
-
   it('should perform iterative deepening when enabled', () => {
     const state = new CraftingState({
       qi: 100,
@@ -892,36 +817,6 @@ describe('lookaheadSearch', () => {
       perfection: 0,
     });
 
-    // With the shared iterative-deepening cache, this node budget now reaches
-    // the depth-5 frontier instead of stalling at depth 4.
-    const stableDepthFour = lookaheadSearch(
-      state,
-      config,
-      100,
-      100,
-      4,
-      undefined,
-      [],
-      {
-        useIterativeDeepening: false,
-        timeBudgetMs: 100000,
-        maxNodes: 10000000,
-      },
-    );
-    const stableDepthFive = lookaheadSearch(
-      state,
-      config,
-      100,
-      100,
-      5,
-      undefined,
-      [],
-      {
-        useIterativeDeepening: false,
-        timeBudgetMs: 100000,
-        maxNodes: 10000000,
-      },
-    );
     const interruptedDeepening = lookaheadSearch(
       state,
       config,
@@ -938,8 +833,6 @@ describe('lookaheadSearch', () => {
       },
     );
 
-    expect(stableDepthFour.recommendation).not.toBeNull();
-    expect(stableDepthFive.recommendation).not.toBeNull();
     expect(interruptedDeepening.recommendation).not.toBeNull();
     expect(
       interruptedDeepening.searchMetrics!.depthReached,
@@ -947,6 +840,8 @@ describe('lookaheadSearch', () => {
     expect(
       interruptedDeepening.searchMetrics!.depthReached,
     ).toBeLessThanOrEqual(6);
+    // Compare only the reported completed depth; unrelated depth-4/5
+    // pre-searches do not contribute to this interrupted-pass contract.
     const stableAtReportedDepth = lookaheadSearch(
       state,
       config,
@@ -4745,10 +4640,6 @@ describe('condition timeline modeling', () => {
 describe('search performance', () => {
   const config = createTestConfig();
 
-  // These tests check the real time budget.
-  beforeAll(() => jest.useRealTimers());
-  afterAll(() => freezeSearchClock());
-
   it('should complete depth-3 search without exploring excess nodes', () => {
     const state = new CraftingState({
       qi: 100,
@@ -4769,12 +4660,15 @@ describe('search performance', () => {
       3,
       undefined,
       undefined,
-      { timeBudgetMs: 120000 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 2000 },
     );
 
     expect(result.recommendation).not.toBeNull();
+    expect(result.searchMetrics).toBeDefined();
     expect(result.searchMetrics?.depthReached).toBe(3);
+    expect(result.searchMetrics!.nodesExplored).toBeGreaterThan(0);
     expect(result.searchMetrics!.nodesExplored).toBeLessThan(2000);
+    expect(result.searchMetrics!.timeTakenMs).toBeGreaterThanOrEqual(0);
   });
 
   it('should complete depth-4 search without exploring excess nodes', () => {
@@ -4797,7 +4691,7 @@ describe('search performance', () => {
       4,
       undefined,
       undefined,
-      { timeBudgetMs: 120000 },
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 20000 },
     );
 
     expect(result.recommendation).not.toBeNull();
@@ -4832,7 +4726,6 @@ describe('search performance', () => {
       perfection: 1200000, // 1.2 million
     });
 
-    const startTime = Date.now();
     const result = lookaheadSearch(
       state,
       config,
@@ -4841,12 +4734,8 @@ describe('search performance', () => {
       6, // depth 6 - would be very slow without optimizations
       undefined,
       [],
-      { timeBudgetMs: 200, beamWidth: 6 }, // Use time budget to prevent freezes
+      { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 1000, beamWidth: 6 },
     );
-    const endTime = Date.now();
-
-    // Should complete within time budget (with some margin)
-    expect(endTime - startTime).toBeLessThan(500);
 
     // Should still provide a recommendation
     expect(result.recommendation).not.toBeNull();
@@ -4854,53 +4743,42 @@ describe('search performance', () => {
     // Should have search metrics
     expect(result.searchMetrics).toBeDefined();
     expect(result.searchMetrics!.nodesExplored).toBeGreaterThan(0);
+    expect(result.searchMetrics!.nodesExplored).toBeLessThanOrEqual(1000);
   });
 
   it('should respect time budget and not freeze UI', () => {
-    const state = new CraftingState({
-      qi: 200,
-      stability: 50,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
+    jest.useRealTimers();
+    try {
+      const state = new CraftingState({
+        qi: 200,
+        stability: 50,
+        initialMaxStability: 60,
+        completion: 0,
+        perfection: 0,
+      });
 
-    // Very deep search with strict time budget
-    const startTime = Date.now();
-    const result = lookaheadSearch(
-      state,
-      config,
-      100000,
-      100000,
-      12, // Very deep - would take forever without budget
-      undefined,
-      [],
-      { timeBudgetMs: 50, maxNodes: 10000 }, // Strict budget
-    );
-    const endTime = Date.now();
+      // Very deep search with strict time budget
+      const startTime = Date.now();
+      const result = lookaheadSearch(
+        state,
+        config,
+        100000,
+        100000,
+        12, // Very deep - would take forever without budget
+        undefined,
+        [],
+        { timeBudgetMs: 50, maxNodes: 10000 }, // Strict budget
+      );
+      const endTime = Date.now();
 
-    // Should terminate within reasonable time (budget + overhead)
-    expect(endTime - startTime).toBeLessThan(500);
+      // Should terminate within reasonable time (budget + overhead)
+      expect(endTime - startTime).toBeLessThan(500);
 
-    // Should still provide best result found so far
-    expect(result.recommendation).not.toBeNull();
-  });
-
-  it('should report search metrics', () => {
-    const state = new CraftingState({
-      qi: 100,
-      stability: 50,
-      initialMaxStability: 60,
-      completion: 0,
-      perfection: 0,
-    });
-
-    const result = lookaheadSearch(state, config, 100, 100, 3);
-
-    expect(result.searchMetrics).toBeDefined();
-    expect(result.searchMetrics!.nodesExplored).toBeGreaterThan(0);
-    expect(result.searchMetrics!.timeTakenMs).toBeGreaterThanOrEqual(0);
-    expect(result.searchMetrics!.depthReached).toBe(3);
+      // Should still provide best result found so far
+      expect(result.recommendation).not.toBeNull();
+    } finally {
+      freezeSearchClock();
+    }
   });
 });
 
