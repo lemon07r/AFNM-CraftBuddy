@@ -1687,6 +1687,28 @@ did not emit stack events or execute group changes at inspection time.
 
 ### Stock companion and auto-use scope
 
+#### Realized pool deltas and zero-amount events
+
+Pool applier `u7c` starts at `G:14935853`, snapshots the old pool, applies
+the signed amount (including Qi Boost for restoration), and immediately
+clamps spending at zero or restoration at maxpool. Its `poolSpent` payload
+is old minus new (`G:14936191`); `poolRestored` is new minus old
+(`G:14936588`). These calls are unconditional within the respective branch,
+even when the realized delta is zero. The registered dispatcher at
+`G:14949950–14951600` filters held listeners/re-entry but does not filter a
+zero numeric amount. A full 200 pool with +10 then −10 therefore emits
+`poolRestored(0)` then `poolSpent(10)`, finishing at 190. A fixed-payout or
+event-count listener still fires on the zero restoration; an amount-scaled
+listener receives zero.
+
+Technique/mastery pool effects call this applier at `G:14942802`; ordinary
+and triggered buff effects use the same applier at `G:14938504`.
+The technique handler inspected at `G:14944000–14948000` executes effect
+trees and has no scalar `restoresQi`/`qiRestore` route with a separate skip
+rule. CraftBuddy's scalar restore compatibility path therefore follows the
+same realized-delta and zero-event semantics. Earlier local documentation
+claiming a zero restoration emitted no event was incorrect.
+
 #### Bar overflow and companion ordering
 
 In the current 0.7.19 bundle, perfection applier `s7c` (`G:14932019`) and

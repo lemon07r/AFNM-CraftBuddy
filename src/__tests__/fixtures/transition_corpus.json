@@ -171434,6 +171434,225 @@
       ]
     },
     {
+      "name": "companion-restore-su-full",
+      "input": {
+        "state": {
+          "qi": 200,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 200,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 2,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {
+            "retarget_probe": 1
+          },
+          "buffs": {
+            "su_lianhua's_assistance": {
+              "name": "Su Lianhua's Assistance",
+              "stacks": 1,
+              "definition": {
+                "name": "Su Lianhua's Assistance",
+                "canStack": false,
+                "effects": [],
+                "craftingEffectInterceptors": [
+                  {
+                    "appliesTo": [
+                      "completion",
+                      "perfection"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "step % 3 == 2 && amount > 0"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 1.5
+                    }
+                  }
+                ]
+              }
+            },
+            "qi_restore_observer": {
+              "name": "Qi restore observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Qi restore observer",
+                "canStack": false,
+                "effects": [],
+                "stats": {
+                  "qiBoost": {
+                    "value": 50
+                  }
+                },
+                "triggeredEffects": [
+                  {
+                    "trigger": "poolRestored",
+                    "effects": [
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restored",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "calls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 0,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "restoresQi": true,
+              "qiRestore": 10
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 200,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 3,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "su_lianhua's_assistance",
+                "stacks": 1,
+                "internalState": {}
+              },
+              {
+                "key": "qi_restore_observer",
+                "stacks": 1,
+                "internalState": {
+                  "calls": 1,
+                  "restored": 0
+                }
+              }
+            ],
+            "items": [
+              {
+                "key": "retarget_probe",
+                "count": 1
+              }
+            ],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "companion-restore-han-full",
       "input": {
         "state": {
@@ -171642,7 +171861,10 @@
               {
                 "key": "qi_restore_observer",
                 "stacks": 1,
-                "internalState": {}
+                "internalState": {
+                  "calls": 1,
+                  "restored": 0
+                }
               }
             ],
             "items": [],
@@ -173135,6 +173357,1653 @@
                   "first": 0.5,
                   "last": 0.5,
                   "total": 1
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "companion-pool-technique-su-full",
+      "input": {
+        "state": {
+          "qi": 200,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 200,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {
+            "retarget_probe": 1
+          },
+          "buffs": {
+            "su_lianhua's_assistance": {
+              "name": "Su Lianhua's Assistance",
+              "stacks": 1,
+              "definition": {
+                "name": "Su Lianhua's Assistance",
+                "canStack": false,
+                "effects": [],
+                "craftingEffectInterceptors": [
+                  {
+                    "appliesTo": [
+                      "completion",
+                      "perfection"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "step % 3 == 2 && amount > 0"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 1.5
+                    }
+                  }
+                ]
+              }
+            },
+            "pool_delta_observer": {
+              "name": "Pool delta observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Pool delta observer",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "poolRestored",
+                    "effects": [
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 2
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restored",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restoreCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "poolSpent",
+                    "effects": [
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spent",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spendCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 0,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "effects": [
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": 10
+                  }
+                },
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": -10
+                  }
+                }
+              ]
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 190,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 2,
+            "perfection": 10,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "su_lianhua's_assistance",
+                "stacks": 1,
+                "internalState": {}
+              },
+              {
+                "key": "pool_delta_observer",
+                "stacks": 1,
+                "internalState": {
+                  "restoreCalls": 1,
+                  "restored": 0,
+                  "spendCalls": 1,
+                  "spent": 10
+                }
+              }
+            ],
+            "items": [
+              {
+                "key": "retarget_probe",
+                "count": 1
+              }
+            ],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "companion-pool-technique-su-partial-spend",
+      "input": {
+        "state": {
+          "qi": 5,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 200,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {
+            "retarget_probe": 1
+          },
+          "buffs": {
+            "su_lianhua's_assistance": {
+              "name": "Su Lianhua's Assistance",
+              "stacks": 1,
+              "definition": {
+                "name": "Su Lianhua's Assistance",
+                "canStack": false,
+                "effects": [],
+                "craftingEffectInterceptors": [
+                  {
+                    "appliesTo": [
+                      "completion",
+                      "perfection"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "step % 3 == 2 && amount > 0"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 1.5
+                    }
+                  }
+                ]
+              }
+            },
+            "pool_delta_observer": {
+              "name": "Pool delta observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Pool delta observer",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "poolRestored",
+                    "effects": [
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 2
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restored",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restoreCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "poolSpent",
+                    "effects": [
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spent",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spendCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 0,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "effects": [
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": -10
+                  }
+                },
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": 10
+                  }
+                }
+              ]
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 10,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 12,
+            "perfection": 5,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "su_lianhua's_assistance",
+                "stacks": 1,
+                "internalState": {}
+              },
+              {
+                "key": "pool_delta_observer",
+                "stacks": 1,
+                "internalState": {
+                  "restoreCalls": 1,
+                  "restored": 10,
+                  "spendCalls": 1,
+                  "spent": 5
+                }
+              }
+            ],
+            "items": [
+              {
+                "key": "retarget_probe",
+                "count": 1
+              }
+            ],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "companion-pool-technique-su-empty",
+      "input": {
+        "state": {
+          "qi": 0,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 200,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {
+            "retarget_probe": 1
+          },
+          "buffs": {
+            "su_lianhua's_assistance": {
+              "name": "Su Lianhua's Assistance",
+              "stacks": 1,
+              "definition": {
+                "name": "Su Lianhua's Assistance",
+                "canStack": false,
+                "effects": [],
+                "craftingEffectInterceptors": [
+                  {
+                    "appliesTo": [
+                      "completion",
+                      "perfection"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "step % 3 == 2 && amount > 0"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 1.5
+                    }
+                  }
+                ]
+              }
+            },
+            "pool_delta_observer": {
+              "name": "Pool delta observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Pool delta observer",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "poolRestored",
+                    "effects": [
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 2
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restored",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restoreCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "poolSpent",
+                    "effects": [
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spent",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spendCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 0,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "effects": [
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": -10
+                  }
+                },
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": 10
+                  }
+                }
+              ]
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 10,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 12,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "su_lianhua's_assistance",
+                "stacks": 1,
+                "internalState": {}
+              },
+              {
+                "key": "pool_delta_observer",
+                "stacks": 1,
+                "internalState": {
+                  "restoreCalls": 1,
+                  "restored": 10,
+                  "spendCalls": 1,
+                  "spent": 0
+                }
+              }
+            ],
+            "items": [
+              {
+                "key": "retarget_probe",
+                "count": 1
+              }
+            ],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "companion-pool-technique-han-full",
+      "input": {
+        "state": {
+          "qi": 200,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 150,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {},
+          "buffs": {
+            "han_weiguang's_assistance": {
+              "name": "Han Weiguang's Assistance",
+              "stacks": 1,
+              "definition": {
+                "name": "Han Weiguang's Assistance",
+                "canStack": false,
+                "effects": [],
+                "stabilityLossPrevention": {
+                  "uses": 2
+                }
+              },
+              "internalState": {
+                "preventedStabilityLosses": 0
+              }
+            },
+            "loss_observer": {
+              "name": "Loss observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Loss observer",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stabilitySpent",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "spent",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "calls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "pool_delta_observer": {
+              "name": "Pool delta observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Pool delta observer",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "poolRestored",
+                    "effects": [
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 2
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restored",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restoreCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "poolSpent",
+                    "effects": [
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spent",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spendCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 0,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "effects": [
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": 10
+                  }
+                },
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": -10
+                  }
+                }
+              ]
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 190,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 2,
+            "perfection": 10,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "han_weiguang's_assistance",
+                "stacks": 1,
+                "internalState": {
+                  "preventedStabilityLosses": 0
+                }
+              },
+              {
+                "key": "loss_observer",
+                "stacks": 1,
+                "internalState": {}
+              },
+              {
+                "key": "pool_delta_observer",
+                "stacks": 1,
+                "internalState": {
+                  "restoreCalls": 1,
+                  "restored": 0,
+                  "spendCalls": 1,
+                  "spent": 10
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "companion-pool-technique-han-partial-spend",
+      "input": {
+        "state": {
+          "qi": 5,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 150,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {},
+          "buffs": {
+            "han_weiguang's_assistance": {
+              "name": "Han Weiguang's Assistance",
+              "stacks": 1,
+              "definition": {
+                "name": "Han Weiguang's Assistance",
+                "canStack": false,
+                "effects": [],
+                "stabilityLossPrevention": {
+                  "uses": 2
+                }
+              },
+              "internalState": {
+                "preventedStabilityLosses": 0
+              }
+            },
+            "loss_observer": {
+              "name": "Loss observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Loss observer",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stabilitySpent",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "spent",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "calls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "pool_delta_observer": {
+              "name": "Pool delta observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Pool delta observer",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "poolRestored",
+                    "effects": [
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 2
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restored",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restoreCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "poolSpent",
+                    "effects": [
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spent",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spendCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 0,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "effects": [
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": -10
+                  }
+                },
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": 10
+                  }
+                }
+              ]
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 10,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 12,
+            "perfection": 5,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "han_weiguang's_assistance",
+                "stacks": 1,
+                "internalState": {
+                  "preventedStabilityLosses": 0
+                }
+              },
+              {
+                "key": "loss_observer",
+                "stacks": 1,
+                "internalState": {}
+              },
+              {
+                "key": "pool_delta_observer",
+                "stacks": 1,
+                "internalState": {
+                  "restoreCalls": 1,
+                  "restored": 10,
+                  "spendCalls": 1,
+                  "spent": 5
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "companion-pool-technique-han-empty",
+      "input": {
+        "state": {
+          "qi": 0,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 150,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {},
+          "buffs": {
+            "han_weiguang's_assistance": {
+              "name": "Han Weiguang's Assistance",
+              "stacks": 1,
+              "definition": {
+                "name": "Han Weiguang's Assistance",
+                "canStack": false,
+                "effects": [],
+                "stabilityLossPrevention": {
+                  "uses": 2
+                }
+              },
+              "internalState": {
+                "preventedStabilityLosses": 0
+              }
+            },
+            "loss_observer": {
+              "name": "Loss observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Loss observer",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stabilitySpent",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "spent",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "calls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "pool_delta_observer": {
+              "name": "Pool delta observer",
+              "stacks": 1,
+              "definition": {
+                "name": "Pool delta observer",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "poolRestored",
+                    "effects": [
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "completion",
+                        "amount": {
+                          "value": 2
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restored",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "restoreCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "poolSpent",
+                    "effects": [
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spent",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "spendCalls",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 0,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "effects": [
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": -10
+                  }
+                },
+                {
+                  "kind": "pool",
+                  "amount": {
+                    "value": 10
+                  }
+                }
+              ]
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 10,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 12,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "han_weiguang's_assistance",
+                "stacks": 1,
+                "internalState": {
+                  "preventedStabilityLosses": 0
+                }
+              },
+              {
+                "key": "loss_observer",
+                "stacks": 1,
+                "internalState": {}
+              },
+              {
+                "key": "pool_delta_observer",
+                "stacks": 1,
+                "internalState": {
+                  "restoreCalls": 1,
+                  "restored": 10,
+                  "spendCalls": 1,
+                  "spent": 0
                 }
               }
             ],

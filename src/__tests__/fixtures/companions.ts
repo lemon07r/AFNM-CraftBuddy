@@ -33,7 +33,105 @@ export function companionScenarios() {
     ...companionRestoreScenarios(),
     ...companionCapScenarios(),
     ...companionWeightedBarScenarios(),
+    ...companionPoolScenarios(),
   ];
+}
+
+export function companionPoolScenarios() {
+  return (['su', 'han'] as const).flatMap((companion) =>
+    [
+      {
+        edge: 'full',
+        qi: 200,
+        amounts: [10, -10],
+        restored: 0,
+        spent: 10,
+        finalQi: 190,
+      },
+      {
+        edge: 'partial-spend',
+        qi: 5,
+        amounts: [-10, 10],
+        restored: 10,
+        spent: 5,
+        finalQi: 10,
+      },
+      {
+        edge: 'empty',
+        qi: 0,
+        amounts: [-10, 10],
+        restored: 10,
+        spent: 0,
+        finalQi: 10,
+      },
+    ].map(({ edge, qi, amounts, restored, spent, finalQi }) => {
+      const base = companion === 'su' ? suScenarios()[0] : hanScenarios()[0];
+      const observer: BuffDefinition = {
+        name: 'Pool delta observer',
+        canStack: false,
+        effects: [],
+        triggeredEffects: [
+          {
+            trigger: 'poolRestored',
+            effects: [
+              { kind: 'completion', amount: { value: 1, eqn: 'amount' } },
+              { kind: 'completion', amount: { value: 2 } },
+              {
+                kind: 'setState',
+                key: 'restored',
+                mode: 'add',
+                value: { value: 1, eqn: 'amount' },
+              },
+              {
+                kind: 'setState',
+                key: 'restoreCalls',
+                mode: 'add',
+                value: { value: 1 },
+              },
+            ],
+          },
+          {
+            trigger: 'poolSpent',
+            effects: [
+              { kind: 'perfection', amount: { value: 1, eqn: 'amount' } },
+              {
+                kind: 'setState',
+                key: 'spent',
+                mode: 'add',
+                value: { value: 1, eqn: 'amount' },
+              },
+              {
+                kind: 'setState',
+                key: 'spendCalls',
+                mode: 'add',
+                value: { value: 1 },
+              },
+            ],
+          },
+        ],
+      };
+      const buffs = new Map(base.state.buffs);
+      buffs.set('pool_delta_observer', {
+        name: observer.name,
+        stacks: 1,
+        definition: observer,
+      });
+      const skill = retargetSkill({
+        qiCost: 0,
+        stabilityCost: 0,
+        effects: amounts.map((value) => ({ kind: 'pool', amount: { value } })),
+      });
+      return {
+        name: `companion-pool-technique-${companion}-${edge}`,
+        state: base.state.copy({ qi, buffs }),
+        skill,
+        config: retargetConfig(skill),
+        restored,
+        spent,
+        finalQi,
+      };
+    }),
+  );
 }
 
 export function companionWeightedBarScenarios() {
@@ -133,62 +231,65 @@ export function companionCapScenarios() {
 }
 
 export function companionRestoreScenarios() {
-  return ['su-scalar', 'han-scalar', 'su-effect', 'han-effect', 'han-full'].map(
-    (edge) => {
-      const base = edge.startsWith('su-')
-        ? suScenarios()[2]
-        : hanScenarios()[0];
-      const observer: BuffDefinition = {
-        name: 'Qi restore observer',
-        canStack: false,
-        effects: [],
-        stats: { qiBoost: { value: 50 } },
-        triggeredEffects: [
-          {
-            trigger: 'poolRestored',
-            effects: [
-              { kind: 'completion', amount: { value: 1, eqn: 'amount' } },
-              {
-                kind: 'setState',
-                key: 'restored',
-                mode: 'add',
-                value: { value: 1, eqn: 'amount' },
-              },
-              {
-                kind: 'setState',
-                key: 'calls',
-                mode: 'add',
-                value: { value: 1 },
-              },
-            ],
-          },
-        ],
-      };
-      const buffs = new Map(base.state.buffs);
-      buffs.set('qi_restore_observer', {
-        name: observer.name,
-        stacks: 1,
-        definition: observer,
-      });
-      const full = edge === 'han-full';
-      const state = base.state.copy({ qi: full ? 200 : 199, buffs });
-      const skill = retargetSkill({
-        qiCost: full ? 0 : 2,
-        stabilityCost: 0,
-        restoresQi: true,
-        qiRestore: 10,
-        effects: edge.endsWith('effect')
-          ? [{ kind: 'completion', amount: { value: 5 } }]
-          : undefined,
-      });
-      return {
-        name: `companion-restore-${edge}`,
-        state,
-        skill,
-        config: retargetConfig(skill),
-      };
-    },
-  );
+  return [
+    'su-scalar',
+    'han-scalar',
+    'su-effect',
+    'han-effect',
+    'su-full',
+    'han-full',
+  ].map((edge) => {
+    const base = edge.startsWith('su-') ? suScenarios()[2] : hanScenarios()[0];
+    const observer: BuffDefinition = {
+      name: 'Qi restore observer',
+      canStack: false,
+      effects: [],
+      stats: { qiBoost: { value: 50 } },
+      triggeredEffects: [
+        {
+          trigger: 'poolRestored',
+          effects: [
+            { kind: 'completion', amount: { value: 1, eqn: 'amount' } },
+            {
+              kind: 'setState',
+              key: 'restored',
+              mode: 'add',
+              value: { value: 1, eqn: 'amount' },
+            },
+            {
+              kind: 'setState',
+              key: 'calls',
+              mode: 'add',
+              value: { value: 1 },
+            },
+          ],
+        },
+      ],
+    };
+    const buffs = new Map(base.state.buffs);
+    buffs.set('qi_restore_observer', {
+      name: observer.name,
+      stacks: 1,
+      definition: observer,
+    });
+    const full = edge.endsWith('full');
+    const state = base.state.copy({ qi: full ? 200 : 199, buffs });
+    const skill = retargetSkill({
+      qiCost: full ? 0 : 2,
+      stabilityCost: 0,
+      restoresQi: true,
+      qiRestore: 10,
+      effects: edge.endsWith('effect')
+        ? [{ kind: 'completion', amount: { value: 5 } }]
+        : undefined,
+    });
+    return {
+      name: `companion-restore-${edge}`,
+      state,
+      skill,
+      config: retargetConfig(skill),
+    };
+  });
 }
 
 export function companionPreviewScenarios() {

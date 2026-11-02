@@ -4475,7 +4475,7 @@ function applySkillTransition(
   // 0.7.7+ trigger amounts: the runtime fires `poolSpent` when the cost is
   // paid and `poolRestored` when a restore lands, each with the actual delta.
   const qiSpentByCost = Math.max(0, state.qi - newQi);
-  let qiRestoredBySkill = 0;
+  let qiRestoredBySkill: number | undefined;
   const hasExplicitPoolEffect =
     Array.isArray(skill.effects) &&
     skill.effects.some((effect) => effect?.kind === 'pool');
@@ -4752,7 +4752,10 @@ function applySkillTransition(
   ): void => {
     if (
       !Number.isFinite(amount) ||
-      (amount <= 0 && !trigger.startsWith('stackLost.'))
+      (amount <= 0 &&
+        trigger !== 'poolRestored' &&
+        trigger !== 'poolSpent' &&
+        !trigger.startsWith('stackLost.'))
     ) {
       return;
     }
@@ -4791,6 +4794,17 @@ function applySkillTransition(
       }
       activeTriggers.delete(guardKey);
     }
+  };
+
+  const applyPoolChange = (amount: number): void => {
+    const before = newQi;
+    newQi = clampQi(newQi + amount);
+    // u7c dispatches the realized delta, including zero, in the requested
+    // direction. Keep spend/restoration event counts even at a pool bound.
+    dispatchBuffTriggers(
+      amount < 0 ? 'poolSpent' : 'poolRestored',
+      amount < 0 ? before - newQi : newQi - before,
+    );
   };
 
   let techniquePoolDelta = 0;
@@ -4955,12 +4969,7 @@ function applySkillTransition(
           Math.abs(amount),
         );
     } else if (effect.kind === 'pool') {
-      newQi = clampQi(newQi + amount);
-      if (amount !== 0)
-        dispatchBuffTriggers(
-          amount > 0 ? 'poolRestored' : 'poolSpent',
-          Math.abs(amount),
-        );
+      if (factor > 0) applyPoolChange(amount);
     } else if (effect.kind === 'maxStability') {
       const applied = maxStabilitySealed ? Math.min(0, raw) : raw;
       stabilityProjection.changeTechnique(0, -applied, conditionProbability);
@@ -4991,7 +5000,7 @@ function applySkillTransition(
     newStability -= effectiveStabilityCost;
     if (effectiveStabilityCost > 0)
       dispatchBuffTriggers('stabilitySpent', effectiveStabilityCost);
-    if (qiRestoredBySkill > 0)
+    if (qiRestoredBySkill !== undefined)
       dispatchBuffTriggers('poolRestored', qiRestoredBySkill);
     techniqueProgress.stability = stabilityProjection.meanStability();
   }
@@ -5400,7 +5409,7 @@ function applySkillTransition(
       if (qiSpentByCost > 0) {
         dispatchBuffTriggers('poolSpent', qiSpentByCost);
       }
-      if (qiRestoredBySkill > 0) {
+      if (qiRestoredBySkill !== undefined) {
         dispatchBuffTriggers('poolRestored', qiRestoredBySkill);
       }
     }

@@ -17,9 +17,59 @@ import {
   companionRestoreScenarios,
   companionCapScenarios,
   companionWeightedBarScenarios,
+  companionPoolScenarios,
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('companion realized pool events', () => {
+  it.each(companionPoolScenarios())(
+    'dispatches actual clamped deltas including zero: $name',
+    ({ state, skill, config, restored, spent, finalQi }) => {
+      const next = applySkill(state, skill, config)!;
+      expect(next.qi).toBe(finalQi);
+      expect(next.buffs.get('pool_delta_observer')?.internalState).toEqual({
+        restored,
+        spent,
+        restoreCalls: 1,
+        spendCalls: 1,
+      });
+      // A zero restoration still fires the event-count/fixed-payout listener.
+      expect(next.completion).toBe(restored + 2);
+      expect(next.perfection).toBe(spent);
+      const preview = calculateSkillGains(state, skill, config);
+      expect(preview.completion).toBe(restored + 2);
+      expect(preview.perfection).toBe(spent);
+      expect(
+        state.buffs.get('pool_delta_observer')?.internalState,
+      ).toBeUndefined();
+    },
+  );
+
+  it('distinguishes an executed zero pool effect from a failed technique', () => {
+    const base = companionPoolScenarios()[0];
+    const skill = {
+      ...base.skill,
+      effects: [{ kind: 'pool' as const, amount: { value: 0 } }],
+    };
+    const next = applySkill(base.state, skill, base.config)!;
+    expect(next.qi).toBe(200);
+    expect(next.completion).toBe(2);
+    expect(next.buffs.get('pool_delta_observer')?.internalState).toEqual({
+      restored: 0,
+      restoreCalls: 1,
+    });
+    const failed = applySkill(
+      base.state,
+      { ...skill, successChance: 0 },
+      base.config,
+    )!;
+    expect(failed.completion).toBe(0);
+    expect(
+      failed.buffs.get('pool_delta_observer')?.internalState,
+    ).toBeUndefined();
+  });
+});
 
 describe('Han survivability floor', () => {
   it.each([
@@ -217,9 +267,10 @@ describe('ordered scalar Qi restoration', () => {
         : 0;
       expect(next.qi).toBe(200);
       expect(next.completion).toBe(techniqueGain + (full ? 0 : 3));
-      expect(next.buffs.get('qi_restore_observer')?.internalState).toEqual(
-        full ? undefined : { restored: 3, calls: 1 },
-      );
+      expect(next.buffs.get('qi_restore_observer')?.internalState).toEqual({
+        restored: full ? 0 : 3,
+        calls: 1,
+      });
       expect(
         state.buffs.get('qi_restore_observer')?.internalState,
       ).toBeUndefined();
