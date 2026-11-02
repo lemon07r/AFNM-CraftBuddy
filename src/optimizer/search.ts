@@ -612,8 +612,6 @@ function estimateWeightedProgressPerTurn(
 function estimateTurnsRemainingFromContext(
   completionRemaining: number,
   perfectionRemaining: number,
-  completionShare: number,
-  perfectionShare: number,
   ctx: ScoringContext,
 ): number {
   if (completionRemaining <= 0 && perfectionRemaining <= 0) {
@@ -631,15 +629,14 @@ function estimateTurnsRemainingFromContext(
     );
   }
 
-  const weightedProgressPerTurn = estimateWeightedProgressPerTurn(
-    completionShare,
-    perfectionShare,
-    ctx,
-  );
-  return Math.ceil(
-    (completionRemaining + perfectionRemaining) /
-      Math.max(1, weightedProgressPerTurn),
-  );
+  // Joint productive-action estimate: both per-bar workloads and the total
+  // workload must fit. Total gain counts a dual-bar action once, while the
+  // per-bar bounds prevent a fast bar from hiding the slower binding bar.
+  return Math.ceil(Math.max(
+    completionRemaining / Math.max(1, ctx.avgCompletionGainPerTurn),
+    perfectionRemaining / Math.max(1, ctx.avgPerfectionGainPerTurn),
+    (completionRemaining + perfectionRemaining) / Math.max(1, ctx.avgGainPerTurn),
+  ));
 }
 
 /**
@@ -2247,8 +2244,6 @@ function scoreState(
   const estimatedTurnsRemaining = estimateTurnsRemainingFromContext(
     compRemaining,
     perfRemaining,
-    compNeedShare,
-    perfNeedShare,
     ctx,
   );
 
@@ -2281,8 +2276,6 @@ function scoreState(
   const baseEstimatedTurnsRemaining = estimateTurnsRemainingFromContext(
     baseCompRemaining,
     basePerfRemaining,
-    baseCompNeedShare,
-    basePerfNeedShare,
     ctx,
   );
   const stepPenaltyWeight = Math.max(
@@ -6161,11 +6154,6 @@ function runLookaheadSearch(
       0,
       effectivePerfGoal - finalState.perfection,
     );
-    const totalRemaining = compRemaining + perfRemaining;
-    const compNeedShare =
-      totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
-    const perfNeedShare =
-      totalRemaining > 0 ? perfRemaining / totalRemaining : 0.5;
     const projectedSuccessChance =
       finalState.stability > 0
         ? calculateFinishSuccessChance(finalState, targetCompletion)
@@ -6176,8 +6164,6 @@ function runLookaheadSearch(
         : estimateTurnsRemainingFromContext(
             compRemaining,
             perfRemaining,
-            compNeedShare,
-            perfNeedShare,
             scoringCtx,
           );
 
@@ -6271,5 +6257,6 @@ export const __testing = {
   getProgressTowardRawGoal,
   getThresholdForGuaranteedBonusCount,
   buildScoringContext,
+  estimateTurnsRemainingFromContext,
   SCORING,
 } as const;
