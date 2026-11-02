@@ -58,6 +58,18 @@ describe('ordered scalar Qi restoration', () => {
 });
 
 describe('companion paid previews', () => {
+  it('honors an already-resolved stability payment override', () => {
+    const { state, skill, config } = companionPreviewScenarios()[0];
+    expect(calculateSkillGains(state, skill, config).completion).toBe(0);
+    expect(
+      calculateSkillGains(state, skill, config, [], { stabilityCost: 0 })
+        .completion,
+    ).toBe(7);
+    expect(
+      calculateSkillGains(state, skill, config, [], { stabilityCost: 10 })
+        .completion,
+    ).toBe(0);
+  });
   it.each(companionPreviewScenarios())(
     'uses the paid/prevented progress: $name',
     ({ state, skill, config, name }) => {
