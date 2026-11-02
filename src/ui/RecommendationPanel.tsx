@@ -866,7 +866,7 @@ const SingleSkillBox = memo(function SingleSkillBox({
 }: {
   name: string;
   type: string;
-  actionKind?: 'skill' | 'item' | 'finish';
+  actionKind?: 'skill' | 'item';
   gains: { completion: number; perfection: number; stability: number };
   projectedGains?: {
     completion: number;
@@ -886,7 +886,7 @@ const SingleSkillBox = memo(function SingleSkillBox({
   interactive?: boolean;
   onClick?: () => void;
 }) {
-  const visualType = actionKind === 'finish' ? 'finish' : type;
+  const visualType = type;
   const typeColor = getSkillTypeColor(visualType);
   const iconSize = isFollowUp ? 'small' : isPrimary ? 'large' : 'medium';
   const canClickIcon =
@@ -1979,15 +1979,14 @@ const FinalStateSection = memo(function FinalStateSection({
     maxStability?: number;
     turnsRemaining: number;
     projectedSuccessChance?: number;
+    targetsMet?: boolean;
   };
   targetCompletion: number;
   targetPerfection: number;
   turnsCount: number;
   compact?: boolean;
 }) {
-  const targetsMet =
-    state.completion >= targetCompletion &&
-    state.perfection >= targetPerfection;
+  const targetsMet = state.targetsMet === true;
 
   return (
     <Box
@@ -2074,7 +2073,7 @@ const FinalStateSection = memo(function FinalStateSection({
             fontSize: compact ? '0.74rem' : undefined,
           }}
         >
-          Finish chance: {formatSuccessChance(state.projectedSuccessChance)}
+          Outcome success: {formatSuccessChance(state.projectedSuccessChance)}
         </Typography>
       )}
 
@@ -2396,7 +2395,7 @@ export function RecommendationPanel({
       });
     }
 
-    if (result.targetsMet) {
+    if (result.status === 'autoResolved') {
       return renderAutoShell({
         variant: 'success',
         contentPaddingBottom: versionFooterPadding,
@@ -2449,7 +2448,7 @@ export function RecommendationPanel({
                     variant="body2"
                     sx={{ color: colors.completion, fontWeight: 700 }}
                   >
-                    Targets secured
+                    Craft resolved
                   </Typography>
                   <Typography
                     variant="caption"
@@ -2460,8 +2459,8 @@ export function RecommendationPanel({
                       lineHeight: 1.35,
                     }}
                   >
-                    AutoBuddy has nothing left to optimize here. Finish the
-                    craft or move into the next recipe.
+                    The game resolves the craft automatically. No further input
+                    is needed.
                   </Typography>
                 </Box>
               </FlexRow>
@@ -2647,13 +2646,13 @@ export function RecommendationPanel({
   }
 
   // Targets met - Success state
-  if (result.targetsMet) {
+  if (result.status === 'autoResolved') {
     return (
       <PanelContainer variant="success" compact={compactMode}>
         <FlexRow gap={1} sx={{ mb: 1 }}>
           <CheckCircleIcon sx={{ color: colors.completion, fontSize: 24 }} />
           <Typography variant="h6" sx={{ color: colors.completion }}>
-            Targets Met!
+            Craft resolved
           </Typography>
         </FlexRow>
         <Typography variant="body2" sx={{ color: colors.textSecondary }}>
@@ -2838,20 +2837,20 @@ export function RecommendationPanel({
           />
 
           {/* Optimal rotation preview */}
-          {showOptimalRotation && (result.optimalRotationLabels ??
-            result.optimalRotation) && (
-            <RotationSection
-              rotation={
-                result.optimalRotationLabels ?? result.optimalRotation ?? []
-              }
-              maxDisplay={
-                compactMode
-                  ? Math.min(maxRotationDisplay, 4)
-                  : maxRotationDisplay
-              }
-              compact={compactMode}
-            />
-          )}
+          {showOptimalRotation &&
+            (result.optimalRotationLabels ?? result.optimalRotation) && (
+              <RotationSection
+                rotation={
+                  result.optimalRotationLabels ?? result.optimalRotation ?? []
+                }
+                maxDisplay={
+                  compactMode
+                    ? Math.min(maxRotationDisplay, 4)
+                    : maxRotationDisplay
+                }
+                compact={compactMode}
+              />
+            )}
 
           {/* Expected final state */}
           {showExpectedFinalState && result.expectedFinalState && (

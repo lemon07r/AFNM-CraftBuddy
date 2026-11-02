@@ -36,6 +36,7 @@ function buildSnapshot(
     stateFingerprint: 'fp-1',
     craftStep: 4,
     result: {
+      status: 'live',
       recommendation: {
         skill: {
           name: 'Simple Fusion',
@@ -149,13 +150,14 @@ describe('autoCraftController', () => {
     expect(controller.getUiState().armed).toBe(false);
   });
 
-  it('stops with an unsupported state when finish is disallowed by policy', () => {
+  it('does not infer resolution from targetsMet without a projection', () => {
     const controller = createHarness('techniquesOnly');
 
     controller.arm();
     controller.sync(
       buildSnapshot({
         result: {
+          status: 'live',
           recommendation: null,
           alternativeSkills: [],
           isTerminal: false,
@@ -165,17 +167,18 @@ describe('autoCraftController', () => {
     );
 
     expect(executed).toHaveLength(0);
-    expect(controller.getUiState().phase).toBe('unsupported');
-    expect(controller.getUiState().armed).toBe(false);
+    expect(controller.getUiState().phase).toBe('armed');
+    expect(controller.getUiState().armed).toBe(true);
   });
 
-  it('can auto-finish when the selected policy allows it', async () => {
-    const controller = createHarness('techniquesAndFinish');
+  it('stops on autoResolved without dispatching input', async () => {
+    const controller = createHarness('allowCraftEnding');
 
     controller.arm();
     controller.sync(
       buildSnapshot({
         result: {
+          status: 'autoResolved',
           recommendation: null,
           alternativeSkills: [],
           isTerminal: false,
@@ -187,23 +190,21 @@ describe('autoCraftController', () => {
     jest.advanceTimersByTime(100);
     await Promise.resolve();
 
-    expect(executed).toHaveLength(1);
-    expect(executed[0].kind).toBe('finish');
-    expect(executed[0].actionName).toBe('Finish Craft');
+    expect(executed).toHaveLength(0);
+    expect(controller.getUiState().phase).toBe('completed');
   });
 
-  it('marks auto-finish complete after the craft state advances so it does not reissue finish', async () => {
-    const controller = createHarness('techniquesAndFinish');
+  it('keeps playing real techniques when goals are met until resolution is observed', async () => {
+    const controller = createHarness('allowCraftEnding');
+    const liveResult = buildSnapshot().result!;
 
     controller.arm();
     controller.sync(
       buildSnapshot({
         result: {
-          recommendation: null,
-          alternativeSkills: [],
-          isTerminal: false,
+          ...liveResult,
           targetsMet: true,
-        } as any,
+        },
       }),
     );
 
@@ -211,13 +212,14 @@ describe('autoCraftController', () => {
     await Promise.resolve();
 
     expect(executed).toHaveLength(1);
-    expect(executed[0].kind).toBe('finish');
+    expect(executed[0].kind).toBe('skill');
     expect(controller.getUiState().phase).toBe('waiting_for_state');
 
     controller.sync(
       buildSnapshot({
         stateFingerprint: 'fp-2',
         result: {
+          status: 'autoResolved',
           recommendation: null,
           alternativeSkills: [],
           isTerminal: false,
@@ -233,6 +235,7 @@ describe('autoCraftController', () => {
       buildSnapshot({
         stateFingerprint: 'fp-3',
         result: {
+          status: 'autoResolved',
           recommendation: null,
           alternativeSkills: [],
           isTerminal: false,
@@ -245,7 +248,7 @@ describe('autoCraftController', () => {
   });
 
   it('allows item actions only in the full action space policy', async () => {
-    const controller = createHarness('fullActionSpace');
+    const controller = createHarness('includeItems');
 
     controller.arm();
     controller.sync(
@@ -278,35 +281,26 @@ describe('autoCraftController', () => {
     expect(executed[0].kind).toBe('item');
   });
 
-  it('treats finish-like recommendations without actionKind as finish for policy checks', () => {
+  it('stops with an explanation when no legal actions remain', () => {
     const controller = createHarness('techniquesOnly');
 
     controller.arm();
     controller.sync(
       buildSnapshot({
         result: {
-          recommendation: {
-            skill: {
-              name: 'Finish Craft',
-              key: '__finish_craft__',
-              type: 'support',
-            },
-            expectedGains: { completion: 0, perfection: 0, stability: 0 },
-            immediateGains: { completion: 0, perfection: 0, stability: 0 },
-            effectiveCosts: { qi: 0, stability: 0 },
-            score: 80,
-            reasoning: 'End the craft now.',
-          },
+          status: 'blocked',
+          recommendation: null,
           alternativeSkills: [],
-          isTerminal: false,
+          isTerminal: true,
           targetsMet: false,
         } as any,
       }),
     );
 
     expect(executed).toHaveLength(0);
-    expect(controller.getUiState().phase).toBe('unsupported');
+    expect(controller.getUiState().phase).toBe('stopped');
     expect(controller.getUiState().armed).toBe(false);
+    expect(controller.getUiState().statusDetail).toContain('No legal actions');
   });
 
   it('stops techniques-only auto mode before a regular technique that would end the craft', () => {
@@ -340,10 +334,12 @@ describe('autoCraftController', () => {
     expect(executed).toHaveLength(0);
     expect(controller.getUiState().phase).toBe('unsupported');
     expect(controller.getUiState().armed).toBe(false);
-    expect(controller.getUiState().statusTitle).toBe('Manual finish required');
+    expect(controller.getUiState().statusTitle).toBe(
+      'Paused before craft ends',
+    );
   });
 
-  it('stops techniques-only auto mode once a guaranteed finish is available even if the top line is still a skill', () => {
+  it('does not pause a live technique just because a craft-ending alternative exists', async () => {
     const controller = createHarness('techniquesOnly');
 
     controller.arm();
@@ -366,17 +362,18 @@ describe('autoCraftController', () => {
           alternativeSkills: [
             {
               skill: {
-                name: 'Finish Craft',
-                key: '__finish_craft__',
+                name: 'Wait',
+                key: 'wait',
                 type: 'support',
-                actionKind: 'finish',
+                actionKind: 'skill',
               },
               expectedGains: { completion: 0, perfection: 0, stability: 0 },
               immediateGains: { completion: 0, perfection: 0, stability: 0 },
-              effectiveCosts: { qi: 0, stability: 0 },
+              effectiveCosts: { qi: 0, stability: 10 },
               score: 80,
               projectedSuccessChance: 1,
-              reasoning: 'Guaranteed craft success available now.',
+              endsCraft: true,
+              reasoning: 'Ends the craft.',
             },
           ],
           isTerminal: false,
@@ -385,10 +382,10 @@ describe('autoCraftController', () => {
       }),
     );
 
-    expect(executed).toHaveLength(0);
-    expect(controller.getUiState().phase).toBe('unsupported');
-    expect(controller.getUiState().armed).toBe(false);
-    expect(controller.getUiState().statusTitle).toBe('Manual finish required');
+    jest.advanceTimersByTime(100);
+    await Promise.resolve();
+    expect(executed).toHaveLength(1);
+    expect(executed[0].actionName).toBe('Simple Refine');
   });
 
   it('resets to the off state when the craft session ends', () => {
@@ -540,10 +537,10 @@ describe('autoCraftController', () => {
   it('updates the preferred policy while idle without arming auto mode', () => {
     const controller = createHarness();
 
-    controller.setPolicy('fullActionSpace');
+    controller.setPolicy('includeItems');
 
-    expect(controller.getUiState().policy).toBe('fullActionSpace');
-    expect(controller.getUiState().effectivePolicy).toBe('fullActionSpace');
+    expect(controller.getUiState().policy).toBe('includeItems');
+    expect(controller.getUiState().effectivePolicy).toBe('includeItems');
     expect(controller.getUiState().armed).toBe(false);
   });
 
@@ -568,20 +565,20 @@ describe('autoCraftController', () => {
     } as any;
 
     it('degrades the full action space policy with a visible reason', () => {
-      const controller = createHarness('fullActionSpace');
+      const controller = createHarness('includeItems');
 
       controller.arm();
       controller.sync(buildSnapshot({ nativeAutoUse: activeNativeAutoUse() }));
 
       const state = controller.getUiState();
-      expect(state.policy).toBe('fullActionSpace');
-      expect(state.effectivePolicy).toBe('techniquesAndFinish');
+      expect(state.policy).toBe('includeItems');
+      expect(state.effectivePolicy).toBe('allowCraftEnding');
       expect(state.nativeAutoUseActive).toBe(true);
       expect(state.policyNotice).toContain('crafting auto-use loadout');
     });
 
     it('explains the downgrade in the idle status detail', () => {
-      const controller = createHarness('fullActionSpace');
+      const controller = createHarness('includeItems');
 
       controller.arm();
       controller.sync(
@@ -597,23 +594,23 @@ describe('autoCraftController', () => {
     });
 
     it('leaves the policy alone when no loadout is active', () => {
-      const controller = createHarness('fullActionSpace');
+      const controller = createHarness('includeItems');
 
       controller.arm();
       controller.sync(buildSnapshot());
 
       const state = controller.getUiState();
-      expect(state.effectivePolicy).toBe('fullActionSpace');
+      expect(state.effectivePolicy).toBe('includeItems');
       expect(state.nativeAutoUseActive).toBe(false);
       expect(state.policyNotice).toBeUndefined();
     });
 
     it('reflects a loadout toggled on mid-craft without restarting the craft', () => {
-      const controller = createHarness('fullActionSpace');
+      const controller = createHarness('includeItems');
 
       controller.arm();
       controller.sync(buildSnapshot());
-      expect(controller.getUiState().effectivePolicy).toBe('fullActionSpace');
+      expect(controller.getUiState().effectivePolicy).toBe('includeItems');
 
       controller.sync(
         buildSnapshot({
@@ -623,13 +620,11 @@ describe('autoCraftController', () => {
       );
 
       expect(controller.getUiState().armed).toBe(true);
-      expect(controller.getUiState().effectivePolicy).toBe(
-        'techniquesAndFinish',
-      );
+      expect(controller.getUiState().effectivePolicy).toBe('allowCraftEnding');
     });
 
     it('never dispatches an item action the loadout covers', async () => {
-      const controller = createHarness('fullActionSpace');
+      const controller = createHarness('includeItems');
 
       controller.arm();
       controller.sync(
@@ -650,7 +645,7 @@ describe('autoCraftController', () => {
     });
 
     it('withholds even an uncovered item, because both sides share the per-turn budget', async () => {
-      const controller = createHarness('fullActionSpace');
+      const controller = createHarness('includeItems');
 
       controller.arm();
       controller.sync(
@@ -670,7 +665,7 @@ describe('autoCraftController', () => {
     });
 
     it('uses items again as soon as the loadout is switched off', async () => {
-      const controller = createHarness('fullActionSpace');
+      const controller = createHarness('includeItems');
 
       controller.arm();
       controller.sync(
@@ -929,7 +924,7 @@ describe('autoCraftController', () => {
     } as any;
 
     it('stops with an auto-finish status instead of spending another turn', async () => {
-      const controller = createHarness('techniquesAndFinish');
+      const controller = createHarness('allowCraftEnding');
 
       controller.arm();
       controller.sync(buildSnapshot({ result: autoFinishResult }));
@@ -945,7 +940,7 @@ describe('autoCraftController', () => {
     });
 
     it('keeps acting while the auto-finish predicate does not hold', async () => {
-      const controller = createHarness('techniquesAndFinish');
+      const controller = createHarness('allowCraftEnding');
 
       controller.arm();
       controller.sync(

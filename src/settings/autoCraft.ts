@@ -1,7 +1,7 @@
 export const AUTO_CRAFT_POLICY_VALUES = [
   'techniquesOnly',
-  'techniquesAndFinish',
-  'fullActionSpace',
+  'allowCraftEnding',
+  'includeItems',
 ] as const;
 
 export type AutoCraftPolicy = (typeof AUTO_CRAFT_POLICY_VALUES)[number];
@@ -18,24 +18,24 @@ export interface AutoCraftPolicyOption {
 export const AUTO_CRAFT_POLICY_OPTIONS: readonly AutoCraftPolicyOption[] = [
   {
     value: 'techniquesOnly',
-    label: 'Techniques Only',
-    shortLabel: 'Skills',
+    label: 'Pause before craft ends',
+    shortLabel: 'Pause before end',
     description:
       'Only uses techniques that keep the craft open. Stops before any craft-ending action or item.',
   },
   {
-    value: 'techniquesAndFinish',
-    label: 'Techniques + Finish',
-    shortLabel: 'Skills + Finish',
+    value: 'allowCraftEnding',
+    label: 'Allow craft-ending techniques',
+    shortLabel: 'Allow craft end',
     description:
-      'Uses techniques and can finish the craft automatically once the optimizer says to finish.',
+      'Uses real techniques, including techniques that automatically resolve the craft.',
   },
   {
-    value: 'fullActionSpace',
-    label: 'Full Action Space',
-    shortLabel: 'Full',
+    value: 'includeItems',
+    label: 'Also use quick-access items',
+    shortLabel: 'Include items',
     description:
-      'Allows techniques, craft resolution, and quick-access crafting items when available. While a crafting auto-use loadout is active the game handles items, so this behaves as Techniques + Finish.',
+      'Allows craft-ending techniques and quick-access crafting items. While native auto-use is active, the game handles items and this behaves as Allow craft-ending techniques.',
   },
 ] as const;
 
@@ -106,7 +106,7 @@ export interface AutoCraftPolicyResolution {
  *
  * The game applies the player's crafting auto-use loadout immediately before every
  * technique. If CraftBuddy also spent quick-access items it would double-consume
- * them, so `fullActionSpace` steps down to techniques + finish while a loadout is
+ * them, so `includeItems` steps down to `allowCraftEnding` while a loadout is
  * active. Deciding *who consumes* once, at policy level, is what keeps the two
  * systems from racing each other action by action.
  */
@@ -114,12 +114,12 @@ export function resolveEffectiveAutoCraftPolicy(
   requested: AutoCraftPolicy,
   nativeAutoUse: NativeAutoUsePolicyInput | undefined,
 ): AutoCraftPolicyResolution {
-  if (!nativeAutoUse?.active || requested !== 'fullActionSpace') {
+  if (!nativeAutoUse?.active || requested !== 'includeItems') {
     return { policy: requested, requested, downgraded: false };
   }
 
   return {
-    policy: 'techniquesAndFinish',
+    policy: 'allowCraftEnding',
     requested,
     downgraded: true,
     reason: `Your crafting auto-use loadout (${nativeAutoUse.slotCount} ${
@@ -139,6 +139,8 @@ export function normalizeAutoCraftPolicy(
   value: unknown,
   fallback: AutoCraftPolicy = DEFAULT_AUTO_CRAFT_POLICY,
 ): AutoCraftPolicy {
+  if (value === 'techniquesAndFinish') return 'allowCraftEnding';
+  if (value === 'fullActionSpace') return 'includeItems';
   return isAutoCraftPolicy(value) ? value : fallback;
 }
 

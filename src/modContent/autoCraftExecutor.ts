@@ -45,21 +45,7 @@ const CLICKABLE_SELECTORS = [
   '[class*="button"]',
   '[class*="Button"]',
 ].join(', ');
-const FINISH_REGION_THRESHOLD_PX = 14_000;
 const EXECUTE_TECHNIQUE_ACTION_TYPE = 'crafting/executeTechnique';
-const WAIT_TECHNIQUE = {
-  name: 'Wait',
-  icon: 'wait.webp',
-  poolCost: 0,
-  stabilityCost: 10,
-  successChance: 1,
-  cooldown: 0,
-  tooltip: 'Let the crafting process advance. Has no other effects.',
-  effects: [],
-  type: 'support',
-  realm: 'mundane',
-  currentCooldown: 0,
-};
 
 function normalizeText(value: string | undefined): string {
   return String(value || '')
@@ -83,12 +69,6 @@ function resolveDirectTechniquePayload(
   request: AutoCraftExecutionRequest,
   store: DispatchStore,
 ): Record<string, unknown> | null {
-  if (request.kind === 'finish') {
-    // CraftBuddy synthesizes "Finish Craft". The native crafting UI executes
-    // that by using the built-in Wait technique until stability reaches zero.
-    return cloneTechniquePayload(WAIT_TECHNIQUE);
-  }
-
   if (request.kind !== 'skill') {
     return null;
   }
@@ -154,19 +134,6 @@ function dispatchTechniqueAction(
 function buildSearchAliases(request: AutoCraftExecutionRequest): string[] {
   const aliases = new Set<string>();
   aliases.add(request.actionName);
-
-  if (request.kind === 'finish') {
-    aliases.add('finish craft');
-    aliases.add('finish');
-    aliases.add('complete craft');
-    aliases.add('finalize craft');
-    aliases.add('perfect craft');
-    aliases.add('craft success');
-    aliases.add('wait');
-    aliases.add('do nothing');
-    aliases.add('advance craft');
-    aliases.add('advance crafting process');
-  }
 
   if (request.kind === 'item') {
     if (request.skill?.itemName) {
@@ -306,22 +273,6 @@ function findClickableAncestor(
   }
 
   return null;
-}
-
-function hasFinishCue(searchText: string): boolean {
-  return (
-    searchText.includes('finish') ||
-    searchText.includes('complete craft') ||
-    searchText.includes('complete') ||
-    searchText.includes('perfect craft') ||
-    searchText.includes('craft success') ||
-    searchText.includes('success chance') ||
-    searchText.includes('craft result') ||
-    searchText.includes('final result') ||
-    searchText.includes('output') ||
-    searchText.includes('cauldron') ||
-    searchText.includes('product')
-  );
 }
 
 function getVisibleHtmlElements(
@@ -483,54 +434,6 @@ function listActionCandidates(
   return Array.from(candidates.values());
 }
 
-function scoreFinishCandidate(
-  candidate: ButtonCandidate,
-  aliases: string[],
-): number {
-  const searchText = candidate.searchText;
-  let bestScore = scoreCandidate(candidate, aliases);
-
-  if (searchText.includes('finish')) bestScore = Math.max(bestScore, 100);
-  if (searchText.includes('complete craft'))
-    bestScore = Math.max(bestScore, 94);
-  if (searchText.includes('complete')) bestScore = Math.max(bestScore, 88);
-  if (
-    searchText.includes('perfect craft') ||
-    searchText.includes('craft success')
-  ) {
-    bestScore = Math.max(bestScore, 80);
-  }
-  if (searchText.includes('success chance'))
-    bestScore = Math.max(bestScore, 74);
-  if (
-    searchText.includes('craft result') ||
-    searchText.includes('final result') ||
-    searchText.includes('output')
-  ) {
-    bestScore = Math.max(bestScore, 68);
-  }
-  if (searchText.includes('wait')) bestScore = Math.max(bestScore, 96);
-  if (searchText.includes('do nothing')) bestScore = Math.max(bestScore, 88);
-  if (searchText.includes('cauldron') || searchText.includes('product')) {
-    bestScore = Math.max(bestScore, 62);
-  }
-  if (searchText.includes('craft')) bestScore = Math.max(bestScore, 52);
-
-  if (
-    /(fusion|refine|stabilize|support|technique|crafting action [0-9]+)/.test(
-      searchText,
-    )
-  ) {
-    bestScore -= 28;
-  }
-
-  const areaBonus = Math.min(
-    14,
-    Math.round(rectArea(candidate.element) / 8000),
-  );
-  return bestScore + areaBonus;
-}
-
 function listVisibleButtons({
   getRootElement,
   isElementVisible,
@@ -551,43 +454,6 @@ function listVisibleButtons({
       searchText: buildElementSearchText(element),
     }))
     .filter((candidate) => candidate.searchText.length > 0);
-}
-
-function listFinishCandidates(
-  options: DomAutoCraftExecutorOptions,
-): ButtonCandidate[] {
-  const candidates = new Map<HTMLElement, ButtonCandidate>();
-  const allElements = getVisibleHtmlElements(options);
-
-  allElements.forEach((element) => {
-    if (!isProbablyClickableElement(element) || isDisabledElement(element)) {
-      return;
-    }
-
-    const searchText = buildElementSearchText(element);
-    if (
-      hasFinishCue(searchText) ||
-      rectArea(element) >= FINISH_REGION_THRESHOLD_PX
-    ) {
-      addCandidate(candidates, element, searchText || 'craft region');
-    }
-  });
-
-  allElements.forEach((element) => {
-    const searchText = buildElementSearchText(element);
-    if (!hasFinishCue(searchText)) {
-      return;
-    }
-
-    const clickableElement = findClickableAncestor(element, options);
-    if (!clickableElement) {
-      return;
-    }
-
-    addCandidate(candidates, clickableElement, searchText);
-  });
-
-  return Array.from(candidates.values());
 }
 
 function dispatchClickSequence(element: HTMLElement): void {
@@ -637,33 +503,6 @@ function dispatchClickSequence(element: HTMLElement): void {
   element.click();
 }
 
-/**
- * Find the control that executes a finish/`Wait` request.
- *
- * The game has no Finish Craft action; the craft resolves on its own. CraftBuddy's
- * synthesized finish therefore maps to the native `Wait` technique, which does
- * advance the craft but costs 10 stability, so it is a real technique dispatch
- * and goes through the same native-auto-use-preserving path as any other.
- */
-function findFinishControl(
-  options: DomAutoCraftExecutorOptions,
-  request: AutoCraftExecutionRequest,
-  aliases: string[],
-): HTMLElement | null {
-  const candidates = [
-    ...listActionCandidates(options, request, aliases),
-    ...listFinishCandidates(options),
-  ]
-    .map((candidate) => ({
-      ...candidate,
-      score: scoreFinishCandidate(candidate, aliases),
-    }))
-    .filter((candidate) => candidate.score >= 60)
-    .sort((a, b) => b.score - a.score);
-
-  return candidates[0]?.element ?? null;
-}
-
 /** Find the control that executes a named technique or item action. */
 function findActionControl(
   options: DomAutoCraftExecutorOptions,
@@ -700,7 +539,7 @@ function assertFreshCraftState(snapshot: AutoCraftRuntimeSnapshot): void {
 }
 
 /**
- * Execute a technique (or the synthesized finish, which maps to `Wait`).
+ * Execute a real technique.
  *
  * The path matters for correctness, not just reliability. The native crafting
  * auto-use loadout is applied by the React technique handler *immediately before*
@@ -726,19 +565,14 @@ function executeTechniqueLike(
     return;
   }
 
-  const element =
-    request.kind === 'finish'
-      ? findFinishControl(options, request, aliases)
-      : findActionControl(options, request, aliases);
+  const element = findActionControl(options, request, aliases);
 
   if (!element) {
     if (nativeAutoUse.active) {
       throw new NativeAutoUseUnreachableError(request.actionName);
     }
     throw new Error(
-      request.kind === 'finish'
-        ? 'Could not find a visible game control or confirm keybinding for Finish Craft. Auto mode stopped before sending another input.'
-        : `Could not find a visible game control for ${request.actionName}. Auto mode stopped before sending another input.`,
+      `Could not find a visible game control for ${request.actionName}. Auto mode stopped before sending another input.`,
     );
   }
 
@@ -754,6 +588,9 @@ export function createDomAutoCraftExecutor(
       snapshot: AutoCraftRuntimeSnapshot,
     ) {
       assertFreshCraftState(snapshot);
+      if (snapshot.result && snapshot.result.status !== 'live') {
+        throw new Error('The craft has no live recommendation to execute.');
+      }
 
       const nativeAutoUse = resolveSnapshotNativeAutoUse(snapshot);
       const aliases = buildSearchAliases(request);

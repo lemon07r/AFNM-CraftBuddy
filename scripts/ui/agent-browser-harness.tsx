@@ -129,6 +129,7 @@ const fixtureResult = {
       reasoning: 'Build completion first',
     },
   ],
+  status: 'live',
   isTerminal: false,
   targetsMet: false,
   optimalRotation: [
@@ -329,7 +330,7 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
       };
     case 'auto-waiting':
       return {
-        policy: 'techniquesAndFinish',
+        policy: 'allowCraftEnding',
         armed: true,
         phase: 'waiting_for_state',
         tone: 'active',
@@ -344,7 +345,7 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
       };
     case 'auto-stopping':
       return {
-        policy: 'fullActionSpace',
+        policy: 'includeItems',
         armed: true,
         phase: 'stop_requested',
         tone: 'warning',
@@ -361,7 +362,7 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
       // workstream's controller; the panel reads them structurally, so the
       // harness can exercise the row before that branch merges.
       return {
-        policy: 'techniquesAndFinish',
+        policy: 'allowCraftEnding',
         armed: true,
         phase: 'ready',
         tone: 'active',
@@ -378,7 +379,7 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
       } as AutoCraftUiState;
     case 'auto-error':
       return {
-        policy: 'fullActionSpace',
+        policy: 'includeItems',
         armed: false,
         phase: 'error',
         tone: 'error',
@@ -393,7 +394,7 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
       };
     case 'loading-auto':
       return {
-        policy: 'techniquesAndFinish',
+        policy: 'allowCraftEnding',
         armed: true,
         phase: 'calculating',
         tone: 'active',

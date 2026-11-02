@@ -297,13 +297,13 @@ describe('settings search budget', () => {
 
   it('persists the preferred auto mode policy', () => {
     const saved = saveSettings({
-      preferredAutoModePolicy: 'fullActionSpace',
+      preferredAutoModePolicy: 'includeItems',
     });
 
-    expect(saved.preferredAutoModePolicy).toBe('fullActionSpace');
+    expect(saved.preferredAutoModePolicy).toBe('includeItems');
 
     const reloaded = loadSettings();
-    expect(reloaded.preferredAutoModePolicy).toBe('fullActionSpace');
+    expect(reloaded.preferredAutoModePolicy).toBe('includeItems');
   });
 
   it('defaults both ambition band settings to auto', () => {
@@ -377,9 +377,17 @@ describe('settings search budget', () => {
     expect(searchConfig.completionBandCeiling).toBe(2);
   });
 
-  it('falls back to the default auto mode policy for invalid stored values', () => {
+  it.each([
+    ['techniquesOnly', 'techniquesOnly'],
+    ['techniquesAndFinish', 'allowCraftEnding'],
+    ['fullActionSpace', 'includeItems'],
+    ['allowCraftEnding', 'allowCraftEnding'],
+    ['includeItems', 'includeItems'],
+    ['everything_everywhere', DEFAULT_AUTO_CRAFT_POLICY],
+    [null, DEFAULT_AUTO_CRAFT_POLICY],
+  ])('migrates stored policy %s to %s during load', (stored, expected) => {
     storageData['craftbuddy_settings'] = JSON.stringify({
-      preferredAutoModePolicy: 'everything_everywhere',
+      preferredAutoModePolicy: stored,
     });
     storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
       SEARCH_DEFAULTS_RESET_VERSION;
@@ -388,6 +396,6 @@ describe('settings search budget', () => {
 
     const loaded = loadSettings();
 
-    expect(loaded.preferredAutoModePolicy).toBe(DEFAULT_AUTO_CRAFT_POLICY);
+    expect(loaded.preferredAutoModePolicy).toBe(expected);
   });
 });

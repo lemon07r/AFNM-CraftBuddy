@@ -205,7 +205,7 @@ describe('autoCraftExecutor', () => {
     expect(rootElement.querySelectorAll).not.toHaveBeenCalled();
   });
 
-  it('maps finish requests to the native Wait technique in the crafting store', () => {
+  it('dispatches a real Wait technique with its normal cost and payload', () => {
     const dispatch = jest.fn();
     const rootElement = createRoot();
 
@@ -213,6 +213,20 @@ describe('autoCraftExecutor', () => {
       getRootElement: () => rootElement as any,
       getStore: () => ({
         dispatch,
+        getState: () => ({
+          crafting: {
+            player: {
+              techniques: [
+                {
+                  name: 'Wait',
+                  type: 'support',
+                  poolCost: 0,
+                  stabilityCost: 10,
+                },
+              ],
+            },
+          },
+        }),
       }),
       isElementVisible: () => true,
       isIgnoredElement: () => false,
@@ -220,9 +234,9 @@ describe('autoCraftExecutor', () => {
 
     executor.execute(
       {
-        kind: 'finish',
-        actionName: 'Finish Craft',
-        reason: 'Guaranteed craft success available now.',
+        kind: 'skill',
+        actionName: 'Wait',
+        reason: 'Advance the craft.',
       },
       buildExecutorSnapshot(),
     );
@@ -251,9 +265,9 @@ describe('autoCraftExecutor', () => {
 
     executor.execute(
       {
-        kind: 'finish',
-        actionName: 'Finish Craft',
-        reason: 'Guaranteed craft success available now.',
+        kind: 'skill',
+        actionName: 'Wait',
+        reason: 'Advance the craft.',
       },
       buildExecutorSnapshot(),
     );
@@ -288,6 +302,30 @@ describe('autoCraftExecutor', () => {
   });
 
   describe('dispatch-time state verification', () => {
+    it.each(['autoResolved', 'blocked'] as const)(
+      'sends no input for a %s result',
+      (status) => {
+        const dispatch = jest.fn();
+        const { executor, rootElement } = createStoreExecutor(dispatch);
+        expect(() =>
+          executor.execute(
+            request,
+            buildExecutorSnapshot({
+              result: {
+                status,
+                recommendation: null,
+                alternativeSkills: [],
+                isTerminal: true,
+                targetsMet: true,
+              },
+            }),
+          ),
+        ).toThrow('no live recommendation');
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(rootElement.querySelectorAll).not.toHaveBeenCalled();
+      },
+    );
+
     function createStoreExecutor(dispatch: jest.Mock) {
       const rootElement = createRoot();
       return {
@@ -413,7 +451,7 @@ describe('autoCraftExecutor', () => {
       expect(dispatch).not.toHaveBeenCalled();
     });
 
-    it('routes the synthesized finish through the control too', () => {
+    it('routes a real Wait through the control when native auto-use is active', () => {
       const waitButton = new HTMLElementMock('Wait');
       const rootElement = createRoot([waitButton]);
       const dispatch = jest.fn();
@@ -427,8 +465,8 @@ describe('autoCraftExecutor', () => {
 
       executor.execute(
         {
-          kind: 'finish',
-          actionName: 'Finish Craft',
+          kind: 'skill',
+          actionName: 'Wait',
           reason: 'Advance the craft to resolution.',
         },
         buildExecutorSnapshot({ nativeAutoUse: activeNativeAutoUse() }),

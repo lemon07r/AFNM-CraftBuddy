@@ -205,6 +205,8 @@ describe('buildOutcomeSummary', () => {
     expect(finishing!.autoFinish.tone).toBe('positive');
     expect(finishing!.autoFinish.detail).toContain('no manual finish action');
     expect(finishing!.autoFinish.detail).not.toMatch(/finish craft/i);
+    expect(finishing!.autoFinish.detail).not.toMatch(/next input/i);
+    expect(finishing!.autoFinish.detail).toContain('without further input');
   });
 
   it('describes the selected harmony from the shared registry', () => {

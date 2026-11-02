@@ -324,8 +324,6 @@ export function getSkillTypeColor(type: string): string {
       return colors.stabilize;
     case 'support':
       return colors.support;
-    case 'finish':
-      return colors.gold;
     default:
       return colors.textPrimary;
   }
