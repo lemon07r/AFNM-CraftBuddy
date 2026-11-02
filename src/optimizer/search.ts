@@ -3689,36 +3689,37 @@ function runGreedySearch(
     const endsByAutoFinish = stateWillAutoFinish(newState);
     // Auto-resolved and blocked successors have final bars. A playable
     // goal-met state keeps the live scorer for resonance/overcraft continuation.
-    const score = endsByAutoFinish || terminalState.isTerminal
-      ? scoreFinishedOutcome(
-          newState,
-          targetCompletion,
-          targetPerfection,
-          isSublime,
-          targetMult,
-          config.maxCompletion,
-          config.maxPerfection,
-          scoringCtx,
-          cfg.goalPriorityBias,
-          cfg.overcraftAmbition,
-          cfg.perfectionBandGoal,
-          cfg.completionBandCeiling,
-        )
-      : scoreState(
-          newState,
-          targetCompletion,
-          targetPerfection,
-          isSublime,
-          targetMult,
-          isTraining,
-          config.maxCompletion,
-          config.maxPerfection,
-          scoringCtx,
-          cfg.goalPriorityBias,
-          cfg.overcraftAmbition,
-          cfg.perfectionBandGoal,
-          cfg.completionBandCeiling,
-        );
+    const score =
+      endsByAutoFinish || terminalState.isTerminal
+        ? scoreFinishedOutcome(
+            newState,
+            targetCompletion,
+            targetPerfection,
+            isSublime,
+            targetMult,
+            config.maxCompletion,
+            config.maxPerfection,
+            scoringCtx,
+            cfg.goalPriorityBias,
+            cfg.overcraftAmbition,
+            cfg.perfectionBandGoal,
+            cfg.completionBandCeiling,
+          )
+        : scoreState(
+            newState,
+            targetCompletion,
+            targetPerfection,
+            isSublime,
+            targetMult,
+            isTraining,
+            config.maxCompletion,
+            config.maxPerfection,
+            scoringCtx,
+            cfg.goalPriorityBias,
+            cfg.overcraftAmbition,
+            cfg.perfectionBandGoal,
+            cfg.completionBandCeiling,
+          );
     const reasoning = generateReasoning(
       skill,
       state,
@@ -4049,12 +4050,13 @@ function runLookaheadSearch(
   const scoreStateWithTerminalPenalty = (
     candidate: CraftingState,
     conditionAtDepth: CraftingConditionType,
+    knownBlocked?: boolean,
   ): number => {
     // Blocked bars are final even though the game has not resolved the craft.
     // Playable goal-met nodes retain live continuation value.
     if (
       stateWillAutoFinish(candidate) ||
-      isTerminalState(candidate, config, conditionAtDepth)
+      (knownBlocked ?? isTerminalState(candidate, config, conditionAtDepth))
     ) {
       return scoreFinishedOutcome(
         candidate,
@@ -4662,6 +4664,7 @@ function runLookaheadSearch(
       return scoreStateWithTerminalPenalty(
         currentState,
         currentConditionAtDepth,
+        stateIsTerminal,
       );
     }
 

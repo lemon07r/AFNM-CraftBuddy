@@ -2270,7 +2270,11 @@ export function RecommendationPanel({
       }),
     [result?.outcomeProjection, craftingType],
   );
-  const resolvedFailed = result?.outcomeProjection?.tier === 'failed';
+  // `tier` is the guaranteed floor; only call the craft failed when even the
+  // bonus rolls cannot rescue it.
+  const resolvedFailed =
+    result?.outcomeProjection?.tier === 'failed' &&
+    result.outcomeProjection.optimisticTier === 'failed';
   const resolvedColor = resolvedFailed ? colors.error : colors.completion;
   const ResolvedIcon = resolvedFailed ? WarningIcon : CheckCircleIcon;
   const autoUseNotice = useMemo(() => buildAutoUseNotice(autoMode), [autoMode]);
