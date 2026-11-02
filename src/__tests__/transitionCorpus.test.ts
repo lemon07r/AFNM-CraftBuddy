@@ -1,29 +1,21 @@
 /**
- * Cross-engine differential guard (TypeScript side).
- *
- * `crates/craftbuddy-engine/tests/differential_corpus.json` is the contract
- * between the TypeScript simulator and the Rust engine. This suite asserts the
- * checked-in file still describes what TypeScript actually does; the matching
- * Rust test asserts the Rust engine reproduces it.
- *
- * When this fails after an intentional mechanics change, regenerate with
- * `bun run optimizer:differential-corpus` and then run `bun run wasm:test` to
- * find out which Rust behaviours the change invalidated.
+ * TypeScript transition golden guard. Replay the stored inputs, not merely
+ * regenerated scenarios. Regenerate with `bun run optimizer:transition-corpus`
+ * only after an intentional mechanics change and inspect the expected diff.
  */
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
 import {
+  buildDifferentialScenario,
   buildDifferentialCorpus,
   DIFFERENTIAL_CORPUS_VERSION,
   type DifferentialCorpus,
 } from './fixtures/differentialCorpus';
+import { reviveSearchInput } from '../optimizer/searchBackend';
 
-const CORPUS_PATH = join(
-  __dirname,
-  '../../crates/craftbuddy-engine/tests/differential_corpus.json',
-);
+const CORPUS_PATH = join(__dirname, 'fixtures/transition_corpus.json');
 
 function loadCheckedInCorpus(): DifferentialCorpus {
   return JSON.parse(readFileSync(CORPUS_PATH, 'utf8')) as DifferentialCorpus;
@@ -34,7 +26,8 @@ function serializable(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value));
 }
 
-describe('cross-engine differential corpus', () => {
+describe('TypeScript transition golden corpus', () => {
+  const checkedIn = loadCheckedInCorpus();
   const built = buildDifferentialCorpus();
 
   it('is deterministic across runs', () => {
@@ -76,10 +69,9 @@ describe('cross-engine differential corpus', () => {
     expect(transitions).toBeGreaterThan(400);
   });
 
-  it('covers every mechanic the Rust engine now models', () => {
+  it('covers effect trees, buffs, mastery, gated actions and items', () => {
     const names = built.scenarios.map((scenario) => scenario.name);
-    // One assertion per newly ported mechanic, so a dropped scenario is a test
-    // failure rather than silently reduced parity coverage.
+    // A dropped scenario is a failure, not silently reduced coverage.
     for (const scenario of [
       'effects-baseline',
       'effects-low-resources',
@@ -145,9 +137,21 @@ describe('cross-engine differential corpus', () => {
     expect(soulflame?.expected?.perfection).toBeGreaterThan(0);
   });
 
-  it('matches the corpus the Rust engine replays', () => {
-    const checkedIn = loadCheckedInCorpus();
+  it('matches the checked-in corpus', () => {
     expect(checkedIn.version).toBe(DIFFERENTIAL_CORPUS_VERSION);
     expect(serializable(built)).toEqual(serializable(checkedIn));
+  });
+
+  it.each(checkedIn.scenarios)('replays $name', (scenario) => {
+    const input = reviveSearchInput(scenario.input);
+    const replayed = buildDifferentialScenario({
+      name: scenario.name,
+      state: input.state,
+      config: input.config,
+      targetCompletion: input.targetCompletion,
+      targetPerfection: input.targetPerfection,
+      condition: input.currentCondition ?? 'neutral',
+    });
+    expect(serializable(replayed.cases)).toEqual(scenario.cases);
   });
 });

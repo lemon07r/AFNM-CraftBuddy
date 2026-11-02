@@ -22,10 +22,10 @@ Outcome rows show the tier you are aiming for, each bar's bands and the bar hold
 
 ![CraftBuddy panel](pictures/gui.png)
 
-| Shortcut | Action |
-| --- | --- |
-| Ctrl+Shift+C | Toggle panel |
-| Ctrl+Shift+M | Toggle compact mode |
+| Shortcut     | Action                                    |
+| ------------ | ----------------------------------------- |
+| Ctrl+Shift+C | Toggle panel                              |
+| Ctrl+Shift+M | Toggle compact mode                       |
 | Ctrl+Shift+Y | Export a replay snapshot for a bug report |
 
 ## Settings
@@ -39,7 +39,7 @@ Open the panel's gear icon for the settings slide-over.
 - **Goal Priority** biases completion or perfection without changing tier requirements.
 - **Push Extra Bands** rewards progress beyond the secured tier. **Perfection Band Goal** asks for more perfection; **Completion Band Ceiling** stops rewarding completion beyond the chosen band, never below the tier requirement. Zero means Auto.
 - Band widths grow by 1.3×: two bands are about 230% of the recipe target, not 200%. Sublime requires two bands on each bar.
-- **Legacy** uses the established TS search. **Experimental** adds a Rust/WASM near-tie search prior; TS still owns the recommendation. Display and worker-thread options are also available.
+- Recommendations use the established TypeScript search. Display and worker-thread options are also available.
 
 Search stops at its time or node limit. Equal millisecond settings can reach different frontiers on different machines; reproducible comparisons use fixed node budgets with a nonbinding clock, not a promise that a preset always picks the same action.
 
@@ -51,7 +51,7 @@ Previews use expected values, not predictions of hidden rolls. The panel is Engl
 
 ## Development
 
-Prerequisites: Bun, Rust stable with `wasm32-unknown-unknown`, wasm-pack 0.14; Python 3 for the optional UI harness.
+Prerequisites: Bun; Python 3 for the optional UI harness. No Rust toolchain is needed.
 
 ```bash
 bun install

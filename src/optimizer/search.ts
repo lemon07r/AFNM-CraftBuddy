@@ -59,7 +59,6 @@ import {
   type OutcomeClassification,
   type OutcomeTier,
 } from './outcome';
-import { getNativeMctsPolicy, type NativeMctsPolicy } from './nativeMcts';
 
 interface GainPreview {
   completion: number;
@@ -229,15 +228,6 @@ export interface SearchResult {
     /** Deepest fully completed frontier kept for the returned result set. */
     depthReached: number;
     pruned: number;
-    /** Optional native MCTS root policy metrics when the WASM engine is available. */
-    mcts?: {
-      backend: string;
-      iterations: number;
-      nodes: number;
-      rolloutDepth: number;
-      bestSkillKey?: string;
-      policyCount: number;
-    };
     /** Iterative-deepening exited after a stable completed frontier. */
     earlyExit?: {
       reason: 'stableRecommendation';
@@ -300,20 +290,6 @@ export interface SearchConfig {
    */
   conditionDiscordance?: number;
   /**
-   * Enable the native Rust/WASM Monte Carlo Tree Search root policy prior.
-   * The TypeScript scorer remains authoritative; MCTS only influences
-   * root ordering inside the normal score tie window.
-   */
-  useMonteCarloTreeSearch?: boolean;
-  /** Number of MCTS iterations for the native root policy. */
-  mctsIterations?: number;
-  /** MCTS rollout depth. Defaults lower than lookahead depth for speed. */
-  mctsRolloutDepth?: number;
-  /** UCT exploration constant for native MCTS. */
-  mctsExploration?: number;
-  /** Native MCTS node cap. */
-  mctsMaxNodes?: number;
-  /**
    * Overcraft ambition (default: true). When true, extra bands past the
    * target tier earn unilateral value up to the game's caps, mirroring the
    * runtime's per-bar rewards; when false, scoring is tier-only with the
@@ -352,8 +328,6 @@ export interface SearchConfig {
    * across the wire.
    */
   shouldAbort?: () => boolean;
-  /** Seed override for the native MCTS root policy (worker-pool root-parallelism uses seed = base + workerIndex). */
-  mctsSeed?: number;
 }
 
 /** Game UI + runtime always expose 3 future conditions. */
@@ -372,11 +346,6 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   enableConditionBranchingAfterForecast: true,
   conditionBranchLimit: 2,
   conditionBranchMinProbability: 0.15,
-  useMonteCarloTreeSearch: false,
-  mctsIterations: 250,
-  mctsRolloutDepth: 16,
-  mctsExploration: 1.15,
-  mctsMaxNodes: 5000,
   overcraftAmbition: true,
   perfectionBandGoal: 0,
   completionBandCeiling: 0,
@@ -3907,122 +3876,6 @@ function runLookaheadSearch(
   const scoreTieWindow = computeScoreTieWindow(totalTargetMagnitudeForOrdering);
   const stateWillAutoFinish = (candidate: CraftingState): boolean =>
     willAutoFinish(candidate, outcomeBands);
-  const shouldConsiderNativeMctsPolicy =
-    cfg.useMonteCarloTreeSearch !== false &&
-    depth > 1 &&
-    config.skills.length > 0 &&
-    (isSublime || depth >= 16 || config.skills.length >= 8);
-  let rootMctsPolicyBySkillKey: NativeMctsPolicy['policyBySkillKey'] =
-    new Map();
-  const initializeNativeMctsPolicy = (): void => {
-    if (!shouldConsiderNativeMctsPolicy || rootMctsPolicyBySkillKey.size > 0) {
-      return;
-    }
-
-    const remainingBudgetMs = Math.max(
-      0,
-      cfg.timeBudgetMs - (Date.now() - startTime),
-    );
-    // Scale the MCTS budget share with craft complexity: more skills or sublime
-    // crafts deserve a larger policy investment; simple short crafts need less.
-    const skillCountFactor = Math.min(
-      1.0,
-      Math.max(0.5, config.skills.length / 20),
-    );
-    const complexityFactor = isSublime ? 1.0 : skillCountFactor;
-    const nativeBudgetFraction = Math.min(0.2, 0.15 + 0.05 * complexityFactor);
-    const nativeBudgetMs = Math.min(
-      500,
-      Math.floor(remainingBudgetMs * nativeBudgetFraction),
-    );
-    if (remainingBudgetMs < 250 || nativeBudgetMs < 100) {
-      return;
-    }
-
-    const requestedIterations = Math.max(
-      1,
-      Math.floor(cfg.mctsIterations ?? 250),
-    );
-    // Scale iteration count by complexity: more complex crafts benefit from
-    // more rollouts to find a reliable root-policy signal.
-    const complexityScaledIterations = Math.max(
-      32,
-      Math.floor(requestedIterations * complexityFactor),
-    );
-    const budgetedIterations = Math.max(
-      32,
-      Math.min(complexityScaledIterations, Math.floor(nativeBudgetMs / 3)),
-    );
-    const requestedMaxNodes = Math.max(1, Math.floor(cfg.mctsMaxNodes ?? 5000));
-    const budgetedMaxNodes = Math.max(
-      250,
-      Math.min(requestedMaxNodes, budgetedIterations * 20),
-    );
-    const nativeMctsPolicy = getNativeMctsPolicy({
-      state,
-      config,
-      targetCompletion,
-      targetPerfection,
-      currentConditionType: normalizedCurrentCondition,
-      forecastedConditionTypes,
-      goalPriorityBias: cfg.goalPriorityBias,
-      overcraftAmbition: cfg.overcraftAmbition,
-      perfectionBandGoal: cfg.perfectionBandGoal,
-      completionBandCeiling: cfg.completionBandCeiling,
-      search: {
-        iterations: budgetedIterations,
-        rolloutDepth: Math.min(depth, cfg.mctsRolloutDepth ?? depth),
-        exploration: cfg.mctsExploration,
-        maxNodes: budgetedMaxNodes,
-        timeBudgetMs: nativeBudgetMs,
-        seed: cfg.mctsSeed,
-      },
-    });
-
-    if (!nativeMctsPolicy) {
-      return;
-    }
-
-    rootMctsPolicyBySkillKey = nativeMctsPolicy.policyBySkillKey;
-    metrics.mcts = {
-      backend: nativeMctsPolicy.backend,
-      iterations: nativeMctsPolicy.iterations,
-      nodes: nativeMctsPolicy.nodes,
-      rolloutDepth: nativeMctsPolicy.rolloutDepth,
-      bestSkillKey: nativeMctsPolicy.bestSkillKey,
-      policyCount: nativeMctsPolicy.orderedPolicies.length,
-    };
-  };
-  const sameConditionQueue = (
-    left: CraftingConditionType[],
-    right: CraftingConditionType[],
-  ): boolean =>
-    left.length === right.length &&
-    left.every((condition, index) => condition === right[index]);
-  const isRootMctsPolicyContext = (
-    candidateState: CraftingState,
-    conditionAtDepth: CraftingConditionType,
-    conditionQueueAtDepth: CraftingConditionType[],
-  ): boolean =>
-    rootMctsPolicyBySkillKey.size > 0 &&
-    candidateState === state &&
-    normalizeConditionType(conditionAtDepth) === normalizedCurrentCondition &&
-    sameConditionQueue(conditionQueueAtDepth, initialConditionQueue);
-  const compareRootMctsPolicyTie = (
-    aSkillKey: string,
-    bSkillKey: string,
-  ): number => {
-    const aPolicy = rootMctsPolicyBySkillKey.get(aSkillKey);
-    const bPolicy = rootMctsPolicyBySkillKey.get(bSkillKey);
-    if (!aPolicy || !bPolicy) {
-      return 0;
-    }
-
-    const policyDiff = aPolicy.policy - bPolicy.policy;
-    // Ignore single-rollout noise; only use MCTS when it has a visible root
-    // preference and the authoritative score already considers the moves tied.
-    return Math.abs(policyDiff) >= 0.02 ? policyDiff : 0;
-  };
   const targetsMetForCurrentMode = (candidate: CraftingState): boolean =>
     goalsMet(candidate, modeCompGoal, modePerfGoal);
   const compareMoveCandidatesForTie = (
@@ -4503,21 +4356,6 @@ function runLookaheadSearch(
       if (Math.abs(scoreDiff) > scoreTieWindow) {
         return scoreDiff;
       }
-      if (
-        isRootMctsPolicyContext(
-          currentState,
-          currentConditionAtDepth,
-          nextConditionQueueAtDepth,
-        )
-      ) {
-        const mctsPolicyTie = compareRootMctsPolicyTie(
-          a.skill.key,
-          b.skill.key,
-        );
-        if (mctsPolicyTie !== 0) {
-          return mctsPolicyTie > 0 ? -1 : 1;
-        }
-      }
       return compareMoveCandidatesForTie(b, a, currentState);
     });
 
@@ -4581,8 +4419,6 @@ function runLookaheadSearch(
       searchMetrics: metrics,
     };
   }
-
-  initializeNativeMctsPolicy();
 
   // Flag to signal early termination due to time/node budget
   let shouldTerminate = false;
@@ -5155,11 +4991,6 @@ function runLookaheadSearch(
       return scoreDiff;
     }
 
-    const mctsPolicyTie = compareRootMctsPolicyTie(a.skill.key, b.skill.key);
-    if (mctsPolicyTie !== 0) {
-      return mctsPolicyTie > 0 ? -1 : 1;
-    }
-
     const tieDiff = compareTieBreakMetrics(
       getRecommendationTieMetrics(a),
       getRecommendationTieMetrics(b),
@@ -5665,9 +5496,7 @@ function runLookaheadSearch(
   // real 2s searches are time-bound around depth 3-7, where the old gate
   // (depth 22+ for a 64-deep plan) could never fire. The margin and
   // risky-challenger checks stay conservative so contested states keep
-  // searching, and the exit stays disabled whenever the native MCTS policy
-  // participates in root ordering (its near-ties need the full budget to
-  // converge).
+  // searching.
   const EARLY_EXIT_STABLE_PASSES = 3;
   const EARLY_EXIT_MIN_DEPTH = baselineDepth + 2;
   const EARLY_EXIT_MARGIN_MULTIPLIER = 10;
@@ -5695,12 +5524,8 @@ function runLookaheadSearch(
       metrics.depthReached = evaluatedDepth;
 
       // Track the top recommendation for early exit detection.
-      // Only check stability at meaningful depths and when MCTS is not relied
-      // upon for root ordering (MCTS might need a full budget to converge).
-      if (
-        evaluatedDepth >= EARLY_EXIT_MIN_DEPTH &&
-        !shouldConsiderNativeMctsPolicy
-      ) {
+      // Only check stability at meaningful depths.
+      if (evaluatedDepth >= EARLY_EXIT_MIN_DEPTH) {
         const topRecommendation = candidateSkills[0];
         const topKey = topRecommendation?.skill?.key ?? '';
         recentTopKeys.push(topKey);
@@ -5791,10 +5616,6 @@ function runLookaheadSearch(
     scoreTieWindow,
     unsafeRootRecommendationKeys,
     (a, b) => {
-      const mctsPolicyTie = compareRootMctsPolicyTie(a.skill.key, b.skill.key);
-      if (mctsPolicyTie !== 0) {
-        return mctsPolicyTie;
-      }
       return compareTieBreakMetrics(
         getRecommendationTieMetrics(a),
         getRecommendationTieMetrics(b),

@@ -15,6 +15,7 @@
 - **§12.5's five-band auto-finish claim is superseded by §18.4**: stability <= 0 or both actual caps. §12.1–§12.4 remain reward evidence, not termination rules.
 - **§14.5's late-neutral discordance account is superseded by §17.7 / §19**. **§15.4's automatic stack-trigger support claim is superseded by §19**: string-typed triggers alone do not dispatch stack events. §19 also narrows §18.6's unsupported surfaces to demonstrated stock uses versus latent technique triggers.
 - §13 is the dated blob-worker capability check. Historical check counts, paths/build coordinates and workflow descriptions below retain their original scope. Current model contracts/gaps are in `docs/MECHANICS_PARITY.md`; current commands are in `docs/DEVELOPMENT.md`.
+- **7.0 retirement:** references below to Rust or two engines describe historical audits only. The experimental prior and mirror are removed; there is no ongoing cross-engine maintenance duty. The transition golden now protects TypeScript behavior (see `docs/ENGINE_DECISIONS.md`).
 
 Findings extracted from the **installed** AFNM runtime, most recently
 **0.7.19-ac29603** (sections 18–19). Earlier sections retain their historical build
@@ -1173,10 +1174,9 @@ Qi cost is `floor(F(max(0, basePoolCost + poolCostFlat) * M) * harmonyQiMultipli
 `noQiCost` bypasses it entirely. Positive base stability cost uses
 `floor(F(baseStabilityCost * M) * harmonyStabilityMultiplier)`; otherwise it is
 zero. Keep the inner rounding and outer harmony floor separate. Evidence:
-G:321632-321657. Current TS and Rust instead normalize the old stats around 100
-and use the old negative stability-delta path:
-`src/optimizer/skills.ts:1810-1919`,
-`crates/craftbuddy-engine/src/effects.rs:2269-2355`.
+G:321632-321657. The inspected pre-retarget TS and Rust instead normalized the
+old stats around 100 and used the old negative stability-delta path
+(`src/optimizer/skills.ts:1810-1919` and the since-retired Rust effects module).
 
 Review regression: a 15.5% base reduction combined with a 10% reduction buff
 gives 23.95% reduction, so base cost 200 pays **152**, not 151. The modern
@@ -1214,7 +1214,7 @@ ordinary buff tick. Do not flatten mastery effects into ordinary technique
 effects as the current extractor does:
 `src/modContent/craftStateExtraction.ts:249-267,675-722`;
 the current TS cost deduction precedes those effects
-(`src/optimizer/skills.ts:3519-3530`). Mirror the corrected phases in Rust.
+(`src/optimizer/skills.ts:3519-3530`). These phases were corrected in 6.8.0.
 
 ### 17.4 Chance masteries and the game preview are different contracts
 
@@ -1279,7 +1279,7 @@ new flat harmony reward or a hardcoded Stabilize recommendation.
 additive and neutral is **0** (G:318300-318328). Calming Mind Pill specifies
 `stacks: { value: 4, isItem: true }`, a 15-point stability-cost-reduction buff,
 and ordinary -1 stack decay (G:275603). Therefore it creates 4 stacks at neutral,
-6 at +50 effectiveness and 2 at -50; seed the live stat in both engines rather
+6 at +50 effectiveness and 2 at -50; seed the live stat in the simulator rather
 than a percentage baseline of 100.
 
 Buff stat scopes merge base variables, `additionalVariables`, `internalState`,
@@ -1291,7 +1291,7 @@ and final `roundToInteger`. The multiplier is applied after the normal initial
 rounding and before `max`/stance operations/final integer rounding
 (G:183677-183746). These fields are absent from CraftBuddy's local Scaling and
 BuffDefinition contracts (`src/optimizer/gameTypes.ts:51-74,180-220`); preserve
-them through extraction and mirror evaluation in Rust.
+them through extraction and simulation.
 
 `setState.keys` sets extra keys in addition to the primary key. The new
 Stablizing Circuit uses **set-mode** to reset four action-type flags together
@@ -1308,10 +1308,9 @@ whose completion effect has `value: 30`, `eqn: amount / 100`; it still negates o
 Fusion (G:249124-249145). Triggered blocks run through the **general buff effect
 executor**, with a trigger/buff re-entry guard (G:540797-540840), so this completion
 effect receives normal completion-applier behavior, not a special raw-bar add.
-CraftBuddy currently permits only `setState` in triggered blocks; this silently
-omits the new completion effect in TS and Rust
-(`src/optimizer/skills.ts:3840-3845`;
-`crates/craftbuddy-engine/src/effects.rs:1815-1818,1871-1875`).
+The inspected pre-retarget CraftBuddy permitted only `setState` in triggered
+blocks; this silently omitted the new completion effect in TS
+(`src/optimizer/skills.ts:3840-3845`) and the since-retired Rust effects module.
 
 Fusion Invasion and Refinement Invasion both now declare `canStack: true` and
 lose one stack per ordinary action (G:305799-305813,305855-305869). The displayed
@@ -1357,11 +1356,11 @@ masteries/costs (G:540489-540500), so failed execution still spends them. The
 runtime variable builder exports `qiDroplets` and `maxqiDroplets`
 (G:318311-318312). Neither droplet field nor `dropletCost` is modeled anywhere in
 current `src/optimizer` or `src/modContent`; add extraction, state, legality,
-transition, and Rust/bridge support rather than recommending an unpayable action.
+transition, and replay/worker support rather than recommending an unpayable action.
 Keep the internal spelling unchanged and user-facing names on
 `techniqueDisplayName()`.
 
-### 17.8 Harmony hydration and Rust/WASM bridge
+### 17.8 Harmony hydration and historical bridge audit
 
 TS currently stops at eight harmony names
 (`src/optimizer/gameTypes.ts:38-45`). The live-data clone explicitly copies
@@ -1371,17 +1370,12 @@ charge size, charges, remainder, and presentation metadata to hydration and pure
 state cloning/serialization; do not reconstruct an in-progress cycle from
 current pool.
 
-There is **no Rust harmony enum to extend**: dispatch uses `&str`
-(`crates/craftbuddy-engine/src/lib.rs:1803-1825`). Captivating Cadence already has
-a Rust state field, processing branch, and TS bridge conversion
-(`lib.rs:345,1817,1985-2027`;
-`src/optimizer/nativeMcts.ts:212,233-238,495-500`). Returning Cycle needs a new
-serde payload and string dispatch branch, action-resolution context, correctly
-timed Precision buff mutation, and matching bridge conversion. It currently
-falls through the zero-effect default if presented as a string. Cost and droplet
-fields also have to cross the same TS/Rust boundary. Rebuild WASM after those
-source changes; a type-only upgrade cannot enable the mechanic. Preserve the
-existing per-bar Eccentric Decree fold and contribution gates in both engines.
+The historical Rust mirror used string dispatch, not a harmony enum. At this
+audit it had Cadence state/processing and bridge conversion but no Cycle
+payload or branch; a Cycle string fell through the zero-effect default.
+The 6.8.0 follow-up added Cycle resolution, Precision mutation and cost/droplet
+wire fields. That mirror and bridge were retired in 7.0. Preserve the existing
+TypeScript per-bar Eccentric Decree fold and contribution gate.
 
 ### 17.9 DOM/controller compatibility: static selector audit only
 
@@ -1653,7 +1647,7 @@ stock references are equipped `kind: 'flame'` ranks
 by the equipment initialization loop (`G:14956450–14957050`). No stock
 mid-craft grant was found. TS therefore snapshots this permanent stock value
 once per search; arbitrary createBuff/consumeBuff payloads can change it,
-however, and runtime/Rust reread held buffs after actions. Such dynamic custom
+however, and the runtime rereads held buffs after actions. Such dynamic custom
 discordance is not covered by the TS root snapshot.
 
 ### Stack mutations and group effects

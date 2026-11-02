@@ -41,7 +41,6 @@ import {
   VISIBLE_CONDITION_QUEUE_LENGTH,
   setNativeCraftingUtils,
   setNativeCanUseActionProvider,
-  preloadNativeMctsPolicyEngine,
   buildCanonicalNativeVariables,
   CrossStepSearchCache,
   serializeSearchInput,
@@ -259,14 +258,6 @@ let targetsNeedComplexityScaling = false;
 
 // Settings
 let currentSettings: CraftBuddySettings = loadSettings();
-function preloadExperimentalEngineIfEnabled(
-  settings: CraftBuddySettings = currentSettings,
-): void {
-  if (settings.optimizerEngine === 'experimental') {
-    preloadNativeMctsPolicyEngine();
-  }
-}
-preloadExperimentalEngineIfEnabled();
 let autoCraftUiState: AutoCraftUiState = createDefaultAutoCraftUiState(
   currentSettings.preferredAutoModePolicy,
 );
@@ -771,7 +762,6 @@ function buildOptimizerReplayInputSnapshot(params: {
       beamWidth: params.searchConfig.beamWidth,
       goalPriorityBias: params.searchConfig.goalPriorityBias,
       overcraftAmbition: params.searchConfig.overcraftAmbition,
-      useMonteCarloTreeSearch: params.searchConfig.useMonteCarloTreeSearch,
     },
     settings: {
       lookaheadDepth: currentSettings.lookaheadDepth,
@@ -780,7 +770,6 @@ function buildOptimizerReplayInputSnapshot(params: {
       searchBeamWidth: currentSettings.searchBeamWidth,
       searchGoalPriorityBias: currentSettings.searchGoalPriorityBias,
       overcraftAmbition: currentSettings.overcraftAmbition,
-      optimizerEngine: currentSettings.optimizerEngine,
       compactMode: currentSettings.compactMode,
       panelVisible: currentSettings.panelVisible,
     },
@@ -1960,7 +1949,6 @@ function updateRecommendation(
         epoch: searchEpoch,
         scope: crossStepScope ?? 'unscoped',
         threads,
-        baseSeed: searchEpoch,
         rootSkillKeys: [...config.skills.map((skill) => skill.key)],
         input: serializeSearchInput(backendInput),
       });
@@ -2131,7 +2119,6 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
 
   const handleSettingsChange = (newSettings: CraftBuddySettings) => {
     currentSettings = newSettings;
-    preloadExperimentalEngineIfEnabled(newSettings);
     autoCraftController.setPolicy(newSettings.preferredAutoModePolicy);
     if (!newSettings.panelVisible && autoCraftUiState.armed) {
       stopAutoCraft('Auto mode stopped because the panel was hidden.');
@@ -2143,7 +2130,6 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
   const handleSearchSettingsChange = (newSettings: CraftBuddySettings) => {
     // Update settings and re-render to reflect stale state
     currentSettings = newSettings;
-    preloadExperimentalEngineIfEnabled(newSettings);
     applyOverlayContainerLayout();
     renderOverlay();
   };

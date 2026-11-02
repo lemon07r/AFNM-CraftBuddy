@@ -2,15 +2,13 @@
 
 ## Setup
 
-Use Bun, Rust stable with the `wasm32-unknown-unknown` target, and wasm-pack **0.14** (the release workflow pins 0.14.0). Python 3 serves the optional browser harness.
+Use Bun. Python 3 serves the optional browser harness. No Rust toolchain is required.
 
 ```bash
-rustup target add wasm32-unknown-unknown
-cargo install wasm-pack --locked --version 0.14.0
 bun install
 ```
 
-`bun run build` compiles Rust/WASM, generates the inline module, builds the worker and mod, and packages `builds/afnm-craftbuddy.zip`. Build outputs are reproducible and uncommitted. AFNM cannot fetch a separate WASM file through `mod://`; the feasibility evidence is in [Engine decisions](ENGINE_DECISIONS.md).
+`bun run build` builds the TypeScript worker and mod, and packages `builds/afnm-craftbuddy.zip`. Build outputs are reproducible and uncommitted. Worker source is embedded because `mod://` cannot load ordinary chunks.
 
 ## Module map and boundaries
 
@@ -20,7 +18,6 @@ bun install
 | `src/optimizer/index.ts` | Facade used by integration/UI; workers and tests may import internal modules |
 | `src/optimizer/` | Pure state transitions, search and scoring; no runtime, DOM, Redux or settings storage access |
 | `src/optimizer/outcome.ts` | TS bands, conjunctive tiers and auto-finish; UI consumes its projection rather than recomputing thresholds |
-| `crates/craftbuddy-engine/` | Independent Rust mechanics/outcome mirror, tested against the TS corpus; root-policy prior, not final ranking authority |
 | `src/modContent/index.ts` | Polling/session lifecycle, config construction, search and auto-mode wiring |
 | `src/modContent/craftStateExtraction.ts`, `modApiProviders.ts` | Runtime normalization and optional provider probes |
 | `src/modContent/craftingContext.ts`, `harmonyState.ts`, `configStats.ts` | Craft/recipe context, all harmony-state hydration, effective stats |
@@ -73,20 +70,19 @@ Choose checks by the changed surface. This is the shared iteration/hand-off/rele
 | Docs/skills | `bun run docs:check` | Same after final edit | Included in `release:validate` |
 | TS behavior | Focused Jest, `bun run typecheck` | Typecheck + `bun run test`; build if shipping/runtime code changed | `bun run release:validate` |
 | Optimizer ranking | Focused search/replay/simulation test; before/after replay evidence | Full tests + `bun run optimizer:bench`; neutral refactors compare `optimizer:digest` | Release gate + benchmark |
-| Mechanics in either engine | Regenerate `optimizer:differential-corpus`, inspect diff; focused TS/Rust tests | `engineDifferential.test.ts` + `bun run wasm:test`, full TS tests + build | Release gate + both parity sides + benchmark |
-| Rust/WASM or bridge | `bun run wasm:test`, `nativeMcts.test.ts` | Same + `bun run build` (rebuilds inline WASM) | Release gate + Cargo; benchmark for search changes |
+| Mechanics | Regenerate `optimizer:transition-corpus`, inspect diff; focused transition tests | `transitionCorpus.test.ts`, full tests + build | Release gate + benchmark |
 | Runtime/automation | Oracle/targeted bundle grep; relevant extraction, signature, native-auto-use, controller/executor suites | Typecheck + full tests + build; runtime evidence for changed assumptions | Release gate + relevant runtime checks |
 | UI/settings/harness | `bun run ui:harness:build`, harness screenshots; pure helper tests | Typecheck + tests + harness build; short viewport and affected states | Release gate + harness build |
 | Packaging/dependencies/check scripts | Focused script tests; typecheck | Production build + harness build for dependency changes; docs checks | Release gate |
 
-`release:validate` runs typecheck, Jest, production build and docs checks. It does **not** run Cargo tests or replay contracts. Publishing order and commands live only in `.agents/skills/craftbuddy-release/SKILL.md`.
+`release:validate` runs typecheck, Jest, production build and docs checks. It does **not** run replay contracts. Publishing order and commands live only in `.agents/skills/craftbuddy-release/SKILL.md`.
 
 ### Test/evidence details
 
 - Jest matches `.test.ts` in a Node environment, not `.tsx`; pure presentation helpers get unit tests, layout gets harness screenshots. Full simulations take several minutes.
 - A multi-turn recommendation report deserves a simulation or exported replay, not just a single-score assertion. Test both guaranteed survival floors and actual failure transitions; their known divergence is not repaired by an EV test.
-- The differential corpus is generated from `src/__tests__/fixtures/differentialCorpus.ts` into `crates/craftbuddy-engine/tests/differential_corpus.json`. Unknown effects can be skipped identically by both engines: cross-engine agreement is not proof of game fidelity. Run final recorded-corpus checks without a scratch `CRAFTBUDDY_DIFFERENTIAL_INPUT` override.
-- `bun run optimizer:parity` runs the Cargo and focused Jest parity suites, grouped by toolchain; it does not regenerate the corpus or replace the full suite. Native MCTS is disabled in Jest unless `CRAFTBUDDY_ENABLE_WASM_MCTS_TESTS=1`.
+- The transition golden is generated from `src/__tests__/fixtures/differentialCorpus.ts` into `src/__tests__/fixtures/transition_corpus.json`. It pins TypeScript behavior, not game fidelity; runtime evidence remains authoritative.
+- `bun run optimizer:parity` runs focused Jest mechanics/transition suites serially; it does not regenerate the golden or replace the full suite.
 - Keep the seeded random harmony pool stable; cover new harmonies with explicit matrices instead of silently remapping old random inputs.
 - For neutral refactors/performance work, record `bun run optimizer:digest -- --out tmp/baseline.json` before editing, then compare with `bun run optimizer:digest -- --compare tmp/baseline.json`. It fixes node budgets and gives time a nonbinding ceiling. Ordinary presets stop on the clock too, so equal sliders do not guarantee identical work or recommendations.
 - Run wall-clock benchmarks separately from CPU-heavy checks. Preserve runtime-evidenced contracts rather than tuning scoring constants to pass them. Historical measurements and reproduction commands are in [Engine decisions](ENGINE_DECISIONS.md).

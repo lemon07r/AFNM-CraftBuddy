@@ -66,7 +66,6 @@ function run(): Record<string, DigestEntry> {
           ...input.searchConfig,
           timeBudgetMs: 1e9,
           maxNodes,
-          useMonteCarloTreeSearch: false,
         } as Parameters<typeof findBestSkill>[8],
       );
       const timeMs = performance.now() - started;

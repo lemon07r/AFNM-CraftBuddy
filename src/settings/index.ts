@@ -64,8 +64,6 @@ export interface CraftBuddySettings {
    * effort goes into perfection instead.
    */
   completionBandCeiling: number;
-  /** Optimizer engine mode. Legacy is the default; experimental enables native MCTS policy guidance. */
-  optimizerEngine: OptimizerEngine;
   /**
    * Search worker threads. 1 (default) keeps the current single-worker
    * behaviour; 2/4 partition the root candidates across a worker pool; 'auto'
@@ -77,13 +75,11 @@ export interface CraftBuddySettings {
   preferredAutoModePolicy: AutoCraftPolicy;
 }
 
-export type OptimizerEngine = 'legacy' | 'experimental';
-
 export type SearchThreadCount = 1 | 2 | 4 | 'auto';
 
 /**
  * Resolve the effective worker count. `auto` leaves two cores for the game
- * and caps at 4; each worker carries its own inline engine instance. Unknown
+ * and caps at 4; each worker carries its own search state. Unknown
  * concurrency resolves conservatively to 1 (the pre-pool behaviour).
  */
 export function resolveSearchThreadCount(
@@ -156,32 +152,6 @@ export type SearchPresetBudget = Pick<
   'lookaheadDepth' | 'searchTimeBudgetMs' | 'searchMaxNodes' | 'searchBeamWidth'
 >;
 
-export interface OptimizerEngineOption {
-  id: OptimizerEngine;
-  label: string;
-  description: string;
-  note: string;
-}
-
-export const DEFAULT_OPTIMIZER_ENGINE: OptimizerEngine = 'legacy';
-
-export const OPTIMIZER_ENGINE_OPTIONS: OptimizerEngineOption[] = [
-  {
-    id: 'legacy',
-    label: 'Legacy',
-    description:
-      'Uses the established TypeScript lookahead engine with deterministic EV scoring, beam ordering, and condition branching.',
-    note: 'Default for v5. Stable and fully parity-tested.',
-  },
-  {
-    id: 'experimental',
-    label: 'Experimental',
-    description:
-      'Adds the Rust/WASM Monte Carlo Tree Search root policy prior for difficult late-game, sublime, and harmony-heavy crafts.',
-    note: 'TypeScript remains authoritative; MCTS only breaks near-ties in root ordering.',
-  },
-];
-
 const STORAGE_KEY = 'craftbuddy_settings';
 const SEARCH_DEFAULTS_RESET_VERSION_KEY =
   'craftbuddy_search_defaults_reset_version';
@@ -190,77 +160,39 @@ const DISPLAY_DEFAULTS_RESET_VERSION_KEY =
   'craftbuddy_display_defaults_reset_version';
 const DISPLAY_DEFAULTS_RESET_VERSION = '1';
 
-export const LEGACY_SEARCH_PRESET_BUDGETS: Record<
-  SearchPresetId,
-  SearchPresetBudget
-> = {
-  instant: {
-    lookaheadDepth: 32,
-    searchTimeBudgetMs: 1000,
-    searchMaxNodes: 400000,
-    searchBeamWidth: 5,
-  },
-  fast: {
-    lookaheadDepth: 48,
-    searchTimeBudgetMs: 2000,
-    searchMaxNodes: 1000000,
-    searchBeamWidth: 5,
-  },
-  balanced: {
-    lookaheadDepth: 64,
-    searchTimeBudgetMs: 4500,
-    searchMaxNodes: 2000000,
-    searchBeamWidth: 5,
-  },
-  high_accuracy: {
-    lookaheadDepth: 80,
-    searchTimeBudgetMs: 8000,
-    searchMaxNodes: 3500000,
-    searchBeamWidth: 9,
-  },
-  max: {
-    lookaheadDepth: 96,
-    searchTimeBudgetMs: 10000,
-    searchMaxNodes: 5000000,
-    searchBeamWidth: 12,
-  },
-};
-
-export const EXPERIMENTAL_SEARCH_PRESET_BUDGETS: Record<
-  SearchPresetId,
-  SearchPresetBudget
-> = {
-  instant: {
-    lookaheadDepth: 32,
-    searchTimeBudgetMs: 1250,
-    searchMaxNodes: 400000,
-    searchBeamWidth: 5,
-  },
-  fast: {
-    lookaheadDepth: 32,
-    searchTimeBudgetMs: 1500,
-    searchMaxNodes: 500000,
-    searchBeamWidth: 5,
-  },
-  balanced: {
-    lookaheadDepth: 48,
-    searchTimeBudgetMs: 2250,
-    searchMaxNodes: 800000,
-    searchBeamWidth: 5,
-  },
-  high_accuracy: {
-    lookaheadDepth: 64,
-    searchTimeBudgetMs: 3250,
-    searchMaxNodes: 1300000,
-    searchBeamWidth: 5,
-  },
-  max: {
-    lookaheadDepth: 80,
-    searchTimeBudgetMs: 4000,
-    searchMaxNodes: 2000000,
-    searchBeamWidth: 5,
-  },
-};
+export const SEARCH_PRESET_BUDGETS: Record<SearchPresetId, SearchPresetBudget> =
+  {
+    instant: {
+      lookaheadDepth: 32,
+      searchTimeBudgetMs: 1000,
+      searchMaxNodes: 400000,
+      searchBeamWidth: 5,
+    },
+    fast: {
+      lookaheadDepth: 48,
+      searchTimeBudgetMs: 2000,
+      searchMaxNodes: 1000000,
+      searchBeamWidth: 5,
+    },
+    balanced: {
+      lookaheadDepth: 64,
+      searchTimeBudgetMs: 4500,
+      searchMaxNodes: 2000000,
+      searchBeamWidth: 5,
+    },
+    high_accuracy: {
+      lookaheadDepth: 80,
+      searchTimeBudgetMs: 8000,
+      searchMaxNodes: 3500000,
+      searchBeamWidth: 9,
+    },
+    max: {
+      lookaheadDepth: 96,
+      searchTimeBudgetMs: 10000,
+      searchMaxNodes: 5000000,
+      searchBeamWidth: 12,
+    },
+  };
 
 /**
  * Upper bound for both ambition band settings. The band ladder compounds by
@@ -268,11 +200,6 @@ export const EXPERIMENTAL_SEARCH_PRESET_BUDGETS: Record<
  * can bank; the clamp only exists to keep a stored value sane.
  */
 export const AMBITION_BAND_MAX = 8;
-
-const EXPERIMENTAL_MCTS_ITERATIONS = 250;
-const EXPERIMENTAL_MCTS_MAX_NODES = 5000;
-const EXPERIMENTAL_MCTS_MIN_ROLLOUT_DEPTH = 8;
-const EXPERIMENTAL_MCTS_MAX_ROLLOUT_DEPTH = 16;
 
 export const DEFAULT_SEARCH_SETTINGS: Pick<
   CraftBuddySettings,
@@ -284,14 +211,12 @@ export const DEFAULT_SEARCH_SETTINGS: Pick<
   | 'overcraftAmbition'
   | 'perfectionBandGoal'
   | 'completionBandCeiling'
-  | 'optimizerEngine'
 > = {
-  ...LEGACY_SEARCH_PRESET_BUDGETS.fast,
+  ...SEARCH_PRESET_BUDGETS.fast,
   searchGoalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
   overcraftAmbition: true,
   perfectionBandGoal: 0,
   completionBandCeiling: 0,
-  optimizerEngine: DEFAULT_OPTIMIZER_ENGINE,
 };
 
 const DEFAULT_SETTINGS: CraftBuddySettings = {
@@ -311,6 +236,8 @@ let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
 
 type StoredCraftBuddySettings = Partial<CraftBuddySettings> & {
   prioritizeGuaranteedCompletion?: unknown;
+  /** Retired engine selector, discarded when old settings are loaded. */
+  optimizerEngine?: unknown;
 };
 
 function getStorage(): Storage | null {
@@ -339,8 +266,10 @@ function clampInteger(
 }
 
 function normalizeSettings(
-  settings: StoredCraftBuddySettings,
+  storedSettings: StoredCraftBuddySettings,
 ): CraftBuddySettings {
+  const settings = { ...storedSettings };
+  delete settings.optimizerEngine;
   const searchGoalPriorityBias =
     settings.searchGoalPriorityBias !== undefined
       ? clampSearchGoalPriorityBias(
@@ -397,10 +326,6 @@ function normalizeSettings(
       AMBITION_BAND_MAX,
       DEFAULT_SETTINGS.completionBandCeiling,
     ),
-    optimizerEngine:
-      settings.optimizerEngine === 'experimental'
-        ? 'experimental'
-        : DEFAULT_SETTINGS.optimizerEngine,
     searchThreads: normalizeSearchThreadCount(settings.searchThreads),
     preferredAutoModePolicy: normalizeAutoCraftPolicy(
       settings.preferredAutoModePolicy,
@@ -442,15 +367,18 @@ function applyDisplayDefaultsForV371(
 export function loadSettings(): CraftBuddySettings {
   const storage = getStorage();
   try {
+    let settingsChanged = false;
     const stored = storage?.getItem(STORAGE_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored);
+      const parsed: StoredCraftBuddySettings = JSON.parse(stored);
       currentSettings = normalizeSettings(parsed);
+      settingsChanged = Object.prototype.hasOwnProperty.call(
+        parsed,
+        'optimizerEngine',
+      );
     } else {
       currentSettings = { ...DEFAULT_SETTINGS };
     }
-
-    let settingsChanged = false;
 
     const needsSearchReset =
       storage?.getItem(SEARCH_DEFAULTS_RESET_VERSION_KEY) !==
@@ -591,28 +519,8 @@ export function getSearchConfig(): {
   overcraftAmbition: boolean;
   perfectionBandGoal: number;
   completionBandCeiling: number;
-  useMonteCarloTreeSearch: boolean;
-  mctsIterations?: number;
-  mctsRolloutDepth?: number;
-  mctsMaxNodes?: number;
   transpositionCache?: import('../optimizer/crossStepCache').TranspositionCache;
 } {
-  const useMonteCarloTreeSearch =
-    currentSettings.optimizerEngine === 'experimental';
-  const mctsConfig = useMonteCarloTreeSearch
-    ? {
-        mctsIterations: EXPERIMENTAL_MCTS_ITERATIONS,
-        mctsRolloutDepth: Math.max(
-          EXPERIMENTAL_MCTS_MIN_ROLLOUT_DEPTH,
-          Math.min(
-            EXPERIMENTAL_MCTS_MAX_ROLLOUT_DEPTH,
-            Math.round(currentSettings.lookaheadDepth / 4),
-          ),
-        ),
-        mctsMaxNodes: EXPERIMENTAL_MCTS_MAX_NODES,
-      }
-    : {};
-
   return {
     timeBudgetMs: currentSettings.searchTimeBudgetMs,
     maxNodes: currentSettings.searchMaxNodes,
@@ -621,8 +529,6 @@ export function getSearchConfig(): {
     overcraftAmbition: currentSettings.overcraftAmbition,
     perfectionBandGoal: currentSettings.perfectionBandGoal,
     completionBandCeiling: currentSettings.completionBandCeiling,
-    useMonteCarloTreeSearch,
-    ...mctsConfig,
   };
 }
 

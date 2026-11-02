@@ -202,7 +202,6 @@ describe('joint productive-action runway', () => {
         [],
         {
           useIterativeDeepening: false,
-          useMonteCarloTreeSearch: false,
           timeBudgetMs: 1e9,
           maxNodes: 1000000,
         },

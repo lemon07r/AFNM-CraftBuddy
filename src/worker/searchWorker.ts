@@ -4,9 +4,7 @@
  *
  * Purity rule: imports only `src/optimizer/*`. React/MUI are webpack
  * externals that do not exist inside a worker, and `src/modContent/*` would
- * drag the game-integration layer in, so neither may appear here. The inline
- * WASM engine is worker-safe as-is (`initSync` over the embedded base64
- * module, no fetch/URL dependency); each worker instantiates its own copy.
+ * drag the game-integration layer in, so neither may appear here.
  *
  * Cancellation: a `cancel` message for the in-flight epoch flips a flag that
  * the search polls through `SearchConfig.shouldAbort`, so the synchronous
@@ -54,7 +52,7 @@ workerScope.onmessage = (event: MessageEvent<SearchWorkerRequest>) => {
     return;
   }
 
-  const { epoch, scope, partition, baseSeed, rootSkillKeys, input } = message;
+  const { epoch, scope, partition, rootSkillKeys, input } = message;
   activeEpoch = epoch;
   abortRequested = false;
 
@@ -70,7 +68,6 @@ workerScope.onmessage = (event: MessageEvent<SearchWorkerRequest>) => {
           partition.index,
           partition.of,
         ),
-        mctsSeed: baseSeed + partition.index,
         shouldAbort: () => abortRequested,
       },
     });

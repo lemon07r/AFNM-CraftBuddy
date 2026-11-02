@@ -1,9 +1,9 @@
 /**
- * CraftBuddy - Cross-engine parity suite runner.
+ * CraftBuddy - Focused mechanics parity suite runner.
  *
- * The parity work spans two toolchains (Jest and cargo) and several suites, and
+ * Runtime parity work spans several Jest suites, and
  * a single divergence usually shows up in more than one of them. Running them
- * one at a time and reading four different output formats is slow and easy to
+ * one at a time is slow and easy to
  * get wrong, so this script:
  *
  * - runs the parity-relevant suites, in parallel where that is safe;
@@ -14,11 +14,9 @@
  *
  * Usage:
  *   bun run scripts/optimizer/run-parity-suites.ts            # default set
- *   bun run scripts/optimizer/run-parity-suites.ts --rust     # cargo only
- *   bun run scripts/optimizer/run-parity-suites.ts --jest     # Jest only
  *   bun run scripts/optimizer/run-parity-suites.ts --serial
  *   bun run scripts/optimizer/run-parity-suites.ts --timeout 240
- *   bun run scripts/optimizer/run-parity-suites.ts --filter differential
+ *   bun run scripts/optimizer/run-parity-suites.ts --filter transition
  */
 
 import { spawn } from 'node:child_process';
@@ -26,21 +24,13 @@ import { resolve } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '../..');
 
-type SuiteKind = 'jest' | 'cargo';
-
 interface SuiteSpec {
   /** Stable identifier, also used by `--filter`. */
   readonly id: string;
-  readonly kind: SuiteKind;
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd?: string;
-  /**
-   * Suites that must not run concurrently with anything else.
-   *
-   * `cargo test` takes a target-directory lock, so two cargo suites would
-   * serialize anyway - but they would each report a misleading wall time.
-   */
+  /** Suites sharing a group run serially to avoid CPU contention. */
   readonly group: string;
   readonly timeoutSeconds: number;
 }
@@ -59,8 +49,7 @@ interface SuiteResult {
 }
 
 const JEST_SUITES: readonly string[] = [
-  'src/__tests__/engineDifferential.test.ts',
-  'src/__tests__/nativeMcts.test.ts',
+  'src/__tests__/transitionCorpus.test.ts',
   'src/__tests__/skills.test.ts',
   'src/__tests__/gameAccuracy.test.ts',
   'src/__tests__/harmony.test.ts',
@@ -69,18 +58,8 @@ const JEST_SUITES: readonly string[] = [
 
 function buildSuites(timeoutSeconds: number): SuiteSpec[] {
   return [
-    {
-      id: 'cargo-engine',
-      kind: 'cargo',
-      command: 'cargo',
-      args: ['test', '--lib', '--', '--nocapture'],
-      cwd: resolve(REPO_ROOT, 'crates/craftbuddy-engine'),
-      group: 'cargo',
-      timeoutSeconds,
-    },
     ...JEST_SUITES.map((file) => ({
       id: `jest:${file.replace(/^src\/__tests__\//, '').replace(/\.test\.ts$/, '')}`,
-      kind: 'jest' as const,
       command: 'bunx',
       args: ['jest', file, '--silent', '--runInBand'],
       cwd: REPO_ROOT,
@@ -137,7 +116,7 @@ function runProcess(spec: SuiteSpec): Promise<RunOutput> {
   });
 }
 
-/** Jest writes its summary to stderr; cargo writes to stdout. */
+/** Jest writes its summary to stderr. */
 function parseJest(output: RunOutput): {
   passed: number;
   failed: number;
@@ -162,35 +141,6 @@ function parseJest(output: RunOutput): {
   };
 }
 
-function parseCargo(output: RunOutput): {
-  passed: number;
-  failed: number;
-  failures: string[];
-  transitions?: number;
-} {
-  const combined = `${output.stdout}\n${output.stderr}`;
-  let passed = 0;
-  let failed = 0;
-  for (const match of combined.matchAll(
-    /test result: \w+\. (\d+) passed; (\d+) failed/g,
-  )) {
-    passed += Number(match[1]);
-    failed += Number(match[2]);
-  }
-  const failures: string[] = [];
-  for (const line of combined.split('\n')) {
-    const match = /^test (\S+) \.\.\. FAILED$/.exec(line.trim());
-    if (match && match[1]) failures.push(match[1]);
-  }
-  const transitions = /compared (\d+) transitions/.exec(combined);
-  return {
-    passed,
-    failed,
-    failures,
-    transitions: transitions ? Number(transitions[1]) : undefined,
-  };
-}
-
 function parseJestTransitions(output: RunOutput): number | undefined {
   const combined = `${output.stdout}\n${output.stderr}`;
   const match = /(\d+)\s+transitions/.exec(combined);
@@ -199,11 +149,8 @@ function parseJestTransitions(output: RunOutput): number | undefined {
 
 async function runSuite(spec: SuiteSpec): Promise<SuiteResult> {
   const output = await runProcess(spec);
-  const parsed = spec.kind === 'cargo' ? parseCargo(output) : parseJest(output);
-  const transitions =
-    spec.kind === 'cargo'
-      ? (parsed as { transitions?: number }).transitions
-      : parseJestTransitions(output);
+  const parsed = parseJest(output);
+  const transitions = parseJestTransitions(output);
   const tailSource = `${output.stdout}\n${output.stderr}`.trim().split('\n');
   return {
     id: spec.id,
@@ -257,8 +204,6 @@ function formatDuration(ms: number): string {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const serial = argv.includes('--serial');
-  const rustOnly = argv.includes('--rust');
-  const jestOnly = argv.includes('--jest');
   const timeoutIndex = argv.indexOf('--timeout');
   const timeoutSeconds =
     timeoutIndex >= 0 ? Number(argv[timeoutIndex + 1]) || 120 : 120;
@@ -266,8 +211,6 @@ async function main(): Promise<void> {
   const filter = filterIndex >= 0 ? argv[filterIndex + 1] : undefined;
 
   let suites = buildSuites(timeoutSeconds);
-  if (rustOnly) suites = suites.filter((suite) => suite.kind === 'cargo');
-  if (jestOnly) suites = suites.filter((suite) => suite.kind === 'jest');
   if (filter) suites = suites.filter((suite) => suite.id.includes(filter));
 
   if (suites.length === 0) {

@@ -5,10 +5,59 @@ import {
   buildStateSnapshot,
   reviveConfigSnapshot,
   reviveStateSnapshot,
+  replayOptimizerSnapshot,
+  type OptimizerReplaySnapshot,
 } from '../modContent/replaySnapshot';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
+import {
+  freezeSearchClock,
+  loadOptimizerReplaySnapshot,
+} from './__fixtures__/replaySnapshots';
 
 describe('0.7.17 replay boundary', () => {
+  it.each(['legacy', 'experimental'])(
+    'replays old snapshots with retired %s engine and MCTS fields',
+    (optimizerEngine) => {
+      freezeSearchClock();
+      try {
+        const snapshot = loadOptimizerReplaySnapshot(
+          'user-report-overcraft-endgame.snapshot.json',
+        );
+        snapshot.input.searchConfig = {
+          timeBudgetMs: 600000,
+          maxNodes: 120,
+          beamWidth: 5,
+          goalPriorityBias: 0,
+        };
+        const clean = replayOptimizerSnapshot(snapshot).result;
+        const old: OptimizerReplaySnapshot = JSON.parse(
+          JSON.stringify({
+            ...snapshot,
+            input: {
+              ...snapshot.input,
+              settings: { ...snapshot.input.settings, optimizerEngine },
+              searchConfig: {
+                ...snapshot.input.searchConfig,
+                useMonteCarloTreeSearch: true,
+                mctsIterations: 250,
+                mctsRolloutDepth: 16,
+                mctsMaxNodes: 5000,
+                mctsExploration: 1.15,
+                mctsSeed: 42,
+              },
+            },
+          }),
+        );
+        const replayed = replayOptimizerSnapshot(old).result;
+        expect(replayed.searchMetrics?.nodesExplored).toBeGreaterThan(0);
+        expect(replayed.recommendation).not.toBeNull();
+        expect(replayed).toEqual(clean);
+      } finally {
+        jest.useRealTimers();
+      }
+    },
+  );
+
   it('separates legacy flattened masteries using the saved native effect tree', () => {
     const base = { kind: 'completion' as const, amount: { value: 10 } };
     const mastery = { kind: 'completion' as const, amount: { value: 30 } };

@@ -1,10 +1,21 @@
 # Engine decisions and measurements
 
-Why the current search/bridge shape exists, what was measured, and what still needs evidence. These are **dated/historical measurements**, not fresh AFNM 0.7.19 speed guarantees. Current architecture is in [Optimizer design](OPTIMIZER_DESIGN.md); runtime gaps are in [Mechanics parity](MECHANICS_PARITY.md).
+Why the current search shape exists, what was measured, and what still needs evidence. These are **dated/historical measurements**, not fresh AFNM 0.7.19 speed guarantees. Current architecture is in [Optimizer design](OPTIMIZER_DESIGN.md); runtime gaps are in [Mechanics parity](MECHANICS_PARITY.md).
 
-## Authority and packaging
+## Experimental-prior retirement (7.0)
 
-TypeScript owns final recommendation ranking, score caches and the no-WASM fallback. Rust independently mirrors normalized mechanics/outcomes/action space and supplies only a near-tie root-policy prior. Absolute scorer values are not comparable across engines. The corpus proves covered transition agreement, not universal runtime fidelity.
+The user-approved fair evaluation found no recommendation benefit from the opt-in Rust/WASM MCTS prior:
+
+- **Fixed work:** all **16/16** recommendations were identical to TypeScript at **6,000 nodes**, with the prior about **48% slower**.
+- **Equal time:** agreement with a deep oracle was **18/32** for the prior versus **24/32** for TypeScript alone.
+
+Retire the experimental engine, bridge, toolchain and selector rather than maintain two mechanics implementations for a prior that displaced useful search. The established TypeScript search, scoring constants and Legacy preset budgets are unchanged. Old engine settings are discarded on load; old replay engine/MCTS fields are tolerated and ignored. The existing **211 scenarios / 1,588 transitions** remain as a TypeScript golden with unchanged expected outputs, not a cross-engine maintenance duty.
+
+The benchmark retains all **15 fixture contracts** unchanged. Removing the three experimental configurations reduces the matrix from **105 to 60 contract evaluations** (7 to 4 configs; 16 replay fixtures give 112 to 64 total runs). The retained same-budget TypeScript config is intentionally still present.
+
+## Historical authority and packaging
+
+Before retirement, TypeScript owned final ranking and score caches; Rust supplied only a near-tie root-policy prior. Absolute scores were not comparable across engines. The old differential corpus established covered transition agreement, not universal runtime fidelity. The following Rust findings are historical, not build instructions or an obligation to keep a second engine in sync.
 
 **Renderer feasibility, 2026-04-23:** raw `WebAssembly.instantiate(bytes)` worked; wasm-bindgen worked with its imports/glue. Fetching either `mod://` or localhost failed, as did a localhost WebSocket and Node process/file APIs. Hence `wasm-pack --target web`, embedded bytes and glue initialization; a separately fetched WASM/HTTP sidecar was not viable in that measured renderer. This experiment established loading, not quality or performance. Remeasure if the renderer changes.
 
@@ -12,7 +23,7 @@ TypeScript owns final recommendation ranking, score caches and the no-WASM fallb
 
 ### Explicit null disabled the native prior (6.0.0 investigation)
 
-One explicit `null` on a non-optional Rust field rejected the **entire** `MctsInput`. Of 226 game techniques measured on 0.7.5, 188 carried `mastery: null`, so real crafts silently lost their prior. `stripNullish` in `src/optimizer/nativeMcts.ts` and Rust's `null_default` fixed the boundary; `nativeMcts.test.ts` asserts no explicit null survives serialization.
+One explicit `null` on a non-optional Rust field rejected the **entire** `MctsInput`. Of 226 game techniques measured on 0.7.5, 188 carried `mastery: null`, so real crafts silently lost their prior. The retired bridge's `stripNullish` and Rust's `null_default` fixed the boundary, with a bridge test asserting no explicit null survived serialization.
 
 Across 98 benchmark runs, native-policy participation went **0 → 42**, contracts **96 pass/2 fail → 97/1**. Nodes fell 2.9% overall, concentrated in MCTS configs (6–8%): a now-working prior consumed real shared budget. The remaining resonance defect was separate.
 
@@ -32,13 +43,13 @@ The original correction shifted 11 of 585 corpus transitions by one point, with 
 
 112 release-build runs over 14 production-shaped replay inputs, fixed node budget:
 
-| Metric | Before | After |
-| --- | --- | --- |
-| Total clock | 41,417.675 ms | 21,790.132 ms |
-| Per run | 369.801 ms | 194.555 ms |
-| Per node | 1,653,532 ns | 869,935 ns |
-| Nodes / iterations | 25,048 / 28,000 | unchanged |
-| Ranked policy digest | baseline | byte-identical |
+| Metric               | Before          | After          |
+| -------------------- | --------------- | -------------- |
+| Total clock          | 41,417.675 ms   | 21,790.132 ms  |
+| Per run              | 369.801 ms      | 194.555 ms     |
+| Per node             | 1,653,532 ns    | 869,935 ns     |
+| Nodes / iterations   | 25,048 / 28,000 | unchanged      |
+| Ranked policy digest | baseline        | byte-identical |
 
 That was **1.90× throughput / −47.4% time** at identical search shape. The changes removed redundant work:
 
@@ -46,26 +57,26 @@ That was **1.90× throughput / −47.4% time** at identical search shape. The ch
 2. Fast-path effective maxpool unless a held buff declares that stat. The old full recomputation cost 7,400 ns/call (~46% of a transition), ran twice per transition and caused an interim state clone.
 3. Use `FxHasher` for short ASCII hot-map keys rather than paying SipHash's collision-resistance cost.
 
-| Counter/run | Before | After |
-| --- | --- | --- |
-| Iterations / nodes created | 250 / 223.6 | unchanged |
+| Counter/run                       | Before             | After     |
+| --------------------------------- | ------------------ | --------- |
+| Iterations / nodes created        | 250 / 223.6        | unchanged |
 | `apply_skill` / `can_apply_skill` | 6,203.8 / 12,308.9 | unchanged |
-| Score / preview calls | 6,718.6 / 6,468.6 | unchanged |
-| Rollout steps | 227.9 | unchanged |
-| State clones | 13,374.0 | 7,170.2 |
+| Score / preview calls             | 6,718.6 / 6,468.6  | unchanged |
+| Rollout steps                     | 227.9              | unchanged |
+| State clones                      | 13,374.0           | 7,170.2   |
 
 Component microbench, ns/call, means over 20,000 calls:
 
-| Component | Before | After |
-| --- | --- | --- |
-| State clone | 1,358.9 | 1,335.7 |
-| Resolve active buffs | 3,865.7 | 3,669.8 |
-| Can apply | 1,241.8 | 1,099.4 |
-| Apply | 28,919.3 | 18,264.0 |
-| Score | 241.6 | 246.3 |
-| Effective maxpool | 7,400.0 | 15.9 |
-| Resolve action | 10,418.6 | 8,914.5 |
-| Calculate gains | 863.9 | 910.3 |
+| Component            | Before   | After    |
+| -------------------- | -------- | -------- |
+| State clone          | 1,358.9  | 1,335.7  |
+| Resolve active buffs | 3,865.7  | 3,669.8  |
+| Can apply            | 1,241.8  | 1,099.4  |
+| Apply                | 28,919.3 | 18,264.0 |
+| Score                | 241.6    | 246.3    |
+| Effective maxpool    | 7,400.0  | 15.9     |
+| Resolve action       | 10,418.6 | 8,914.5  |
+| Calculate gains      | 863.9    | 910.3    |
 
 ### Measured alternatives not taken
 
@@ -98,11 +109,11 @@ Across 14 replays, production-like 2-second searches reached depth 3–7 (~120�
 
 The revised gate used baseline+2 minimum depth, three stable passes, and scanned risky/terminal **challengers**, not the top line itself (which had blocked its own exit despite a 198k margin). Margin threshold `max(10 × tieWindow, 2 × avgGainPerTurn)`, the next-three challenger scan and disable-when-native-policy-participates stayed unchanged.
 
-| Replay | Completed depth | Nodes before → after |
-| --- | --- | --- |
-| `low-stability-regression` | 5 | 8,259 → 271 |
-| `low-stability-step-before` | 5 | 9,078 → 300 |
-| `user-report-fairy-recovery` | 6 | 1,041 → 355 |
+| Replay                       | Completed depth | Nodes before → after |
+| ---------------------------- | --------------- | -------------------- |
+| `low-stability-regression`   | 5               | 8,259 → 271          |
+| `low-stability-step-before`  | 5               | 9,078 → 300          |
+| `user-report-fairy-recovery` | 6               | 1,041 → 355          |
 
 Contested margins (46–732 against thresholds 1.3k–10.6k) correctly did not exit. Fixed-node tests pin stable fairy recovery and contested pattern behavior; replay contracts stayed 98/98.
 
@@ -126,7 +137,7 @@ Balanced bought +0.3 depth for 1.9× Fast time, not a retuning signal. Disagreem
 
 Worker source is bundled inline, then loaded through a blob URL because the shipping `mod://` path cannot resolve normal chunks. The integration client smoke-probes once/session; worker failure falls back to synchronous search. Epoch cancellation and cooperative abort checks drop stale work. Each worker owns its engine and cache.
 
-Root keys partition by stride. An `autoResolved` partial short-circuits the merge with no actions. Otherwise only `live` partials contribute candidates; their absolute scores merge with survival precedence and key tie-breaks, deduping keys and recomputing relative quality ratings. The merged status is `live` when candidates remain, or `blocked` otherwise; goal achievement stays independent metadata. Native policy seeds use `baseSeed + workerIndex`. For pooled results, work metrics sum and depth/time take maxima. An empty slice can complete all depths and **overstate merged depthReached** without changing ranking.
+Root keys partition by stride. An `autoResolved` partial short-circuits the merge with no actions. Otherwise only `live` partials contribute candidates; their absolute scores merge with survival precedence and key tie-breaks, deduping keys and recomputing relative quality ratings. The merged status is `live` when candidates remain, or `blocked` otherwise; goal achievement stays independent metadata. For pooled results, work metrics sum and depth/time take maxima. An empty slice can complete all depths and **overstate merged depthReached** without changing ranking.
 
 Six replay payloads, real Bun workers, captured production budgets (`scripts/bench-worker-pool.ts`):
 
@@ -148,20 +159,18 @@ Fixed-node probing: pre-retarget **.405737 ms/node**, initial phase/cost port **
 ## Reproduce / protect neutrality
 
 ```bash
-bun run scripts/optimizer/dump-native-mcts-inputs.ts
-cargo test --manifest-path crates/craftbuddy-engine/Cargo.toml --release --lib -- --ignored --nocapture --test-threads 1 profile_mcts_throughput
-cargo test --manifest-path crates/craftbuddy-engine/Cargo.toml --release --lib -- --ignored --nocapture --test-threads 1 profile_component_microbench
-cargo test --manifest-path crates/craftbuddy-engine/Cargo.toml --release --lib -- --ignored --nocapture --test-threads 1 profile_ranked_policy_digest
-cargo test --manifest-path crates/craftbuddy-engine/Cargo.toml --release --lib --features profiling -- --ignored --nocapture --test-threads 1 profile_mcts_throughput
+bun run optimizer:digest -- --out tmp/baseline.json
+# After a neutral refactor:
+bun run optimizer:digest -- --compare tmp/baseline.json
 bun run optimizer:bench
 ```
 
-Profiling counters compile out of normal/WASM builds; the three profiling tests are intentionally opt-in. Compare ranked-policy digests for engine-neutral changes. For TS neutral refactors use `bun run optimizer:digest -- --out tmp/baseline.json`, then `--compare tmp/baseline.json`. Benchmark JSON/Markdown output options are available in `scripts/optimizer/benchmark-engines.ts`; run clock measurements without competing test loads. A failing contract is a reproduction lead, not permission to tune a constant.
+The retired Rust profiling commands are no longer supported. Benchmark JSON/Markdown output options are available in `scripts/optimizer/benchmark-engines.ts`; run clock measurements without competing test loads. A failing contract is a reproduction lead, not permission to tune a constant.
 
 ## Evidence still worth collecting
 
 - More full player replays: high-realm/50+ technique crafts, sublime after basic success, Formless/Echo/Decree (especially mid-technique focus changes), alchemical charges, inscription partial blocks, low-stability proc recovery, near-auto-finish states, and real Cycle/Cadence strategy. Fourteen curated fixtures were a regression set, not broad proof.
 - `window.craftBuddyDebug.exportOptimizerReplaySnapshot()` produces the input to curate under `src/__tests__/__fixtures__/replay-snapshots/`; attach a flexible runtime-grounded benchmark contract and the player's rationale.
 - Native finalized-cost helper adoption is dependency-gated; other unsupported effects and survivability timing are in the mechanics gaps, not ranking-tuning work.
-- Diagnostics already include frontier/nodes/cache/time/early-exit/native policy, outcome projection and setup hints. A debug-only per-layer score explanation remains a useful candidate, not a normal-UI requirement.
+- Diagnostics already include frontier/nodes/cache/time/early-exit, outcome projection and setup hints. A debug-only per-layer score explanation remains a useful candidate, not a normal-UI requirement.
 - UI host/localization adoption, auto-use condition/loadout-switch coverage and structured fallback/missing-field counters remain local integration opportunities. Post-craft harmony effects/material payout and combat are deliberately outside transition scope.

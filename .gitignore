@@ -57,11 +57,6 @@ temp/
 # Coverage directory
 coverage/
 
-# Future Rust/WASM build artifacts
-src/wasm-pkg/
-src/optimizer/wasm/generated/
-crates/craftbuddy-engine/target/
-
 # Junie AI session files
 .junie/
 .output.txt

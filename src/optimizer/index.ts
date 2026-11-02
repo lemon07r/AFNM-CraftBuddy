@@ -125,7 +125,6 @@ export type { HarmonyDefinition } from './harmonyRegistry';
 
 // Native-runtime bridges. Exported so `src/modContent/*` never reaches past
 // this facade: the search already depends on both, so this adds no coupling.
-export { preloadNativeMctsPolicyEngine } from './nativeMcts';
 export { buildCanonicalNativeVariables } from './nativeVariables';
 
 // Cross-step transposition cache: one instance per search backend, scoped by

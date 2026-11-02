@@ -1,5 +1,10 @@
 # Changelog
 
+### Unreleased — 7.0.0
+
+- Retire the opt-in Rust/WASM MCTS prior and engine selector; the established TypeScript search and its preset budgets are unchanged.
+- Preserve old settings/replay compatibility and retain the 1,588-transition corpus as a TypeScript golden test. Builds no longer require Rust or wasm-pack.
+
 ## 6.9.0 — AFNM 0.7.19
 
 - Retarget to 0.7.19-ac29603 and afnm-types 0.7.19; retain the audited phase/Cycle model.

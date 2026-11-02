@@ -15,7 +15,6 @@ export interface OptimizerReplaySearchConfigSnapshot extends Pick<
   | 'beamWidth'
   | 'goalPriorityBias'
   | 'overcraftAmbition'
-  | 'useMonteCarloTreeSearch'
 > {}
 
 export interface OptimizerReplayInputSnapshot {
@@ -44,7 +43,6 @@ export interface OptimizerReplayInputSnapshot {
     searchBeamWidth: number;
     searchGoalPriorityBias: number;
     overcraftAmbition?: boolean;
-    optimizerEngine?: string;
     compactMode: boolean;
     panelVisible: boolean;
   };

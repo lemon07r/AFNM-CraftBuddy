@@ -6,7 +6,6 @@ import {
   processHarmonyEffect,
   RETURNED_PRECISION,
 } from '../optimizer';
-import { buildNativeMctsInput } from '../optimizer/nativeMcts';
 import { hydrateHarmonyData } from '../modContent/harmonyState';
 import {
   buildStateSnapshot,
@@ -172,7 +171,7 @@ describe('Returning Cycle (RUNTIME_EVIDENCE §17.5; G:318992-319082)', () => {
     expect(result.harmonyData.returningCycle?.storedQi).toBe(3);
   });
 
-  it('hydrates live state, clones independently, and round-trips replay and native payloads', () => {
+  it('hydrates live state, clones independently, and round-trips replay payloads', () => {
     const raw = {
       returningCycle: {
         charges: 12,
@@ -210,21 +209,6 @@ describe('Returning Cycle (RUNTIME_EVIDENCE §17.5; G:318992-319082)', () => {
     expect(applySkill(revived, config.skills[0], config)).toEqual(
       applySkill(cloned, skill, config),
     );
-    const native = buildNativeMctsInput({
-      state: revived,
-      config,
-      targetCompletion: 100,
-      targetPerfection: 100,
-      currentConditionType: 'neutral',
-      forecastedConditionTypes: [],
-    });
-    expect(native.state.harmony_data.returning_cycle).toEqual({
-      charges: 12,
-      stored_qi: 7.5,
-      charge_size: 25,
-      pulse_key: 8,
-      last_outcome: 'charge',
-    });
     expect(
       hydrateHarmonyData({
         isSublimeCraft: true,

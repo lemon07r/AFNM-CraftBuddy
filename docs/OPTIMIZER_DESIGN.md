@@ -13,7 +13,7 @@ Integration/UI use `src/optimizer/index.ts`; workers and tests may import intern
 
 ## Outcome and goals
 
-`src/optimizer/outcome.ts` owns TS band widths, tier requirements and `willAutoFinish`. Rust's `crates/craftbuddy-engine/src/outcome.rs` is an independent parity-tested mirror, not a consumer of TS code.
+`src/optimizer/outcome.ts` owns band widths, tier requirements and `willAutoFinish`; UI and search consume that single implementation.
 
 Band widths grow by 1.3×: cumulative boundaries are approximately 100%, 230%, 399%, 619%, 904% of the recipe target. Tiers require both bars: basic = one completion band, perfect = one completion and one perfection, sublime = two of each and a distinct sublime item. `deriveOutcomeBands` builds caps/thresholds; `classifyOutcome` reports guaranteed tier, bands, margins and binding bar.
 
@@ -28,7 +28,7 @@ Defaults, ranges and preset tables belong in `src/settings/index.ts`, not anothe
 - Goal-priority bias shifts completion/perfection weight within the same scoring function (balanced follows remaining-work need). It cannot override a tier gate.
 - `overcraftAmbition` values extra bands independently per bar after the target tier is secured; off retains the legacy conjunctive extras term.
 - `perfectionBandGoal` raises the effective perfection goal, bounded by the cap; it never lowers the tier requirement. `completionBandCeiling` stops rewarding completion beyond that band, never below the tier requirement. Zero means automatic.
-- `buildOutcomeBands`, `deriveBandGoals` and `computeOvercraftExtras` carry these goals without changing thresholds, classification or auto-finish. Mirror the fields through the Rust bridge.
+- `buildOutcomeBands`, `deriveBandGoals` and `computeOvercraftExtras` carry these goals without changing thresholds, classification or auto-finish.
 - Every terminal score and integration stale-settings/cache-scope boundary includes all three ambition settings (`src/modContent/recommendationContext.ts`). Budget fields affect recommendation freshness but not score meaning.
 
 ## Search and ordering
@@ -68,13 +68,11 @@ Live horizon leaves bank **guaranteed** extras only: fractional noise was measur
 
 Harmony earns value through future outcomes and subsystem quality (heat distance, inscription blocks, alchemical charge, resonance state), not an invented flat harmony reward. `buildScoringContext` samples productive usable moves for representative runway gains and keeps each move's (completion, perfection) rate, damped to the per-bar averages and reduced to the non-dominated set. Remaining turns are the smallest count that covers both bars' remaining work using at most two of those rates (the optimum of the fractional two-bar covering problem), so a dual-bar move counts once and two single-bar moves never run concurrently. Without per-move rates the estimate falls back to the larger of the per-bar and total-work bounds. Work, runway and shortfall use the effective goals (the target tier, raised by the perfection band goal), not raw targets; the completion band ceiling only bounds extras.
 
-## Rust prior and workers
+## Workers
 
-Rust models the same normalized action space (including items) and mirrors mechanics/outcomes; the differential corpus tests that claim on covered cases. It is **not** proof of fidelity for effects both engines skip.
+The established TypeScript search is the only engine. The experimental prior was retired after the evaluation recorded in [Engine decisions](ENGINE_DECISIONS.md#experimental-prior-retirement-70).
 
-The optional Experimental engine requests an MCTS root-policy prior for large/sublime crafts after cheap terminal/goal checks. The prior shares the user budget and only breaks near-ties when both candidates appear; it cannot filter legal moves or overturn clear TS scores. TS owns final ranking, cache entries and the no-WASM fallback. Absolute Rust/TS scores are not comparable because their scoring-context sampling differs.
-
-Workers receive plain data and reconstruct local caches/abort hooks. Root keys partition by stride, then partials merge by survival precedence/score/key. Each worker has its own engine/cache and a root-parallel native seed. Epoch cancellation drops stale replies; a once-per-session probe and runtime failures fall back to synchronous search. Worker code is bundled inline into a blob URL because `mod://` cannot load ordinary chunks.
+Workers receive plain data and reconstruct local caches/abort hooks. Root keys partition by stride, then partials merge by survival precedence/score/key. Each worker has its own search/cache. Epoch cancellation drops stale replies; a once-per-session probe and runtime failures fall back to synchronous search. Worker code is bundled inline into a blob URL because `mod://` cannot load ordinary chunks.
 
 ## Result contract
 
@@ -84,8 +82,8 @@ Published completion/perfection gains diff the simulated post-state (`calculateR
 
 ## Determinism and tuning
 
-Equal state, config and **fixed node work** can reproduce a recommendation when the clock is nonbinding; ordinary millisecond budgets cannot guarantee it. TS explicitly checks `Date.now()` as well as max nodes, so the same presets can reach different completed frontiers across machines or under load. Native seeds/iteration limits and worker partitioning also need to be held fixed for a like-for-like comparison.
+Equal state, config and **fixed node work** can reproduce a recommendation when the clock is nonbinding; ordinary millisecond budgets cannot guarantee it. TS explicitly checks `Date.now()` as well as max nodes, so the same presets can reach different completed frontiers across machines or under load. Worker partitioning also needs to be held fixed for a like-for-like comparison.
 
-`bun run optimizer:digest` fixes node budgets, disables MCTS and makes the clock nonbinding for neutral refactor comparisons. The Rust determinism test guards insertion-ordered condition merging; it does not prove arbitrary wall-clock searches deterministic.
+`bun run optimizer:digest` fixes node budgets and makes the clock nonbinding for neutral refactor comparisons.
 
-Presets coordinate depth/time/nodes/beam. Raising only one can waste the budget or worsen frontier quality; wider beams and more MCTS iterations previously displaced useful TS depth. The measurements are in [Engine decisions](ENGINE_DECISIONS.md), and should be remeasured when workload changes.
+Presets coordinate depth/time/nodes/beam. Raising only one can waste the budget or worsen frontier quality; wider beams previously displaced useful depth. The measurements are in [Engine decisions](ENGINE_DECISIONS.md), and should be remeasured when workload changes.

@@ -23,8 +23,8 @@ const tsRule = {
   exclude: /node_modules/,
 };
 
-// Second compilation: the self-contained search worker bundle (optimizer +
-// inline WASM, no externals). Emitted to src/worker/generated and imported
+// Second compilation: the self-contained search worker bundle (optimizer,
+// no externals). Emitted to src/worker/generated and imported
 // by the main bundle as raw text (asset/source), then instantiated from a
 // Blob URL at runtime — the production publicPath is mod:// and the mod runs
 // as an inline script on a file:// page, so URL-loaded chunks cannot resolve.

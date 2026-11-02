@@ -9,7 +9,6 @@ import {
   canApplySkill,
 } from '../optimizer/skills';
 import { evaluateScaling, type ScalingVariables } from '../optimizer/gameTypes';
-import { buildNativeMctsInput } from '../optimizer/nativeMcts';
 import {
   retargetConfig,
   retargetScenarios,
@@ -48,14 +47,6 @@ describe('AFNM 0.7.17 shared mechanics', () => {
       expect(next.itemEffectiveness).toBe(effectiveness);
       expect(
         buildScalingVariables(scenario.state, 10, 10, 200).itemEffectiveness,
-      ).toBe(effectiveness);
-      expect(
-        buildNativeMctsInput({
-          state: scenario.state,
-          config: scenario.config,
-          targetCompletion: 100,
-          targetPerfection: 100,
-        }).state.item_effectiveness,
       ).toBe(effectiveness);
       const extracted = createStateFromGame({
         pool: 100,
@@ -329,21 +320,6 @@ describe('AFNM 0.7.17 shared mechanics', () => {
       refine: 0,
       stabilize: 0,
       support: 0,
-    });
-    const native = buildNativeMctsInput({
-      state: result,
-      config: scenario.config,
-      targetCompletion: 100,
-      targetPerfection: 100,
-    });
-    expect(native.state).toMatchObject({
-      qi_droplets: 0,
-      max_qi_droplets: 6,
-      qi_cost_reduction: 0,
-    });
-    expect(native.skills[0]).toMatchObject({
-      droplet_cost: 3,
-      no_qi_cost: false,
     });
   });
 
