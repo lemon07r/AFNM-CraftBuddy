@@ -20,7 +20,7 @@ The 0.7.17 order, re-audited in 0.7.19, is:
 6. Run type-specific and ordinary effects for **pre-action buff names**. A new name survives its creation turn; a refreshed existing name still ticks.
 7. Resolve harmony with reported payment, advance/generate conditions, then decay/cap/floor resources in turn cleanup.
 
-Stability may remain negative or above its maximum through effects, buffs and harmony; **only final cleanup clamps it**. Example: start 1, pay 10, buff restore 7 → -9 → -2 → final 0, not 7. Start 8/max 10, technique +5 then buff -5 → final 8, not 5. Qi is different: ordinary spending/restoration clamps immediately to zero/derived maxpool and tracks actual clamped deltas. The current simulator's earlier stability bounds are a known gap being fixed in v7.
+Stability may remain negative or above its maximum through effects, buffs and harmony; **only final cleanup clamps it**. Example: start 1, pay 10, buff restore 7 → -9 → -2 → final 0, not 7. Start 8/max 10, technique +5 then buff -5 → final 8, not 5. Qi is different: ordinary spending/restoration clamps immediately to zero/derived maxpool and tracks actual clamped deltas. Cleanup increments the stability penalty (unless exempt), ceils and bounds it, bounds stability, then floors, and both engines apply that per realized outcome before averaging chance branches (`src/optimizer/stability.ts`).
 
 | Surface | Contract/model |
 | --- | --- |
@@ -30,7 +30,11 @@ Stability may remain negative or above its maximum through effects, buffs and ha
 | Chance payment buffs | Current expected payment uses transient independent branches; not persistent stochastic future-buff state. |
 | Item effectiveness | Additive live stat, neutral 0; `isItem` scales by `1 + itemEffectiveness / 100`, including worker and native wire paths. |
 | Buffs | Generic definitions, stat fold, effect conditions, type/per-turn effects, stack consumption and internal-state seeding/cloning/keying. Unknown effect kinds may still be skipped. |
-| Resource/bar triggers | Six resource/bar events dispatch general buff effects with numeric `amount` and bar `percentGained`; re-entry guard prevents recursive loops, running bars feed nested triggers. Stack mutation events are a separate unsupported surface below. |
+| Resource/bar triggers | Six resource/bar events dispatch general buff effects with numeric `amount` and bar `percentGained`; re-entry guard prevents recursive loops, running bars feed nested triggers. |
+| Stack events | `stackGained.<name>` / `stackLost.<name>` fire synchronously from the stack-mutation helpers: gains report the requested floored amount even when capped, losses clamp to held stacks, consumption and expiry count as losses, a negative technique-create differs from a negative buff-create, and Returning Cycle releases stay silent while ordinary decay emits a loss. Success chance is captured after buff-cost listeners run. |
+| Buff groups | `modifyBuffGroup` matches exact buff type or name in source scope, evaluates the amount once, selects all/highest/lowest (stable ties) and applies ordinary per-target stack mutations and events (Elixir Renewal's +3 Pill extension). |
+| Discordance | Condition generation takes the maximum held positive discordance before every queue branch and uses the runtime's mild/extreme split (0.25 / 0.18 constants) with pre-cleanup harmony. |
+| Expressions | An empty expression evaluates to 0, as in the runtime evaluator. |
 | Illume Crucible seal | `sealedMaxStability` forces normal maximum decay and blocks positive maximum restoration. |
 | Turbid Qi | First stack after the step bump to 100, then every three steps, taxing subsequent actions. |
 | Boost stats | Completion/perfection/stability/Qi boosts affect positive gains after crit with flooring, not costs/max-stability/harmony. Completion Bonus adds **10 `perfectionBoost` per stack** once; skip its generic stat fold to avoid double application. |
@@ -72,18 +76,15 @@ Absent live state seeds from the **current bars**, matching runtime lazy seeding
 
 ## Known gaps
 
-These describe the worktree before the parallel v7 mechanics changes land; the owning implementation should move a gap into the contract only with regression evidence.
+The owning change should move a gap into the contract only with regression evidence.
 
-1. **Stability overdraft/ceiling timing — being fixed in v7.** `applySkillTransition` bounds stability before ordinary buff recovery; runtime delays both bounds until cleanup. The separate survivability floor also bounds early and moves max decay earlier.
-2. **Finish-to-Wait — being removed in v7.** Search has a synthetic finish action; `src/modContent/autoCraftExecutor.ts` maps a finish request to `WAIT_TECHNIQUE`/a Wait control. Wait advances a real turn and costs 10 stability; it is not equivalent to instant craft-end EV. No manual Finish exists.
-3. **Survivability floor phase divergence.** `calculateActionSurvivabilityFloor` pays before buff consumption and omits effect masteries (observed floor 1 vs transition 0, and floor 0 vs transition 16). The real forced-failure transition check does not repair this helper.
-4. **Stack-change events.** Runtime fires `stackGained.<name>` / `stackLost.<name>` synchronously at specific mutation helpers. Local dispatch accepts string blocks but does not emit those stack events; Forge Compression's Pressure listener is therefore affected. Live extraction alone did not automatically adopt the 0.7.9 rework.
-5. **`modifyBuffGroup`.** Elixir Renewal's +3 Pill extension is not executed. Runtime matches exact buff type **or name**, selects all/highest/lowest/random (ties first), evaluates amount once in source scope, then applies ordinary per-target stack mutations/events.
-6. **Companion interception/prevention.** Su Lianhua's positive technique/mastery bar interceptor and Han Weiguang's first-two stability-loss prevention are stock affected behaviors, not only hypothetical mod compatibility. Technique-level triggered effects are a latent unsupported surface; no stock technique with its own trigger definition was found in the audit.
-7. **Discordance ordering/distribution.** Runtime takes the maximum held positive discordance **before every queue branch**; local search applies a later neutral-gate adjustment. Runtime has a separate 0.18 extreme branch and a different mild-condition split; this is more than a changed neutral probability.
-8. **Decree approximation.** Events distribute aggregate expected gains over raw contributions, not runtime discrete integer applications; a mid-technique focus flip does not rescale that same technique's later effects. Legacy scalar/Disciplined Touch synthesize completion then perfection events.
-9. **Stochastic approximation.** Hidden success/crit/bonus rolls are EV, not predicted RNG; future chance-buff state is not probability-aware. Fixed wall-clock settings do not guarantee fixed work or recommendations.
-10. **Expression coercion.** The game's evaluator coerces some unexpected text to zero; the constrained local evaluator does not normalize every malformed input identically. No realistic stock payload proving a divergence was established.
-11. **Fallbacks/auto-use.** Forge recovery, constrained expressions, fallback condition tables and DOM recovery remain heuristic-sensitive; native slot conditions conservatively assume consumption rather than execute arbitrary game expressions.
+1. **Finish-to-Wait — being removed in v7.** Search has a synthetic finish action; `src/modContent/autoCraftExecutor.ts` maps a finish request to `WAIT_TECHNIQUE`/a Wait control. Wait advances a real turn and costs 10 stability; it is not equivalent to instant craft-end EV. No manual Finish exists.
+2. **Survivability floor phase divergence.** `calculateActionSurvivabilityFloor` pays before buff consumption and omits effect masteries (observed floor 1 vs transition 0, and floor 0 vs transition 16). The real forced-failure transition check does not repair this helper.
+3. **Companion interception/prevention.** Su Lianhua's positive technique/mastery bar interceptor (×1.5 when `step % 3 == 2`) and Han Weiguang's first-two stability-loss prevention are stock behaviors the engines do not yet model. Technique-level triggered effects are a latent unsupported surface; no stock technique with its own trigger definition was found in the audit.
+4. **Random multi-target `modifyBuffGroup`.** Single-target random works; multi-target random is a no-op in both engines. No stock definition uses it.
+5. **Decree approximation.** Events distribute aggregate expected gains over raw contributions, not runtime discrete integer applications; a mid-technique focus flip does not rescale that same technique's later effects. Legacy scalar/Disciplined Touch synthesize completion then perfection events.
+6. **Stochastic approximation.** Hidden success/crit/bonus rolls are EV, not predicted RNG; future chance-buff state is not probability-aware. Fixed wall-clock settings do not guarantee fixed work or recommendations.
+7. **Expression coercion.** Beyond the empty-expression case, the game's evaluator coerces some unexpected text to zero; the constrained local evaluator keeps its finite-result and syntax guards. No realistic stock payload proving a divergence was established.
+8. **Fallbacks/auto-use.** Forge recovery, constrained expressions, fallback condition tables and DOM recovery remain heuristic-sensitive; native slot conditions conservatively assume consumption rather than execute arbitrary game expressions.
 
 Finished-item `harmonyAugment`/bonus-quality effects and actual material-return calculation are deliberately not simulated as transitions: they resolve after play. Search values verified extra-band rewards but does not forecast inventory payout. Absolute Rust/TS scores differ by design; rankings and transitions, not score magnitudes, are the parity surface. Combat systems remain out of scope.
