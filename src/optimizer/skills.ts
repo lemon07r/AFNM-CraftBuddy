@@ -2930,6 +2930,19 @@ export function calculateActionSurvivabilityFloor(
     }
   }
 
+  // Payment is certain only when every payment branch loses stability. Share
+  // the transition's integer-use prevention without mutating the input buffs.
+  if (
+    preventCertainStabilityLoss(
+      newBuffs,
+      -effectiveCosts.stabilityCost,
+      effectiveCosts.stabilityOutcomes?.every((outcome) => outcome.cost > 0) ??
+        true,
+    )
+  ) {
+    newStability += effectiveCosts.stabilityCost;
+  }
+
   const upsertBuffFromDefinition = (
     definition: BuffDefinition | undefined,
     stacksDelta: number,

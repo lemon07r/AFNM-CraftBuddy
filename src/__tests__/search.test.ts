@@ -3604,6 +3604,41 @@ describe('tutorial regression scenarios', () => {
 
 describe('survivability-first recommendation gate', () => {
   it.each([0, 1, 2])(
+    'keeps Han-prevented payment live at depth %s',
+    (depth) => {
+      const state = hanScenarios()[0].state.copy({ stability: 1 });
+      const skill = createCustomSkill({
+        qiCost: 0,
+        stabilityCost: 10,
+        successChance: 1,
+        effects: [{ kind: 'completion', amount: { value: 1 } }],
+      });
+      const config = createTestConfig({
+        minStability: 0,
+        maxCompletion: 100,
+        maxPerfection: 100,
+        skills: [skill],
+      });
+      expect(applySkill(state, skill, config)?.stability).toBe(1);
+      const result = findBestSkill(
+        state,
+        config,
+        100,
+        100,
+        false,
+        depth,
+        'neutral',
+        [],
+        { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 10000 },
+      );
+      expect(result.recommendation?.skill.key).toBe(skill.key);
+      expect(result.recommendation?.requiresProbabilisticSurvival).toBe(false);
+      expect(result.expectedFinalState?.stability).toBe(1);
+      if (depth === 2) expect(result.optimalRotation).toHaveLength(2);
+    },
+  );
+
+  it.each([0, 1, 2])(
     'prefers guaranteed completion over a fatal gamble at depth %s',
     (depth) => {
       const gamble = createCustomSkill({

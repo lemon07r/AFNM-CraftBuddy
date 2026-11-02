@@ -1,4 +1,8 @@
-import { applySkill, calculateSkillGains } from '../optimizer/skills';
+import {
+  applySkill,
+  calculateActionSurvivabilityFloor,
+  calculateSkillGains,
+} from '../optimizer/skills';
 import type { BuffDefinition } from '../optimizer/gameTypes';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 import {
@@ -15,6 +19,40 @@ import {
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('Han survivability floor', () => {
+  it.each([
+    [0, 1],
+    [1, 1],
+    [2, 0],
+  ])('matches certain payment prevention after %s uses', (used, stability) => {
+    const base = hanScenarios()[0];
+    const buffs = new Map(base.state.buffs);
+    const han = buffs.get(HAN_KEY)!;
+    buffs.set(HAN_KEY, {
+      ...han,
+      internalState: { preventedStabilityLosses: used },
+    });
+    const state = base.state.copy({ stability: 1, buffs });
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 10,
+      successChance: 1,
+      effects: [{ kind: 'completion', amount: { value: 1 } }],
+    });
+    const config = retargetConfig(skill);
+    const next = applySkill(state, skill, config)!;
+    expect(next.stability).toBe(stability);
+    expect(calculateActionSurvivabilityFloor(state, skill, config)).toEqual({
+      stability,
+      maxStability: next.maxStability,
+      survivalProbability: stability > 0 ? 1 : 0,
+    });
+    expect(state.buffs.get(HAN_KEY)?.internalState).toEqual({
+      preventedStabilityLosses: used,
+    });
+  });
+});
 
 describe('companion bar overflow', () => {
   it.each([
