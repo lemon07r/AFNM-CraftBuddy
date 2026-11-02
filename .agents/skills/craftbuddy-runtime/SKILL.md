@@ -24,7 +24,7 @@ bun run runtime:grep -- "getGameStateSnapshot|onReduxAction|injectUI"
 - Native auto-use runs in the technique's UI handler before dispatch. With an active loadout, use that control rather than a direct technique dispatch that skips the items. Unknown slot conditions conservatively withhold duplicate CraftBuddy item actions.
 - `trainingMode !== undefined` suppresses inventory removal; it is not a truthiness check. Consumed pills belong to the crafting slice, not progress state.
 - On an auto-mode stall, inspect revision verification, native-auto-use policy/settling, then the state-advance latch. A stale state recalculates; an unreadable state pauses. A late advance resumes, unchanged state retries once, then an armed pause is recoverable rather than a crash.
-- There is no manual Finish. Current finish-to-Wait automation is a known gap being removed in v7, not a native finish API.
+- There is no manual Finish. Automation never invents one: an auto-resolved result stops without input, and `Wait` is dispatched like any other technique.
 
 ## Live testing: escalate only for unanswered runtime/visual questions
 

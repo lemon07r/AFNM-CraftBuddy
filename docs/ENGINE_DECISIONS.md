@@ -126,7 +126,7 @@ Balanced bought +0.3 depth for 1.9× Fast time, not a retuning signal. Disagreem
 
 Worker source is bundled inline, then loaded through a blob URL because the shipping `mod://` path cannot resolve normal chunks. The integration client smoke-probes once/session; worker failure falls back to synchronous search. Epoch cancellation and cooperative abort checks drop stale work. Each worker owns its engine and cache.
 
-Root keys partition by stride; partials merge absolute per-candidate scores with survival precedence and key tie-breaks, deduping keys and recomputing relative quality ratings. Native policy seeds use `baseSeed + workerIndex`. Work metrics sum; depth/time take maxima. An empty/finish-only slice can complete all depths and **overstate merged depthReached** without changing ranking.
+Root keys partition by stride; partials merge absolute per-candidate scores with survival precedence and key tie-breaks, deduping keys and recomputing relative quality ratings. Native policy seeds use `baseSeed + workerIndex`. Work metrics sum; depth/time take maxima. An empty slice can complete all depths and **overstate merged depthReached** without changing ranking.
 
 Six replay payloads, real Bun workers, captured production budgets (`scripts/bench-worker-pool.ts`):
 
