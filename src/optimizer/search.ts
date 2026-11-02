@@ -634,10 +634,19 @@ function estimateTurnsRemainingFromContext(
     );
   }
 
-  const rates = ctx.progressRates ?? [
-    { completion: ctx.avgCompletionGainPerTurn, perfection: 0 },
-    { completion: 0, perfection: ctx.avgPerfectionGainPerTurn },
-  ];
+  if (!ctx.progressRates) {
+    // Without per-action rates, bound by both per-bar workloads and the
+    // total workload (total gain counts a dual-bar action once).
+    return Math.ceil(
+      Math.max(
+        completionRemaining / Math.max(1, ctx.avgCompletionGainPerTurn),
+        perfectionRemaining / Math.max(1, ctx.avgPerfectionGainPerTurn),
+        (completionRemaining + perfectionRemaining) /
+          Math.max(1, ctx.avgGainPerTurn),
+      ),
+    );
+  }
+  const rates = ctx.progressRates;
   let turns = Infinity;
   for (let i = 0; i < rates.length; i++) {
     const first = rates[i];
