@@ -3382,17 +3382,20 @@ export function calculateActionSurvivabilityFloor(
   let buffMaxStabilityDelta = 0;
   let buffPoolDelta = 0;
   let buffToxicityDelta = 0;
-  qiCap = getEffectiveMaxPool(
-    state.copy({
-      qi: newQi,
-      stability: newStability,
-      stabilityPenalty: newStabilityPenalty,
-      toxicity: newToxicity,
-      buffs: newBuffs,
-    }),
-    config,
-    newBuffs,
-  );
+  // Without maxpool buffs the helper never reads state; avoid a dead copy.
+  qiCap = buffsCanChangeMaxPool(newBuffs)
+    ? getEffectiveMaxPool(
+        state.copy({
+          qi: newQi,
+          stability: newStability,
+          stabilityPenalty: newStabilityPenalty,
+          toxicity: newToxicity,
+          buffs: newBuffs,
+        }),
+        config,
+        newBuffs,
+      )
+    : Math.max(1, config.maxQi);
 
   const applyGuaranteedBuffEffect = (
     effect: BuffEffect,
@@ -4738,17 +4741,20 @@ function applySkillTransition(
   let buffPoolDelta = 0;
   let buffToxicityDelta = 0;
   let buffMaxStabilityDelta = 0;
-  qiCap = getEffectiveMaxPool(
-    state.copy({
-      qi: newQi,
-      stability: newStability,
-      stabilityPenalty: newStabilityPenalty,
-      toxicity: newToxicity,
-      buffs: newBuffs,
-    }),
-    config,
-    newBuffs,
-  );
+  // Without maxpool buffs the helper never reads state; avoid a dead copy.
+  qiCap = buffsCanChangeMaxPool(newBuffs)
+    ? getEffectiveMaxPool(
+        state.copy({
+          qi: newQi,
+          stability: newStability,
+          stabilityPenalty: newStabilityPenalty,
+          toxicity: newToxicity,
+          buffs: newBuffs,
+        }),
+        config,
+        newBuffs,
+      )
+    : Math.max(1, config.maxQi);
 
   const upsertBuffFromDefinition = (
     definition: BuffDefinition | undefined,
