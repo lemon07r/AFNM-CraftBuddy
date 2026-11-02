@@ -168,7 +168,10 @@ describe('formatProgress', () => {
 
   it('should handle mixed sizes', () => {
     expect(formatProgress(5000, 100000)).toBe('5K/100K');
-    expect(formatProgress(1234, 9999)).toBe('1,234/9,999');
+    // Below the compact threshold the default locale formats each value.
+    expect(formatProgress(1234, 9999)).toBe(
+      `${(1234).toLocaleString()}/${(9999).toLocaleString()}`,
+    );
     expect(formatProgress(1234, 10000)).toBe('1.2K/10K');
     expect(formatProgress(10000, 1234)).toBe('10K/1.2K');
   });
