@@ -1229,7 +1229,13 @@ impl Engine {
             // Harmony is worth most while the binding bar still has work left:
             // its real value is steering the condition timeline toward
             // Harmonious/Brilliant windows, which is worthless once banked.
-            let binding_remaining = 1.0 - outcome.completion_margin.min(outcome.perfection_margin);
+            let completion_need = if goals.mode_completion > 0.0 {
+                clamp(remaining_completion / goals.mode_completion, 0.0, 1.0)
+            } else { 0.0 };
+            let perfection_need = if goals.mode_perfection > 0.0 {
+                clamp(remaining_perfection / goals.mode_perfection, 0.0, 1.0)
+            } else { 0.0 };
+            let binding_remaining = completion_need.max(perfection_need);
             score += (state.harmony / 100.0)
                 * total_target_magnitude
                 * HARMONY_BONUS_WEIGHT
@@ -1348,7 +1354,8 @@ impl Engine {
                 );
                 // Unmet work is permanent once the craft has ended, so price it
                 // at full weight rather than as remaining potential.
-                let shortfall = resolved.completion_shortfall + resolved.perfection_shortfall;
+                let shortfall = (goals.mode_completion - state.completion).max(0.0)
+                    + (goals.mode_perfection - state.perfection).max(0.0);
                 expected_score +=
                     probability * (branch_score - shortfall * FINISHED_UNMET_PENALTY_WEIGHT);
             }

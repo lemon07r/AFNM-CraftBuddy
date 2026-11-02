@@ -2217,8 +2217,8 @@ function scoreState(
     (effectivePerfGoal <= 0 || state.perfection >= effectivePerfGoal);
 
   // ── remaining work metrics ───────────────────────────────────────────
-  const compRemaining = Math.max(0, outcome.completionShortfall);
-  const perfRemaining = Math.max(0, outcome.perfectionShortfall);
+  const compRemaining = Math.max(0, effectiveCompGoal - state.completion);
+  const perfRemaining = Math.max(0, effectivePerfGoal - state.perfection);
   const totalRemaining = compRemaining + perfRemaining;
   const compNeedShare =
     totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
@@ -2237,11 +2237,8 @@ function scoreState(
     perfNeedPct,
     (compNeedPct + perfNeedPct) / 2,
   );
-  // Binding-bar remaining work: 1 once the target tier is banked on both bars.
-  const bindingRemainingWork = Math.max(
-    0,
-    1 - Math.min(outcome.completionMargin, outcome.perfectionMargin),
-  );
+  // Goal work is independent of the tier ledger, including higher ambition.
+  const bindingRemainingWork = Math.max(compNeedPct, perfNeedPct);
   const estimatedProgressPerTurn = estimateWeightedProgressPerTurn(
     compNeedShare,
     perfNeedShare,
@@ -2570,8 +2567,8 @@ function scoreFinishedOutcome(
   );
 
   const outcome = classifyOutcome(state, bands);
-  const compRemaining = Math.max(0, outcome.completionShortfall);
-  const perfRemaining = Math.max(0, outcome.perfectionShortfall);
+  const compRemaining = Math.max(0, effectiveCompGoal - state.completion);
+  const perfRemaining = Math.max(0, effectivePerfGoal - state.perfection);
   const totalRemaining = compRemaining + perfRemaining;
   const compNeedShare =
     totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
@@ -2623,7 +2620,7 @@ function scoreFinishedOutcome(
 
   // Permanent shortfall once the craft has ended.
   score -=
-    (outcome.completionShortfall + outcome.perfectionShortfall) *
+    (compRemaining + perfRemaining) *
     SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
 
   const stepPenaltyWeight = Math.max(
