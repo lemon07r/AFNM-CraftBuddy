@@ -22,7 +22,7 @@
  * landing).
  *
  * The selection rules mirror the runtime selector verbatim; see
- * `docs/project/RUNTIME_EVIDENCE.md` section 1 for the extracted source and
+ * `docs/RUNTIME_EVIDENCE.md` section 1 for the extracted source and
  * the rule table this file implements.
  */
 

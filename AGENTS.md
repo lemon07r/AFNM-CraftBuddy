@@ -1,44 +1,33 @@
-# Repository Guidelines
+# CraftBuddy
 
-## Quick Start
+Crafting assistant mod for Ascend From Nine Mountains (AFNM). It reads the live craft, searches ahead and recommends, or optionally plays, the next technique. Modelled game build: the `afnm-types` version in `package.json`.
 
-Load the `afnm-modding` skill for task routing, project rules, and the repo map. Load `pre-commit-validation` before committing. For deeper context, read `docs/project/START_HERE_FOR_AGENTS.md`.
+## Where things are
 
-## Code Search
+- `src/optimizer/`: pure simulation and search (`skills.ts` transitions, `search.ts` ranking, `outcome.ts` bands/tiers/auto-finish). Integration code uses it through `src/optimizer/index.ts`.
+- `src/modContent/`: everything that touches the game (state extraction, ModAPI, auto-craft dispatch).
+- `src/ui/`, `src/settings/`: overlay and settings. `src/worker/`: background search.
+- `crates/craftbuddy-engine/`: Rust/WASM mirror of the mechanics, used as an experimental search prior.
+- `docs/`: design, mechanics, runtime evidence, development guide. Commands live in `package.json`.
 
-Use Vera before opening many files: `vera search "goal"`, `vera grep "pattern"`, `vera references <symbol>`. Use normal text search for small, known scopes.
+## Skills (load when the task needs them)
 
-## Commands
+- `craftbuddy-optimizer`: recommendations, scoring, mechanics, Rust parity, performance.
+- `craftbuddy-runtime`: ModAPI lookups, checking behavior in the installed game, live-client testing.
+- `craftbuddy-ui`: overlay/settings changes and browser-harness validation.
+- `craftbuddy-release`: version bumps, Workshop upload, tags.
 
-- `bun install`: install dependencies.
-- `bun run typecheck`: TypeScript strict-mode check.
-- `bun run test` / `bun run jest src/__tests__/<file>.test.ts`: full or focused Jest tests.
-- `bun run wasm:test`: Rust engine unit, effect-parity, and differential-corpus tests.
-- `bun run wasm:build`: compile Rust/WASM and regenerate the inline WASM module.
-- `bun run optimizer:differential-corpus`: regenerate the TypeScript/Rust parity corpus after any mechanics change.
-- `bun run optimizer:bench`: replay-contract and recommendation-trend comparison.
-- `bun run build`: production webpack build and package `builds/afnm-craftbuddy.zip`.
-- `bun run ui:harness:build` then `bun run ui:harness:serve`: browser harness at `http://127.0.0.1:4173`.
-- `bun run runtime:oracle`, `bun run runtime:extract`, `bun run runtime:grep -- "<pattern>"`: installed-game runtime verification without launching the game UI.
-- `bun run docs:inventory` then `bun run docs:check`: required after docs/skills changes.
-- `bun run release:validate`: release gate (`typecheck`, `test`, `build`, `docs:check`); run `docs:inventory` first if docs changed.
-- `bun run workshop:upload -- --change-note "vX.Y.Z - ..." --description-file docs/project/WORKSHOP_DESCRIPTION.md`: explicitly sync Workshop copy after release validation and commit/push.
+## Things that are easy to get wrong
 
-## Hard Rules
+- The installed game is the source of truth. When docs, types and tests disagree with it, check the bundle (`bun run runtime:grep`) and fix whichever is wrong.
+- Mechanics changes need the TypeScript and Rust engines kept identical: `bun run optimizer:differential-corpus`, then `bun run wasm:test`.
+- Scoring constants and benchmark contracts should move because of evidence about the game or a reproduced bug, not to make a check pass.
+- Refactors and performance work should leave `bun run optimizer:digest -- --compare <baseline>` unchanged; record a baseline first.
+- `src/optimizer/outcome.ts` is the one place that computes bands, tiers and auto-finish; UI and search consume it instead of recomputing thresholds.
+- User-facing technique names go through `techniqueDisplayName()`; keys and lookups use `name`.
+- When you change behavior, update the doc that describes it in the same change.
+- Before committing, `bun run typecheck` and `bun run test` are the baseline, plus `bun run docs:check` after docs or skill edits; the validation table in `docs/DEVELOPMENT.md` lists what else each kind of change needs.
 
-- Keep optimizer/search logic pure in `src/optimizer/*`; game access belongs in `src/modContent/*`. Outside the optimizer, import only `src/optimizer/index.ts`.
-- `src/optimizer/outcome.ts` is the single authority for band thresholds, outcome tiers, and the auto-finish predicate. Never recompute one elsewhere, including in the UI.
-- Target game version is **0.7.19-ac29603**: harmony is player-selected across nine types, including Captivating Cadence and Returning Cycle. Outcome tiers are conjunctive band gates; there is no manual Finish Craft; native auto-use runs before each technique when enabled. Auto-finish requires stability <= 0 or both actual bar caps, never a five-band shortcut. Stateful buffs, Illume Crucible, discordant conditions, Decree's -15 harmony / -15 Qi stray penalty, Cadence's chain/repeat rules, and Completion Bonus's +10 `perfectionBoost` per stack remain modelled.
-- Keep the 0.7.17 execution phases, re-audited in 0.7.19, intact: toxicity/droplets/buff payment, success-chance capture, mastery effects, recomputed Qi/stability payment, success effects, pre-action-name buff ticks, then harmony. Costs use independent zero-based reduction/penalty channels. New buff names do not tick immediately; Returning Cycle accrues reported payment even on failure and drains before stabilization releases charges. See `docs/project/MECHANICS_PARITY.md` and `docs/project/RUNTIME_EVIDENCE.md` §17–§18.
-- Eccentric Decree scores per individual bar change (`onBarChange`), not once per turn, so one turn can award several harmony steps and flip the focused bar mid-turn; keep the `needsBarContributions()` / `needs_bar_contributions()` gate and keep the TypeScript and Rust folds identical.
-- Technique display names differ from internal names (`false_fusion` / `False Fusion` shows as "Strive for Completion"): user-facing strings use `techniqueDisplayName()`, keys and lookups stay on `name`.
-- Never tune a scoring constant to make a benchmark contract pass; contracts change only with recorded runtime evidence.
-- Use strict TypeScript, optional chaining for ModAPI access, and `unknown` + narrowing instead of `any`.
-- Formatting follows `.prettierrc`: 2 spaces, single quotes, trailing commas, LF endings.
-- Treat the installed runtime as authoritative when docs, types, and observed behavior disagree.
-- Do not commit `dist/`, `builds/`, `coverage/`, `tmp/`, or generated outputs.
-- Docs and skills are editable working assets. Fix stale/wrong/duplicated content in the same change.
+## Conventions
 
-## Commits
-
-Use prefixes (`feat:`, `fix:`, `docs:`, `perf:`, `chore(release):`), keep commits scoped, imperative mood. PRs: summary, validation evidence, screenshots for UI, notes for gameplay-impacting changes. Releases: follow `craftbuddy-release` skill.
+Strict TypeScript (`unknown` plus narrowing rather than `any`), Prettier per `.prettierrc`, commit prefixes such as `feat:`/`fix:`/`docs:`/`perf:`/`chore(release):`. Generated output (`dist/`, `builds/`, `tmp/`, `coverage/`) stays uncommitted.

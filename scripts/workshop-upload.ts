@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { descriptionBody, workshopDescriptionError } from './docs/utils';
 
 type CliArgs = {
   changeNote?: string;
@@ -133,17 +134,7 @@ function runCommand(
 }
 
 function readDescriptionFile(filePath: string): string {
-  const text = fs.readFileSync(filePath, 'utf8').trim();
-  if (!text.startsWith('---')) {
-    return text;
-  }
-
-  const endIndex = text.indexOf('\n---', 3);
-  if (endIndex < 0) {
-    return text;
-  }
-
-  return text.slice(endIndex + 4).trim();
+  return descriptionBody(fs.readFileSync(filePath, 'utf8'));
 }
 
 async function main(): Promise<void> {
@@ -166,6 +157,11 @@ async function main(): Promise<void> {
   const description = args.descriptionFile
     ? readDescriptionFile(args.descriptionFile)
     : args.description;
+
+  const descriptionError = workshopDescriptionError(description ?? '');
+  if (descriptionError) {
+    throw new Error(descriptionError);
+  }
 
   if (!fs.existsSync(uploaderRoot)) {
     throw new Error(`ModUploader-AFNM not found at ${uploaderRoot}`);

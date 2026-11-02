@@ -704,7 +704,7 @@ function assertFreshCraftState(snapshot: AutoCraftRuntimeSnapshot): void {
  *
  * The path matters for correctness, not just reliability. The native crafting
  * auto-use loadout is applied by the React technique handler *immediately before*
- * it dispatches the technique (see `docs/project/RUNTIME_EVIDENCE.md` 1.1),
+ * it dispatches the technique (see `docs/RUNTIME_EVIDENCE.md` 1.1),
  * so:
  *
  * - With a loadout active, only a real click reproduces the player's gesture.

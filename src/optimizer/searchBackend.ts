@@ -9,7 +9,7 @@
  * from here, never the other way round.
  *
  * Merge semantics (also documented in
- * `docs/project/OPTIMIZER_ENGINE_FINDINGS.md`):
+ * `docs/ENGINE_DECISIONS.md`):
  *
  * - TypeScript beam search: root candidates are partitioned across workers
  *   by stride (`key i % N`), each worker searches its subset at full
