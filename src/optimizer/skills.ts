@@ -43,6 +43,10 @@ import {
 } from './nativeVariables';
 import { normalizeIdentifier } from './nameNormalization';
 import { StabilityProjection } from './stability';
+import {
+  applyGainBoost,
+  prepareNumericApplication,
+} from './numericApplications';
 
 /**
  * Simplified skill definition for optimizer.
@@ -887,13 +891,6 @@ const COMPLETION_BONUS_BUFF_KEY = 'completion_bonus';
  * applyStability/applyPool): floors `amount * (1 + boost / 100)` for positive
  * applications only. `boost` is a percentage stat (10 = +10%).
  */
-function applyGainBoost(amount: number, boost: number): number {
-  if (amount <= 0 || boost === 0 || !Number.isFinite(boost)) {
-    return amount;
-  }
-  return safeFloor(safeMultiply(amount, 1 + boost / 100));
-}
-
 function grantsTurbidQiStack(nextStep: number): boolean {
   return (
     Number.isFinite(nextStep) &&
@@ -4850,24 +4847,20 @@ function applySkillTransition(
     // 0.7.10: the runtime pipes every bar/resource application through
     // appliers that scale positive amounts by the matching boost stat
     // (completionBoost / perfectionBoost / stabilityBoost / qiBoost).
-    const rawAmount =
-      evaluateScalingWithMasteryUpgrades(
-        effect.amount,
-        actionMasteryUpgrades,
-        scalingVars,
-        0,
-      ) * conditionFactor;
-    const boostForKind =
-      effect.kind === 'completion'
-        ? scalingVars.completionBoost
-        : effect.kind === 'perfection'
-          ? scalingVars.perfectionBoost
-          : effect.kind === 'stability'
-            ? scalingVars.stabilityBoost
-            : effect.kind === 'pool'
-              ? scalingVars.qiBoost
-              : 0;
-    const amount = applyGainBoost(rawAmount, boostForKind);
+    const raw = evaluateScalingWithMasteryUpgrades(
+      effect.amount,
+      actionMasteryUpgrades,
+      scalingVars,
+      0,
+    );
+    const application = prepareNumericApplication(
+      effect.kind,
+      raw,
+      scalingVars,
+      conditionFactor,
+    );
+    const rawAmount = raw * conditionFactor;
+    const amount = application.amount;
     switch (effect.kind) {
       case 'completion':
         buffCompletion += amount;
@@ -4904,15 +4897,7 @@ function applySkillTransition(
         break;
       case 'stability':
         stabilityProjection.change(
-          applyGainBoost(
-            evaluateScalingWithMasteryUpgrades(
-              effect.amount,
-              actionMasteryUpgrades,
-              scalingVars,
-              0,
-            ),
-            scalingVars.stabilityBoost,
-          ),
+          application.realizedAmount,
           0,
           conditionFactor,
         );
