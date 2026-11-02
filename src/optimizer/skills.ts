@@ -2440,6 +2440,12 @@ export function calculateSkillGains(
       perfection:
         gains.perfection + prepared.state.perfection - state.perfection,
       stability: gains.stability + prepared.state.stability - state.stability,
+      // The setup source includes toxicity payment, before listeners/masteries.
+      // Count their cleanse without subtracting the toxicity cost from it.
+      toxicityCleanse:
+        (gains.toxicityCleanse ?? 0) +
+        (prepared.context.nativeSource ?? state).toxicity -
+        prepared.state.toxicity,
     };
   }
   return calculateUninterceptedSkillGains(

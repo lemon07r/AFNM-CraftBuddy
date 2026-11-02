@@ -34,6 +34,77 @@ import {
 } from '../optimizer/searchBackend';
 
 describe('companion preview setup and mastery phases', () => {
+  it.each(
+    (['su', 'han'] as const).flatMap((companion) =>
+      (['mastery', 'setup', 'both', 'cost-only'] as const).map((source) => ({
+        companion,
+        source,
+      })),
+    ),
+  )(
+    'includes toxicity cleanse from $companion / $source',
+    ({ companion, source }) => {
+      const base = companion === 'su' ? suScenarios()[0] : hanScenarios()[0];
+      const hasSetup = source === 'setup' || source === 'both';
+      const hasMastery = source === 'mastery' || source === 'both';
+      const toxicityCost = source === 'mastery' ? 0 : 2;
+      const token: BuffDefinition = {
+        name: 'Cleanse token',
+        canStack: true,
+        effects: [],
+      };
+      const observer: BuffDefinition = {
+        name: 'Setup cleanse observer',
+        canStack: false,
+        effects: [],
+        triggeredEffects: [
+          {
+            trigger: 'stackLost.Cleanse token',
+            effects: [{ kind: 'changeToxicity', amount: { value: 4 } }],
+          },
+        ],
+      };
+      const buffs = new Map(base.state.buffs);
+      buffs.set('cleanse_token', {
+        name: token.name,
+        stacks: 1,
+        definition: token,
+      });
+      buffs.set('setup_cleanse_observer', {
+        name: observer.name,
+        stacks: 1,
+        definition: observer,
+      });
+      const state = base.state.copy({ toxicity: 20, buffs });
+      const before = buildStateSnapshot(state, 'missing');
+      const skill = retargetSkill({
+        qiCost: 0,
+        stabilityCost: 0,
+        toxicityCost,
+        buffCost: hasSetup
+          ? { buffName: 'cleanse_token', amount: 1 }
+          : undefined,
+        masteryEntries: hasMastery
+          ? [
+              {
+                kind: 'effect',
+                effects: [{ kind: 'cleanseToxicity', amount: { value: 5 } }],
+              },
+            ]
+          : undefined,
+        effects: [{ kind: 'cleanseToxicity', amount: { value: 3 } }],
+      });
+      const config = retargetConfig(skill);
+      const cleansed = 3 + (hasSetup ? 4 : 0) + (hasMastery ? 5 : 0);
+      const next = applySkill(state, skill, config)!;
+      expect(next.toxicity).toBe(20 + toxicityCost - cleansed);
+      expect(calculateSkillGains(state, skill, config).toxicityCleanse).toBe(
+        cleansed,
+      );
+      expect(buildStateSnapshot(state, 'missing')).toEqual(before);
+    },
+  );
+
   it.each(companionPhasePreviewScenarios())(
     'prepares prevention before technique gates: $name',
     ({ state, skill, config, edge }) => {
