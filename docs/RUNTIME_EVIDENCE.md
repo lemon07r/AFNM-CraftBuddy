@@ -1689,10 +1689,29 @@ did not emit stack events or execute group changes at inspection time.
 
 Su Lianhua's Assistance intercepts positive technique/mastery completion and
 perfection on `step % 3 == 2`, multiplying by 1.5 and flooring (`G:13041335`).
-Han Weiguang's Assistance prevents the first two negative stability
-applications, including payment, tracked in internal state
-(`G:13038068`, `G:14929654–14930317`). These were demonstrated stock gaps,
-whereas technique-level triggered effects were a latent compatibility gap.
+Runtime `y7c` (`G:14941598–14943000`) walks held buffs in order, chooses the
+first matching interceptor **per buff**, and floors every multiplication
+before the ordinary numeric applier/crit/boost. Its `ZS(c.trigger, ..., r, ...)`
+uses the same live progress `r` as technique conditions, not the frozen
+expression variables. Optional effects execute synchronously via `g7c`
+before the intercepted numeric application. Interception is enabled for
+technique/mastery effects, not payment, items or buff effects.
+
+Han Weiguang's stock definition has `stabilityLossPrevention: { uses: 2 }`
+(`G:13038068`). Helper `n7c` (`G:14929654`) selects the first held eligible
+buff, without checking positive stacks, and increments
+`internalState.preventedStabilityLosses`. Applier `r7c`
+(`G:14930153–14930317`) checks genuinely negative reduced/floored loss
+before stability writes, spend tracking or `stabilitySpent`; prevention
+returns before all three. Zero loss does not consume a use. Direct harmony
+writes and maximum-stability decay do not call this applier.
+
+The simulator now models stock Su interception and certainty-only Han prevention;
+the latter leaves uncertain losses charged without consuming an integer use.
+Optional stochastic interceptor effects/triggers are skipped rather than
+persisting joint companion outcome branches; stock Su has no optional effects.
+These model limits are tracked in [mechanics parity](MECHANICS_PARITY.md#known-gaps).
+Technique-level triggered effects remain a latent compatibility gap.
 Uncontrollable Flames is the one stock discordance buff, carried by six
 Flame of Discordance item ranks.
 
