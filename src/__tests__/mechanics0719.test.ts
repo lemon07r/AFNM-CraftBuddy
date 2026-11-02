@@ -1,6 +1,7 @@
 import {
   applySkill,
   calculateActionSurvivabilityFloor,
+  calculateSkillGains,
 } from '../optimizer/skills';
 import {
   mechanics0719Scenarios,
@@ -8,11 +9,31 @@ import {
   buffGroupScenarios,
   successCaptureScenario,
   emptyExpressionScenario,
+  liveProgressConditionScenarios,
 } from './fixtures/mechanics0719';
 import { CraftingState } from '../optimizer/state';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
 describe('AFNM 0.7.19 audited mechanics', () => {
+  it.each(liveProgressConditionScenarios())(
+    'uses the same live percentage gates for gains and mutations: $name',
+    ({ state, skill, config, name }) => {
+      const gains = calculateSkillGains(state, skill, config);
+      const next = applySkill(state, skill, config)!;
+      const completion = name.endsWith('-completion') ? 67 : 7;
+      expect(gains.completion).toBe(completion);
+      expect(next.completion).toBe(completion);
+      expect(next.perfection).toBe(name.endsWith('-perfection') ? 60 : 0);
+      expect(next.getBuffStacks('live_gate')).toBe(1);
+      expect(next.stability).toBe(
+        name.endsWith('-payment') || name.endsWith('-earlier-stability')
+          ? 25
+          : name.endsWith('-boosted-stability')
+            ? 36
+            : 40,
+      );
+    },
+  );
   it('seeds empty-expression state with zero, not a multiplicative identity', () => {
     const { state, skill, config } = emptyExpressionScenario();
     expect(

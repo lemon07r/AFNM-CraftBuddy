@@ -9,6 +9,7 @@ export function mechanics0719Scenarios() {
   return [
     emptyExpressionScenario(),
     successCaptureScenario(),
+    ...liveProgressConditionScenarios(),
     ...stackEventScenarios(),
     ...buffGroupScenarios(),
     ...[
@@ -76,6 +77,84 @@ export function emptyExpressionScenario() {
     skill,
     config: retargetConfig(skill),
   };
+}
+
+export function liveProgressConditionScenarios() {
+  return [
+    'payment',
+    'earlier-stability',
+    'boosted-stability',
+    'completion',
+    'perfection',
+  ].map((edge) => {
+    const bar =
+      edge === 'completion' || edge === 'perfection' ? edge : 'stability';
+    const earlier: TechniqueEffect[] =
+      edge === 'payment'
+        ? []
+        : [
+            {
+              kind: bar,
+              amount: {
+                value:
+                  edge === 'earlier-stability'
+                    ? -15
+                    : edge === 'boosted-stability'
+                      ? 8
+                      : 60,
+              },
+            },
+          ];
+    const condition = {
+      kind: bar,
+      mode:
+        edge === 'payment' || edge === 'earlier-stability' ? 'less' : 'more',
+      percentage: 50,
+    } as const;
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: edge === 'payment' ? 15 : 0,
+      preventsMaxStabilityDecay: true,
+      effects: [
+        ...earlier,
+        { kind: 'completion', amount: { value: 7 }, condition },
+        {
+          kind: 'createBuff',
+          buff: { name: 'Live gate', canStack: true, effects: [] },
+          stacks: { value: 1 },
+          condition,
+        },
+      ],
+    });
+    return {
+      name: `0719-live-${edge}`,
+      state: new CraftingState({
+        qi: 100,
+        stability: edge === 'boosted-stability' ? 20 : 40,
+        initialMaxStability: 60,
+        stabilityPenalty: 20,
+        buffs:
+          edge === 'boosted-stability'
+            ? new Map([
+                [
+                  'stability_boost',
+                  {
+                    name: 'Stability boost',
+                    stacks: 1,
+                    definition: {
+                      name: 'Stability boost',
+                      effects: [],
+                      stats: { stabilityBoost: { value: 100 } },
+                    },
+                  },
+                ],
+              ])
+            : new Map(),
+      }),
+      skill,
+      config: retargetConfig(skill, { maxCompletion: 900, maxPerfection: 900 }),
+    };
+  });
 }
 
 export function successCaptureScenario() {

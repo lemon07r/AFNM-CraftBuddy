@@ -1311,6 +1311,76 @@ pub fn evaluate_effect_condition(
     }
 }
 
+#[derive(Clone, Copy)]
+struct LiveProgress {
+    completion: f64,
+    perfection: f64,
+    stability: f64,
+}
+
+/// Runtime ZS reads bar/stability percentages from live progress; pool and
+/// expression conditions retain the variables snapshot (RUNTIME_EVIDENCE §19).
+fn evaluate_live_progress_condition(
+    condition: Option<&EffectCondition>,
+    state: &EngineState,
+    variables: &Variables,
+    self_stacks: i32,
+    progress: LiveProgress,
+) -> ConditionEvaluation {
+    if let Some(condition) = condition {
+        let values = match condition.kind.as_str() {
+            "stability" => Some((progress.stability, state.initial_max_stability)),
+            "completion" => Some((
+                progress.completion,
+                get_variable_value(variables, "maxcompletion"),
+            )),
+            "perfection" => Some((
+                progress.perfection,
+                get_variable_value(variables, "maxperfection"),
+            )),
+            _ => None,
+        };
+        if let Some((value, denominator)) = values {
+            return hard_condition(percentage_check(
+                value,
+                denominator.max(1.0),
+                &condition.mode,
+                condition.percentage,
+            ));
+        }
+    }
+    evaluate_effect_condition(condition, state, variables, self_stacks)
+}
+
+/// Follow the successful technique branch without changing scaling variables
+/// or applying cleanup caps, identically for gains and the effect transition.
+fn advance_technique_progress(
+    progress: &mut LiveProgress,
+    effect: &Effect,
+    variables: &Variables,
+    upgrades: &UpgradeMap,
+    probability: f64,
+    crit_factor: f64,
+) {
+    let (value, boost) = match effect.kind.as_str() {
+        "stability" => (&mut progress.stability, "stabilityBoost"),
+        "completion" => (&mut progress.completion, "completionBoost"),
+        "perfection" => (&mut progress.perfection, "perfectionBoost"),
+        _ => return,
+    };
+    let mut amount =
+        evaluate_scaling_with_upgrades(effect.amount.as_ref(), upgrades, variables, 0.0);
+    if effect.kind != "stability" {
+        if amount < 0.0 && effect.amount.as_ref().is_some_and(|a| a.value > 0.0) {
+            amount = 0.0;
+        }
+        if amount > 0.0 {
+            amount *= crit_factor;
+        }
+    }
+    *value += apply_gain_boost(amount, get_variable_value(variables, boost)) * probability;
+}
+
 // ---------------------------------------------------------------------------
 // Scaling variable construction
 // ---------------------------------------------------------------------------
@@ -2743,6 +2813,7 @@ pub struct ActionEnv<'a> {
 /// build/resolve pair runs twice when any upgrade rule fires.
 pub struct ResolvedAction {
     condition_effects: crate::ConditionEffectSummary,
+    stability_cost: Option<f64>,
     pub success_chance: Option<f64>,
     pub variables: Variables,
     pub mastery: MasteryBonuses,
@@ -2781,6 +2852,7 @@ pub fn resolve_action(
         upgrades = resolved.1;
     }
     ResolvedAction {
+        stability_cost: None,
         condition_effects,
         success_chance: None,
         variables,
@@ -3047,47 +3119,51 @@ pub fn calculate_skill_gains(
         let record_bars =
             needs_bar_contributions(config) || has_triggered_effect_buffs(&state.buffs);
         let mut bar_contributions: Vec<BarContribution> = Vec::new();
-        let stability_cost = if skill.effects.iter().any(|effect| {
-            effect
-                .condition
-                .as_ref()
-                .is_some_and(|c| c.kind == "stability")
-        }) {
-            calculate_effective_action_costs(
-                env,
-                state,
-                skill,
-                resolved.condition_effects,
-                &state.buffs,
-            )
-            .stability_cost
-        } else {
-            0.0
+        let stability_cost = resolved.stability_cost.unwrap_or_else(|| {
+            if skill.effects.iter().any(|effect| {
+                effect
+                    .condition
+                    .as_ref()
+                    .is_some_and(|c| c.kind == "stability")
+            }) {
+                calculate_effective_action_costs(
+                    env,
+                    state,
+                    skill,
+                    resolved.condition_effects,
+                    &state.buffs,
+                )
+                .stability_cost
+            } else {
+                0.0
+            }
+        });
+        let mut progress = LiveProgress {
+            completion: state.completion,
+            perfection: state.perfection,
+            stability: state.stability - stability_cost,
         };
 
         for effect in &skill.effects {
-            let mut condition_vars;
-            let variables = if effect
-                .condition
-                .as_ref()
-                .is_some_and(|c| c.kind == "stability")
-            {
-                condition_vars = scaling_vars.clone();
-                condition_vars.insert(
-                    "stability".to_string(),
-                    state.stability - stability_cost + stability_gain,
-                );
-                condition_vars.insert("maxstability".to_string(), state.initial_max_stability);
-                &condition_vars
-            } else {
-                &scaling_vars
-            };
-            let evaluation =
-                evaluate_effect_condition(effect.condition.as_ref(), state, variables, 0);
+            let evaluation = evaluate_live_progress_condition(
+                effect.condition.as_ref(),
+                state,
+                &scaling_vars,
+                0,
+                progress,
+            );
             if !evaluation.met || evaluation.probability <= 0.0 {
                 continue;
             }
             let condition_factor = evaluation.probability;
+            advance_technique_progress(
+                &mut progress,
+                effect,
+                &scaling_vars,
+                upgrades,
+                condition_factor,
+                crit_factor,
+            );
             let amount = evaluate_scaling_with_upgrades(
                 effect.amount.as_ref(),
                 upgrades,
@@ -3743,10 +3819,11 @@ fn apply_skill_transition(
     let mut qi_cap = effective_max_pool(state, config, active_buffs);
     let mut resolved = resolve_action(env, state, skill, condition_effects, active_buffs);
     resolved.success_chance = Some(phase.success_chance);
-    let gains = calculate_skill_gains(env, state, skill, &resolved);
     let costs = phase.payment_costs.unwrap_or_else(|| {
         calculate_effective_action_costs(env, state, skill, condition_effects, active_buffs)
     });
+    resolved.stability_cost = Some(costs.stability_cost);
+    let gains = calculate_skill_gains(env, state, skill, &resolved);
 
     let mut new_qi = clamp(state.qi - costs.qi_cost, 0.0, qi_cap);
     // 0.7.7+ trigger amounts: the runtime fires `poolSpent` when the cost is
@@ -3929,9 +4006,23 @@ fn apply_skill_transition(
 
     let mut technique_pool_delta = 0.0;
     let mut technique_max_stability_delta = 0.0;
+    let mut technique_progress = LiveProgress {
+        completion: state.completion,
+        perfection: state.perfection,
+        stability: state.stability - costs.stability_cost,
+    };
+    let technique_crit_factor = crate::expected_crit_multiplier(
+        get_variable_value(&action_vars, "critchance"),
+        get_variable_value(&action_vars, "critmultiplier"),
+    );
     for effect in &skill.effects {
-        let evaluation =
-            evaluate_effect_condition(effect.condition.as_ref(), state, &action_vars, 0);
+        let evaluation = evaluate_live_progress_condition(
+            effect.condition.as_ref(),
+            state,
+            &action_vars,
+            0,
+            technique_progress,
+        );
         if !evaluation.met || evaluation.probability <= 0.0 {
             continue;
         }
@@ -3939,6 +4030,14 @@ fn apply_skill_transition(
         if factor <= 0.0 {
             continue;
         }
+        advance_technique_progress(
+            &mut technique_progress,
+            effect,
+            &action_vars,
+            &resolved.upgrades,
+            evaluation.probability,
+            technique_crit_factor,
+        );
         match effect.kind.as_str() {
             "stability" => {
                 let raw = evaluate_scaling_with_upgrades(

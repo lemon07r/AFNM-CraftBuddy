@@ -470,6 +470,8 @@ export interface ActionSurvivabilityFloor {
 
 export interface SkillGainOptions {
   successChance?: number;
+  /** Already-resolved payment, including mastery-phase overrides. */
+  stabilityCost?: number;
   /**
    * Include expected-value random factors (crit/success) in predicted gains.
    * Disable for tooltip-parity "immediate" gain previews.
@@ -1752,6 +1754,71 @@ export function evaluateEffectCondition(
   }
 }
 
+type LiveProgress = {
+  completion: number;
+  perfection: number;
+  stability: number;
+};
+
+/** Runtime ZS reads these three percentage conditions from live progress,
+ * not the variables snapshot used by pool conditions and expressions (§19). */
+function evaluateLiveProgressCondition(
+  condition: CraftingTechniqueCondition | undefined,
+  state: CraftingState,
+  variables: ScalingVariables,
+  selfStacks: number,
+  progress: LiveProgress,
+): ConditionEvaluation {
+  const kind = condition?.kind;
+  if (
+    condition &&
+    (kind === 'stability' || kind === 'completion' || kind === 'perfection')
+  ) {
+    const denominator =
+      kind === 'stability'
+        ? state.initialMaxStability
+        : variables[kind === 'completion' ? 'maxcompletion' : 'maxperfection'];
+    const percentage = (progress[kind] / Math.max(1, denominator || 1)) * 100;
+    const met =
+      condition.mode === 'more'
+        ? percentage >= condition.percentage
+        : percentage < condition.percentage;
+    return { met, probability: met ? 1 : 0 };
+  }
+  return evaluateEffectCondition(condition, state, variables, selfStacks);
+}
+
+/** Follow the successful technique branch before success weighting. Keep
+ * scaling/expression variables frozen, and do not apply turn-cleanup caps. */
+function advanceTechniqueProgress(
+  progress: LiveProgress,
+  effect: TechniqueEffect,
+  variables: ScalingVariables,
+  upgrades: MasteryUpgradeMap,
+  probability: number,
+  critFactor: number,
+): void {
+  const kind = effect.kind;
+  if (kind !== 'stability' && kind !== 'completion' && kind !== 'perfection')
+    return;
+  let amount = evaluateScalingWithMasteryUpgrades(
+    effect.amount,
+    upgrades,
+    variables,
+    0,
+  );
+  if (kind !== 'stability' && amount < 0 && (effect.amount?.value ?? 0) > 0)
+    amount = 0;
+  if (kind !== 'stability' && amount > 0) amount *= critFactor;
+  const boost =
+    kind === 'stability'
+      ? variables.stabilityBoost
+      : kind === 'completion'
+        ? variables.completionBoost
+        : variables.perfectionBoost;
+  progress[kind] += applyGainBoost(amount, boost) * probability;
+}
+
 function resolveMasteryBonuses(
   state: CraftingState,
   skill: SkillDefinition,
@@ -2397,36 +2464,44 @@ export function calculateSkillGains(
     const recordBars =
       needsBarContributions(config) || hasTriggeredEffectBuffs(state.buffs);
     const barContributions: BarContribution[] = [];
-    const stabilityCost = skill.effects.some(
-      (effect) => effect.condition?.kind === 'stability',
-    )
-      ? calculateEffectiveActionCosts(
-          state,
-          skill,
-          config.minStability,
-          conditionEffects,
-          config,
-        ).stabilityCost
-      : 0;
+    const stabilityCost =
+      options.stabilityCost ??
+      (skill.effects.some((effect) => effect.condition?.kind === 'stability')
+        ? calculateEffectiveActionCosts(
+            state,
+            skill,
+            config.minStability,
+            conditionEffects,
+            config,
+          ).stabilityCost
+        : 0);
+    const progress: LiveProgress = {
+      completion: state.completion,
+      perfection: state.perfection,
+      stability: state.stability - stabilityCost,
+    };
 
     for (const effect of skill.effects) {
       if (!effect) continue;
-      const conditionResult = evaluateEffectCondition(
+      const conditionResult = evaluateLiveProgressCondition(
         effect.condition,
         state,
-        effect.condition?.kind === 'stability'
-          ? {
-              ...scalingVars,
-              stability: state.stability - stabilityCost + stabilityGain,
-              maxstability: state.initialMaxStability,
-            }
-          : scalingVars,
+        scalingVars,
         0,
+        progress,
       );
       if (!conditionResult.met || conditionResult.probability <= 0) {
         continue;
       }
       const conditionFactor = conditionResult.probability;
+      advanceTechniqueProgress(
+        progress,
+        effect,
+        scalingVars,
+        masteryUpgrades,
+        conditionFactor,
+        critFactor,
+      );
 
       switch (effect.kind) {
         case 'completion': {
@@ -4196,14 +4271,29 @@ function applySkillTransition(
   const clampQi = (value: number): number =>
     Math.max(0, Math.min(qiCap, value));
 
+  const effectiveCosts =
+    (phase.masteryPhase
+      ? { qiCost: 0, stabilityCost: 0, requiredPostStability: 0 }
+      : phase.paymentCosts) ??
+    calculateEffectiveActionCosts(
+      state,
+      skill,
+      config.minStability,
+      conditionEffects,
+      config,
+    );
+
   // Calculate gains BEFORE applying buffs from this skill
   const gains: SkillGains =
     !skill.isDisciplinedTouch &&
     skill.effects?.length &&
-    skill.effects.every((effect) => effect.kind === 'createBuff')
+    skill.effects.every(
+      (effect) => effect.kind === 'createBuff' && !effect.condition,
+    )
       ? { completion: 0, perfection: 0, stability: 0 }
       : calculateSkillGains(state, skill, config, conditionEffects, {
           successChance: phase.successChance,
+          stabilityCost: effectiveCosts.stabilityCost,
         });
 
   // Action-level scaling variables (carry the 0.7.10 boost stats). Pure over
@@ -4250,17 +4340,6 @@ function applySkillTransition(
   actionVars.critmultiplier += mastery.critMultiplierBonus || 0;
   actionVars.successChanceBonus += mastery.successChanceBonus || 0;
 
-  const effectiveCosts =
-    (phase.masteryPhase
-      ? { qiCost: 0, stabilityCost: 0, requiredPostStability: 0 }
-      : phase.paymentCosts) ??
-    calculateEffectiveActionCosts(
-      state,
-      skill,
-      config.minStability,
-      conditionEffects,
-      config,
-    );
   const effectiveQiCost = effectiveCosts.qiCost;
   const effectiveStabilityCost = effectiveCosts.stabilityCost;
   const stabilityProjection = new StabilityProjection(
@@ -4595,18 +4674,36 @@ function applySkillTransition(
 
   let techniquePoolDelta = 0;
   let techniqueMaxStabilityDelta = 0;
+  const techniqueProgress: LiveProgress = {
+    completion: state.completion,
+    perfection: state.perfection,
+    stability: state.stability - effectiveStabilityCost,
+  };
+  const techniqueCritFactor = calculateExpectedCritMultiplier(
+    actionVars.critchance,
+    actionVars.critmultiplier,
+  );
   if (skill.effects && skill.effects.length > 0) {
     for (const effect of skill.effects) {
       if (!effect) continue;
-      const conditionResult = evaluateEffectCondition(
+      const conditionResult = evaluateLiveProgressCondition(
         effect.condition,
         state,
         actionVars,
         0,
+        techniqueProgress,
       );
       if (!conditionResult.met || conditionResult.probability <= 0) continue;
       const factor = actionSuccessChance * conditionResult.probability;
       if (factor <= 0) continue;
+      advanceTechniqueProgress(
+        techniqueProgress,
+        effect,
+        actionVars,
+        actionMasteryUpgrades,
+        conditionResult.probability,
+        techniqueCritFactor,
+      );
 
       switch (effect.kind) {
         case 'stability': {
