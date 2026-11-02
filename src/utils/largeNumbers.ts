@@ -240,29 +240,6 @@ export function checkPrecision(value: number, context: string): boolean {
 }
 
 /**
- * Safely compare two potentially large numbers for equality.
- * Uses a relative epsilon for large numbers.
- * 
- * @param a - First number
- * @param b - Second number
- * @param epsilon - Relative tolerance (default: 1e-10)
- */
-export function safeEquals(a: number, b: number, epsilon: number = 1e-10): boolean {
-  if (a === b) return true;
-  
-  const diff = Math.abs(a - b);
-  const maxAbs = Math.max(Math.abs(a), Math.abs(b));
-  
-  // For very small numbers, use absolute comparison
-  if (maxAbs < 1) {
-    return diff < epsilon;
-  }
-  
-  // For larger numbers, use relative comparison
-  return diff / maxAbs < epsilon;
-}
-
-/**
  * Parse a potentially large number from game data.
  * Handles string inputs, scientific notation, and edge cases.
  * 

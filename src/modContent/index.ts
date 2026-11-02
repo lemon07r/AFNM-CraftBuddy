@@ -186,7 +186,6 @@ import {
   getModApiCompletionBonusBuffKey,
   getModApiNextConditionResolver,
   getModApiTechniqueFromKnownResolver,
-  getNativeActionCost,
   getPathValue,
   normalizeBuffKey,
 } from './modApiProviders';
@@ -341,14 +340,6 @@ function checkIntegrationHealth(): void {
     if (failureRate > 0.2) {
       console.warn(
         `[CraftBuddy] High condition provider failure rate: ${(failureRate * 100).toFixed(1)}%`,
-      );
-    }
-  }
-  if (d.nativeGetActionCostCalls > 10 && d.nativeGetActionCostErrors > 0) {
-    const errorRate = d.nativeGetActionCostErrors / d.nativeGetActionCostCalls;
-    if (errorRate > 0.1) {
-      console.warn(
-        `[CraftBuddy] High native getActionCost error rate: ${(errorRate * 100).toFixed(1)}% (${d.nativeGetActionCostErrors}/${d.nativeGetActionCostCalls})`,
       );
     }
   }
@@ -1235,8 +1226,6 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
     },
     actionCostStats: {
       available: d.usingModApiGetActionCost,
-      calls: d.nativeGetActionCostCalls,
-      errors: d.nativeGetActionCostErrors,
     },
     conditionProvider: {
       used: d.conditionProviderUsedCount,

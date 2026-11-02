@@ -7,7 +7,6 @@
  * Performance optimizations:
  * - Move ordering: Search promising skills first (buff skills when no buff, high-gain skills)
  * - Memoization: Cache search results by state key with progress bucketing for large numbers
- * - Alpha-beta pruning: Cut off branches that can't improve the result
  * - Beam search: Limit branches explored at each depth level
  * - Early termination: Stop when targets are met
  * - Time budget: Prevent UI freezes with configurable time limits
@@ -29,6 +28,7 @@ import {
   getConditionEffectsForConfig,
   techniqueDisplayName,
   getBuffDiscordantConditions,
+  type SkillBlockedReason,
 } from './skills';
 import { INSCRIBED_PATTERN_BLOCK, getHarmonyStatModifiers } from './harmony';
 import {
@@ -47,10 +47,12 @@ import {
 } from './gameTypes';
 import {
   bandThreshold,
+  bandLadderSum,
   buildOutcomeBands,
   classifyOutcome,
   computeOvercraftExtras,
   tierRank,
+  tierForBands,
   TIER_REQUIREMENTS,
   willAutoFinish,
   type OutcomeBands,
@@ -132,13 +134,6 @@ export interface SetupForHint {
   readonly techniqueName?: string;
   /** Human-readable explanation for the panel. */
   readonly reason: string;
-}
-
-/** Diagnostic info for why skills are unavailable */
-export interface SkillBlockedReason {
-  skillName: string;
-  reason: 'cooldown' | 'qi' | 'stability' | 'toxicity' | 'condition';
-  details: string;
 }
 
 /**
@@ -262,8 +257,6 @@ export interface SearchConfig {
    * -100 = perfection priority, 0 = balanced, 100 = completion priority.
    */
   goalPriorityBias: number;
-  /** Whether to use alpha-beta pruning (default: true) */
-  useAlphaBeta: boolean;
   /** Progress bucket size for cache key normalization (default: 100) */
   progressBucketSize: number;
   /**
@@ -366,7 +359,6 @@ const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   maxNodes: 750000,
   beamWidth: 10,
   goalPriorityBias: DEFAULT_SEARCH_GOAL_PRIORITY_BIAS,
-  useAlphaBeta: true,
   progressBucketSize: 100,
   useIterativeDeepening: true,
   iterativeDeepeningMinDepth: 3,
@@ -557,6 +549,11 @@ interface ScoringContext {
   avgGainPerTurn: number;
   /** Average qi cost per progress turn, from available skills. */
   avgQiCostPerTurn: number;
+  /** Non-dominated productive action rates; preserves which bars advance together. */
+  progressRates?: ReadonlyArray<{
+    completion: number;
+    perfection: number;
+  }>;
 }
 
 /** Default scoring context used when callers don't provide one. */
@@ -621,8 +618,6 @@ function estimateWeightedProgressPerTurn(
 function estimateTurnsRemainingFromContext(
   completionRemaining: number,
   perfectionRemaining: number,
-  completionShare: number,
-  perfectionShare: number,
   ctx: ScoringContext,
 ): number {
   if (completionRemaining <= 0 && perfectionRemaining <= 0) {
@@ -640,14 +635,63 @@ function estimateTurnsRemainingFromContext(
     );
   }
 
-  const weightedProgressPerTurn = estimateWeightedProgressPerTurn(
-    completionShare,
-    perfectionShare,
-    ctx,
-  );
+  if (!ctx.progressRates) {
+    // Without per-action rates, bound by both per-bar workloads and the
+    // total workload (total gain counts a dual-bar action once).
+    return Math.ceil(
+      Math.max(
+        completionRemaining / Math.max(1, ctx.avgCompletionGainPerTurn),
+        perfectionRemaining / Math.max(1, ctx.avgPerfectionGainPerTurn),
+        (completionRemaining + perfectionRemaining) /
+          Math.max(1, ctx.avgGainPerTurn),
+      ),
+    );
+  }
+  const rates = ctx.progressRates;
+  let turns = Infinity;
+  for (let i = 0; i < rates.length; i++) {
+    const first = rates[i];
+    // A single joint action can cover both bars concurrently.
+    turns = Math.min(
+      turns,
+      Math.max(
+        first.completion > 0
+          ? completionRemaining / first.completion
+          : Infinity,
+        first.perfection > 0
+          ? perfectionRemaining / first.perfection
+          : Infinity,
+      ),
+    );
+    for (let j = i + 1; j < rates.length; j++) {
+      const second = rates[j];
+      const determinant =
+        first.completion * second.perfection -
+        second.completion * first.perfection;
+      if (determinant === 0) continue;
+      const firstTurns =
+        (completionRemaining * second.perfection -
+          perfectionRemaining * second.completion) /
+        determinant;
+      const secondTurns =
+        (perfectionRemaining * first.completion -
+          completionRemaining * first.perfection) /
+        determinant;
+      if (firstTurns >= 0 && secondTurns >= 0) {
+        turns = Math.min(turns, firstTurns + secondTurns);
+      }
+    }
+  }
+  // The fractional two-bar covering problem has an optimum using at most
+  // two rates. Round once, as with the other runway estimates. Unlike a
+  // max-of-marginals bound, this cannot run separate actions concurrently.
+  if (Number.isFinite(turns)) return Math.ceil(turns);
+
+  // A currently unavailable bar can become productive after setup. Retain
+  // the representative-rate fallback rather than declaring it unreachable.
   return Math.ceil(
-    (completionRemaining + perfectionRemaining) /
-      Math.max(1, weightedProgressPerTurn),
+    completionRemaining / Math.max(1, ctx.avgCompletionGainPerTurn) +
+      perfectionRemaining / Math.max(1, ctx.avgPerfectionGainPerTurn),
   );
 }
 
@@ -774,12 +818,32 @@ function buildScoringContext(
     average(topOverallSamples.map((sample) => sample.qiCost)),
   );
 
+  // Keep the existing top-sample damping of unusually large gains, but retain
+  // action coupling. Marginal averages and total gain alone cannot distinguish
+  // one dual-bar action from two separate single-bar actions.
+  const progressRates = fallbackSamples.map((sample) => ({
+    completion: Math.min(sample.completionGain, avgCompletionGainPerTurn),
+    perfection: Math.min(sample.perfectionGain, avgPerfectionGainPerTurn),
+  }));
+  const nonDominatedRates = progressRates.filter(
+    (rate, index) =>
+      !progressRates.some(
+        (other, otherIndex) =>
+          other.completion >= rate.completion &&
+          other.perfection >= rate.perfection &&
+          (other.completion > rate.completion ||
+            other.perfection > rate.perfection ||
+            otherIndex < index),
+      ),
+  );
+
   return {
     avgStabilityCostPerTurn,
     avgCompletionGainPerTurn,
     avgPerfectionGainPerTurn,
     avgGainPerTurn,
     avgQiCostPerTurn,
+    progressRates: nonDominatedRates,
   };
 }
 
@@ -1269,15 +1333,6 @@ interface UnsafeCandidateClassification extends TerminalStateClassification {
   requiresProbabilisticSurvival?: boolean;
 }
 
-function filterUnfinishedTerminalCandidates<
-  T extends UnsafeCandidateClassification,
->(candidates: T[]): T[] {
-  // Terminal branches are now scored through the same authoritative craft-end
-  // outcome model used by Finish Craft. Do not hard-filter them out before the
-  // scorer can compare their actual forced-resolution EV against live lines.
-  return candidates;
-}
-
 function getBonusTierProgress(
   value: number,
   target: number,
@@ -1315,16 +1370,7 @@ function getThresholdForGuaranteedBonusCount(
     return 0;
   }
 
-  let threshold = 0;
-  let currentTarget = target;
-  const cappedCount = Math.max(0, Math.floor(guaranteedCount));
-
-  for (let index = 0; index < cappedCount; index++) {
-    threshold += currentTarget;
-    currentTarget = Math.floor(currentTarget * 1.3);
-  }
-
-  return threshold;
+  return bandLadderSum(target, Math.max(0, Math.floor(guaranteedCount)));
 }
 
 function getProgressTowardRawGoal(
@@ -1502,25 +1548,18 @@ function evaluateCraftEndOutcomeDistribution(params: {
         continue;
       }
 
-      const craftSucceeded =
-        targetCompletion <= 0 || completionOutcome.guaranteed > 0;
-      if (!craftSucceeded) {
-        failChance += probability;
-        continue;
-      }
-
-      const hasPerfection =
-        targetPerfection > 0 ? perfectionOutcome.guaranteed > 0 : false;
-      const isSublime =
+      const tier = tierForBands(
+        targetCompletion > 0 ? completionOutcome.guaranteed : 1,
+        targetPerfection > 0 ? perfectionOutcome.guaranteed : 0,
         hasDistinctSublimeOutcome &&
-        targetCompletion > 0 &&
-        targetPerfection > 0 &&
-        completionOutcome.guaranteed > 1 &&
-        perfectionOutcome.guaranteed > 1;
-
-      if (isSublime) {
+          targetCompletion > 0 &&
+          targetPerfection > 0,
+      );
+      if (tier === 'failed') {
+        failChance += probability;
+      } else if (tier === 'sublime') {
         sublimeChance += probability;
-      } else if (hasPerfection) {
+      } else if (tier === 'perfect') {
         perfectChance += probability;
       } else {
         basicChance += probability;
@@ -1547,22 +1586,6 @@ function evaluateCraftEndOutcomeDistribution(params: {
       Math.min(1, perfectChance + sublimeChance),
     ),
   };
-}
-
-function isRawGoalSecuredByOutcome(
-  guaranteedBands: number,
-  rawGoal: number,
-  baseTarget: number,
-): boolean {
-  if (!Number.isFinite(rawGoal) || rawGoal <= 0) {
-    return true;
-  }
-  if (!Number.isFinite(baseTarget) || baseTarget <= 0) {
-    return guaranteedBands > 0;
-  }
-  return (
-    getThresholdForGuaranteedBonusCount(baseTarget, guaranteedBands) >= rawGoal
-  );
 }
 
 /**
@@ -2268,8 +2291,8 @@ function scoreState(
     (effectivePerfGoal <= 0 || state.perfection >= effectivePerfGoal);
 
   // ── remaining work metrics ───────────────────────────────────────────
-  const compRemaining = Math.max(0, outcome.completionShortfall);
-  const perfRemaining = Math.max(0, outcome.perfectionShortfall);
+  const compRemaining = Math.max(0, effectiveCompGoal - state.completion);
+  const perfRemaining = Math.max(0, effectivePerfGoal - state.perfection);
   const totalRemaining = compRemaining + perfRemaining;
   const compNeedShare =
     totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
@@ -2288,11 +2311,8 @@ function scoreState(
     perfNeedPct,
     (compNeedPct + perfNeedPct) / 2,
   );
-  // Binding-bar remaining work: 1 once the target tier is banked on both bars.
-  const bindingRemainingWork = Math.max(
-    0,
-    1 - Math.min(outcome.completionMargin, outcome.perfectionMargin),
-  );
+  // Goal work is independent of the tier ledger, including higher ambition.
+  const bindingRemainingWork = Math.max(compNeedPct, perfNeedPct);
   const estimatedProgressPerTurn = estimateWeightedProgressPerTurn(
     compNeedShare,
     perfNeedShare,
@@ -2301,8 +2321,6 @@ function scoreState(
   const estimatedTurnsRemaining = estimateTurnsRemainingFromContext(
     compRemaining,
     perfRemaining,
-    compNeedShare,
-    perfNeedShare,
     ctx,
   );
 
@@ -2335,8 +2353,6 @@ function scoreState(
   const baseEstimatedTurnsRemaining = estimateTurnsRemainingFromContext(
     baseCompRemaining,
     basePerfRemaining,
-    baseCompNeedShare,
-    basePerfNeedShare,
     ctx,
   );
   const stepPenaltyWeight = Math.max(
@@ -2621,8 +2637,8 @@ function scoreFinishedOutcome(
   );
 
   const outcome = classifyOutcome(state, bands);
-  const compRemaining = Math.max(0, outcome.completionShortfall);
-  const perfRemaining = Math.max(0, outcome.perfectionShortfall);
+  const compRemaining = Math.max(0, effectiveCompGoal - state.completion);
+  const perfRemaining = Math.max(0, effectivePerfGoal - state.perfection);
   const totalRemaining = compRemaining + perfRemaining;
   const compNeedShare =
     totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
@@ -2674,8 +2690,7 @@ function scoreFinishedOutcome(
 
   // Permanent shortfall once the craft has ended.
   score -=
-    (outcome.completionShortfall + outcome.perfectionShortfall) *
-    SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
+    (compRemaining + perfRemaining) * SCORING.FINISHED_UNMET_PENALTY_WEIGHT;
 
   const stepPenaltyWeight = Math.max(
     SCORING.STEP_PENALTY,
@@ -3043,12 +3058,27 @@ export function orderRecommendationsBySafety<T extends SkillRecommendation>(
   return ordered;
 }
 
+/** Candidate-set-relative score coordinates, not outcome probabilities. */
+export function recomputeQualityRatings(
+  candidates: SkillRecommendation[],
+): void {
+  if (candidates.length === 0) return;
+  const best = Math.max(...candidates.map((candidate) => candidate.score));
+  const worst = Math.min(...candidates.map((candidate) => candidate.score));
+  const range = best - worst;
+  for (const candidate of candidates) {
+    candidate.qualityRating =
+      range > 0 ? Math.round(((candidate.score - worst) / range) * 100) : 100;
+  }
+}
+
 function rankRecommendations(
   scored: SkillRecommendation[],
   scoreTieWindow: number = 0,
   unsafeKeys: ReadonlySet<string> = new Set(),
   tieBreaker?: (a: SkillRecommendation, b: SkillRecommendation) => number,
 ): SkillRecommendation[] {
+  recomputeQualityRatings(scored);
   for (const recommendation of scored) {
     if (unsafeKeys.has(recommendation.skill.key)) {
       recommendation.yieldsToSafeAlternative = true;
@@ -3100,11 +3130,18 @@ function rankRecommendations(
   const remaining = sorted.slice(1);
   const usedTypes = new Set<string>([sorted[0].skill.type]);
 
+  const safetyGroup = (candidate: SkillRecommendation): boolean =>
+    unsafeKeys.has(candidate.skill.key) ||
+    candidate.requiresProbabilisticSurvival === true ||
+    candidate.yieldsToSafeAlternative === true ||
+    candidate.endsCraftBelowTarget === true;
   while (remaining.length > 0) {
     const topScore = remaining[0].score;
+    const topSafetyGroup = safetyGroup(remaining[0]);
     const tieGroupEnd = remaining.findIndex(
       (candidate) =>
-        topScore - candidate.score > DIVERSITY_TIEBREAK_SCORE_WINDOW,
+        safetyGroup(candidate) !== topSafetyGroup ||
+        Math.abs(topScore - candidate.score) > DIVERSITY_TIEBREAK_SCORE_WINDOW,
     );
     const tieGroupLength = tieGroupEnd === -1 ? remaining.length : tieGroupEnd;
     const diverseIndex = remaining
@@ -3829,10 +3866,9 @@ function runGreedySearch(
     evaluatedMoves.push(finishAction);
   }
 
-  const scoredSkills: SkillRecommendation[] =
-    filterUnfinishedTerminalCandidates(evaluatedMoves).map(
-      ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
-    );
+  const scoredSkills: SkillRecommendation[] = evaluatedMoves.map(
+    ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
+  );
 
   const rankedSkills = rankRecommendations(
     scoredSkills,
@@ -3876,7 +3912,6 @@ function runGreedySearch(
  * Searches N moves ahead to find the best first move.
  *
  * Performance features:
- * - Alpha-beta pruning to cut off unpromising branches
  * - Beam search to limit branches at each level
  * - Time budget to prevent UI freezes
  * - Progress bucketing for better cache hits with large numbers
@@ -4650,13 +4685,7 @@ function runLookaheadSearch(
       candidates.push(finishCandidate);
     }
 
-    const filteredCandidates = filterUnfinishedTerminalCandidates(
-      candidates.map((candidate) => ({
-        ...candidate,
-        isTerminal: false,
-        isTerminalUnmet: false,
-      })),
-    ).map(({ isTerminal, isTerminalUnmet, ...candidate }) => candidate);
+    const filteredCandidates = candidates;
 
     filteredCandidates.sort((a, b) => {
       const scoreDiff = b.orderingScore - a.orderingScore;
@@ -4799,14 +4828,12 @@ function runLookaheadSearch(
   }
 
   /**
-   * Recursive search function with alpha-beta pruning
+   * Recursive single-player search function
    * Uses forecasted conditions at each depth level for more accurate simulation
    *
    * @param currentState - Current state to evaluate
    * @param remainingDepth - Remaining search depth
    * @param depthIndex - Current depth index for condition lookups
-   * @param alpha - Best score achievable by maximizer (for pruning)
-   * @param beta - Best score achievable by minimizer (for pruning, unused in single-player)
    */
   function search(
     currentState: CraftingState,
@@ -4814,8 +4841,6 @@ function runLookaheadSearch(
     depthIndex: number,
     currentConditionAtDepth: CraftingConditionType,
     nextConditionQueueAtDepth: CraftingConditionType[],
-    alpha: number = -Infinity,
-    beta: number = Infinity,
   ): number {
     // Check budget constraints
     if (checkBudget()) {
@@ -4949,8 +4974,6 @@ function runLookaheadSearch(
           depthIndex,
           currentConditionAtDepth,
           nextConditionQueueAtDepth,
-          bestScore,
-          beta,
         );
       } else {
         const transitions = getConditionTransitionsWithProvider(
@@ -4966,8 +4989,6 @@ function runLookaheadSearch(
             depthIndex + 1,
             transition.nextCondition,
             transition.nextQueue,
-            bestScore,
-            beta,
           );
           score += transition.probability * branchScore;
         }
@@ -4985,13 +5006,6 @@ function runLookaheadSearch(
         bestScore = score;
         bestCandidate = candidate;
         bestMoveKey = skill.key;
-      }
-
-      // Alpha-beta pruning: if we found a score better than what the parent
-      // could guarantee, we can prune this branch
-      if (cfg.useAlphaBeta && bestScore >= beta) {
-        metrics.pruned++;
-        break;
       }
     }
 
@@ -5732,9 +5746,7 @@ function runLookaheadSearch(
     }
 
     const scored: SkillRecommendation[] = orderRootRecommendations(
-      filterUnfinishedTerminalCandidates(evaluatedFirstMoves).map(
-        ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
-      ),
+      evaluatedFirstMoves.map(({ isTerminal, isTerminalUnmet, ...rec }) => rec),
       unsafeRecommendationKeys,
     );
     unsafeRootRecommendationKeys = unsafeRecommendationKeys;
@@ -6041,24 +6053,6 @@ function runLookaheadSearch(
     };
   }
 
-  // Calculate quality ratings (0-100) based on score difference from best
-  const bestScore = scoredSkills[0].score;
-  const worstScore =
-    scoredSkills.length > 1
-      ? scoredSkills[scoredSkills.length - 1].score
-      : bestScore;
-  const scoreRange = bestScore - worstScore;
-
-  for (const rec of scoredSkills) {
-    if (scoreRange > 0) {
-      rec.qualityRating = Math.round(
-        ((rec.score - worstScore) / scoreRange) * 100,
-      );
-    } else {
-      rec.qualityRating = 100; // All skills are equally good
-    }
-  }
-
   const rankedSkills = rankRecommendations(
     scoredSkills,
     scoreTieWindow,
@@ -6236,11 +6230,6 @@ function runLookaheadSearch(
       0,
       effectivePerfGoal - finalState.perfection,
     );
-    const totalRemaining = compRemaining + perfRemaining;
-    const compNeedShare =
-      totalRemaining > 0 ? compRemaining / totalRemaining : 0.5;
-    const perfNeedShare =
-      totalRemaining > 0 ? perfRemaining / totalRemaining : 0.5;
     const projectedSuccessChance =
       finalState.stability > 0
         ? calculateFinishSuccessChance(finalState, targetCompletion)
@@ -6251,8 +6240,6 @@ function runLookaheadSearch(
         : estimateTurnsRemainingFromContext(
             compRemaining,
             perfRemaining,
-            compNeedShare,
-            perfNeedShare,
             scoringCtx,
           );
 
@@ -6346,5 +6333,7 @@ export const __testing = {
   getProgressTowardRawGoal,
   getThresholdForGuaranteedBonusCount,
   buildScoringContext,
+  estimateTurnsRemainingFromContext,
+  rankRecommendations,
   SCORING,
 } as const;

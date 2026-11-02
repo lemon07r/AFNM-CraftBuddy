@@ -77,7 +77,7 @@ Absent live state seeds from the **current bars**, matching runtime lazy seeding
 - Preserve all harmony variants/provenance, cost channels, droplets, buff definitions/state, mastery entries and item state across clones, caches, extraction, replay and both bridges.
 - Native auto-use is the real technique-handler prehook, using the ordinary item reducer/effects. CraftBuddy executes through that UI control when active; direct dispatch would bypass consumption. Manual pills, auto pills and reagents share the per-round counter.
 - Native selection uses inventory/item-name limits, cumulative toxicity and conservative slot-condition handling locally. That conservative projection is not an exact future auto-use simulator.
-- Native condition/cap/precheck paths retain guarded fallbacks. `getNativeActionCost` is declared/imported but not called; local costs remain the model. A helper's existence is not adoption.
+- Native condition/cap/precheck paths retain guarded fallbacks. There is no native action-cost wrapper; local costs remain the model. A helper's existence is not adoption.
 
 ## Known gaps
 

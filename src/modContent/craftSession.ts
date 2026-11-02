@@ -43,8 +43,6 @@ export interface IntegrationDiagnostics {
   usingModApiGetActionCost: boolean;
   usingModApiEvaluateCraftingCondition: boolean;
   usingModApiGetActualCraftingStat: boolean;
-  nativeGetActionCostCalls: number;
-  nativeGetActionCostErrors: number;
   nativeCanUseActionCalls: number;
   nativeCanUseActionBlocked: number;
   nativeCanUseActionErrors: number;
@@ -88,8 +86,6 @@ export const integrationDiagnostics: IntegrationDiagnostics = {
   usingModApiGetActionCost: false,
   usingModApiEvaluateCraftingCondition: false,
   usingModApiGetActualCraftingStat: false,
-  nativeGetActionCostCalls: 0,
-  nativeGetActionCostErrors: 0,
   nativeCanUseActionCalls: 0,
   nativeCanUseActionBlocked: 0,
   nativeCanUseActionErrors: 0,

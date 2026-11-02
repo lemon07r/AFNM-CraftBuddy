@@ -435,19 +435,6 @@ export class CraftingState implements CraftingStateData {
   }
 
   /**
-   * Calculate score based on progress toward targets.
-   * If targets are 0, falls back to min(completion, perfection).
-   */
-  getScore(targetCompletion: number = 0, targetPerfection: number = 0): number {
-    if (targetCompletion === 0 && targetPerfection === 0) {
-      return Math.min(this.completion, this.perfection);
-    }
-    const compProgress = Math.min(this.completion, targetCompletion);
-    const perfProgress = Math.min(this.perfection, targetPerfection);
-    return compProgress + perfProgress;
-  }
-
-  /**
    * Check if both targets have been reached
    */
   targetsMet(targetCompletion: number, targetPerfection: number): boolean {

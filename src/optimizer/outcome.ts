@@ -40,11 +40,36 @@
  * bar can raise the weighted score while leaving the outcome stuck at `basic`.
  */
 
-import { getBonusAndChance } from './gameTypes';
 import type { OptimizerConfig } from './skills';
 
 /** Ratio by which each successive band's width grows (runtime `qIa`). */
 export const BAND_GROWTH_RATIO = 1.3;
+
+/** Runtime band count, fractional bonus roll, and next threshold. */
+export function getBonusAndChance(
+  value: number,
+  target: number,
+): { guaranteed: number; bonusChance: number; nextThreshold: number } {
+  if (target <= 0) {
+    return { guaranteed: 0, bonusChance: 0, nextThreshold: 0 };
+  }
+
+  let currentTarget = target;
+  let remainingValue = value;
+  let guaranteed = 0;
+  while (
+    remainingValue > 0 &&
+    currentTarget > 0 &&
+    remainingValue >= currentTarget
+  ) {
+    remainingValue -= currentTarget;
+    guaranteed++;
+    currentTarget = Math.floor(currentTarget * BAND_GROWTH_RATIO);
+  }
+  const bonusChance = currentTarget > 0 ? remainingValue / currentTarget : 0;
+  const nextThreshold = value + (currentTarget - remainingValue);
+  return { guaranteed, bonusChance, nextThreshold };
+}
 
 export type OutcomeTier = 'failed' | 'basic' | 'perfect' | 'sublime';
 
@@ -178,6 +203,16 @@ interface BarProgress {
  * and the running total is floored once at the end.
  */
 export function bandThreshold(bandWidth: number, bandCount: number): number {
+  return Math.floor(bandLadderSum(bandWidth, bandCount));
+}
+
+/**
+ * Unfloored sum of the first `bandCount` band widths. Band classification
+ * subtracts each width from the raw value (Game.js `JS`), so a resolved
+ * branch with `bandCount` bands sits at this value; a fractional first width
+ * keeps its fraction. `bandThreshold` floors it for goal/cap arithmetic.
+ */
+export function bandLadderSum(bandWidth: number, bandCount: number): number {
   if (!Number.isFinite(bandWidth) || bandWidth <= 0 || bandCount <= 0) {
     return 0;
   }
@@ -187,7 +222,7 @@ export function bandThreshold(bandWidth: number, bandCount: number): number {
     total += width;
     width = Math.floor(width * BAND_GROWTH_RATIO);
   }
-  return Math.floor(total);
+  return total;
 }
 
 /** Loose parameters for building outcome bands without a full optimizer config. */

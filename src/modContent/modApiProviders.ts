@@ -2,8 +2,8 @@
  * CraftBuddy - ModAPI provider resolution.
  *
  * Locates the optional helpers the ModAPI exposes (next-condition
- * resolver, completion-bonus buff name, technique-from-known resolver, action
- * cost getter) and records in `craftSession` which of them the current runtime
+ * resolver, completion-bonus buff name, technique-from-known resolver) and
+ * records in `craftSession` which of them the current runtime
  * actually offered. Every lookup is defensive: a missing helper is normal and
  * simply means CraftBuddy falls back to its own model.
  *
@@ -14,14 +14,10 @@
  */
 
 import type {
-  CraftingEntity,
-  CraftingRecipeStats,
   CraftingTechnique,
   KnownCraftingTechnique,
-  ProgressState,
 } from 'afnm-types';
 import { integrationDiagnostics } from './craftSession';
-import { debugLog } from '../utils/debug';
 
 export function normalizeBuffKey(name: string | undefined): string {
   return String(name || '')
@@ -87,53 +83,4 @@ export function getModApiTechniqueFromKnownResolver():
   return resolver.bind(window.modAPI.utils) as (
     known: KnownCraftingTechnique | undefined,
   ) => CraftingTechnique;
-}
-
-/**
- * Use native getActionCost to get the game's actual computed costs for a
- * technique. Returns undefined if the native API is unavailable or fails.
- * Only usable in the integration layer with live game state.
- */
-export function getNativeActionCost(
-  technique: CraftingTechnique,
-  entity: CraftingEntity,
-  recipeStats: CraftingRecipeStats | undefined,
-  progressState: ProgressState | undefined,
-): { poolCost: number; stabilityCost: number } | undefined {
-  const modUtils = (window as any)?.modAPI?.utils;
-  if (
-    typeof modUtils?.getActionCost !== 'function' ||
-    !recipeStats ||
-    !progressState
-  ) {
-    return undefined;
-  }
-
-  integrationDiagnostics.nativeGetActionCostCalls++;
-  try {
-    const result = modUtils.getActionCost(
-      technique,
-      entity,
-      recipeStats,
-      progressState,
-    );
-    if (
-      result &&
-      typeof result.poolCost === 'number' &&
-      typeof result.stabilityCost === 'number'
-    ) {
-      return {
-        poolCost: Math.max(0, result.poolCost),
-        stabilityCost: Math.max(0, result.stabilityCost),
-      };
-    }
-  } catch (error) {
-    integrationDiagnostics.nativeGetActionCostErrors++;
-    debugLog(
-      '[CraftBuddy] ModAPI getActionCost failed, using local costs:',
-      error,
-    );
-  }
-
-  return undefined;
 }

@@ -19,13 +19,13 @@ use effects::{
     MasteryBonuses, MasteryEntry,
 };
 use outcome::{
-    band_threshold, build_outcome_bands, classify_outcome, compute_overcraft_extras,
-    tier_requirement, OutcomeBands, OutcomeClassification, OutcomeTier,
+    band_ladder_sum, band_threshold, build_outcome_bands, classify_outcome,
+    compute_overcraft_extras, get_bonus_and_chance, tier_requirement, OutcomeBands,
+    OutcomeClassification, OutcomeTier, EXPONENTIAL_SCALING_FACTOR,
 };
 
 const FINISH_CRAFT_KEY: &str = "__finish_craft__";
 const FINISH_CRAFT_NAME: &str = "Finish Craft";
-const EXPONENTIAL_SCALING_FACTOR: f64 = 1.3;
 const RESOURCE_TIEBREAKER: f64 = 0.001;
 
 // Conjunctive goal-score weights. Mirrors `SCORING` in
@@ -1229,7 +1229,17 @@ impl Engine {
             // Harmony is worth most while the binding bar still has work left:
             // its real value is steering the condition timeline toward
             // Harmonious/Brilliant windows, which is worthless once banked.
-            let binding_remaining = 1.0 - outcome.completion_margin.min(outcome.perfection_margin);
+            let completion_need = if goals.mode_completion > 0.0 {
+                clamp(remaining_completion / goals.mode_completion, 0.0, 1.0)
+            } else {
+                0.0
+            };
+            let perfection_need = if goals.mode_perfection > 0.0 {
+                clamp(remaining_perfection / goals.mode_perfection, 0.0, 1.0)
+            } else {
+                0.0
+            };
+            let binding_remaining = completion_need.max(perfection_need);
             score += (state.harmony / 100.0)
                 * total_target_magnitude
                 * HARMONY_BONUS_WEIGHT
@@ -1348,7 +1358,8 @@ impl Engine {
                 );
                 // Unmet work is permanent once the craft has ended, so price it
                 // at full weight rather than as remaining potential.
-                let shortfall = resolved.completion_shortfall + resolved.perfection_shortfall;
+                let shortfall = (goals.mode_completion - state.completion).max(0.0)
+                    + (goals.mode_perfection - state.perfection).max(0.0);
                 expected_score +=
                     probability * (branch_score - shortfall * FINISHED_UNMET_PENALTY_WEIGHT);
             }
@@ -1643,46 +1654,10 @@ impl EngineState {
 }
 
 #[derive(Clone, Copy)]
-struct BonusProgress {
-    guaranteed: i32,
-    bonus_chance: f64,
-    #[allow(dead_code)]
-    next_threshold: f64,
-}
-
-#[derive(Clone, Copy)]
 struct BonusOutcome {
     guaranteed: i32,
     probability: f64,
     threshold: f64,
-}
-
-fn get_bonus_and_chance(value: f64, target: f64) -> BonusProgress {
-    if target <= 0.0 {
-        return BonusProgress {
-            guaranteed: 0,
-            bonus_chance: 0.0,
-            next_threshold: 0.0,
-        };
-    }
-    let mut current_target = target;
-    let mut remaining_value = value;
-    let mut guaranteed = 0;
-    while remaining_value > 0.0 && current_target > 0.0 && remaining_value >= current_target {
-        remaining_value -= current_target;
-        guaranteed += 1;
-        current_target = (current_target * EXPONENTIAL_SCALING_FACTOR).floor();
-    }
-    let bonus_chance = if current_target > 0.0 {
-        remaining_value / current_target
-    } else {
-        0.0
-    };
-    BonusProgress {
-        guaranteed,
-        bonus_chance,
-        next_threshold: value + (current_target - remaining_value),
-    }
 }
 
 fn bonus_outcomes(value: f64, target: f64) -> Vec<BonusOutcome> {
@@ -1716,13 +1691,7 @@ fn threshold_for_guaranteed_count(target: f64, guaranteed: i32) -> f64 {
     if target <= 0.0 || guaranteed <= 0 {
         return 0.0;
     }
-    let mut total = 0.0;
-    let mut current = target;
-    for _ in 0..guaranteed {
-        total += current;
-        current = (current * EXPONENTIAL_SCALING_FACTOR).floor();
-    }
-    total
+    band_ladder_sum(target, guaranteed)
 }
 fn expected_crit_multiplier(crit_chance: f64, crit_multiplier: f64) -> f64 {
     let excess_crit = (crit_chance - 100.0).max(0.0);
@@ -2988,6 +2957,12 @@ fn default_max_nodes() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolved_band_thresholds_keep_fractional_widths() {
+        assert_eq!(threshold_for_guaranteed_count(100.0, 2), 230.0);
+        assert_eq!(threshold_for_guaranteed_count(7.5, 2), 16.5);
+    }
 
     fn basic_input() -> MctsInput {
         MctsInput {

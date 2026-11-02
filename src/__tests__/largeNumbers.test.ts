@@ -14,7 +14,6 @@ import {
   safePercentage,
   formatPercentage,
   checkPrecision,
-  safeEquals,
   parseGameNumber,
   MAX_SAFE_VALUE,
   LARGE_NUMBER_THRESHOLD,
@@ -218,27 +217,6 @@ describe('checkPrecision', () => {
   it('should return false for non-finite numbers', () => {
     expect(checkPrecision(Infinity, 'test')).toBe(false);
     expect(checkPrecision(NaN, 'test')).toBe(false);
-  });
-});
-
-describe('safeEquals', () => {
-  it('should return true for equal numbers', () => {
-    expect(safeEquals(100, 100)).toBe(true);
-    expect(safeEquals(0, 0)).toBe(true);
-  });
-
-  it('should return false for different numbers', () => {
-    expect(safeEquals(100, 101)).toBe(false);
-  });
-
-  it('should handle floating point comparison', () => {
-    expect(safeEquals(0.1 + 0.2, 0.3)).toBe(true);
-  });
-
-  it('should handle large number comparison', () => {
-    const large = 1e15;
-    expect(safeEquals(large, large + 1)).toBe(true); // Within relative epsilon
-    expect(safeEquals(large, large + 1e10)).toBe(false); // Outside epsilon
   });
 });
 

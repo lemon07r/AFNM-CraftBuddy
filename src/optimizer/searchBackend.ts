@@ -30,6 +30,7 @@ import {
   findBestSkill,
   FINISH_CRAFT_KEY,
   orderRecommendationsBySafety,
+  recomputeQualityRatings,
   type CraftingConditionType,
   type SearchConfig,
   type SearchResult,
@@ -291,19 +292,6 @@ function compareMergedScores(
     return b.score - a.score;
   }
   return a.skill.key.localeCompare(b.skill.key);
-}
-
-function recomputeQualityRatings(candidates: SkillRecommendation[]): void {
-  if (candidates.length === 0) {
-    return;
-  }
-  const best = Math.max(...candidates.map((candidate) => candidate.score));
-  const worst = Math.min(...candidates.map((candidate) => candidate.score));
-  const range = best - worst;
-  for (const candidate of candidates) {
-    candidate.qualityRating =
-      range > 0 ? Math.round(((candidate.score - worst) / range) * 100) : 100;
-  }
 }
 
 /**
