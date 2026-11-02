@@ -4501,6 +4501,39 @@ function applySkillTransition(
           ),
         ));
 
+  const modifyBuffGroup = (
+    group: string | undefined,
+    mode: string | undefined,
+    amount: number,
+  ): void => {
+    let targets = Array.from(newBuffs.entries()).filter(
+      ([, buff]) =>
+        buff.definition?.buffType === group || buff.definition?.name === group,
+    );
+    if (mode === 'highest' || mode === 'lowest') {
+      targets = targets.length
+        ? [
+            targets.reduce((best, candidate) =>
+              (
+                mode === 'highest'
+                  ? candidate[1].stacks > best[1].stacks
+                  : candidate[1].stacks < best[1].stacks
+              )
+                ? candidate
+                : best,
+            ),
+          ]
+        : [];
+    }
+    // No stock effect selects a random member. A multi-target random mutation
+    // needs persistent probabilistic buff states, not fractional stack floors.
+    if (mode === 'random' && targets.length > 1) return;
+    for (const [key, target] of targets) {
+      if (amount < 0) adjustExistingBuffStacks(key, amount);
+      else upsertBuffFromDefinition(target.definition, amount);
+    }
+  };
+
   // 0.7.7+ triggered buff effects (the runtime `_6` dispatcher). The runtime
   // fires triggers as each change lands - cost payment, technique
   // applications, then per-turn buff effects - so dispatches below run after
@@ -4644,6 +4677,19 @@ function applySkillTransition(
           upsertBuffFromDefinition(effect.buff, stacksToAdd, actionVars);
           break;
         }
+        case 'modifyBuffGroup':
+          if (!isItemAction)
+            modifyBuffGroup(
+              effect.group,
+              effect.mode,
+              evaluateScalingWithMasteryUpgrades(
+                effect.amount,
+                actionMasteryUpgrades,
+                actionVars,
+                1,
+              ) * factor,
+            );
+          break;
         case 'consumeBuff': {
           const buffKey = normalizeBuffName(effect.buff?.name);
           if (!buffKey) break;
@@ -4831,6 +4877,18 @@ function applySkillTransition(
         }
         break;
       }
+      case 'modifyBuffGroup':
+        modifyBuffGroup(
+          effect.group,
+          effect.mode,
+          evaluateScalingWithMasteryUpgrades(
+            effect.amount,
+            actionMasteryUpgrades,
+            scalingVars,
+            1,
+          ) * conditionFactor,
+        );
+        break;
       case 'setState': {
         // 0.7.7+ per-instance state writes (Azure Depths' per-action
         // `stored = max(0, stored - 1)` decay lives in `effects`).

@@ -205,6 +205,8 @@ pub struct EffectCondition {
 #[serde(rename_all = "camelCase")]
 pub struct Effect {
     #[serde(default)]
+    pub group: Option<String>,
+    #[serde(default)]
     pub keys: Option<Vec<String>>,
     #[serde(default)]
     pub kind: String,
@@ -240,6 +242,8 @@ pub struct TriggeredEffectBlock {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuffDefinition {
+    #[serde(default)]
+    pub buff_type: Option<String>,
     #[serde(default)]
     pub additional_variables: Option<BTreeMap<String, f64>>,
     #[serde(default)]
@@ -2179,6 +2183,38 @@ fn dispatch_buff_triggers(
                         buffs.adjust_existing(&key, change);
                         None
                     }
+                    "modifyBuffGroup" => {
+                        let amount = evaluate_scaling_with_upgrades(
+                            effect.amount.as_ref(),
+                            upgrades,
+                            &scope,
+                            1.0,
+                        ) * evaluation.probability;
+                        for target in
+                            buffs.group_targets(effect.group.as_deref(), effect.mode.as_deref())
+                        {
+                            if amount < 0.0 {
+                                buffs.adjust_existing(&target.key, amount);
+                            } else {
+                                buffs.upsert_from_definition(
+                                    target.definition.as_ref(),
+                                    amount,
+                                    None,
+                                );
+                            }
+                            dispatch_stack_events(
+                                buffs,
+                                action_vars,
+                                state,
+                                upgrades,
+                                new_qi,
+                                qi_cap,
+                                new_toxicity,
+                                max_toxicity,
+                            );
+                        }
+                        None
+                    }
                     _ => None,
                 };
                 if let Some((next_trigger, next_amount, next_percent)) = followup {
@@ -2359,6 +2395,40 @@ struct TriggeredGains {
 }
 
 impl BuffSet {
+    fn group_targets(&self, group: Option<&str>, mode: Option<&str>) -> Vec<ActiveBuff> {
+        let mut targets: Vec<ActiveBuff> = self
+            .entries
+            .iter()
+            .filter(|buff| {
+                buff.definition.as_ref().is_some_and(|definition| {
+                    definition.buff_type.as_deref() == group
+                        || Some(definition.name.as_str()) == group
+                })
+            })
+            .cloned()
+            .collect();
+        if matches!(mode, Some("highest" | "lowest")) {
+            let mut best: Option<ActiveBuff> = None;
+            for target in targets {
+                if best.as_ref().is_none_or(|old| {
+                    if mode == Some("highest") {
+                        target.stacks > old.stacks
+                    } else {
+                        target.stacks < old.stacks
+                    }
+                }) {
+                    best = Some(target);
+                }
+            }
+            targets = best.into_iter().collect();
+        }
+        // No stock effect uses random selection. Multi-target random needs
+        // persistent probabilistic buff states, not fractional stack floors.
+        if mode == Some("random") && targets.len() > 1 {
+            targets.clear();
+        }
+        targets
+    }
     pub fn new(entries: Vec<ActiveBuff>) -> Self {
         Self {
             stack_events: Vec::new(),
@@ -3942,6 +4012,31 @@ fn apply_skill_transition(
                     buffs.adjust_existing(&buff_key, -stacks.floor());
                 }
             }
+            "modifyBuffGroup" if !is_item => {
+                let amount = evaluate_scaling_with_upgrades(
+                    effect.amount.as_ref(),
+                    &resolved.upgrades,
+                    &action_vars,
+                    1.0,
+                ) * factor;
+                for target in buffs.group_targets(effect.group.as_deref(), effect.mode.as_deref()) {
+                    if amount < 0.0 {
+                        buffs.adjust_existing(&target.key, amount);
+                    } else {
+                        buffs.upsert_from_definition(target.definition.as_ref(), amount, None);
+                    }
+                    dispatch_stack_events(
+                        &mut buffs,
+                        &action_vars,
+                        state,
+                        &resolved.upgrades,
+                        new_qi,
+                        qi_cap,
+                        new_toxicity,
+                        config.max_toxicity,
+                    );
+                }
+            }
             _ => {}
         }
         dispatch_stack_events(
@@ -4372,6 +4467,37 @@ fn apply_skill_transition(
                             ) * condition_factor;
                             if change != 0.0 {
                                 buffs.adjust_existing(&owner.key, change);
+                            }
+                        }
+                        "modifyBuffGroup" => {
+                            let amount = evaluate_scaling_with_upgrades(
+                                effect.amount.as_ref(),
+                                &resolved.upgrades,
+                                &scaling_vars,
+                                1.0,
+                            ) * condition_factor;
+                            for target in
+                                buffs.group_targets(effect.group.as_deref(), effect.mode.as_deref())
+                            {
+                                if amount < 0.0 {
+                                    buffs.adjust_existing(&target.key, amount);
+                                } else {
+                                    buffs.upsert_from_definition(
+                                        target.definition.as_ref(),
+                                        amount,
+                                        None,
+                                    );
+                                }
+                                dispatch_stack_events(
+                                    &mut buffs,
+                                    &action_vars,
+                                    state,
+                                    &resolved.upgrades,
+                                    new_qi,
+                                    qi_cap,
+                                    new_toxicity,
+                                    config.max_toxicity,
+                                );
                             }
                         }
                         // 0.7.7+ per-instance state writes (Azure Depths'

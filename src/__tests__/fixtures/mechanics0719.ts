@@ -1,10 +1,14 @@
 import { CraftingState } from '../../optimizer/state';
 import { retargetConfig, retargetSkill } from './runtime0717';
-import type { BuffDefinition } from '../../optimizer/gameTypes';
+import type {
+  BuffDefinition,
+  TechniqueEffect,
+} from '../../optimizer/gameTypes';
 
 export function mechanics0719Scenarios() {
   return [
     ...stackEventScenarios(),
+    ...buffGroupScenarios(),
     ...[
       { name: 'overdraft', stability: 1, cost: 10, gain: 0, tick: 7 },
       { name: 'overdraft-rescue', stability: 1, cost: 10, gain: 0, tick: 12 },
@@ -45,6 +49,119 @@ export function mechanics0719Scenarios() {
       };
     }),
   ];
+}
+
+export function buffGroupScenarios() {
+  return [
+    'all',
+    'highest',
+    'lowest',
+    'negative',
+    'source-scope',
+    'random-single',
+    'no-match',
+  ].map((edge) => {
+    const a: BuffDefinition = {
+      name: 'Pill A',
+      buffType: 'Pill',
+      canStack: true,
+      effects: [],
+    };
+    const b: BuffDefinition = {
+      name: 'Pill B',
+      buffType: 'Pill',
+      canStack: true,
+      maxStacks: 5,
+      effects: [],
+    };
+    const c: BuffDefinition = {
+      name: 'Pill C',
+      buffType: 'Pill',
+      canStack: false,
+      effects: [],
+    };
+    const named: BuffDefinition = {
+      name: 'Pill',
+      buffType: 'Reagent',
+      canStack: true,
+      effects: [],
+    };
+    const wrongCase: BuffDefinition = {
+      name: 'Not a pill',
+      buffType: 'pill',
+      canStack: true,
+      effects: [],
+    };
+    const source: BuffDefinition = {
+      name: 'Group source',
+      canStack: true,
+      effects: [],
+      triggeredEffects: [
+        {
+          trigger: 'stackGained.Pill A',
+          effects: [
+            {
+              kind: 'setState',
+              key: 'gained',
+              value: { value: 1, eqn: 'amount' },
+            },
+          ],
+        },
+        {
+          trigger: 'stackLost.Pill A',
+          effects: [
+            {
+              kind: 'setState',
+              key: 'lost',
+              value: { value: 1, eqn: 'amount' },
+            },
+          ],
+        },
+      ],
+    };
+    const effect: TechniqueEffect & { kind: 'modifyBuffGroup' } = {
+      kind: 'modifyBuffGroup' as const,
+      group:
+        edge === 'random-single'
+          ? 'Pill A'
+          : edge === 'no-match'
+            ? 'PILL'
+            : 'Pill',
+      amount: { value: edge === 'negative' ? -9 : 3 },
+      mode:
+        edge === 'highest' || edge === 'lowest'
+          ? edge
+          : edge === 'random-single'
+            ? ('random' as const)
+            : undefined,
+    };
+    const skill = retargetSkill({
+      qiCost: 25,
+      stabilityCost: 5,
+      type: 'support',
+      effects: [effect],
+    });
+    if (edge === 'source-scope') {
+      skill.effects = [];
+      source.effects = [{ ...effect, amount: { value: 1, scaling: 'stacks' } }];
+    }
+    const buffs = new Map(
+      [a, b, c, named, wrongCase, source].map((definition, index) => [
+        definition.name.toLowerCase().replace(/ /g, '_'),
+        {
+          name: definition.name,
+          stacks: [1, 4, 4, 2, 2, 3][index],
+          definition,
+        },
+      ]),
+    );
+    return {
+      name: `0719-group-${edge}`,
+      state: new CraftingState({ qi: 100, stability: 50, buffs }),
+      skill,
+      config: retargetConfig(skill),
+    };
+  });
 }
 
 export function stackEventScenarios() {

@@ -128,6 +128,7 @@ export type BuffEffectKind =
   | 'createBuff'
   | 'addStack'
   | 'changeToxicity'
+  | 'modifyBuffGroup'
   | 'setState';
 
 /**
@@ -147,7 +148,8 @@ export interface BuffEffect {
   key?: string;
   keys?: string[];
   value?: Scaling;
-  mode?: 'set' | 'add';
+  group?: string;
+  mode?: 'set' | 'add' | 'all' | 'highest' | 'lowest' | 'random';
 }
 
 /**
@@ -268,6 +270,7 @@ export type TechniqueEffectKind =
   | 'pool'
   | 'createBuff'
   | 'consumeBuff'
+  | 'modifyBuffGroup'
   | 'cleanseToxicity';
 
 /**
@@ -279,6 +282,8 @@ export interface TechniqueEffect {
   stacks?: Scaling;
   buff?: BuffDefinition;
   condition?: CraftingTechniqueCondition;
+  group?: string;
+  mode?: 'all' | 'highest' | 'lowest' | 'random';
 }
 
 /**

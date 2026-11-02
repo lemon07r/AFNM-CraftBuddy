@@ -191217,6 +191217,2289 @@
       ]
     },
     {
+      "name": "0719-group-all",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 50,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "pill_a",
+              "name": "Pill A",
+              "stacks": 1,
+              "definition": {
+                "name": "Pill A",
+                "buffType": "Pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_b",
+              "name": "Pill B",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill B",
+                "buffType": "Pill",
+                "canStack": true,
+                "maxStacks": 5,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_c",
+              "name": "Pill C",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill C",
+                "buffType": "Pill",
+                "canStack": false,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill",
+              "name": "Pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Pill",
+                "buffType": "Reagent",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "not_a_pill",
+              "name": "Not a pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Not a pill",
+                "buffType": "pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "group_source",
+              "name": "Group source",
+              "stacks": 3,
+              "definition": {
+                "name": "Group source",
+                "canStack": true,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stackGained.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "gained",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "stackLost.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "lost",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "support",
+            "action_kind": "skill",
+            "qi_cost": 25,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "modifyBuffGroup",
+                "group": "Pill",
+                "amount": {
+                  "value": 3
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 75,
+            "stability": 45,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "pill_a",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill_b",
+                "stacks": 5,
+                "internalState": {}
+              },
+              {
+                "key": "pill_c",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill",
+                "stacks": 5,
+                "internalState": {}
+              },
+              {
+                "key": "not_a_pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "group_source",
+                "stacks": 3,
+                "internalState": {
+                  "gained": 3
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-group-highest",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 50,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "pill_a",
+              "name": "Pill A",
+              "stacks": 1,
+              "definition": {
+                "name": "Pill A",
+                "buffType": "Pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_b",
+              "name": "Pill B",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill B",
+                "buffType": "Pill",
+                "canStack": true,
+                "maxStacks": 5,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_c",
+              "name": "Pill C",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill C",
+                "buffType": "Pill",
+                "canStack": false,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill",
+              "name": "Pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Pill",
+                "buffType": "Reagent",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "not_a_pill",
+              "name": "Not a pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Not a pill",
+                "buffType": "pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "group_source",
+              "name": "Group source",
+              "stacks": 3,
+              "definition": {
+                "name": "Group source",
+                "canStack": true,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stackGained.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "gained",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "stackLost.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "lost",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "support",
+            "action_kind": "skill",
+            "qi_cost": 25,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "modifyBuffGroup",
+                "group": "Pill",
+                "amount": {
+                  "value": 3
+                },
+                "mode": "highest"
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 75,
+            "stability": 45,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "pill_a",
+                "stacks": 1,
+                "internalState": {}
+              },
+              {
+                "key": "pill_b",
+                "stacks": 5,
+                "internalState": {}
+              },
+              {
+                "key": "pill_c",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "not_a_pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "group_source",
+                "stacks": 3,
+                "internalState": {}
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-group-lowest",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 50,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "pill_a",
+              "name": "Pill A",
+              "stacks": 1,
+              "definition": {
+                "name": "Pill A",
+                "buffType": "Pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_b",
+              "name": "Pill B",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill B",
+                "buffType": "Pill",
+                "canStack": true,
+                "maxStacks": 5,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_c",
+              "name": "Pill C",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill C",
+                "buffType": "Pill",
+                "canStack": false,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill",
+              "name": "Pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Pill",
+                "buffType": "Reagent",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "not_a_pill",
+              "name": "Not a pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Not a pill",
+                "buffType": "pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "group_source",
+              "name": "Group source",
+              "stacks": 3,
+              "definition": {
+                "name": "Group source",
+                "canStack": true,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stackGained.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "gained",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "stackLost.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "lost",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "support",
+            "action_kind": "skill",
+            "qi_cost": 25,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "modifyBuffGroup",
+                "group": "Pill",
+                "amount": {
+                  "value": 3
+                },
+                "mode": "lowest"
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 75,
+            "stability": 45,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "pill_a",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill_b",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill_c",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "not_a_pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "group_source",
+                "stacks": 3,
+                "internalState": {
+                  "gained": 3
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-group-negative",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 50,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "pill_a",
+              "name": "Pill A",
+              "stacks": 1,
+              "definition": {
+                "name": "Pill A",
+                "buffType": "Pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_b",
+              "name": "Pill B",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill B",
+                "buffType": "Pill",
+                "canStack": true,
+                "maxStacks": 5,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_c",
+              "name": "Pill C",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill C",
+                "buffType": "Pill",
+                "canStack": false,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill",
+              "name": "Pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Pill",
+                "buffType": "Reagent",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "not_a_pill",
+              "name": "Not a pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Not a pill",
+                "buffType": "pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "group_source",
+              "name": "Group source",
+              "stacks": 3,
+              "definition": {
+                "name": "Group source",
+                "canStack": true,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stackGained.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "gained",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "stackLost.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "lost",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "support",
+            "action_kind": "skill",
+            "qi_cost": 25,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "modifyBuffGroup",
+                "group": "Pill",
+                "amount": {
+                  "value": -9
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 75,
+            "stability": 45,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "not_a_pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "group_source",
+                "stacks": 3,
+                "internalState": {
+                  "lost": 1
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-group-source-scope",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 50,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "pill_a",
+              "name": "Pill A",
+              "stacks": 1,
+              "definition": {
+                "name": "Pill A",
+                "buffType": "Pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_b",
+              "name": "Pill B",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill B",
+                "buffType": "Pill",
+                "canStack": true,
+                "maxStacks": 5,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_c",
+              "name": "Pill C",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill C",
+                "buffType": "Pill",
+                "canStack": false,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill",
+              "name": "Pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Pill",
+                "buffType": "Reagent",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "not_a_pill",
+              "name": "Not a pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Not a pill",
+                "buffType": "pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "group_source",
+              "name": "Group source",
+              "stacks": 3,
+              "definition": {
+                "name": "Group source",
+                "canStack": true,
+                "effects": [
+                  {
+                    "kind": "modifyBuffGroup",
+                    "group": "Pill",
+                    "amount": {
+                      "value": 1,
+                      "scaling": "stacks"
+                    }
+                  }
+                ],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stackGained.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "gained",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "stackLost.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "lost",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "support",
+            "action_kind": "skill",
+            "qi_cost": 25,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 75,
+            "stability": 45,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "pill_a",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill_b",
+                "stacks": 5,
+                "internalState": {}
+              },
+              {
+                "key": "pill_c",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill",
+                "stacks": 5,
+                "internalState": {}
+              },
+              {
+                "key": "not_a_pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "group_source",
+                "stacks": 3,
+                "internalState": {
+                  "gained": 3
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-group-random-single",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 50,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "pill_a",
+              "name": "Pill A",
+              "stacks": 1,
+              "definition": {
+                "name": "Pill A",
+                "buffType": "Pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_b",
+              "name": "Pill B",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill B",
+                "buffType": "Pill",
+                "canStack": true,
+                "maxStacks": 5,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_c",
+              "name": "Pill C",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill C",
+                "buffType": "Pill",
+                "canStack": false,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill",
+              "name": "Pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Pill",
+                "buffType": "Reagent",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "not_a_pill",
+              "name": "Not a pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Not a pill",
+                "buffType": "pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "group_source",
+              "name": "Group source",
+              "stacks": 3,
+              "definition": {
+                "name": "Group source",
+                "canStack": true,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stackGained.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "gained",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "stackLost.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "lost",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "support",
+            "action_kind": "skill",
+            "qi_cost": 25,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "modifyBuffGroup",
+                "group": "Pill A",
+                "amount": {
+                  "value": 3
+                },
+                "mode": "random"
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 75,
+            "stability": 45,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "pill_a",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill_b",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill_c",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "not_a_pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "group_source",
+                "stacks": 3,
+                "internalState": {
+                  "gained": 3
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0719-group-no-match",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qi_droplets": 0,
+          "item_effectiveness": 0,
+          "max_qi_droplets": 0,
+          "qi_cost_reduction": 0,
+          "qi_cost_penalty": 0,
+          "stability_cost_reduction": 0,
+          "stability_cost_penalty": 0,
+          "stability": 50,
+          "initial_max_stability": 60,
+          "stability_penalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "crit_chance": 0,
+          "crit_multiplier": 150,
+          "success_chance_bonus": 0,
+          "pool_cost_flat": 0,
+          "pool_cost_percentage": 100,
+          "stability_cost_percentage": 100,
+          "control_buff_turns": 0,
+          "intensity_buff_turns": 0,
+          "control_buff_multiplier": 1.4,
+          "intensity_buff_multiplier": 1.4,
+          "toxicity": 0,
+          "max_toxicity": 100,
+          "harmony": 0,
+          "harmony_data": {
+            "recommended_technique_types": []
+          },
+          "cooldowns": [
+            0
+          ],
+          "completion_bonus": 0,
+          "step": 0,
+          "buffs": [
+            {
+              "key": "pill_a",
+              "name": "Pill A",
+              "stacks": 1,
+              "definition": {
+                "name": "Pill A",
+                "buffType": "Pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_b",
+              "name": "Pill B",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill B",
+                "buffType": "Pill",
+                "canStack": true,
+                "maxStacks": 5,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill_c",
+              "name": "Pill C",
+              "stacks": 4,
+              "definition": {
+                "name": "Pill C",
+                "buffType": "Pill",
+                "canStack": false,
+                "effects": []
+              }
+            },
+            {
+              "key": "pill",
+              "name": "Pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Pill",
+                "buffType": "Reagent",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "not_a_pill",
+              "name": "Not a pill",
+              "stacks": 2,
+              "definition": {
+                "name": "Not a pill",
+                "buffType": "pill",
+                "canStack": true,
+                "effects": []
+              }
+            },
+            {
+              "key": "group_source",
+              "name": "Group source",
+              "stacks": 3,
+              "definition": {
+                "name": "Group source",
+                "canStack": true,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "stackGained.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "gained",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "trigger": "stackLost.Pill A",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "lost",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "items": [],
+          "consumed_pills_this_turn": 0
+        },
+        "config": {
+          "max_qi": 200,
+          "max_stability": 60,
+          "base_intensity": 10,
+          "base_control": 10,
+          "min_stability": 0,
+          "default_buff_multiplier": 1.4,
+          "max_toxicity": 100,
+          "is_sublime_craft": false,
+          "target_multiplier": 2,
+          "training_mode": false,
+          "goal_priority_bias": 0,
+          "overcraft_ambition": true,
+          "perfection_band_goal": 0,
+          "completion_band_ceiling": 0,
+          "target_completion": 100,
+          "target_perfection": 100,
+          "pills_per_round": 1
+        },
+        "skills": [
+          {
+            "name": "Retarget probe",
+            "key": "retarget_probe",
+            "technique_type": "support",
+            "action_kind": "skill",
+            "qi_cost": 25,
+            "droplet_cost": 0,
+            "no_qi_cost": false,
+            "stability_cost": 5,
+            "success_chance": 1,
+            "base_completion_gain": 0,
+            "base_perfection_gain": 0,
+            "stability_gain": 0,
+            "max_stability_change": 0,
+            "buff_type": 0,
+            "buff_duration": 0,
+            "buff_multiplier": 1,
+            "scales_with_control": false,
+            "scales_with_intensity": false,
+            "prevents_max_stability_decay": false,
+            "toxicity_cost": 0,
+            "toxicity_cleanse": 0,
+            "cooldown": 0,
+            "restores_qi": false,
+            "qi_restore": 0,
+            "restores_max_stability_to_full": false,
+            "consumes_turn": true,
+            "effects": [
+              {
+                "kind": "modifyBuffGroup",
+                "group": "PILL",
+                "amount": {
+                  "value": 3
+                }
+              }
+            ],
+            "is_disciplined_touch": false,
+            "reagent_only_at_step_zero": false
+          }
+        ],
+        "target_completion": 100,
+        "target_perfection": 100,
+        "current_condition": "neutral",
+        "forecasted_conditions": [],
+        "condition_effects": {
+          "neutral": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "positive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "negative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryPositive": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          },
+          "veryNegative": {
+            "control_multiplier": 1,
+            "intensity_multiplier": 1,
+            "pool_cost_multiplier": 1,
+            "stability_cost_multiplier": 1,
+            "success_chance_bonus": 0
+          }
+        },
+        "search": {
+          "iterations": 666,
+          "rollout_depth": 32,
+          "exploration": 1.15,
+          "seed": 0,
+          "max_nodes": 50000
+        }
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 75,
+            "stability": 45,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "pill_a",
+                "stacks": 1,
+                "internalState": {}
+              },
+              {
+                "key": "pill_b",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill_c",
+                "stacks": 4,
+                "internalState": {}
+              },
+              {
+                "key": "pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "not_a_pill",
+                "stacks": 2,
+                "internalState": {}
+              },
+              {
+                "key": "group_source",
+                "stacks": 3,
+                "internalState": {}
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "0719-overdraft",
       "input": {
         "state": {

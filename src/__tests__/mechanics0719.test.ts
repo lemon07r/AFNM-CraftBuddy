@@ -5,11 +5,41 @@ import {
 import {
   mechanics0719Scenarios,
   stackEventScenarios,
+  buffGroupScenarios,
 } from './fixtures/mechanics0719';
 import { CraftingState } from '../optimizer/state';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
 describe('AFNM 0.7.19 audited mechanics', () => {
+  it.each([
+    ['all', [4, 5, 4, 5, 2]],
+    ['highest', [1, 5, 4, 2, 2]],
+    ['lowest', [4, 4, 4, 2, 2]],
+    ['negative', [0, 0, 0, 0, 2]],
+    ['source-scope', [4, 5, 4, 5, 2]],
+    ['random-single', [4, 4, 4, 2, 2]],
+    ['no-match', [1, 4, 4, 2, 2]],
+  ])(
+    'modifies exact buff groups with stable selection and source scope: %s',
+    (edge, expected) => {
+      const { state, skill, config } = buffGroupScenarios().find(
+        (s) => s.name === `0719-group-${edge}`,
+      )!;
+      const next = applySkill(state, skill, config)!;
+      expect(
+        ['pill_a', 'pill_b', 'pill_c', 'pill', 'not_a_pill'].map((key) =>
+          next.getBuffStacks(key),
+        ),
+      ).toEqual(expected);
+      const events = next.buffs.get('group_source')?.internalState;
+      expect(events?.gained ?? 0).toBe(
+        ['all', 'lowest', 'source-scope', 'random-single'].includes(edge)
+          ? 3
+          : 0,
+      );
+      expect(events?.lost ?? 0).toBe(edge === 'negative' ? 1 : 0);
+    },
+  );
   it.each([
     ['capped', 3, 5, 0, 0],
     ['nonstackable', 3, 0, 0, 0],
