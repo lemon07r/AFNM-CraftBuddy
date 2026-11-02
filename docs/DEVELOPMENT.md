@@ -75,7 +75,7 @@ Choose checks by the changed surface. This is the shared iteration/hand-off/rele
 | UI/settings/harness | `bun run ui:harness:build`, harness screenshots; pure helper tests | Typecheck + tests + harness build; short viewport and affected states | Release gate + harness build |
 | Packaging/dependencies/check scripts | Focused script tests; typecheck | Production build + harness build for dependency changes; docs checks | Release gate |
 
-`release:validate` runs typecheck, Jest, production build and docs checks. It does **not** run replay contracts. Publishing order and commands live only in `.agents/skills/craftbuddy-release/SKILL.md`.
+`release:validate` runs typecheck, Jest, production build and docs checks. It does **not** run the benchmark contracts (`bun run optimizer:bench`); replay-based Jest tests do run. Publishing order and commands live only in `.agents/skills/craftbuddy-release/SKILL.md`.
 
 ### Test/evidence details
 
