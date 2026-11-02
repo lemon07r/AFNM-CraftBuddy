@@ -234,6 +234,20 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
 
+const settingsListeners = new Set<() => void>();
+
+/** Shared by the overlay, native options screen, and keyboard shortcuts. */
+export function subscribeSettings(listener: () => void): () => void {
+  settingsListeners.add(listener);
+  return () => {
+    settingsListeners.delete(listener);
+  };
+}
+
+function notifySettingsChanged(): void {
+  settingsListeners.forEach((listener) => listener());
+}
+
 type StoredCraftBuddySettings = Partial<CraftBuddySettings> & {
   prioritizeGuaranteedCompletion?: unknown;
   /** Retired engine selector, discarded when old settings are loaded. */
@@ -471,6 +485,7 @@ export function loadSettings(): CraftBuddySettings {
     console.warn('[CraftBuddy] Failed to load settings:', e);
     currentSettings = { ...DEFAULT_SETTINGS };
   }
+  notifySettingsChanged();
   return currentSettings;
 }
 
@@ -488,6 +503,7 @@ export function saveSettings(
   } catch (e) {
     console.warn('[CraftBuddy] Failed to save settings:', e);
   }
+  notifySettingsChanged();
   return currentSettings;
 }
 
@@ -511,6 +527,7 @@ export function resetSettings(): CraftBuddySettings {
   } catch (e) {
     // Ignore
   }
+  notifySettingsChanged();
   return currentSettings;
 }
 

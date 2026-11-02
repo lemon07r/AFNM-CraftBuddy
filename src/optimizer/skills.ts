@@ -5485,6 +5485,8 @@ export function getConditionEffectsForConfig(
  */
 export interface SkillBlockedReason {
   skillName: string;
+  /** Game-facing label; optional for older saved results. */
+  displayName?: string;
   reason: 'cooldown' | 'qi' | 'stability' | 'toxicity' | 'condition';
   details: string;
 }
@@ -5514,6 +5516,7 @@ export function getBlockedSkillReasons(
     if (state.stability <= 0) {
       reasons.push({
         skillName: skill.name,
+        displayName: skill.displayName,
         reason: 'stability',
         details: 'Requires stability above 0',
       });
@@ -5525,6 +5528,7 @@ export function getBlockedSkillReasons(
       const turnsLeft = state.cooldowns.get(skill.key) || 0;
       reasons.push({
         skillName: skill.name,
+        displayName: skill.displayName,
         reason: 'cooldown',
         details: `On cooldown (${turnsLeft} turn${turnsLeft > 1 ? 's' : ''} left)`,
       });
@@ -5540,6 +5544,7 @@ export function getBlockedSkillReasons(
       if (!conditionMet) {
         reasons.push({
           skillName: skill.name,
+          displayName: skill.displayName,
           reason: 'condition',
           details: `Requires ${skill.conditionRequirement} condition (current: ${currentCondition})`,
         });
@@ -5553,6 +5558,7 @@ export function getBlockedSkillReasons(
       if (available <= 0) {
         reasons.push({
           skillName: skill.name,
+          displayName: skill.displayName,
           reason: 'qi',
           details: 'No remaining item uses',
         });
@@ -5563,6 +5569,7 @@ export function getBlockedSkillReasons(
       if (state.consumedPillsThisTurn >= perTurnLimit) {
         reasons.push({
           skillName: skill.name,
+          displayName: skill.displayName,
           reason: 'condition',
           details: `Item usage limit reached (${state.consumedPillsThisTurn}/${perTurnLimit})`,
         });
@@ -5572,6 +5579,7 @@ export function getBlockedSkillReasons(
       if (skill.reagentOnlyAtStepZero && state.step !== 0) {
         reasons.push({
           skillName: skill.name,
+          displayName: skill.displayName,
           reason: 'condition',
           details: 'Reagents can only be used on step 0',
         });
@@ -5591,6 +5599,7 @@ export function getBlockedSkillReasons(
     if (state.qi < effectiveCosts.qiCost) {
       reasons.push({
         skillName: skill.name,
+        displayName: skill.displayName,
         reason: 'qi',
         details: `Need ${effectiveCosts.qiCost} Qi (have ${state.qi})`,
       });
@@ -5602,6 +5611,7 @@ export function getBlockedSkillReasons(
       if (state.toxicity + skill.toxicityCost > maxToxicity) {
         reasons.push({
           skillName: skill.name,
+          displayName: skill.displayName,
           reason: 'toxicity',
           details: `Would exceed max toxicity (${state.toxicity} + ${skill.toxicityCost} > ${maxToxicity})`,
         });
@@ -5623,6 +5633,7 @@ export function getBlockedSkillReasons(
       if (nativeCanUse === false) {
         reasons.push({
           skillName: skill.name,
+          displayName: skill.displayName,
           reason: 'condition',
           details: 'Blocked by game-native canUseAction precheck',
         });

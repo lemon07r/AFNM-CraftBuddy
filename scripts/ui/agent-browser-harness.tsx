@@ -5,8 +5,10 @@ import { RecommendationPanel } from '../../src/ui/RecommendationPanel';
 import { CraftBuddyThemeProvider } from '../../src/ui/ThemeProvider';
 import {
   loadSettings,
+  saveSettings,
   resetSettings,
   DEFAULT_AUTO_CRAFT_POLICY,
+  type AutoCraftPolicy,
   type CraftBuddySettings,
 } from '../../src/settings';
 import { type AutoCraftUiState } from '../../src/settings/autoCraft';
@@ -16,13 +18,55 @@ import {
   unionOverlayRects,
   type OverlayRectLike,
 } from '../../src/utils/overlayLayout';
-import { type HarmonyType } from '../../src/optimizer';
+import {
+  BuffType,
+  type HarmonyType,
+  type OutcomeProjection,
+  type SearchResult,
+  type SkillDefinition,
+} from '../../src/optimizer';
+import { SettingsBody } from '../../src/ui/SettingsPanel';
 
 resetSettings();
 
-(window as any).craftBuddyDebug = {
-  exportOptimizerReplaySnapshot: async () => {},
-};
+Object.assign(window, {
+  craftBuddyDebug: {
+    exportOptimizerReplaySnapshot: async () => ({
+      copied: true,
+      downloaded: false,
+    }),
+  },
+});
+
+// Standalone placeholder icons: no installed game files or external network.
+function techniqueIcon(color: string): string {
+  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="#1a1714"/><path d="M14 47V34l10-8 8-16 8 16 10 8v13Z" fill="${color}" stroke="#e3c27a" stroke-width="2"/><path d="M20 47h24M24 39h16M28 31h8" stroke="#e8d4a0" stroke-width="2"/></svg>`)}`;
+}
+
+function skill(
+  name: string,
+  type: SkillDefinition['type'],
+  qiCost: number,
+  stabilityCost: number,
+): SkillDefinition {
+  return {
+    name,
+    key: name.toLowerCase().replaceAll(' ', '_'),
+    type,
+    qiCost,
+    stabilityCost,
+    baseCompletionGain: 0,
+    basePerfectionGain: 0,
+    stabilityGain: 0,
+    maxStabilityChange: 0,
+    buffType: BuffType.NONE,
+    buffDuration: 0,
+    buffMultiplier: 0,
+    icon: techniqueIcon(
+      type === 'refine' ? '#029ab5' : type === 'fusion' ? '#018f01' : '#cc8800',
+    ),
+  };
+}
 
 /**
  * Outcome projection fixtures.
@@ -30,7 +74,7 @@ resetSettings();
  * These mirror the shape `src/optimizer/search` publishes on `SearchResult`; the
  * harness never derives band numbers itself, exactly like the panel.
  */
-const perfectionBoundProjection = {
+const perfectionBoundProjection: OutcomeProjection = {
   tier: 'perfect',
   optimisticTier: 'sublime',
   targetTier: 'sublime',
@@ -54,7 +98,7 @@ const perfectionBoundProjection = {
   willAutoFinish: false,
 };
 
-const autoFinishProjection = {
+const autoFinishProjection: OutcomeProjection = {
   tier: 'sublime',
   optimisticTier: 'sublime',
   targetTier: 'sublime',
@@ -78,14 +122,12 @@ const autoFinishProjection = {
   willAutoFinish: true,
 };
 
-const fixtureResult = {
+type HarnessResult = SearchResult & {
+  status?: 'live' | 'blocked' | 'autoResolved';
+};
+const fixtureResult: HarnessResult = {
   recommendation: {
-    skill: {
-      name: 'Forceful Stabilize',
-      type: 'support',
-      qiCost: 88,
-      stabilityCost: 0,
-    },
+    skill: skill('Forceful Stabilize', 'stabilize', 88, 0),
     expectedGains: { completion: 0, perfection: 0, stability: 27 },
     immediateGains: { completion: 0, perfection: 0, stability: 27 },
     effectiveCosts: { qi: 88, stability: 0 },
@@ -101,12 +143,7 @@ const fixtureResult = {
   },
   alternativeSkills: [
     {
-      skill: {
-        name: 'Simple Refine',
-        type: 'refine',
-        qiCost: 18,
-        stabilityCost: 10,
-      },
+      skill: skill('Simple Refine', 'refine', 18, 10),
       expectedGains: { completion: 0, perfection: 9, stability: 0 },
       immediateGains: { completion: 0, perfection: 10, stability: 0 },
       effectiveCosts: { qi: 18, stability: 10 },
@@ -115,12 +152,7 @@ const fixtureResult = {
       reasoning: 'Immediate perfection, but runway is thin',
     },
     {
-      skill: {
-        name: 'Simple Fusion',
-        type: 'fusion',
-        qiCost: 0,
-        stabilityCost: 10,
-      },
+      skill: skill('Simple Fusion', 'fusion', 0, 10),
       expectedGains: { completion: 9, perfection: 0, stability: 0 },
       immediateGains: { completion: 10, perfection: 0, stability: 0 },
       effectiveCosts: { qi: 0, stability: 10 },
@@ -139,15 +171,15 @@ const fixtureResult = {
     'Simple Fusion',
   ],
   expectedFinalState: {
-    completion: 47,
-    perfection: 37,
+    completion: 452,
+    perfection: 318,
     stability: 0,
     maxStability: 51,
     qi: 0,
     turnsRemaining: 4,
   },
   outcomeProjection: perfectionBoundProjection,
-} as any;
+};
 
 /**
  * A gated-technique setup turn: weak gains now, the gated technique unlocked next.
@@ -156,10 +188,10 @@ const fixtureResult = {
  * internal key `false_fusion`, so the fixture carries both to prove the panel
  * shows the player-facing label rather than titlecasing the key.
  */
-const setupFixtureResult = {
+const setupFixtureResult: HarnessResult = {
   ...fixtureResult,
   recommendation: {
-    ...fixtureResult.recommendation,
+    ...fixtureResult.recommendation!,
     immediateGains: { completion: 34, perfection: 0, stability: 0 },
     expectedGains: { completion: 31, perfection: 0, stability: 0 },
     reasoning: 'Push completion to the gate instead of banking perfection',
@@ -170,16 +202,19 @@ const setupFixtureResult = {
         'Reaching 100% completion unlocks Strive for Completion, which converts the overflow into perfection next turn.',
     },
   },
-} as any;
+};
 
 /** The craft has already met every band, so the game resolves it by itself. */
-const autoFinishFixtureResult = {
+const autoFinishFixtureResult: HarnessResult = {
   ...fixtureResult,
-  status: 'autoResolved',
   outcomeProjection: autoFinishProjection,
-} as any;
+  status: 'autoResolved',
+  recommendation: null,
+  isTerminal: true,
+  targetsMet: true,
+};
 
-const failedAutoFinishFixtureResult = {
+const failedAutoFinishFixtureResult: HarnessResult = {
   ...autoFinishFixtureResult,
   outcomeProjection: {
     ...autoFinishProjection,
@@ -201,19 +236,101 @@ const failedAutoFinishFixtureResult = {
  * Pre-0.7.5 replay snapshot: no `outcomeProjection` at all. The panel must fall
  * back to the legacy layout rather than inventing thresholds.
  */
-const legacyFixtureResult = {
+const legacyFixtureResult: HarnessResult = {
   ...fixtureResult,
   outcomeProjection: undefined,
-} as any;
+};
 
-function buildFixtureResult(state: string): unknown {
+function buildFixtureResult(state: string): HarnessResult {
   switch (state) {
+    case 'proc': {
+      const proc = {
+        ...fixtureResult.recommendation!,
+        skill: skill('Golden Path: First Peak', 'support', 0, 10),
+        immediateGains: { completion: 0, perfection: 0, stability: 0 },
+        expectedGains: { completion: 0, perfection: 40, stability: 0 },
+        effectiveCosts: { qi: 0, stability: 10 },
+        endsCraft: true,
+        reasoning:
+          'Triggered effects add perfection as this technique resolves.',
+      };
+      return {
+        ...fixtureResult,
+        recommendation: proc,
+        alternativeSkills: [
+          {
+            ...proc,
+            skill: skill('Triggered-effect alternative', 'support', 0, 10),
+          },
+        ],
+      };
+    }
+    case 'chance':
+      return {
+        ...fixtureResult,
+        recommendation: {
+          ...fixtureResult.recommendation!,
+          skill: skill('Simple Refine', 'refine', 18, 10),
+          immediateGains: { completion: 0, perfection: 10, stability: 0 },
+          expectedGains: { completion: 0, perfection: 5, stability: 0 },
+          effectiveCosts: { qi: 18, stability: 10 },
+          projectedSuccessChance: 0.5,
+          reasoning:
+            'Expected gains account for the technique’s 50% success chance.',
+        },
+      };
     case 'outcome-setup':
       return setupFixtureResult;
     case 'outcome-autofinish':
+    case 'auto-resolved':
       return autoFinishFixtureResult;
     case 'outcome-failed':
       return failedAutoFinishFixtureResult;
+    case 'targets-met':
+      return {
+        ...fixtureResult,
+        status: 'live',
+        targetsMet: true,
+        outcomeProjection: { ...autoFinishProjection, willAutoFinish: false },
+      };
+    case 'blocked':
+    case 'blocked-empty':
+      return {
+        ...fixtureResult,
+        status: 'blocked',
+        recommendation: null,
+        alternativeSkills: [],
+        isTerminal: true,
+        blockedReasons:
+          state === 'blocked-empty'
+            ? []
+            : [
+                {
+                  skillName: 'False Fusion',
+                  displayName: 'Strive for Completion',
+                  reason: 'qi',
+                  details: 'Needs 18 Qi; 6 available.',
+                },
+                {
+                  skillName: 'Forceful Stabilize',
+                  reason: 'cooldown',
+                  details: 'Available in 2 turns.',
+                },
+              ],
+      };
+    case 'long-name':
+      return {
+        ...fixtureResult,
+        recommendation: {
+          ...fixtureResult.recommendation!,
+          skill: {
+            ...fixtureResult.recommendation!.skill,
+            name: 'False Fusion',
+            displayName:
+              'Strive for Completion — Ninefold Heavenly Crucible Method',
+          },
+        },
+      };
     case 'outcome-legacy':
       return legacyFixtureResult;
     default:
@@ -242,7 +359,7 @@ function parseHarnessViewport(value: string | null): {
 }
 
 const harnessViewport = parseHarnessViewport(harnessParams.get('viewport'));
-/** Selected harmony, so the harness can show any of the seven types. */
+/** Selected harmony, so the harness can show any of the nine types. */
 const harnessHarmony = (harnessParams.get('harmony') ||
   'resonance') as HarmonyType;
 
@@ -333,7 +450,27 @@ function FakeHudBlock({
   );
 }
 
+const CRAFT_ENDING_POLICY: AutoCraftPolicy = 'allowCraftEnding';
+const ITEM_POLICY: AutoCraftPolicy = 'includeItems';
+
+type AutoModePhaseFixture = Omit<
+  AutoCraftUiState,
+  'effectivePolicy' | 'nativeAutoUseActive'
+> & {
+  effectivePolicy?: AutoCraftUiState['effectivePolicy'];
+  nativeAutoUseActive?: boolean;
+};
+
 function buildAutoModeFixture(state: string): AutoCraftUiState {
+  const fixture = buildAutoModePhaseFixture(state);
+  return {
+    ...fixture,
+    effectivePolicy: fixture.effectivePolicy ?? fixture.policy,
+    nativeAutoUseActive: fixture.nativeAutoUseActive ?? false,
+  };
+}
+
+function buildAutoModePhaseFixture(state: string): AutoModePhaseFixture {
   switch (state) {
     case 'auto-ready':
       return {
@@ -351,7 +488,7 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
       };
     case 'auto-waiting':
       return {
-        policy: 'allowCraftEnding',
+        policy: CRAFT_ENDING_POLICY,
         armed: true,
         phase: 'waiting_for_state',
         tone: 'active',
@@ -366,7 +503,7 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
       };
     case 'auto-stopping':
       return {
-        policy: 'includeItems',
+        policy: ITEM_POLICY,
         armed: true,
         phase: 'stop_requested',
         tone: 'warning',
@@ -379,12 +516,9 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
         stopRequested: true,
       };
     case 'auto-native-autouse':
-      // `policyNotice` / `nativeAutoUseActive` are supplied by the runtime
-      // workstream's controller; the panel reads them structurally, so the
-      // harness can exercise the row before that branch merges.
       return {
-        policy: 'includeItems',
-        effectivePolicy: 'allowCraftEnding',
+        policy: ITEM_POLICY,
+        effectivePolicy: CRAFT_ENDING_POLICY,
         armed: true,
         phase: 'ready',
         tone: 'active',
@@ -398,10 +532,10 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
         nativeAutoUseActive: true,
         policyNotice:
           'Your crafting auto-use loadout (2 slots) already applies items before each technique, so auto mode is using techniques only to avoid consuming them twice.',
-      } as AutoCraftUiState;
+      };
     case 'auto-error':
       return {
-        policy: 'includeItems',
+        policy: ITEM_POLICY,
         armed: false,
         phase: 'error',
         tone: 'error',
@@ -416,7 +550,7 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
       };
     case 'loading-auto':
       return {
-        policy: 'allowCraftEnding',
+        policy: CRAFT_ENDING_POLICY,
         armed: true,
         phase: 'calculating',
         tone: 'active',
@@ -447,9 +581,13 @@ function buildAutoModeFixture(state: string): AutoCraftUiState {
 }
 
 function Harness() {
+  const [fixtureState, setFixtureState] = React.useState(harnessState);
+  const [autoMode, setAutoMode] = React.useState(() =>
+    buildAutoModeFixture(harnessState),
+  );
   const [settings, setSettings] = React.useState<CraftBuddySettings>(() => {
     const baseSettings = loadSettings();
-    return {
+    return saveSettings({
       ...baseSettings,
       compactMode:
         harnessCompactMode === '1'
@@ -457,22 +595,47 @@ function Harness() {
           : harnessCompactMode === '0'
             ? false
             : baseSettings.compactMode,
-    };
+    });
   });
+
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.code === 'KeyM') {
+        event.preventDefault();
+        setSettings(saveSettings({ compactMode: !settings.compactMode }));
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [settings.compactMode]);
+
+  React.useEffect(() => {
+    if (harnessState !== 'stale-settings') return;
+    const timer = window.setTimeout(
+      () => setSettings(saveSettings({ compactMode: true })),
+      1500,
+    );
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  React.useEffect(() => {
+    // A narrow, explicit browser-test seam; no production debug API involved.
+    Object.assign(window, { craftBuddyHarness: { setFixtureState } });
+  }, []);
 
   const panel = (
     <RecommendationPanel
       result={
-        harnessState === 'loading' || harnessState === 'loading-auto'
+        fixtureState === 'loading' || fixtureState === 'loading-auto'
           ? null
-          : (buildFixtureResult(harnessState) as any)
+          : buildFixtureResult(fixtureState)
       }
-      currentCompletion={20}
-      currentPerfection={10}
-      targetCompletion={60}
-      targetPerfection={60}
-      maxCompletionCap={60}
-      maxPerfectionCap={60}
+      currentCompletion={260}
+      currentPerfection={118}
+      targetCompletion={230}
+      targetPerfection={230}
+      maxCompletionCap={620}
+      maxPerfectionCap={620}
       currentStability={30}
       currentMaxStability={57}
       targetStability={60}
@@ -483,18 +646,45 @@ function Harness() {
       craftingType={harnessHarmony}
       settings={settings}
       onSettingsChange={setSettings}
-      onSearchSettingsChange={setSettings}
+      settingsStale={harnessState === 'stale-settings'}
+      onRecalculate={() => {}}
       isCalculating={
-        harnessState === 'loading' || harnessState === 'loading-auto'
+        fixtureState === 'loading' || fixtureState === 'loading-auto'
       }
       onRecommendationAction={() => {}}
-      autoMode={buildAutoModeFixture(harnessState)}
-      onAutoModeArm={() => {}}
-      onAutoModeStop={() => {}}
-      onAutoModePolicyChange={() => {}}
+      autoMode={autoMode}
+      onAutoModeArm={() => setAutoMode(buildAutoModeFixture('auto-ready'))}
+      onAutoModeStop={() =>
+        setAutoMode({
+          ...buildAutoModeFixture('default'),
+          phase: 'stopped',
+          statusTitle: 'Stopped',
+          statusDetail: 'Stopped from CraftBuddy panel.',
+        })
+      }
+      onAutoModePolicyChange={(policy) =>
+        setAutoMode((previous) => ({
+          ...previous,
+          policy,
+          effectivePolicy:
+            previous.nativeAutoUseActive && policy === 'includeItems'
+              ? 'allowCraftEnding'
+              : policy,
+        }))
+      }
       version={version}
     />
   );
+
+  if (harnessScene === 'options') {
+    return (
+      <CraftBuddyThemeProvider>
+        <div style={{ padding: 24, maxWidth: 560, background: '#2a2520' }}>
+          <SettingsBody onSettingsChange={setSettings} version={version} />
+        </div>
+      </CraftBuddyThemeProvider>
+    );
+  }
 
   if (harnessScene === 'gamehud') {
     const { progressRects, supplementalRects } =
@@ -695,11 +885,13 @@ function Harness() {
             </div>
 
             <div
+              id="craftbuddy-overlay"
               style={{
                 position: 'absolute',
                 top: layout.top,
                 right: layout.right,
                 width: layout.width,
+                pointerEvents: 'none',
               }}
             >
               {panel}
@@ -740,7 +932,17 @@ function Harness() {
           fontFamily: 'system-ui, sans-serif',
         }}
       >
-        <div style={{ width: 560 }}>{panel}</div>
+        <div
+          data-testid="harness-lane"
+          style={{
+            width:
+              Number(harnessParams.get('lane')) ||
+              (settings.compactMode ? 320 : 560),
+            maxWidth: '100%',
+          }}
+        >
+          {panel}
+        </div>
       </div>
     </CraftBuddyThemeProvider>
   );

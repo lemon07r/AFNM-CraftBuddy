@@ -60,7 +60,7 @@ CraftBuddy tells you when the craft will auto-finish; there is no manual finish 
 [hr][/hr]
 
 [h1]Settings & Configuration[/h1]
-Settings live behind the gear icon inside the CraftBuddy panel and open as a slide-over.
+Open settings from the gear icon on the CraftBuddy panel, or from CraftBuddy's entry in the game's mod options screen. Both edit the same settings.
 
 [h2]Search Presets[/h2]
 Pick a preset to adjust all four search parameters together.
@@ -68,30 +68,30 @@ Pick a preset to adjust all four search parameters together.
 [*] [b]Instant[/b] — lowest search budget, minimal lookahead (1-second time budget)
 [*] [b]Fast[/b] — quick results, good for simple crafts
 [*] [b]Balanced[/b] — more search time than Fast, for harder crafts
-[*] [b]High Accuracy[/b] — deeper search for complex or high-value crafts
+[*] [b]High accuracy[/b] — deeper search for complex or high-value crafts
 [*] [b]Max[/b] — maximum depth, may take several seconds per recommendation
 [/list]
 
-[h2]Manual Search Controls[/h2]
+[h2]Advanced Search[/h2]
 These sliders work together; pushing one far above the others can waste search time.
 [list]
-[*] [b]Lookahead Depth[/b]
-[*] [b]Search Time Budget[/b]
-[*] [b]Search Max Nodes[/b]
-[*] [b]Search Beam Width[/b]
+[*] [b]Turns to look ahead[/b]
+[*] [b]Time per turn[/b]
+[*] [b]States to explore[/b]
+[*] [b]Branches to keep[/b]
 [/list]
 Search stops as soon as either the time budget or the node budget is reached. Results vary with craft complexity and machine speed, since the time budget is wall-clock based.
 
 [h2]Ambition Targets[/h2]
 Both use bands ("stars") and default to [b]Auto[/b], following your target outcome tier.
 [list]
-[*] [b]Perfection Band Goal[/b] — aim for extra perfection bands, bounded by the recipe cap, without lowering the tier requirement.
-[*] [b]Completion Band Ceiling[/b] — stop rewarding completion past your chosen band, never below what the target tier needs.
+[*] [b]Perfection band goal[/b] — aim for extra perfection bands, bounded by the recipe cap, without lowering the tier requirement.
+[*] [b]Completion band ceiling[/b] — stop rewarding completion past your chosen band, never below what the target tier needs.
 [/list]
 [b]Why bars "stop" around 200%:[/b] band widths grow by 1.3x each, so the bands land at roughly 100% / 230% / 399% / 619% / 904% of the recipe target. Sublime needs two bands on both bars — about 230% — and once that is banked the craft has met its gate. If you want to push further, that is what these two targets are for.
 
 [h2]Display Options[/h2]
-Toggle predicted rotation, final state estimates, upcoming conditions and alternative actions independently.
+Show or hide the panel, use compact spacing and choose whether to show upcoming conditions, planned steps and the planned end state. [b]Other actions to list[/b] sets the alternatives limit from 0 to 5 (default 1). The plan, other actions and automatic crafting are collapsible sections on the panel; saved planned-step limits are respected.
 
 [hr][/hr]
 

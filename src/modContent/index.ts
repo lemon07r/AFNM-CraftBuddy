@@ -24,6 +24,7 @@ import {
   CraftingReagentItem,
   RecipeItem,
   type RootState,
+  type ModReduxAPI,
 } from 'afnm-types';
 import {
   CraftingState,
@@ -49,6 +50,8 @@ import {
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
 import { CraftBuddyThemeProvider } from '../ui/ThemeProvider';
+import { SettingsBody } from '../ui/SettingsPanel';
+import { uiLayers } from '../ui/theme';
 import {
   CraftBuddySettings,
   saveSettings,
@@ -152,6 +155,7 @@ import {
   renderReactRoot,
   scheduleAfterNextPaint,
   scheduleSearchAfterLoadingShell,
+  unmountOverlayRoot,
 } from './overlayMount';
 import {
   computeObservedMaxStability,
@@ -2055,7 +2059,11 @@ function updateRecommendation(
  * Create the overlay container for our panel.
  */
 function createOverlayContainer(): void {
-  if (overlayContainer) return;
+  if (overlayContainer) {
+    // A hide destroys the React root to release dialog focus traps immediately.
+    if (!reactRoot) reactRoot = ReactDOM.createRoot(overlayContainer);
+    return;
+  }
 
   overlayContainer = document.createElement('div');
   overlayContainer.id = 'craftbuddy-overlay';
@@ -2065,13 +2073,13 @@ function createOverlayContainer(): void {
     right: '10px',
     width: '0px',
     maxHeight: 'calc(100vh - 20px)',
-    zIndex: '10000',
+    zIndex: String(uiLayers.overlay),
     display: 'flex',
     justifyContent: 'flex-end',
     alignItems: 'flex-start',
     boxSizing: 'border-box',
     overflow: 'visible',
-    pointerEvents: 'auto',
+    pointerEvents: 'none',
   });
 
   document.body.appendChild(overlayContainer);
@@ -2082,11 +2090,48 @@ function createOverlayContainer(): void {
 /**
  * Render the recommendation panel in the overlay.
  */
-function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
-  if (!overlayContainer || !reactRoot) {
-    createOverlayContainer();
+// Module-stable callbacks keep polling/root renders from invalidating every
+// memoized UI child. A settings commit performs this owner update only once.
+function handleSettingsChange(newSettings: CraftBuddySettings): void {
+  const policyChanged =
+    currentSettings.preferredAutoModePolicy !==
+    newSettings.preferredAutoModePolicy;
+  currentSettings = newSettings;
+  if (policyChanged)
+    autoCraftController.setPolicy(newSettings.preferredAutoModePolicy);
+  if (!newSettings.panelVisible && autoCraftUiState.armed) {
+    stopAutoCraft('Auto mode stopped because the panel was hidden.');
   }
+  renderOverlay();
+}
 
+function handleRecalculate(): void {
+  if (lastEntity && lastProgressState) {
+    const inventoryItems = cachedStore?.getState?.()?.inventory?.items as
+      | InventoryItemLike[]
+      | undefined;
+    updateRecommendation(lastEntity, lastProgressState, inventoryItems);
+  }
+}
+
+function handleAutoModePolicyChange(policy: AutoCraftPolicy): void {
+  setAutoCraftPolicy(policy);
+  syncAutoCraftController();
+  renderOverlay();
+}
+
+function CraftBuddyOptions() {
+  return React.createElement(
+    CraftBuddyThemeProvider,
+    null,
+    React.createElement(SettingsBody, {
+      onSettingsChange: handleSettingsChange,
+      version: MOD_METADATA.version,
+    }),
+  );
+}
+
+function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
   // Show the overlay only while the crafting UI is still on-screen (or while a
   // craft is still bootstrapping). This prevents cached Redux craft data from
   // leaving stale panels visible on library/result transitions.
@@ -2105,44 +2150,18 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
       (isPendingCraftStart && hasVisibleCraftingUi) ||
       (isCalculating && hasConfirmedCraftSession && hasVisibleCraftingUi));
 
-  if (!reactRoot || !shouldShow) {
-    if (reactRoot && overlayContainer) {
-      overlayContainer.style.display = 'none';
-    }
-    isOverlayVisible = false;
+  if (!shouldShow) {
+    hideOverlay();
     return;
+  }
+
+  if (!overlayContainer || !reactRoot) {
+    createOverlayContainer();
   }
 
   overlayContainer!.style.display = 'block';
   isOverlayVisible = true;
   applyOverlayContainerLayout();
-
-  const handleSettingsChange = (newSettings: CraftBuddySettings) => {
-    currentSettings = newSettings;
-    autoCraftController.setPolicy(newSettings.preferredAutoModePolicy);
-    if (!newSettings.panelVisible && autoCraftUiState.armed) {
-      stopAutoCraft('Auto mode stopped because the panel was hidden.');
-    }
-    applyOverlayContainerLayout();
-    renderOverlay();
-  };
-
-  const handleSearchSettingsChange = (newSettings: CraftBuddySettings) => {
-    // Update settings and re-render to reflect stale state
-    currentSettings = newSettings;
-    applyOverlayContainerLayout();
-    renderOverlay();
-  };
-
-  const handleRecalculate = () => {
-    // Trigger recalculation with current entity/progress state
-    if (lastEntity && lastProgressState) {
-      const inventoryItems = cachedStore?.getState?.()?.inventory?.items as
-        | InventoryItemLike[]
-        | undefined;
-      updateRecommendation(lastEntity, lastProgressState, inventoryItems);
-    }
-  };
 
   const effectiveTargetCompletion = (() => {
     if (!isSublimeCraft) return targetCompletion;
@@ -2173,7 +2192,6 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     currentMaxStability,
     settings: currentSettings,
     onSettingsChange: handleSettingsChange,
-    onSearchSettingsChange: handleSearchSettingsChange,
     targetStability,
     currentCondition: currentCondition as any,
     nextConditions,
@@ -2187,11 +2205,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     autoMode: autoCraftUiState,
     onAutoModeArm: armAutoCraft,
     onAutoModeStop: stopAutoCraft,
-    onAutoModePolicyChange: (policy: AutoCraftPolicy) => {
-      setAutoCraftPolicy(policy);
-      syncAutoCraftController();
-      renderOverlay();
-    },
+    onAutoModePolicyChange: handleAutoModePolicyChange,
     version: MOD_METADATA.version,
   });
 
@@ -2210,9 +2224,8 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
  * Hide the overlay.
  */
 function hideOverlay(): void {
-  if (overlayContainer) {
-    overlayContainer.style.display = 'none';
-  }
+  unmountOverlayRoot(reactRoot, overlayContainer);
+  reactRoot = null;
   isOverlayVisible = false;
 }
 
@@ -4043,6 +4056,13 @@ try {
 }
 
 // Initialize
+// Verified in the installed 0.7.19 Game.js: this lives on gameData; the
+// published declarations currently place it elsewhere. Keep that drift local.
+const nativeOptionsGameData = window.modAPI
+  ?.gameData as typeof window.modAPI.gameData & {
+  registerOptionsUI?: (component: React.FC<{ api: ModReduxAPI }>) => void;
+};
+nativeOptionsGameData?.registerOptionsUI?.(CraftBuddyOptions);
 createTitleScreenIndicator(MOD_METADATA.version);
 createOverlayContainer();
 startPolling();

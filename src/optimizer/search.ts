@@ -92,6 +92,7 @@ export interface SkillRecommendation {
   /** Suggested follow-up skill after this one */
   followUpSkill?: {
     name: string;
+    displayName?: string;
     type: string;
     actionKind?: SkillDefinition['actionKind'];
     icon?: string;
@@ -5071,6 +5072,7 @@ function runLookaheadSearch(
           );
         return {
           name: cachedSkill.name,
+          displayName: cachedSkill.displayName,
           type: cachedSkill.type,
           actionKind: cachedSkill.actionKind,
           icon: cachedSkill.icon,
@@ -5106,6 +5108,7 @@ function runLookaheadSearch(
         );
       return {
         name: followUpSkill.name,
+        displayName: followUpSkill.displayName,
         type: followUpSkill.type,
         actionKind: followUpSkill.actionKind,
         icon: followUpSkill.icon,
@@ -5184,6 +5187,7 @@ function runLookaheadSearch(
 
     return {
       name: bestFollowUp.name,
+      displayName: bestFollowUp.displayName,
       type: bestFollowUp.type,
       actionKind: bestFollowUp.actionKind,
       icon: bestFollowUp.icon,
@@ -5739,6 +5743,7 @@ function runLookaheadSearch(
             );
           topRec.followUpSkill = {
             name: secondSkill.name,
+            displayName: secondSkill.displayName,
             type: secondSkill.type,
             actionKind: secondSkill.actionKind,
             icon: secondSkill.icon,

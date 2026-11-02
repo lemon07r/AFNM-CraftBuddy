@@ -235,6 +235,15 @@ describe('settings search budget', () => {
     expect(rounded.searchGoalPriorityBias).toBe(75);
   });
 
+  it.each([-100, -75, -50, -25, 0, 25, 50, 75, 100])(
+    'persists bias slider position %s without changing its displayed value',
+    (searchGoalPriorityBias) => {
+      expect(
+        saveSettings({ searchGoalPriorityBias }).searchGoalPriorityBias,
+      ).toBe(searchGoalPriorityBias);
+    },
+  );
+
   it('resets stored search budgets to the legacy fast preset once while preserving display prefs', () => {
     saveSettings({
       compactMode: true,
@@ -336,6 +345,30 @@ describe('settings search budget', () => {
     const reloaded = loadSettings();
     expect(reloaded.preferredAutoModePolicy).toBe('includeItems');
   });
+
+  it('preserves saved plan visibility, step limits and alternative limits', () => {
+    const display = {
+      showOptimalRotation: false,
+      showExpectedFinalState: false,
+      maxRotationDisplay: 2,
+      maxAlternatives: 4,
+    };
+    saveSettings(display);
+    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+      SEARCH_DEFAULTS_RESET_VERSION;
+    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+      DISPLAY_DEFAULTS_RESET_VERSION;
+    expect(loadSettings()).toMatchObject(display);
+  });
+
+  it.each([0, 1, 2, 3, 4, 5])(
+    'accepts %s other actions to list',
+    (maxAlternatives) => {
+      expect(saveSettings({ maxAlternatives }).maxAlternatives).toBe(
+        maxAlternatives,
+      );
+    },
+  );
 
   it('defaults both ambition band settings to auto', () => {
     const loaded = loadSettings();
