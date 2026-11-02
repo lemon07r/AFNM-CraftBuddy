@@ -38,6 +38,12 @@ import {
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
 import { convertGameTechniques } from '../modContent/craftStateExtraction';
+import {
+  buildOutcomeBands,
+  classifyOutcome,
+  willAutoFinish,
+  type OutcomeTier,
+} from '../optimizer/outcome';
 
 freezeSearchClock();
 
@@ -157,8 +163,9 @@ interface SimulationResult {
   targetsMet: boolean;
   /** Number of turns consumed. */
   turnsUsed: number;
-  /** Whether the craft ended because no actions were available. */
-  craftDied: boolean;
+  /** A blocked live state is distinct from an automatically resolved craft. */
+  status: 'autoResolved' | 'blocked' | 'turnBudget';
+  outcomeTier: OutcomeTier;
   /** Per-turn diagnostics. */
   log: TurnLog[];
 }
@@ -272,22 +279,30 @@ function simulateCraft(
   const history: string[] = [];
   const log: TurnLog[] = [];
   let turnsUsed = 0;
-  let craftDied = false;
+  const bands = buildOutcomeBands({
+    targetCompletion: craftEndTargets.completion,
+    targetPerfection: craftEndTargets.perfection,
+    isSublimeCraft: config.isSublimeCraft,
+    maxCompletionCap: config.maxCompletion,
+    maxPerfectionCap: config.maxPerfection,
+  });
+  const finish = (status: SimulationResult['status']): SimulationResult => ({
+    history,
+    finalState: state,
+    targetsMet: guaranteesCraftEndGoals(
+      state,
+      targetComp,
+      targetPerf,
+      craftEndTargets,
+    ),
+    turnsUsed,
+    status,
+    outcomeTier: classifyOutcome(state, bands).tier,
+    log,
+  });
 
   for (let turn = 0; turn < maxTurns; turn++) {
-    // Check targets met.
-    const compMet = targetComp <= 0 || state.completion >= targetComp;
-    const perfMet = targetPerf <= 0 || state.perfection >= targetPerf;
-    if (compMet && perfMet) {
-      return {
-        history,
-        finalState: state,
-        targetsMet: true,
-        turnsUsed,
-        craftDied: false,
-        log,
-      };
-    }
+    if (willAutoFinish(state, bands)) return finish('autoResolved');
 
     const condition = conditions[turn % conditions.length];
 
@@ -299,15 +314,7 @@ function simulateCraft(
 
     // Check terminal.
     if (isTerminalState(state, config, condition)) {
-      craftDied = true;
-      return {
-        history,
-        finalState: state,
-        targetsMet: false,
-        turnsUsed,
-        craftDied,
-        log,
-      };
+      return finish('blocked');
     }
 
     const result = lookaheadSearch(
@@ -329,52 +336,12 @@ function simulateCraft(
     );
 
     if (!result.recommendation) {
-      craftDied = true;
-      return {
-        history,
-        finalState: state,
-        targetsMet: false,
-        turnsUsed,
-        craftDied,
-        log,
-      };
+      return finish(
+        result.status === 'autoResolved' ? 'autoResolved' : 'blocked',
+      );
     }
 
     const skill = result.recommendation.skill;
-    if (skill.actionKind === 'finish') {
-      history.push(skill.name);
-      log.push({
-        turn,
-        condition,
-        skillChosen: skill.name,
-        stateBefore: {
-          qi: state.qi,
-          stability: state.stability,
-          completion: state.completion,
-          perfection: state.perfection,
-        },
-        stateAfter: {
-          qi: state.qi,
-          stability: state.stability,
-          completion: state.completion,
-          perfection: state.perfection,
-        },
-      });
-      turnsUsed = turn + 1;
-      return {
-        history,
-        finalState: state,
-        targetsMet: guaranteesCraftEndGoals(
-          state,
-          targetComp,
-          targetPerf,
-          craftEndTargets,
-        ),
-        turnsUsed,
-        craftDied: false,
-        log,
-      };
-    }
     const conditionEffects = getConditionEffectsForConfig(config, condition);
     const nextState = applySkill(
       state,
@@ -386,15 +353,7 @@ function simulateCraft(
     );
 
     if (!nextState) {
-      craftDied = true;
-      return {
-        history,
-        finalState: state,
-        targetsMet: false,
-        turnsUsed,
-        craftDied,
-        log,
-      };
+      return finish('blocked');
     }
 
     if (process.env.CRAFT_SIM_DEBUG) {
@@ -422,37 +381,12 @@ function simulateCraft(
 
     history.push(skill.name);
 
-    if (nextState.stability <= 0) {
-      return {
-        history,
-        finalState: nextState,
-        targetsMet: guaranteesCraftEndGoals(
-          nextState,
-          targetComp,
-          targetPerf,
-          craftEndTargets,
-        ),
-        turnsUsed: turn + 1,
-        craftDied: false,
-        log,
-      };
-    }
-
     state = nextState;
     turnsUsed = turn + 1;
   }
 
   // Exhausted turn budget.
-  const compMet = targetComp <= 0 || state.completion >= targetComp;
-  const perfMet = targetPerf <= 0 || state.perfection >= targetPerf;
-  return {
-    history,
-    finalState: state,
-    targetsMet: compMet && perfMet,
-    turnsUsed,
-    craftDied: false,
-    log,
-  };
+  return finish(willAutoFinish(state, bands) ? 'autoResolved' : 'turnBudget');
 }
 
 // ---------------------------------------------------------------------------
@@ -483,7 +417,7 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
       { overcraftAmbition: false },
     );
     expect(tierOnly.targetsMet).toBe(true);
-    expect(tierOnly.craftDied).toBe(false);
+    expect(tierOnly.status).not.toBe('blocked');
     expect(tierOnly.turnsUsed).toBeLessThanOrEqual(15);
 
     // With ambition on (the default), the optimizer may spend extra turns
@@ -505,7 +439,7 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
       20,
     );
     expect(ambitious.targetsMet).toBe(true);
-    expect(ambitious.craftDied).toBe(false);
+    expect(ambitious.status).not.toBe('blocked');
     expect(
       ambitious.finalState.perfection > 50 ||
         ambitious.finalState.completion > 50,
@@ -523,7 +457,7 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
 
     const sim = simulateCraft(state, config, 100, 100, neutralOnly, 30);
     expect(sim.targetsMet).toBe(true);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     // Efficiency bound: ~9 fusion + ~7 refine + ~3-4 stabilize = ~19-20 turns
     expect(sim.turnsUsed).toBeLessThanOrEqual(22);
   });
@@ -568,7 +502,7 @@ describe('craft simulation — beginner skills, neutral conditions', () => {
       (t) => t.stateBefore.stability <= 30,
     );
     expect(stabilizeWhenLow.length).toBeGreaterThanOrEqual(1);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
   });
 });
 
@@ -689,7 +623,7 @@ describe('craft simulation — finish craft policy', () => {
     const sim = simulateCraft(state, config, 130, 130, ['neutral'], 5, 4);
 
     expect(sim.history[0]).toBe('Energised Fusion');
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(false);
   });
 
@@ -715,7 +649,7 @@ describe('craft simulation — finish craft policy', () => {
     const sim = simulateCraft(state, config, 130, 130, ['neutral'], 5, 4);
 
     expect(sim.history[0]).toBe('Simple Refine');
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 
@@ -925,7 +859,7 @@ describe('craft simulation — survivability', () => {
     });
 
     const sim = simulateCraft(state, config, 50, 50, ['neutral'], 25);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 
@@ -940,7 +874,7 @@ describe('craft simulation — survivability', () => {
     });
 
     const sim = simulateCraft(state, config, 50, 50, ['neutral'], 25);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     // First move must be stabilize since all progress skills cost 10 stability.
     expect(sim.history[0]).toBe('Stabilize');
   });
@@ -994,7 +928,7 @@ describe('craft simulation — survivability', () => {
 
     // Full simulation: craft must survive and complete from this dire state.
     const sim = simulateCraft(state, config, 100, 100, ['neutral'], 30);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.history[0]).toBe('Stabilize');
   });
 });
@@ -1013,7 +947,7 @@ describe('craft simulation — mid-craft stability management', () => {
     });
 
     const sim = simulateCraft(state, config, 60, 60, ['neutral'], 25, 6);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
 
     const firstFiveMoves = sim.history.slice(0, 5);
@@ -1031,7 +965,7 @@ describe('craft simulation — mid-craft stability management', () => {
     });
 
     const sim = simulateCraft(state, config, 60, 60, ['neutral'], 25, 28);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 
@@ -1063,7 +997,7 @@ describe('craft simulation — mid-craft stability management', () => {
       25,
       6,
     );
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
 
     expect(sim.history).toContain('Forceful Stabilize');
@@ -1098,7 +1032,7 @@ describe('craft simulation — mid-craft stability management', () => {
       25,
       6,
     );
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 
@@ -1113,7 +1047,7 @@ describe('craft simulation — mid-craft stability management', () => {
     });
 
     const sim = simulateCraft(state, config, 60, 60, ['neutral'], 30, 6);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
 
     // Must have stabilized multiple times to survive
@@ -1148,7 +1082,7 @@ describe('craft simulation — stall penalty must not override tree search', () 
       25,
       6,
     );
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 });
@@ -1178,7 +1112,7 @@ describe('craft simulation — mixed conditions over many turns', () => {
 
     const sim = simulateCraft(state, config, 100, 100, conditions, 30);
     expect(sim.targetsMet).toBe(true);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
   });
 
   it('should handle all-negative conditions without dying', () => {
@@ -1195,7 +1129,7 @@ describe('craft simulation — mixed conditions over many turns', () => {
     const sim = simulateCraft(state, config, 50, 50, conditions, 30);
     // Should still complete even with penalties.
     expect(sim.targetsMet).toBe(true);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
   });
 });
 
@@ -1279,7 +1213,7 @@ describe('craft simulation — rotation must not suggest stability death', () =>
 
     // Also verify the full simulation doesn't die
     const sim = simulateCraft(state, config, 60, 60, conditions, 25, 28);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 
@@ -1336,7 +1270,7 @@ describe('craft simulation — training mode', () => {
     });
 
     const sim = simulateCraft(state, config, 50, 50, neutralOnly, 25);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 
@@ -1374,9 +1308,9 @@ describe('craft simulation — training mode', () => {
     );
 
     // Both must survive and complete.
-    expect(normalSim.craftDied).toBe(false);
+    expect(normalSim.status).not.toBe('blocked');
     expect(normalSim.targetsMet).toBe(true);
-    expect(trainingSim.craftDied).toBe(false);
+    expect(trainingSim.status).not.toBe('blocked');
     expect(trainingSim.targetsMet).toBe(true);
 
     // Training mode should use fewer or equal stabilize actions (more risk
@@ -1404,7 +1338,7 @@ describe('craft simulation — training mode', () => {
     });
 
     const sim = simulateCraft(state, config, 50, 50, neutralOnly, 25);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
 
     // Must stabilize at least once — starting at stability 10 with 100
@@ -1434,7 +1368,7 @@ describe('craft simulation — medium-high targets', () => {
     });
 
     const sim = simulateCraft(state, config, 200, 200, neutralOnly, 60);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 
@@ -1452,7 +1386,7 @@ describe('craft simulation — medium-high targets', () => {
     });
 
     const sim = simulateCraft(state, config, 400, 400, neutralOnly, 100);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 
@@ -1480,7 +1414,7 @@ describe('craft simulation — medium-high targets', () => {
     ];
 
     const sim = simulateCraft(state, config, 400, 400, conditions, 100);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 });
@@ -1505,7 +1439,7 @@ describe('craft simulation — asymmetric targets', () => {
     });
 
     const sim = simulateCraft(state, config, 200, 50, neutralOnly, 50);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
 
     // After perfection is met, no more refines should appear.
@@ -1543,7 +1477,7 @@ describe('craft simulation — asymmetric targets', () => {
     });
 
     const sim = simulateCraft(state, config, 50, 200, neutralOnly, 50);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
 
     // After completion is met, no more fusions should appear.
@@ -1591,7 +1525,7 @@ describe('craft simulation — veryNegative conditions', () => {
     const conditions: CraftingConditionType[] = ['veryNegative'];
 
     const sim = simulateCraft(state, config, 100, 0, conditions, 30);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 
@@ -1616,7 +1550,7 @@ describe('craft simulation — veryNegative conditions', () => {
     ];
 
     const sim = simulateCraft(state, config, 100, 100, conditions, 40);
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
   });
 });
@@ -1626,21 +1560,19 @@ describe('craft simulation — veryNegative conditions', () => {
 // ---------------------------------------------------------------------------
 
 describe('craft simulation — sublime crafts', () => {
-  it('should complete a sublime craft reaching scaled targets (100/100 × 2.0)', () => {
-    // Sublime craft: base targets 100/100, multiplier 2.0.  The optimizer
-    // internally scales effective targets to 200/200 via targetMultiplier.
-    // We pass 200/200 as simulation targets so the loop doesn't stop early
-    // at base targets.  The optimizer's scoring must drive progress past
-    // 100/100 toward 200/200.
+  it('should complete a sublime craft reaching two bands per bar', () => {
+    // Recipe widths stay 100: two guaranteed bands need 100 + 130 = 230.
+    // 20 fusions + 15 refines cost 350 stability: 15 restores cost 150 Qi,
+    // and refines cost 270 Qi. The old 400-Qi fixture cannot bank both bands.
     const config = createTestConfig({
       skills: BEGINNER_SKILLS,
       conditionEffectType: 'perfectable' as any,
       isSublimeCraft: true,
       targetMultiplier: 2.0,
-      maxQi: 400,
+      maxQi: 450,
     });
     const state = new CraftingState({
-      qi: 400,
+      qi: 450,
       stability: 60,
       initialMaxStability: 60,
       completion: 0,
@@ -1648,18 +1580,17 @@ describe('craft simulation — sublime crafts', () => {
     });
     const neutralOnly: CraftingConditionType[] = ['neutral'];
 
-    // Pass scaled targets (200/200) to the simulation loop so it doesn't
-    // stop at base targets. Each turn gets a fixed 800-node budget (about
-    // what the former 1 s clock budget reached locally) and a generous turn
-    // limit, so the contract checks the model, not machine speed.
-    const sim = simulateCraft(state, config, 200, 200, neutralOnly, 90, 6, {
+    // Each turn gets a fixed 800-node budget (about what the former 1 s
+    // clock budget reached locally) and a generous turn limit, so the
+    // contract checks the model, not machine speed.
+    const sim = simulateCraft(state, config, 100, 100, neutralOnly, 90, 6, {
       timeBudgetMs: FIXED_WORK_CLOCK_MS,
       maxNodes: 800,
     });
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
-    expect(sim.finalState.completion).toBeGreaterThanOrEqual(200);
-    expect(sim.finalState.perfection).toBeGreaterThanOrEqual(200);
+    expect(sim.status).toBe('autoResolved');
+    expect(sim.outcomeTier).toBe('sublime');
   });
 
   it('should use fusion to raise heat before refining in forge works at heat=0', () => {
@@ -1739,8 +1670,8 @@ describe('craft simulation — sublime crafts', () => {
     const sim = simulateCraft(
       state,
       config,
-      200,
-      200,
+      100,
+      100,
       neutralOnly,
       80,
       6,
@@ -1750,8 +1681,10 @@ describe('craft simulation — sublime crafts', () => {
         perfection: 100,
       },
     );
-    expect(sim.craftDied).toBe(false);
+    expect(sim.status).not.toBe('blocked');
     expect(sim.targetsMet).toBe(true);
+    expect(sim.status).toBe('autoResolved');
+    expect(sim.outcomeTier).toBe('sublime');
 
     // Count refines done at heat=0 (which give 0 perfection — wasted turns).
     // Track heat through the simulation by replaying harmony effects.
