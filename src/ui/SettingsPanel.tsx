@@ -273,7 +273,7 @@ export function SettingsBody({
           help="Continue investing in extra stars and material refunds after the target tier is secured."
         />
         <SliderSetting
-          label="Perfection Band Goal"
+          label="Perfection band goal"
           tooltip={PERFECTION_BAND_GOAL_HELP}
           draftValue={draftSettings.perfectionBandGoal}
           min={0}
@@ -282,7 +282,7 @@ export function SettingsBody({
           onCommit={(value) => handleSliderCommit('perfectionBandGoal', value)}
         />
         <SliderSetting
-          label="Completion Band Ceiling"
+          label="Completion band ceiling"
           tooltip={COMPLETION_BAND_CEILING_HELP}
           draftValue={draftSettings.completionBandCeiling}
           min={0}
