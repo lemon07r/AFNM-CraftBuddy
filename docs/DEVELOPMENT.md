@@ -34,7 +34,7 @@ bun install
 | `src/settings/index.ts`, `src/settings/autoCraft.ts` | Persisted settings, presets/config mapping, auto policy/UI state |
 | `src/worker/searchWorker.ts` | Background search and its own cache/engine instance |
 
-Dependency direction: integration → optimizer facade/settings/UI/utils; UI → optimizer facade/settings/utils; optimizer → pure utils. Settings **does** depend on `src/utils/searchGoalPriority.ts` and its own auto-craft policy module. It is not dependency-free.
+Dependency direction: integration → optimizer facade/settings/UI/utils; UI → optimizer facade/settings/utils; optimizer → pure utils. `src/utils/outcomeSummary.ts` is the exception that reads the optimizer facade, because it formats `outcomeProjection`. Settings **does** depend on `src/utils/searchGoalPriority.ts` and its own auto-craft policy module. It is not dependency-free.
 
 The mutable auto-craft lifecycle remains beside the polling loop intentionally: splitting it would require threading a live view through many stateful closures, not a neutral file move. Harmony selection/hydration already have their own modules; another context wrapper would add indirection.
 

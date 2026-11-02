@@ -37,7 +37,7 @@
 - Read the revised Insight package and technique roster live instead of hardcoding patch data. Forge Compression's new stack listener was not actually dispatched; that limitation is documented in the current parity guide.
 - Bind the heat-runway regression to node work instead of machine-dependent clock depth.
 
-## 6.4.0
+## 6.4.0 — AFNM 0.7.8
 
 - Recover from missed auto-mode state advances: reverify, resume on a late advance, retry once if unchanged, otherwise remain in a recoverable armed pause.
 - Match DOM technique controls by internal and display names, including Strive for Completion.

@@ -16,7 +16,7 @@ bun run runtime:grep -- "getGameStateSnapshot|onReduxAction|injectUI"
 ```
 
 - Prefer a targeted bundle lookup over launching the game to check a symbol. Cache provenance comes from the installed ASAR; `AFNM_GAME_DIR` can select another install. Minified aliases change between builds, so follow exports rather than reusing an old identifier.
-- Upstream examples/docs are in `/home/lamim/Development/Games/AFNM/AfnmExampleMod`; declarations are in `node_modules/afnm-types`. Community crafting guides are hypotheses until checked against runtime code.
+- Upstream examples/docs are in the AfnmExampleMod repository (usually a sibling checkout, `../AfnmExampleMod`); declarations are in `node_modules/afnm-types`. Community crafting guides are hypotheses until checked against runtime code.
 - Keep drift-prone access in `src/modContent/`, optional-chain APIs, and retain fallbacks that are still needed. Live scaling providers are not automatically safe for hypothetical optimizer states.
 - Prefer `subscribe()` / `getGameStateSnapshot()` for normal reads. `onReduxAction` is reducer-time: read-only observation there avoids nested dispatch/reducer hazards.
 - Harmony is player-selected, not item-derived. Preserve all nine hydration variants, droplets, cost channels, mastery entries, buff definitions/internal state and replay provenance; missing fields have silently restarted state machines before.

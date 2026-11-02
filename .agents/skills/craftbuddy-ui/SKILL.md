@@ -31,7 +31,7 @@ agent-browser set viewport 975 768
 agent-browser screenshot
 ```
 
-Harness params in `scripts/ui/agent-browser-harness.tsx` include outcome/binding-bar, auto-finish, setup, legacy-no-projection, native-auto-use and harmony fixtures. Capture the changed panel states (settings, auto, loading/stop) as well as normal recommendations.
+Harness query params (see `scripts/ui/agent-browser-harness.tsx`): `?state=` picks a fixture (for example `outcome-setup`, `outcome-autofinish`, `outcome-legacy`, `auto-ready`, `auto-stopping`, `auto-native-autouse`, `loading`), `?harmony=` selects the harmony type, `?compact=`, `?scene=gamehud` and `?viewport=WxH` set layout. Capture the changed panel states (settings, auto, loading/stop) as well as normal recommendations.
 
 ## Integration clues
 

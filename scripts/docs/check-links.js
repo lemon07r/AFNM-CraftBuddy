@@ -12,7 +12,7 @@ function normalizeTarget(raw) {
   if (target.startsWith('<') && target.endsWith('>')) {
     target = target.slice(1, -1);
   }
-  if (!target || target.startsWith('#') || /^[a-z][a-z\d+.-]*:/i.test(target)) {
+  if (!target || target.startsWith('#') || /^[a-z][a-z\d+.-]*:(?!\d)/i.test(target)) {
     return null;
   }
   target = target.split('#')[0];

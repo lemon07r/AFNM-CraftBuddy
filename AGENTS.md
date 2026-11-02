@@ -23,8 +23,10 @@ Crafting assistant mod for Ascend From Nine Mountains (AFNM). It reads the live 
 - Mechanics changes need the TypeScript and Rust engines kept identical: `bun run optimizer:differential-corpus`, then `bun run wasm:test`.
 - Scoring constants and benchmark contracts should move because of evidence about the game or a reproduced bug, not to make a check pass.
 - Refactors and performance work should leave `bun run optimizer:digest -- --compare <baseline>` unchanged; record a baseline first.
+- `src/optimizer/outcome.ts` is the one place that computes bands, tiers and auto-finish; UI and search consume it instead of recomputing thresholds.
 - User-facing technique names go through `techniqueDisplayName()`; keys and lookups use `name`.
 - When you change behavior, update the doc that describes it in the same change.
+- Before committing, `bun run typecheck` and `bun run test` are the baseline, plus `bun run docs:check` after docs or skill edits; the validation table in `docs/DEVELOPMENT.md` lists what else each kind of change needs.
 
 ## Conventions
 

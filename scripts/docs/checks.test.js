@@ -62,6 +62,8 @@ test('angle-wrapped/encoded paths and line suffixes normalize', () => {
   );
   assert.equal(normalizeTarget('docs/a%20b.md:12'), 'docs/a b.md');
   assert.equal(normalizeTarget('src/a.ts:12-15,30-40'), 'src/a.ts');
+  assert.equal(normalizeTarget('CHANGELOG.md:10-20'), 'CHANGELOG.md');
+  assert.equal(normalizeTarget('https://example.com:8080/x'), null);
 });
 
 test('only intended repo prefixes are checked in code spans, not fenced commands', () => {
