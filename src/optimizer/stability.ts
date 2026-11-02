@@ -97,6 +97,14 @@ export class StabilityProjection {
     }));
   }
 
+  /** Signed live expectation before turn cleanup, including earlier triggers. */
+  meanStability(): number {
+    return this.outcomes.reduce(
+      (sum, outcome) => sum + outcome.stability * outcome.probability,
+      0,
+    );
+  }
+
   pay(
     cost: number,
     outcomes?: Array<{ cost: number; probability: number }>,

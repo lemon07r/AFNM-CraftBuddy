@@ -1617,7 +1617,7 @@ By contrast, pool conditions use snapshot `n.pool/n.maxpool`, named-buff
 conditions use snapshot `n[buff.name]`, and expression conditions evaluate
 against that same variable scope (plus `stacks`/`count`). The ordinary buff
 executor also passes live progress to `ZS` (`G:14938012`); this evidence does
-not certify CraftBuddy's separate ordinary/triggered buff condition scopes or
+not certify CraftBuddy's separate ordinary/triggered buff completion/perfection scopes or
 fully synchronous trigger interleaving. The focused correction covers running
 technique percentage gates in both gains and transitions, retaining the
 existing expected-state approximation for earlier chance effects.

@@ -4837,7 +4837,7 @@ function applySkillTransition(
       effect.condition?.kind === 'stability'
         ? {
             ...scalingVars,
-            stability: newStability + buffStabilityDelta,
+            stability: stabilityProjection.meanStability(),
             maxstability: state.initialMaxStability,
           }
         : scalingVars,

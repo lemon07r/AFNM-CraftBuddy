@@ -2130,8 +2130,20 @@ fn dispatch_buff_triggers(
                 scope.insert(state_key.clone(), *state_value);
             }
             scope.insert("stacks".to_string(), buffs.stacks(&key) as f64);
-            let evaluation =
-                evaluate_effect_condition(effect.condition.as_ref(), state, &scope, stacks);
+            let evaluation = if let Some(condition) = effect
+                .condition
+                .as_ref()
+                .filter(|condition| condition.kind == "stability")
+            {
+                hard_condition(percentage_check(
+                    buffs.stability.mean_stability(),
+                    state.initial_max_stability.max(1.0),
+                    &condition.mode,
+                    condition.percentage,
+                ))
+            } else {
+                evaluate_effect_condition(effect.condition.as_ref(), state, &scope, stacks)
+            };
             if !evaluation.met || evaluation.probability <= 0.0 {
                 continue;
             }
@@ -2467,6 +2479,12 @@ impl StabilityProjection {
             }
         }
         self.outcomes = next;
+    }
+    fn mean_stability(&self) -> f64 {
+        self.outcomes
+            .iter()
+            .map(|&(stability, _, probability, _)| stability * probability)
+            .sum()
     }
     fn finish(&self, maximum: f64, decay: bool, cleanup: bool) -> (f64, f64) {
         self.outcomes.iter().fold(
@@ -4433,10 +4451,8 @@ fn apply_skill_transition(
                         .as_ref()
                         .is_some_and(|condition| condition.kind == "stability")
                     {
-                        scaling_vars.insert(
-                            "stability".to_string(),
-                            new_stability + buff_stability_delta + buffs.triggered.stability,
-                        );
+                        scaling_vars
+                            .insert("stability".to_string(), buffs.stability.mean_stability());
                     }
                     let evaluation = evaluate_effect_condition(
                         effect.condition.as_ref(),

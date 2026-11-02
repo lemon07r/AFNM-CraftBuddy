@@ -12,11 +12,16 @@ import {
   liveProgressConditionScenarios,
   nonpositiveBuffScenarios,
   sharedSuccessScenarios,
+  triggeredStabilityGateScenario,
 } from './fixtures/mechanics0719';
 import { CraftingState } from '../optimizer/state';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
 describe('AFNM 0.7.19 audited mechanics', () => {
+  it('reads post-payment stability and earlier listener effects in triggered gates', () => {
+    const { state, skill, config } = triggeredStabilityGateScenario();
+    expect(applySkill(state, skill, config)!.stability).toBe(35);
+  });
   it.each(sharedSuccessScenarios())(
     'shares one success roll while retaining effect chance rolls: $name',
     ({ state, skill, config, expectedStability }) => {

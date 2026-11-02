@@ -12,6 +12,7 @@ export function mechanics0719Scenarios() {
     ...liveProgressConditionScenarios(),
     ...nonpositiveBuffScenarios(),
     ...sharedSuccessScenarios(),
+    triggeredStabilityGateScenario(),
     ...stackEventScenarios(),
     ...buffGroupScenarios(),
     ...[
@@ -76,6 +77,53 @@ export function emptyExpressionScenario() {
   return {
     name: '0719-empty-expression',
     state: new CraftingState({ qi: 100, stability: 50 }),
+    skill,
+    config: retargetConfig(skill),
+  };
+}
+
+export function triggeredStabilityGateScenario() {
+  const listener: BuffDefinition = {
+    name: 'Low stability listener',
+    canStack: true,
+    effects: [],
+    triggeredEffects: [
+      {
+        trigger: 'stabilitySpent',
+        effects: [
+          {
+            kind: 'stability',
+            amount: { value: 10 },
+            condition: { kind: 'stability', mode: 'less', percentage: 50 },
+          },
+          {
+            kind: 'stability',
+            amount: { value: 20 },
+            condition: { kind: 'stability', mode: 'less', percentage: 50 },
+          },
+        ],
+      },
+    ],
+  };
+  const skill = retargetSkill({
+    qiCost: 0,
+    stabilityCost: 10,
+    preventsMaxStabilityDecay: true,
+    effects: [],
+  });
+  return {
+    name: '0719-triggered-live-stability-gate',
+    state: new CraftingState({
+      qi: 100,
+      stability: 35,
+      initialMaxStability: 60,
+      buffs: new Map([
+        [
+          'low_stability_listener',
+          { name: listener.name, stacks: 1, definition: listener },
+        ],
+      ]),
+    }),
     skill,
     config: retargetConfig(skill),
   };
