@@ -1,107 +1,43 @@
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
-const ROOT = process.cwd();
-const IGNORE_DIRS = new Set([
-  '.git',
-  '.junie',
-  '.adal',
-  '.agent',
-  '.agents',
-  '.augment',
-  '.claude',
-  '.codebuddy',
-  '.commandcode',
-  '.continue',
-  '.cortex',
-  '.crush',
-  '.factory',
-  '.goose',
-  '.iflow',
-  '.kilocode',
-  '.kiro',
-  '.kode',
-  '.mcpjam',
-  '.mux',
-  '.neovate',
-  '.openhands',
-  '.pi',
-  '.pochi',
-  '.qoder',
-  '.qwen',
-  '.roo',
-  '.trae',
-  '.vibe',
-  '.windsurf',
-  '.zencoder',
-  'node_modules',
-  'dist',
-  'builds',
-  'coverage',
-  'archive',
-  'tmp',
-  'skills',
-]);
-
-function walk(dir, predicate, out = []) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (IGNORE_DIRS.has(entry.name)) continue;
-      walk(full, predicate, out);
-      continue;
-    }
-    if (entry.isFile() && predicate(full)) out.push(full);
-  }
-  return out;
-}
+const ROOT = path.resolve(__dirname, '../..');
+const WORKSHOP_DESCRIPTION_LIMIT = 8000;
 
 function listMarkdownFiles() {
-  return walk(ROOT, (f) => f.endsWith('.md')).sort();
+  return execFileSync('git', ['ls-files', '-z', '--', '*.md'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  })
+    .split('\0')
+    .filter(Boolean)
+    .map((file) => path.join(ROOT, file))
+    .filter((file) => fs.existsSync(file))
+    .sort();
 }
 
 function rel(filePath) {
   return path.relative(ROOT, filePath).replace(/\\/g, '/');
 }
 
-function parseFrontmatter(markdownText) {
-  if (!markdownText.startsWith('---\n')) return null;
-  const end = markdownText.indexOf('\n---\n', 4);
-  if (end === -1) return null;
-  const raw = markdownText.slice(4, end);
-  const fields = {};
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const idx = trimmed.indexOf(':');
-    if (idx === -1) continue;
-    const key = trimmed.slice(0, idx).trim();
-    let value = trimmed.slice(idx + 1).trim();
-    if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
-    if (value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1);
-    if (value === 'true') value = true;
-    else if (value === 'false') value = false;
-    else if (/^-?\d+$/.test(value)) value = Number(value);
-    fields[key] = value;
-  }
-  return fields;
+function descriptionBody(text) {
+  return text
+    .trim()
+    .replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '')
+    .trim();
 }
 
-function isMaintainedDoc(relativePath) {
-  return (
-    relativePath.startsWith('docs/project/') ||
-    relativePath.startsWith('docs/dev-requests/') ||
-    relativePath.startsWith('docs/history/') ||
-    relativePath === 'docs/README.md' ||
-    relativePath === 'docs/index.md' ||
-    relativePath === 'docs/DOC_INVENTORY.md'
-  );
+function workshopDescriptionError(body) {
+  return body.length > WORKSHOP_DESCRIPTION_LIMIT
+    ? `Workshop description body is ${body.length} characters; maximum is ${WORKSHOP_DESCRIPTION_LIMIT}. Shorten it before uploading.`
+    : undefined;
 }
 
 module.exports = {
   ROOT,
   listMarkdownFiles,
   rel,
-  parseFrontmatter,
-  isMaintainedDoc,
+  descriptionBody,
+  workshopDescriptionError,
 };

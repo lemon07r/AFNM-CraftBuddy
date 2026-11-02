@@ -3,10 +3,7 @@ builds/
 dist/
 
 # Dependencies
-node_modules/
-
-# Documentation site
-/docs/_site
+node_modules
 
 # IDE and editor files
 .idea/

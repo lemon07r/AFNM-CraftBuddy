@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { version } from '../../package.json';
 import { RecommendationPanel } from '../../src/ui/RecommendationPanel';
 import { CraftBuddyThemeProvider } from '../../src/ui/ThemeProvider';
 import {
@@ -468,7 +469,7 @@ function Harness() {
       onAutoModeArm={() => {}}
       onAutoModeStop={() => {}}
       onAutoModePolicyChange={() => {}}
-      version="6.9.0"
+      version={version}
     />
   );
 
