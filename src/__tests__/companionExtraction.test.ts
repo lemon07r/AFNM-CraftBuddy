@@ -25,6 +25,10 @@ describe('companion live extraction and replay', () => {
           },
           modifier: { kind: 'multiply', value: 1.5 },
         },
+        {
+          appliesTo: ['completion', 'perfection'],
+          modifier: { kind: 'multiply', value: 2.25 },
+        },
       ],
     };
     const han: CraftingBuff = {
@@ -54,10 +58,36 @@ describe('companion live extraction and replay', () => {
     expect(
       revived.buffs.get("su_lianhua's_assistance")?.definition
         ?.craftingEffectInterceptors,
-    ).toEqual(su.craftingEffectInterceptors);
+    ).toEqual([
+      {
+        appliesTo: ['completion', 'perfection'],
+        trigger: {
+          kind: 'condition',
+          condition: 'step % 3 == 2 && amount > 0',
+        },
+        modifier: { kind: 'multiply', value: 1.5 },
+      },
+      {
+        appliesTo: ['completion', 'perfection'],
+        modifier: { kind: 'multiply', value: 2.25 },
+      },
+    ]);
     expect(
       revived.buffs.get("han_weiguang's_assistance")?.definition
         ?.stabilityLossPrevention,
     ).toEqual({ uses: 2 });
+  });
+
+  it('defaults missing stacks to zero but still rejects nonfinite stacks', () => {
+    const base = { name: 'Missing stacks', canStack: false, effects: [] };
+    const buffs = extractTrackedBuffs([
+      base as CraftingBuff,
+      { ...base, name: 'Negative stacks', stacks: -2 } as CraftingBuff,
+      { ...base, name: 'Invalid stacks', stacks: Infinity } as CraftingBuff,
+    ]);
+    expect(Array.from(buffs, ([key, buff]) => [key, buff.stacks])).toEqual([
+      ['missing_stacks', 0],
+      ['negative_stacks', -2],
+    ]);
   });
 });

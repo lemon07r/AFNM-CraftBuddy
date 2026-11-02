@@ -62,9 +62,10 @@ export function extractTrackedBuffs(
     const key = normalizeBuffKey(buff?.name);
     // Runtime keeps nonpositive createBuff results held: ordinary effects,
     // flags and companion prevention/interception can still apply.
-    if (!key || !Number.isFinite(buff.stacks)) continue;
+    const stacks = buff?.stacks ?? 0;
+    if (!key || !Number.isFinite(stacks)) continue;
     const internalState: Record<string, number> = {};
-    const { internalState: liveState, stacks, ...definition } = buff;
+    const { internalState: liveState, stacks: _stacks, ...definition } = buff;
     for (const [stateKey, value] of Object.entries(liveState ?? {})) {
       const numeric = Number(value);
       if (stateKey && Number.isFinite(numeric))
