@@ -138,7 +138,7 @@ describe('Fallen Soulflame fragment triggers', () => {
   // 0.7.6 nerfed the Fallen Soulflame: `Soul of Fusion` completion and
   // `Soul of Refinement` perfection both went `0.5 -> 0.2` per stack, `Soul of Qi`
   // pool `3 -> 2` and `Soul of Stability` stability `2 -> 1`. The 9-stack /
-  // 5-stability fragment threshold is unchanged. The simulator reads these from the
+  // 5-stability fragment threshold is unchanged. Both engines read these from the
   // live buff definitions, so the nerf needs no code change - only this fixture.
   const SOUL_OF_FUSION_PER_STACK = 0.2;
 
@@ -277,10 +277,7 @@ describe('Fallen Soulflame fragment triggers', () => {
     const result = applySkill(state, fusionSkill, config);
 
     expect(result).not.toBeNull();
-    expect(result!.completion).toBeCloseTo(
-      SOUL_OF_FUSION_PER_STACK * 12 * 2,
-      6,
-    );
+    expect(result!.completion).toBeCloseTo(SOUL_OF_FUSION_PER_STACK * 12 * 2, 6);
   });
 });
 

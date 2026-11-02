@@ -13,6 +13,8 @@ Retire the experimental engine, bridge, toolchain and selector rather than maint
 
 The benchmark retains all **15 fixture contracts** unchanged. Removing the three experimental configurations reduces the matrix from **105 to 60 contract evaluations** (7 to 4 configs; 16 replay fixtures give 112 to 64 total runs). The retained same-budget TypeScript config is intentionally still present.
 
+The retirement's fixed-work digest compared **32 TypeScript entries** against the pre-edit baseline at `3c8872c`: **zero differences**, including recommendation/ranking/scores, safety flags, rotation, depth and **95,688 total expanded nodes**. All 1,588 stored transition outputs were also preserved exactly while converting their inputs to TypeScript wire data. These checks establish removal neutrality on the fixtures, not a new runtime-fidelity claim.
+
 ## Historical authority and packaging
 
 Before retirement, TypeScript owned final ranking and score caches; Rust supplied only a near-tie root-policy prior. Absolute scores were not comparable across engines. The old differential corpus established covered transition agreement, not universal runtime fidelity. The following Rust findings are historical, not build instructions or an obligation to keep a second engine in sync.
