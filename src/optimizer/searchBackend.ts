@@ -194,6 +194,7 @@ export function serializeSearchInput(
       toxicity: state.toxicity,
       maxToxicity: state.maxToxicity,
       harmony: state.harmony,
+      conditionGenerationHarmony: state.conditionGenerationHarmony ?? null,
       harmonyData: state.harmonyData ?? null,
       step: state.step,
       completionBonus: state.completionBonus,

@@ -8,6 +8,7 @@
 use super::effects::*;
 use super::*;
 use serde_json::json;
+use std::collections::BTreeMap;
 
 fn scaling(value: serde_json::Value) -> Scaling {
     serde_json::from_value(value).expect("scaling should deserialize")
@@ -78,6 +79,34 @@ fn apply_0717(
         ConditionEffectSummary::default(),
         100.0,
     )
+}
+
+#[test]
+fn audited_discordance_precedes_every_queue_branch() {
+    for last in ["", "positive", "negative", "veryPositive", "veryNegative"] {
+        let queue = if last.is_empty() {
+            vec![]
+        } else {
+            vec![last.to_string()]
+        };
+        let distribution: BTreeMap<_, _> =
+            generated_condition_distribution("positive", &queue, 100.0, 0.7)
+                .into_iter()
+                .collect();
+        for (condition, expected) in [
+            ("neutral", 0.3),
+            ("veryPositive", 0.09),
+            ("veryNegative", 0.09),
+            ("positive", 0.39),
+            ("negative", 0.13),
+        ] {
+            assert!((distribution[condition] - expected).abs() < 1e-12);
+        }
+    }
+    let distribution: BTreeMap<_, _> = generated_condition_distribution("neutral", &[], 200.0, 2.0)
+        .into_iter()
+        .collect();
+    assert!((distribution["positive"] - 0.91).abs() < 1e-12);
 }
 
 #[test]

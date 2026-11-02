@@ -902,10 +902,25 @@ function getGeneratedConditionDistribution(
 ): ConditionDistributionEntry[] {
   const current = normalizeConditionType(currentCondition);
   const queue = nextConditions.map(normalizeConditionType);
-  const clampedHarmony = Math.max(-100, Math.min(100, harmony));
-  const negativeDelta = clampedHarmony < 0 ? Math.abs(clampedHarmony) / 100 : 0;
-  const positiveDelta = clampedHarmony > 0 ? Math.abs(clampedHarmony) / 100 : 0;
+  const negativeDelta = harmony < 0 ? Math.abs(harmony) / 100 : 0;
+  const positiveDelta = harmony > 0 ? Math.abs(harmony) / 100 : 0;
   const lastCondition = queue.length > 0 ? queue[queue.length - 1] : undefined;
+
+  if (discordance > 0) {
+    // Bounds here describe probabilities of random()<threshold; neither the
+    // runtime's harmony nor its discordance input is clamped before the rolls.
+    const active = clampProbability(discordance);
+    const extreme = active * clampProbability(0.18 / discordance);
+    const mild = active - extreme;
+    const positive = clampProbability(0.5 + (harmony / 100) * 0.25);
+    return normalizeConditionDistribution([
+      { condition: 'neutral', probability: 1 - active },
+      { condition: 'veryPositive', probability: extreme / 2 },
+      { condition: 'veryNegative', probability: extreme / 2 },
+      { condition: 'positive', probability: mild * positive },
+      { condition: 'negative', probability: mild * (1 - positive) },
+    ]);
+  }
 
   if (lastCondition === 'veryPositive' || lastCondition === 'veryNegative') {
     return [{ condition: 'neutral', probability: 1 }];
@@ -945,21 +960,16 @@ function getGeneratedConditionDistribution(
     );
   }
 
-  const positiveChance = clampProbability((clampedHarmony + 100) / 200);
-  // 0.7.7+ discordant gate (runtime: `if (Math.random() >= d) return neutral`
-  // at the stay-neutral decision): a would-be neutral outcome only stays
-  // neutral (1 - d) of the time; the rest falls through to the harmony roll.
-  const effectiveChangeProbability =
-    changeProbability + (1 - changeProbability) * clampProbability(discordance);
+  const positiveChance = clampProbability((harmony + 100) / 200);
   return normalizeConditionDistribution([
-    { condition: 'neutral', probability: 1 - effectiveChangeProbability },
+    { condition: 'neutral', probability: 1 - changeProbability },
     {
       condition: 'positive',
-      probability: effectiveChangeProbability * positiveChance,
+      probability: changeProbability * positiveChance,
     },
     {
       condition: 'negative',
-      probability: effectiveChangeProbability * (1 - positiveChance),
+      probability: changeProbability * (1 - positiveChance),
     },
   ]);
 }
@@ -4513,7 +4523,7 @@ function runLookaheadSearch(
     const transitions = getConditionTransitionsWithProvider(
       conditionAtDepth,
       nextConditionQueueAtDepth,
-      newState.harmony,
+      newState.conditionGenerationHarmony ?? newState.harmony,
       cfg,
     );
     if (transitions.length === 0) {
@@ -4945,7 +4955,7 @@ function runLookaheadSearch(
         const transitions = getConditionTransitionsWithProvider(
           currentConditionAtDepth,
           nextConditionQueueAtDepth,
-          newState.harmony,
+          newState.conditionGenerationHarmony ?? newState.harmony,
           cfg,
         );
         for (const transition of transitions) {
@@ -5041,7 +5051,7 @@ function runLookaheadSearch(
     const transitions = getConditionTransitionsWithProvider(
       conditionAtDepth,
       conditionQueueAtDepth,
-      newState.harmony,
+      newState.conditionGenerationHarmony ?? newState.harmony,
       cfg,
     );
     let expectedScore = 0;
@@ -5077,7 +5087,7 @@ function runLookaheadSearch(
     const transitions = getConditionTransitionsWithProvider(
       conditionAtDepth,
       conditionQueueAtDepth,
-      newState.harmony,
+      newState.conditionGenerationHarmony ?? newState.harmony,
       cfg,
     );
     const bestTransition = transitions[0];
@@ -6325,6 +6335,7 @@ export function findBestSkill(
 
 // Internals exposed for isolated unit testing only — not part of the public API.
 export const __testing = {
+  getGeneratedConditionDistribution,
   scoreState,
   scoreFinishedOutcome,
   deriveBandGoals,

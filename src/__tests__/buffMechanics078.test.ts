@@ -22,7 +22,10 @@ import {
   getBuffDiscordantConditions,
 } from '../optimizer/skills';
 import { BuffDefinition, getBonusAndChance } from '../optimizer/gameTypes';
-import { normalizeForecastConditionQueue } from '../optimizer/search';
+import {
+  normalizeForecastConditionQueue,
+  __testing,
+} from '../optimizer/search';
 
 function createTestConfig(
   overrides: Partial<OptimizerConfig> = {},
@@ -420,15 +423,14 @@ describe('0.7.7 discordantConditions (Uncontrollable Flames)', () => {
     expect(getBuffDiscordantConditions(new Map())).toBe(0);
   });
 
-  it('shifts the generated condition away from Balanced 70% of the time', () => {
+  it('uses the exact discordance branch before queued forecasts', () => {
     // Empty queue with a non-neutral current condition and harmony 0: no
     // trailing neutrals, so the change probability is 0 and the forecast
     // normally stays Balanced forever.
     const normal = normalizeForecastConditionQueue('positive', [], 0);
     expect(normal[0]).toBe('neutral');
 
-    // With d = 0.7 the stay-neutral outcome only holds 30% of the time; the
-    // harmony roll (50/50 at harmony 0) becomes the most likely branch.
+    // d=.7: neutral .30, extremes .09 each, mild conditions .26 each.
     const discordant = normalizeForecastConditionQueue(
       'positive',
       [],
@@ -436,6 +438,49 @@ describe('0.7.7 discordantConditions (Uncontrollable Flames)', () => {
       undefined,
       0.7,
     );
-    expect(discordant[0]).toBe('positive');
+    expect(discordant[0]).toBe('neutral');
+    for (const queue of [
+      [],
+      ['positive'],
+      ['negative'],
+      ['veryPositive'],
+      ['veryNegative'],
+    ]) {
+      const distribution = Object.fromEntries(
+        __testing
+          .getGeneratedConditionDistribution('positive', queue, 100, 0.7)
+          .map((entry) => [entry.condition, entry.probability]),
+      );
+      for (const [condition, expected] of Object.entries({
+        neutral: 0.3,
+        veryPositive: 0.09,
+        veryNegative: 0.09,
+        positive: 0.39,
+        negative: 0.13,
+      }))
+        expect(distribution[condition]).toBeCloseTo(expected, 12);
+    }
+  });
+
+  it('saturates random comparisons, not harmony or discordance inputs', () => {
+    const distribution = (harmony: number, discordance: number) =>
+      Object.fromEntries(
+        __testing
+          .getGeneratedConditionDistribution(
+            'neutral',
+            ['veryPositive'],
+            harmony,
+            discordance,
+          )
+          .map((entry) => [entry.condition, entry.probability]),
+      );
+    expect(distribution(0, 0.1)).toEqual({
+      neutral: 0.9,
+      veryPositive: 0.05,
+      veryNegative: 0.05,
+    });
+    const aboveOne = distribution(200, 2);
+    expect(aboveOne.veryPositive).toBeCloseTo(0.045);
+    expect(aboveOne.positive).toBeCloseTo(0.91);
   });
 });

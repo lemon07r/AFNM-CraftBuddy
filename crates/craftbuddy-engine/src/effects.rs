@@ -4398,6 +4398,7 @@ fn apply_skill_transition(
         },
         buffs: buffs.into_vec(),
         step: next_step,
+        condition_generation_harmony: None,
         completion_bonus,
         ..state.clone()
     };
@@ -4447,10 +4448,13 @@ fn apply_skill_transition(
             &skill.technique_type,
             context,
         );
-        next.harmony = clamp(
+        next.condition_generation_harmony = Some(
             result
                 .harmony_override
                 .unwrap_or(state.harmony + result.harmony_delta),
+        );
+        next.harmony = clamp(
+            next.condition_generation_harmony.unwrap_or(next.harmony),
             -100.0,
             100.0,
         );

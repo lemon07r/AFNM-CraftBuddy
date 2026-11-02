@@ -7,6 +7,32 @@ import { CraftingState } from '../optimizer/state';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
 describe('AFNM 0.7.19 audited mechanics', () => {
+  it('retains pre-cleanup harmony for condition generation', () => {
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      type: 'refine',
+    });
+    const state = new CraftingState({
+      harmony: 99,
+      stability: 50,
+      harmonyData: {
+        recommendedTechniqueTypes: [],
+        captivatingCadence: { chain: 1, lastAction: 'fusion' },
+      },
+    });
+    const next = applySkill(
+      state,
+      skill,
+      retargetConfig(skill, {
+        isSublimeCraft: true,
+        craftingType: 'captivatingCadence',
+      }),
+    )!;
+    expect(next.harmony).toBe(100);
+    expect(next.conditionGenerationHarmony).toBe(105);
+    expect(next.copy().conditionGenerationHarmony).toBe(105);
+  });
   it('rounds stability and penalty only at cleanup, retaining maximum-repair excess', () => {
     const skill = retargetSkill({
       qiCost: 0,

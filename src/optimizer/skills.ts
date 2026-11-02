@@ -5021,6 +5021,7 @@ function applySkillTransition(
 
   // Process harmony effects for sublime crafts (runs in processTurn after technique)
   let newHarmony = state.harmony;
+  let conditionGenerationHarmony = state.harmony;
   let newHarmonyData = state.harmonyData;
   if (
     consumesTurn &&
@@ -5070,6 +5071,9 @@ function applySkillTransition(
       },
     );
     newHarmonyData = harmonyResult.harmonyData;
+    conditionGenerationHarmony =
+      harmonyResult.harmonyOverride ??
+      state.harmony + harmonyResult.harmonyDelta;
     newHarmony = Math.max(
       -100,
       Math.min(
@@ -5189,6 +5193,7 @@ function applySkillTransition(
     consumedPillsThisTurn: nextConsumedPillsThisTurn,
     buffs: newBuffs,
     harmony: newHarmony,
+    conditionGenerationHarmony,
     harmonyData: newHarmonyData,
     step: nextStep,
     completionBonus: newCompletionBonus,
