@@ -292,9 +292,11 @@ function compareMergedScores(
 
 /**
  * Reassemble the per-partition results into one result. Deterministic given
- * the same partials: candidates from every partition are pooled, deduped by
- * skill key, sorted by survival safety and score with a key tiebreak, and quality ratings are
- * recomputed over the merged range (they are relative to the candidate set).
+ * the same partials: an autoResolved partial short-circuits with no actions.
+ * Otherwise only live partials contribute candidates, which are deduped by
+ * skill key and sorted by survival safety and score with a key tiebreak.
+ * Quality ratings are recomputed over the merged range. The merged status is
+ * live when candidates remain, or blocked otherwise; targetsMet is independent.
  */
 export function mergePartitionedResults(
   partials: readonly SearchResult[],
