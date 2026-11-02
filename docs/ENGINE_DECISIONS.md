@@ -158,6 +158,31 @@ All 18 runs kept the sync top skill. Single-worker throughput was .83–1.19× s
 
 Fixed-node probing: pre-retarget **.405737 ms/node**, initial phase/cost port **2.115**, after repeated payment/scaling work removal **.646 → .569423**. After Cycle: **.591207 / .579968** (+3.8%/+1.9% relative to the post-phase baseline). The remaining ~.58 vs ~.41 belonged to the phase/cost model, not scoring changes. These local numbers are not universal hardware guarantees or fresh 0.7.19 measurements.
 
+## Transition speed-ups, 7.0
+
+A Node CPU profile at fixed work put **93.5%** of search time in candidate building (`applySkill` and its effect pipeline); cache keys and base scoring were each below 1%. Three output-identical changes landed:
+
+1. Skip state copies when a Qi cap is unchanged.
+2. Project metadata-only mastery payment states instead of replaying the full payment interpreter. Branch multiplicity, order and reductions stay exactly as before, and any action with a held or created crafting-effect interceptor keeps the full interpreter.
+3. Share read-only action frames (buffed variables, condition overlay, mastery, costs) within one transition.
+
+Combined fixed-work medians against the pre-change head: forge heat runway **1.17×**, alchemical sequence **1.11×**, fairy recovery **1.32×**, overcraft endgame **1.06×**. The 32-entry digest kept all 95,688 nodes and unrounded outputs, and went from **1.08 to 1.38 nodes/ms**. A score memo was not pursued: repeat scoring measured under 1%.
+
+## Endgame beam width, 7.0
+
+At Balanced, `forge-heat-runway-step-2` misses its fusion contract. Three actions before the end, the adaptive beam narrows to 3, and Explosive Fusion ranks sixth by one-step score. The leaves there are finished crafts, so this is pruning, not scoring.
+
+Variants were scored against a deep oracle (beam 12, non-adaptive, 300k nodes) on all 16 replays at fixed 6k/12k nodes:
+
+| Variant | Agreement 6k / 12k | Regret sum 6k / 12k |
+| --- | --- | --- |
+| Current adaptive beam | 12 / 13 | 6.6k / 3.6k |
+| No narrowing below depth 6 | 12 / 11 | 116k / 116k |
+| Full width when every successor terminates | 12 / 13 | unchanged |
+| Width ≥6 for the last three actions | 11 / 11 | 119k / 119k |
+
+Widening fixes forge but costs a completed depth level at the same work, losing `focused-fusion-prereq` (regret ~102k), Skyfall and live-workshop step 2. The current beam stays; forge step 2 at Balanced is a known horizon limit and its contract is unchanged. Faster transitions are the route to that depth. The oracle also disagrees with the `user-report-overcraft-endgame` contract (Focus versus Gentle Stabilize); the oracle is not exhaustive, so that contract is unchanged pending evidence.
+
 ## Reproduce / protect neutrality
 
 ```bash
