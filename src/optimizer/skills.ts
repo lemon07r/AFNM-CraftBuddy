@@ -2005,6 +2005,51 @@ export interface EffectiveActionCosts {
   stabilityOutcomes?: Array<{ cost: number; probability: number }>;
 }
 
+interface ActionEvaluationFrame {
+  readonly preMasteryVariables: Readonly<ScalingVariables>;
+  readonly variables: Readonly<ScalingVariables>;
+  readonly mastery: Readonly<ResolvedMasteryBonuses>;
+}
+
+function buildActionEvaluationFrame(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ConditionEffect[],
+): ActionEvaluationFrame {
+  const harmonyMods = getHarmonyStatModifiers(
+    state.harmonyData,
+    config.craftingType,
+  );
+  let preMasteryVariables = buildPreMasteryActionVariables(
+    state,
+    config,
+    conditionEffects,
+    harmonyMods,
+  );
+  let mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
+  if (hasMasteryUpgrades(mastery.upgrades)) {
+    preMasteryVariables = buildPreMasteryActionVariables(
+      state,
+      config,
+      conditionEffects,
+      harmonyMods,
+      mastery.upgrades,
+    );
+    mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
+  }
+  const variables = { ...preMasteryVariables };
+  variables.control *= 1 + (mastery.bonuses.controlBonus || 0);
+  variables.intensity *= 1 + (mastery.bonuses.intensityBonus || 0);
+  variables.critchance += mastery.bonuses.critChanceBonus || 0;
+  variables.critmultiplier += mastery.bonuses.critMultiplierBonus || 0;
+  variables.successChanceBonus += mastery.bonuses.successChanceBonus || 0;
+  // Private read-only inputs only: effect/progress outputs remain caller-owned.
+  // A transition passes this exact frame down to its gain calculation rather
+  // than repeating the condition/harmony overlay and two-pass mastery fold.
+  return { preMasteryVariables, variables, mastery };
+}
+
 interface PostCostStabilityFrame {
   effectiveCosts: EffectiveActionCosts;
   stabilityAfterCosts: number;
@@ -2292,29 +2337,25 @@ export function calculateDisciplinedTouchGains(
   conditionEffects: ConditionEffect[] = [],
   options: SkillGainOptions = {},
 ): SkillGains {
-  const harmonyMods = getHarmonyStatModifiers(
-    state.harmonyData,
-    config.craftingType,
-  );
-  let preMasteryVars = buildPreMasteryActionVariables(
+  return calculateDisciplinedTouchGainsWithFrame(
     state,
+    skill,
     config,
     conditionEffects,
-    harmonyMods,
+    options,
   );
-  let resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
-  if (hasMasteryUpgrades(resolvedMastery.upgrades)) {
-    preMasteryVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      harmonyMods,
-      resolvedMastery.upgrades,
-    );
-    resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
-  }
+}
 
-  const mastery = resolvedMastery.bonuses;
+function calculateDisciplinedTouchGainsWithFrame(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ConditionEffect[],
+  options: SkillGainOptions,
+  frame = buildActionEvaluationFrame(state, skill, config, conditionEffects),
+): SkillGains {
+  const preMasteryVars = frame.preMasteryVariables;
+  const mastery = frame.mastery.bonuses;
   const effectiveVars: ScalingVariables = {
     ...preMasteryVars,
     control: preMasteryVars.control * (1 + (mastery.controlBonus || 0)),
@@ -2380,6 +2421,23 @@ export function calculateSkillGains(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[] = [],
   options: SkillGainOptions = {},
+): SkillGains {
+  return calculateSkillGainsWithFrame(
+    state,
+    skill,
+    config,
+    conditionEffects,
+    options,
+  );
+}
+
+function calculateSkillGainsWithFrame(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ConditionEffect[],
+  options: SkillGainOptions,
+  frame?: ActionEvaluationFrame,
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
   if (
@@ -2464,6 +2522,7 @@ export function calculateSkillGains(
     config,
     conditionEffects,
     options,
+    frame,
   );
 }
 
@@ -2474,6 +2533,7 @@ function calculateUninterceptedSkillGains(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   options: SkillGainOptions,
+  frame?: ActionEvaluationFrame,
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
   const clampPredictedProgressGain = (
@@ -2518,12 +2578,13 @@ function calculateUninterceptedSkillGains(
 
   // Handle Disciplined Touch specially - it uses both intensity and control with buffs
   if (skill.isDisciplinedTouch) {
-    const disciplined = calculateDisciplinedTouchGains(
+    const disciplined = calculateDisciplinedTouchGainsWithFrame(
       state,
       skill,
       config,
       conditionEffects,
       options,
+      frame,
     );
     return {
       ...disciplined,
@@ -2544,41 +2605,10 @@ function calculateUninterceptedSkillGains(
     };
   }
 
-  const harmonyMods = getHarmonyStatModifiers(
-    state.harmonyData,
-    config.craftingType,
-  );
-  let preMasteryVars = buildPreMasteryActionVariables(
-    state,
-    config,
-    conditionEffects,
-    harmonyMods,
-  );
-  let resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
-  if (hasMasteryUpgrades(resolvedMastery.upgrades)) {
-    preMasteryVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      harmonyMods,
-      resolvedMastery.upgrades,
-    );
-    resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
-  }
-
-  const mastery = resolvedMastery.bonuses;
-  const masteryUpgrades = resolvedMastery.upgrades;
-
-  const scalingVars: ScalingVariables = {
-    ...preMasteryVars,
-  };
-
-  // Mastery stat bonuses apply to action variables before effect scaling.
-  scalingVars.control *= 1 + (mastery.controlBonus || 0);
-  scalingVars.intensity *= 1 + (mastery.intensityBonus || 0);
-  scalingVars.critchance += mastery.critChanceBonus || 0;
-  scalingVars.critmultiplier += mastery.critMultiplierBonus || 0;
-  scalingVars.successChanceBonus += mastery.successChanceBonus || 0;
+  const evaluation =
+    frame ?? buildActionEvaluationFrame(state, skill, config, conditionEffects);
+  const masteryUpgrades = evaluation.mastery.upgrades;
+  const scalingVars = evaluation.variables;
 
   const critFactor = includeExpectedValue
     ? calculateExpectedCritMultiplier(
@@ -3169,46 +3199,14 @@ export function calculateActionSurvivabilityFloor(
     return Math.max(0, Math.min(1, survivalProbability));
   };
 
-  const harmonyMods = getHarmonyStatModifiers(
-    state.harmonyData,
-    config.craftingType,
-  );
-  let preMasteryActionVars = buildPreMasteryActionVariables(
-    state,
-    config,
-    conditionEffects,
-    harmonyMods,
-  );
-  let resolvedActionMastery = resolveMasteryBonuses(
+  const evaluation = buildActionEvaluationFrame(
     state,
     skill,
-    preMasteryActionVars,
+    config,
+    conditionEffects,
   );
-  if (hasMasteryUpgrades(resolvedActionMastery.upgrades)) {
-    preMasteryActionVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      harmonyMods,
-      resolvedActionMastery.upgrades,
-    );
-    resolvedActionMastery = resolveMasteryBonuses(
-      state,
-      skill,
-      preMasteryActionVars,
-    );
-  }
-
-  const mastery = resolvedActionMastery.bonuses;
-  const actionMasteryUpgrades = resolvedActionMastery.upgrades;
-  const actionVars = {
-    ...preMasteryActionVars,
-  };
-  actionVars.control *= 1 + (mastery.controlBonus || 0);
-  actionVars.intensity *= 1 + (mastery.intensityBonus || 0);
-  actionVars.critchance += mastery.critChanceBonus || 0;
-  actionVars.critmultiplier += mastery.critMultiplierBonus || 0;
-  actionVars.successChanceBonus += mastery.successChanceBonus || 0;
+  const actionMasteryUpgrades = evaluation.mastery.upgrades;
+  const actionVars = evaluation.variables;
 
   const actionSuccessChance = isItemAction
     ? 1
@@ -4557,6 +4555,12 @@ function applySkillTransition(
   const orderedEffects = orderedNumeric && !!skill.effects?.length;
   const newBuffs = new Map(resolvedActiveBuffs);
   let certainApplication = true;
+  const evaluation = buildActionEvaluationFrame(
+    state,
+    skill,
+    config,
+    conditionEffects,
+  );
   const gains: SkillGains =
     orderedEffects ||
     (!skill.isDisciplinedTouch &&
@@ -4565,56 +4569,26 @@ function applySkillTransition(
         (effect) => effect.kind === 'createBuff' && !effect.condition,
       ))
       ? { completion: 0, perfection: 0, stability: 0 }
-      : calculateSkillGains(state, skill, config, conditionEffects, {
-          includeExpectedValue: phase.includeExpectedValue,
-          successChance: phase.successChance,
-          stabilityCost: effectiveCosts.stabilityCost,
-        });
+      : calculateSkillGainsWithFrame(
+          state,
+          skill,
+          config,
+          conditionEffects,
+          {
+            includeExpectedValue: phase.includeExpectedValue,
+            successChance: phase.successChance,
+            stabilityCost: effectiveCosts.stabilityCost,
+          },
+          evaluation,
+        );
 
   // Action-level scaling variables (carry the 0.7.10 boost stats). Pure over
   // the pre-action state, so they are built up front and shared by the cost
   // restore, technique effects, and buff effects below.
-  const harmonyMods = getHarmonyStatModifiers(
-    state.harmonyData,
-    config.craftingType,
-  );
-  let preMasteryActionVars = buildPreMasteryActionVariables(
-    state,
-    config,
-    conditionEffects,
-    harmonyMods,
-  );
-  let resolvedActionMastery = resolveMasteryBonuses(
-    state,
-    skill,
-    preMasteryActionVars,
-  );
-  if (hasMasteryUpgrades(resolvedActionMastery.upgrades)) {
-    preMasteryActionVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      harmonyMods,
-      resolvedActionMastery.upgrades,
-    );
-    resolvedActionMastery = resolveMasteryBonuses(
-      state,
-      skill,
-      preMasteryActionVars,
-    );
-  }
-
-  const mastery = resolvedActionMastery.bonuses;
-  const actionMasteryUpgrades = resolvedActionMastery.upgrades;
-  const actionVars = {
-    ...preMasteryActionVars,
-    ...(orderedNumeric ? { step: state.step } : {}),
-  };
-  actionVars.control *= 1 + (mastery.controlBonus || 0);
-  actionVars.intensity *= 1 + (mastery.intensityBonus || 0);
-  actionVars.critchance += mastery.critChanceBonus || 0;
-  actionVars.critmultiplier += mastery.critMultiplierBonus || 0;
-  actionVars.successChanceBonus += mastery.successChanceBonus || 0;
+  const actionMasteryUpgrades = evaluation.mastery.upgrades;
+  const actionVars = orderedNumeric
+    ? { ...evaluation.variables, step: state.step }
+    : evaluation.variables;
 
   const effectiveQiCost = effectiveCosts.qiCost;
   let effectiveStabilityCost = effectiveCosts.stabilityCost;

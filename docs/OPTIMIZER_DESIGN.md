@@ -10,6 +10,7 @@ Integration/UI use `src/optimizer/index.ts`; workers and tests may import intern
 - Techniques consume lookahead turn depth; supplied pill/reagent actions do not. Integration excludes items covered by native auto-use.
 - Persist only canonical supplemental native variables; derive state/buff/harmony aliases at evaluation time so stale mirrors do not pollute keys.
 - Transitions include the payment/mastery/buff phases in [Mechanics parity](MECHANICS_PARITY.md#execution-contract). Decree alone collects ordered bar-change contributions through the allocation gate; Returning Cycle is simulated state, not a flat score bonus.
+- Within a transition, gains reuse its private read-only action frame (buff/condition/harmony variables and the ordered two-pass mastery resolution); success/payment overrides and mutable effect outputs stay separate. Survival uses the same frame builder independently, not a cache across differing setup/mastery phases.
 
 ## Outcome and goals
 
