@@ -2387,6 +2387,7 @@ export function calculateSkillGains(
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
   if (
+    !skill.isDisciplinedTouch &&
     skill.effects?.length &&
     skill.actionKind !== 'item' &&
     hasEffectInterceptors(state.buffs)
@@ -4372,10 +4373,12 @@ function applySkillTransition(
   const orderedNumeric =
     (!isItemAction && hasEffectInterceptors(resolvedActiveBuffs)) ||
     hasStabilityPrevention(resolvedActiveBuffs);
+  const orderedEffects =
+    orderedNumeric && !skill.isDisciplinedTouch && !!skill.effects?.length;
   const newBuffs = new Map(resolvedActiveBuffs);
   let certainApplication = true;
   const gains: SkillGains =
-    orderedNumeric ||
+    orderedEffects ||
     (!skill.isDisciplinedTouch &&
       skill.effects?.length &&
       skill.effects.every(
@@ -4989,7 +4992,7 @@ function applySkillTransition(
       const previousCertainty: boolean = certainApplication;
       certainApplication = previousCertainty && factor === 1;
       if (
-        orderedNumeric &&
+        orderedEffects &&
         [
           'completion',
           'perfection',

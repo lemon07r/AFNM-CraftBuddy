@@ -1712,6 +1712,11 @@ Optional stochastic interceptor effects/triggers are skipped rather than
 persisting joint companion outcome branches; stock Su has no optional effects.
 These model limits are tracked in [mechanics parity](MECHANICS_PARITY.md#known-gaps).
 Technique-level triggered effects remain a latent compatibility gap.
+The technique handler `b7c` (`G:14944000–14948000`) executes only the
+`e.effects` tree through `y7c`; it has no scalar completion/perfection fallback.
+The optimizer's effect-less scalar fields and special Disciplined Touch path
+are offline/legacy compatibility inputs. Held companions must not erase their
+existing gains, but Su interception is not extended to those synthetic fields.
 Uncontrollable Flames is the one stock discordance buff, carried by six
 Flame of Discordance item ranks.
 

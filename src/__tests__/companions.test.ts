@@ -7,9 +7,26 @@ import {
 import {
   HAN_KEY,
   companionIntegrationScenarios,
+  companionReviewScenarios,
   hanScenarios,
   suScenarios,
 } from './fixtures/companions';
+
+describe('companion scalar compatibility', () => {
+  it.each(companionReviewScenarios())(
+    'retains offline scalar gains: $name',
+    ({ state, skill, config }) => {
+      const disciplined = skill.isDisciplinedTouch;
+      const next = applySkill(state, skill, config)!;
+      const preview = calculateSkillGains(state, skill, config);
+      expect(next.completion).toBe(5);
+      expect(next.perfection).toBe(disciplined ? 5 : 7);
+      expect(next.stability).toBe(disciplined ? 50 : 53);
+      expect(preview.completion).toBe(next.completion);
+      expect(preview.perfection).toBe(next.perfection);
+    },
+  );
+});
 
 describe('companion integration with final mechanics', () => {
   it.each([

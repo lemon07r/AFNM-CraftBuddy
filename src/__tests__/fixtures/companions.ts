@@ -25,7 +25,33 @@ export function companionScenarios() {
     ...suScenarios(),
     ...hanScenarios(),
     ...companionIntegrationScenarios(),
+    ...companionReviewScenarios(),
   ];
+}
+
+export function companionReviewScenarios() {
+  return ['su-scalar', 'han-scalar', 'su-disciplined', 'han-disciplined'].map(
+    (edge) => {
+      const base = edge.startsWith('su-')
+        ? suScenarios()[2]
+        : hanScenarios()[0];
+      const disciplined = edge.endsWith('disciplined');
+      const skill = retargetSkill({
+        qiCost: 0,
+        stabilityCost: 0,
+        baseCompletionGain: disciplined ? 0.5 : 5,
+        basePerfectionGain: disciplined ? 0.5 : 7,
+        stabilityGain: disciplined ? 0 : 3,
+        isDisciplinedTouch: disciplined,
+      });
+      return {
+        name: `companion-review-${edge}`,
+        state: base.state,
+        skill,
+        config: retargetConfig(skill),
+      };
+    },
+  );
 }
 
 /** Rebase joins: live progress must use intercepted/prevented amounts, while
@@ -112,7 +138,8 @@ export function companionIntegrationScenarios() {
         },
       ];
       if (edge === 'han-prevented-payment-progress') skill.stabilityCost = 10;
-      else skill.effects!.unshift({ kind: 'stability', amount: { value: -10 } });
+      else
+        skill.effects!.unshift({ kind: 'stability', amount: { value: -10 } });
     }
     return {
       name: `companion-integration-${edge}`,
