@@ -32,7 +32,10 @@ import {
   type CraftingState,
   type SkillDefinition,
   type SkillMastery,
+  type BuffDefinition,
+  type TrackedBuff,
 } from '../optimizer';
+
 import {
   integrationDiagnostics,
   type CompletionBonusSource,
@@ -49,6 +52,41 @@ import {
 } from './techniqueResolution';
 import { debugLog } from '../utils/debug';
 import { parseGameNumber } from '../utils/largeNumbers';
+
+/** Preserve the live definition and instance state, including companion uses. */
+export function extractTrackedBuffs(
+  buffs: readonly CraftingBuff[] | undefined,
+): Map<string, TrackedBuff> {
+  const extracted = new Map<string, TrackedBuff>();
+  for (const buff of buffs ?? []) {
+    const key = normalizeBuffKey(buff?.name);
+    // Runtime keeps nonpositive createBuff results held: ordinary effects,
+    // flags and companion prevention/interception can still apply.
+    if (!key || !Number.isFinite(buff.stacks)) continue;
+    const internalState: Record<string, number> = {};
+    const { internalState: liveState, stacks, ...definition } = buff;
+    for (const [stateKey, value] of Object.entries(liveState ?? {})) {
+      const numeric = Number(value);
+      if (stateKey && Number.isFinite(numeric))
+        internalState[stateKey] = numeric;
+    }
+    extracted.set(key, {
+      name: buff.name,
+      stacks,
+      buffType: buff.buffType,
+      // Runtime conditions/effects include more kinds than the local union.
+      // Keep the payload intact; the pure executor narrows supported kinds.
+      definition: {
+        ...definition,
+        effects: buff.effects ?? [],
+      } as unknown as BuffDefinition,
+      internalState: Object.keys(internalState).length
+        ? internalState
+        : undefined,
+    });
+  }
+  return extracted;
+}
 
 export function serializeCraftingBuffs(
   buffs: CraftingBuff[] | undefined | null,
@@ -71,9 +109,7 @@ export function serializeCraftingBuffs(
       if (!internalState || typeof internalState !== 'object') {
         return `${name}:${stacks}`;
       }
-      const statePart = Object.entries(
-        internalState as Record<string, unknown>,
-      )
+      const statePart = Object.entries(internalState as Record<string, unknown>)
         .filter(
           (entry): entry is [string, number] =>
             typeof entry[1] === 'number' && Number.isFinite(entry[1]),
@@ -870,7 +906,8 @@ export function convertGameTechniques(
     // 0.7.6 renamed False Fusion to "Strive for Completion" via `displayName`
     // only; `name` is still `False Fusion`, so keys stay stable while the UI can
     // show what the player actually sees.
-    const rawDisplayName = (sourceTech as { displayName?: unknown }).displayName;
+    const rawDisplayName = (sourceTech as { displayName?: unknown })
+      .displayName;
     const displayName =
       typeof rawDisplayName === 'string' && rawDisplayName.trim().length > 0
         ? rawDisplayName

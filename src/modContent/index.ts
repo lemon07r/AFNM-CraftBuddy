@@ -158,6 +158,7 @@ import {
   convertGameItemsToActions,
   convertGameTechniques,
   extractBuffInfo,
+  extractTrackedBuffs,
   extractCapCandidate,
   extractCompletionBonusStacks,
   extractMasteryData,
@@ -1658,53 +1659,7 @@ function updateRecommendation(
     Math.min(1, Number((entity as any)?.stats?.successChanceBonus ?? 0) || 0),
   );
 
-  const extractedBuffs = new Map<
-    string,
-    {
-      name: string;
-      stacks: number;
-      buffType?: string;
-      definition?: any;
-      internalState?: Record<string, number>;
-    }
-  >();
-  if (buffs) {
-    for (const buff of buffs) {
-      const key = normalizeBuffKey(buff?.name);
-      if (!key) continue;
-      const stacks = buff?.stacks ?? 0;
-      // Runtime keeps nonpositive createBuff results: ordinary effects and
-      // held-buff flags can still matter until an explicit consume/negate.
-      if (Number.isFinite(stacks)) {
-        // 0.7.7+ buffs carry live trigger-written state (e.g. True Bifang
-        // Flame's blaze). Capture it so stat scaling off those keys evaluates
-        // against the real values instead of zero.
-        const rawInternalState = (buff as any)?.internalState;
-        const internalState: Record<string, number> = {};
-        if (rawInternalState && typeof rawInternalState === 'object') {
-          for (const [stateKey, stateValue] of Object.entries(
-            rawInternalState as Record<string, unknown>,
-          )) {
-            const numeric = Number(stateValue);
-            if (stateKey && Number.isFinite(numeric)) {
-              internalState[stateKey] = numeric;
-            }
-          }
-        }
-        extractedBuffs.set(key, {
-          name: buff?.name || key,
-          stacks,
-          buffType: (buff as any)?.buffType,
-          definition: {
-            ...(buff as any),
-            effects: (buff as any)?.effects ?? [],
-          },
-          internalState:
-            Object.keys(internalState).length > 0 ? internalState : undefined,
-        });
-      }
-    }
-  }
+  const extractedBuffs = extractTrackedBuffs(buffs);
 
   // Read pool/stability cost percentage modifiers from entity stats + buffs.
   // Runtime can report neutral baseline as 0, while optimizer internals use 100.
