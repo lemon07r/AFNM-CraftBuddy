@@ -1161,6 +1161,68 @@ describe('Han Weiguang certainty-only prevention', () => {
 });
 
 describe('Su Lianhua technique interception', () => {
+  it('keeps metadata payment on the general path for held interceptors', () => {
+    const discount: BuffDefinition = {
+      name: 'Intercepted payment discount',
+      canStack: false,
+      effects: [],
+      stats: { poolCostPercentage: { value: 50 } },
+    };
+    const su = suBuff();
+    su.craftingEffectInterceptors![0].effects = [
+      { kind: 'createBuff', buff: discount, stacks: { value: 1 } },
+    ];
+    const skill = retargetSkill({
+      qiCost: 40,
+      stabilityCost: 0,
+      effects: [],
+      masteryEntries: [
+        {
+          kind: 'effect',
+          condition: { kind: 'chance', percentage: 50 },
+          effects: [{ kind: 'completion', amount: { value: 5 } }],
+        },
+      ],
+    });
+    const config = retargetConfig(skill);
+    const run = (forceGeneral: boolean): CraftingState => {
+      const payment: BuffDefinition = {
+        name: 'Skillful Manipulation',
+        canStack: false,
+        effects: [],
+        stats: {
+          stabilityCostPercentage: {
+            value: 75,
+            upgradeKey: 'buffPower',
+            // A unit expression forces the general path without changing costs.
+            ...(forceGeneral ? { eqn: '1' } : {}),
+          },
+        },
+      };
+      const state = new CraftingState({
+        qi: 100,
+        stability: 50,
+        step: 2,
+        buffs: new Map([
+          [
+            "su_lianhua's_assistance",
+            { name: su.name, stacks: 1, definition: su },
+          ],
+          [
+            'skillful_manipulation',
+            { name: payment.name, stacks: 1, definition: payment },
+          ],
+        ]),
+      });
+      return applySkill(state, skill, config)!;
+    };
+    const general = run(true);
+    // Realized mastery success pays 20 Qi; failure pays 40. Projecting only
+    // explicit createBuff effects misses Su's side effect and incorrectly pays 40.
+    expect(general.qi).toBe(70);
+    expect(run(false).qi).toBe(general.qi);
+  });
+
   it.each([
     ['step-0', 5, 5],
     ['step-1', 5, 5],
