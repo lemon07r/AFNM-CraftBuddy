@@ -104,6 +104,28 @@ export function renderReactRoot(
   root.render(element);
 }
 
+/** Release modal effects synchronously, even on hosts without flushSync. */
+export function unmountOverlayRoot(
+  root: ReactDOM.Root | null,
+  container: HTMLElement | null,
+): void {
+  // Hide first so MUI cannot restore focus to the now-invisible settings opener.
+  if (container) container.style.display = 'none';
+  root?.unmount();
+
+  // Do this after modal cleanup, which can otherwise trap/restore focus again.
+  // Preserve game-side focus when the hide was triggered outside the overlay.
+  const activeElement = container?.ownerDocument.activeElement;
+  if (
+    activeElement &&
+    container?.contains(activeElement) &&
+    'blur' in activeElement &&
+    typeof activeElement.blur === 'function'
+  ) {
+    activeElement.blur();
+  }
+}
+
 export function getGameRootElement(): ParentNode {
   return (
     document.getElementById('root') ||

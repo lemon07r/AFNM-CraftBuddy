@@ -51,6 +51,8 @@ CraftBuddy has no native action-cost wrapper; costs are locally simulated. Nativ
 
 The settings dialog portals into CraftBuddy's overlay, not the document body: MUI's sibling hiding must not mark the game controls `aria-hidden` or inert while native auto-use automation is running. MUI retains focus trapping/restoration and Escape-to-close; the dialog explicitly accepts pointer events despite the overlay's pass-through host.
 
+Every host hide (including panel visibility changes, polling transitions and craft end) synchronously unmounts the overlay root, releasing the settings dialog and its focus trap even when the host lacks `flushSync`. Any remaining overlay focus is blurred after modal cleanup; focus already on the game is preserved. Reshow creates a fresh root, so settings is closed and disclosures reset.
+
 ### Automation
 
 - Re-read the live revision immediately before dispatch. `stale` means recalculate; `unverifiable` means pause and dispatch nothing. The signature includes resources, conditions/queue, buffs, cooldowns, inventory, harmony/state digest, roster and consumed pills.

@@ -155,6 +155,7 @@ import {
   renderReactRoot,
   scheduleAfterNextPaint,
   scheduleSearchAfterLoadingShell,
+  unmountOverlayRoot,
 } from './overlayMount';
 import {
   computeObservedMaxStability,
@@ -2058,7 +2059,11 @@ function updateRecommendation(
  * Create the overlay container for our panel.
  */
 function createOverlayContainer(): void {
-  if (overlayContainer) return;
+  if (overlayContainer) {
+    // A hide destroys the React root to release dialog focus traps immediately.
+    if (!reactRoot) reactRoot = ReactDOM.createRoot(overlayContainer);
+    return;
+  }
 
   overlayContainer = document.createElement('div');
   overlayContainer.id = 'craftbuddy-overlay';
@@ -2127,10 +2132,6 @@ function CraftBuddyOptions() {
 }
 
 function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
-  if (!overlayContainer || !reactRoot) {
-    createOverlayContainer();
-  }
-
   // Show the overlay only while the crafting UI is still on-screen (or while a
   // craft is still bootstrapping). This prevents cached Redux craft data from
   // leaving stale panels visible on library/result transitions.
@@ -2149,12 +2150,13 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
       (isPendingCraftStart && hasVisibleCraftingUi) ||
       (isCalculating && hasConfirmedCraftSession && hasVisibleCraftingUi));
 
-  if (!reactRoot || !shouldShow) {
-    if (reactRoot && overlayContainer) {
-      overlayContainer.style.display = 'none';
-    }
-    isOverlayVisible = false;
+  if (!shouldShow) {
+    hideOverlay();
     return;
+  }
+
+  if (!overlayContainer || !reactRoot) {
+    createOverlayContainer();
   }
 
   overlayContainer!.style.display = 'block';
@@ -2222,9 +2224,8 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
  * Hide the overlay.
  */
 function hideOverlay(): void {
-  if (overlayContainer) {
-    overlayContainer.style.display = 'none';
-  }
+  unmountOverlayRoot(reactRoot, overlayContainer);
+  reactRoot = null;
   isOverlayVisible = false;
 }
 
