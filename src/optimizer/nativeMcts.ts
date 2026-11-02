@@ -22,7 +22,6 @@ declare const require:
   | ((modulePath: string) => NativeMctsModule | Record<string, unknown>)
   | undefined;
 
-const FINISH_CRAFT_KEY = '__finish_craft__';
 const CANONICAL_CONDITIONS = [
   'neutral',
   'positive',
@@ -50,6 +49,7 @@ interface NativeMctsInput {
   forecasted_conditions: string[];
   condition_effects: Record<string, NativeConditionEffectSummary>;
   search: {
+    time_budget_ms: number;
     iterations: number;
     rollout_depth: number;
     exploration: number;
@@ -780,6 +780,7 @@ export function buildNativeMctsInput(params: {
       forecastedConditionTypes,
     ),
     search: {
+      time_budget_ms: Math.max(0, finiteNumber(search.timeBudgetMs, 2000)),
       iterations: deriveMctsIterations(search),
       rollout_depth: Math.max(
         1,
@@ -852,7 +853,7 @@ function normalizeNativeMctsResult(
   const orderedPolicies = raw.skill_policies
     .filter((policy) => {
       if (!policy || typeof policy.key !== 'string') return false;
-      if (policy.key !== FINISH_CRAFT_KEY && !validSkillKeys.has(policy.key)) {
+      if (!validSkillKeys.has(policy.key)) {
         return false;
       }
       return (

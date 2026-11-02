@@ -405,7 +405,7 @@ fn matches_the_typescript_simulator() {
                 }
             };
             let action = Action {
-                skill_index: Some(case.skill_index),
+                skill_index: case.skill_index,
                 key: skill.key.clone(),
                 name: skill.name.clone(),
             };
