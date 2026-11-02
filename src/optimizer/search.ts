@@ -1298,10 +1298,7 @@ function getThresholdForGuaranteedBonusCount(
   }
 
   const cappedCount = Math.max(0, Math.floor(guaranteedCount));
-  // Preserve the legacy fractional first width during authority consolidation.
-  return cappedCount > 0
-    ? bandThreshold(target, cappedCount) + (target - Math.floor(target))
-    : 0;
+  return bandThreshold(target, cappedCount);
 }
 
 function getProgressTowardRawGoal(

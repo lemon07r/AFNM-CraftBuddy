@@ -2007,6 +2007,7 @@ describe('craft-end ladder modeling', () => {
 
   it('maps overcraft progress through the real ladder instead of a raw linear bar', () => {
     expect(getThresholdForGuaranteedBonusCount(100, 2)).toBe(230);
+    expect(getThresholdForGuaranteedBonusCount(7.5, 2)).toBe(16);
     expect(getProgressTowardRawGoal(150, 200, 100)).toBeGreaterThan(150);
     expect(getProgressTowardRawGoal(200, 200, 100)).toBeCloseTo(200, 5);
   });

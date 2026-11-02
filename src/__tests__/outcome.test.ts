@@ -64,6 +64,10 @@ describe('band arithmetic', () => {
     expect(bandThreshold(0, 3)).toBe(0);
     expect(bandThreshold(Number.NaN, 3)).toBe(0);
   });
+
+  it('floors the final total for a fractional recipe width', () => {
+    expect(bandThreshold(7.5, 2)).toBe(16);
+  });
 });
 
 describe('tier requirements', () => {

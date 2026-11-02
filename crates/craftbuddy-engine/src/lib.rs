@@ -1680,8 +1680,7 @@ fn threshold_for_guaranteed_count(target: f64, guaranteed: i32) -> f64 {
     if target <= 0.0 || guaranteed <= 0 {
         return 0.0;
     }
-    // Preserve the legacy fractional first width during consolidation.
-    band_threshold(target, guaranteed) + (target - target.floor())
+    band_threshold(target, guaranteed)
 }
 fn expected_crit_multiplier(crit_chance: f64, crit_multiplier: f64) -> f64 {
     let excess_crit = (crit_chance - 100.0).max(0.0);
