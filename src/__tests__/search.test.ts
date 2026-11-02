@@ -34,6 +34,7 @@ import {
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
 import { bandThreshold, TIER_REQUIREMENTS } from '../optimizer/outcome';
+import { hanScenarios, suScenarios } from './fixtures/companions';
 
 freezeSearchClock();
 
@@ -2698,6 +2699,34 @@ describe('overcraft extras scoring', () => {
       (ambitionOff.recommendation?.score ?? 0) + 100,
     );
   });
+});
+
+describe('normalized transposition keys', () => {
+  const keyFor = (state: CraftingState) =>
+    __testing.getNormalizedCacheKey(state, 100, 100, 4, 'neutral', [], 100);
+
+  it('separates full steps while an effect interceptor is held', () => {
+    const base = suScenarios()[0].state;
+    const step1 = base.copy({ step: 1 });
+    const step2 = base.copy({ step: 2 });
+    const step5 = base.copy({ step: 5 });
+    expect(step1.getCacheKey()).toBe(step2.getCacheKey());
+    expect(keyFor(step1)).not.toBe(keyFor(step2));
+    // Generic interceptor expressions can read arbitrary steps, not just mod 3.
+    expect(keyFor(step2)).not.toBe(keyFor(step5));
+  });
+
+  it.each(['bare', 'han'] as const)(
+    'preserves the byte-identical legacy key without interceptors: %s',
+    (kind) => {
+      const base = hanScenarios()[0].state;
+      const state = kind === 'bare' ? base.copy({ buffs: new Map() }) : base;
+      const step1 = state.copy({ step: 1 });
+      const step2 = state.copy({ step: 2 });
+      expect(keyFor(step1)).toBe(`${step1.getCacheKey()}:0:0:4:neutral:-`);
+      expect(keyFor(step1)).toBe(keyFor(step2));
+    },
+  );
 });
 
 describe('cross-step transposition cache', () => {
