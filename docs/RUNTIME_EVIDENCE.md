@@ -1594,6 +1594,14 @@ inside `ZS` remain separate draws. Stability/maximum cleanup must preserve
 this correlation rather than independently resampling action success per
 effect.
 
+Payment callbacks are synchronous: `r7c` dispatches `D2('stabilitySpent',...)`
+after the subtraction (`G:14930153–14930735`), and `u7c` dispatches
+`D2('poolSpent',...)` after the clamped Qi delta (`G:14935853–14936730`).
+`b7c` invokes both before its success check/effect loop (`G:14946058–14947800`).
+CraftBuddy's deferred payment listeners remain a known phase-ordering gap;
+stack-event support does not imply all resource callbacks run at their runtime
+mutation sites.
+
 Technique/mastery effect applier `y7c` checks
 `ZS(e.condition,t,a,0,r,i)` with the already-mutated progress object `r`
 (`G:14941612–14941690`). The supplied review coordinate `14941271` identifies
