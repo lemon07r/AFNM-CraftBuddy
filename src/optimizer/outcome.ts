@@ -473,7 +473,7 @@ export function willAutoFinish(
  * Last completion band that still increases the material refund.
  *
  * Runtime: refund percentage is `(completionSuccess - 1) * 20` clamped to
- * `[0, 80]` (`docs/project/RUNTIME_EVIDENCE.md` section 12.3), so the fifth
+ * `[0, 80]` (`docs/RUNTIME_EVIDENCE.md` section 12.3), so the fifth
  * band is the last one that pays.
  */
 export const OVERCRAFT_REFUND_MAX_BANDS = 5;

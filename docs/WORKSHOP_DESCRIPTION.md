@@ -1,24 +1,3 @@
----
-title: Workshop Description
-status: active
-authoritative: true
-owner: craftbuddy-maintainers
-game_version: 0.7.19-ac29603
-last_verified: 2026-11-02
-source_of_truth: Steam Workshop item 3661729323, package.json, src/settings/index.ts, src/optimizer/search.ts, src/optimizer/outcome.ts, crates/craftbuddy-engine/*
-review_cycle_days: 30
-related_files:
-  - docs/project/RELEASE_NOTES_6.9.0.md
-  - docs/project/RELEASE_NOTES_6.8.0.md
-  - docs/project/RELEASE_PROCESS.md
-  - docs/project/RELEASE_NOTES_6.7.0.md
-  - docs/project/RELEASE_NOTES_6.6.0.md
-  - docs/project/RELEASE_NOTES_6.5.0.md
-  - docs/project/RELEASE_NOTES_6.3.1.md
-  - docs/project/OPTIMIZER_DESIGN.md
-  - scripts/workshop-upload.ts
----
-
 [h1]CraftBuddy[/h1]
 [b]A crafting optimizer for Ascend From Nine Mountains.[/b]
 
@@ -86,9 +65,9 @@ Settings live behind the gear icon inside the CraftBuddy panel and open as a sli
 [h2]Search Presets[/h2]
 Pick a preset to adjust all four search parameters together.
 [list]
-[*] [b]Instant[/b] — near-zero latency, minimal lookahead
+[*] [b]Instant[/b] — lowest search budget, minimal lookahead (1-second Legacy / 1.25-second Experimental time budget)
 [*] [b]Fast[/b] — quick results, good for simple crafts
-[*] [b]Balanced[/b] — recommended for most crafting
+[*] [b]Balanced[/b] — more search time than Fast, for harder crafts
 [*] [b]High Accuracy[/b] — deeper search for complex or high-value crafts
 [*] [b]Max[/b] — maximum depth, may take several seconds per recommendation
 [/list]

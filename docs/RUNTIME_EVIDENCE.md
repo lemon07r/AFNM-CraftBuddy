@@ -1,21 +1,3 @@
----
-title: Runtime Evidence
-status: active
-authoritative: true
-owner: craftbuddy-maintainers
-game_version: 0.7.19-ac29603
-last_verified: 2026-11-02
-source_of_truth: installed AFNM 0.7.19 runtime bundle (scripts/installed-game-runtime.js); earlier sections identify their historical builds
-review_cycle_days: 90
-related_files:
-  - docs/project/MECHANICS_PARITY.md
-  - docs/project/INTEGRATION_MODAPI.md
-  - docs/project/OPTIMIZER_ENGINE_FINDINGS.md
-  - src/optimizer/harmony.ts
-  - src/modContent/nativeAutoUse.ts
-  - src/modContent/autoCraftExecutor.ts
----
-
 <!-- prettier-ignore-start -->
 <!--
   Do NOT run Prettier over this file. The fenced `js` blocks are verbatim
@@ -25,17 +7,23 @@ related_files:
 
 # Runtime Evidence
 
+## Current state
+
+- **§18** is the 0.7.19-ac29603 retarget re-audit; **§19** records the focused 2026-11-02 follow-up on stability, discordance, stack/group effects, companions, auto-use and UI APIs. Both are static bundle evidence, not live-client test claims.
+- **§17** is the 0.7.17 phase/cost/droplet/Returning Cycle audit, checked again in §18. **§14–§16** retain the earlier stateful-buff/seal/boost/cap evidence confirmed there.
+- **§1–§11** are historical 0.7.5/0.7.6 findings, not a fresh whole-bundle equivalence claim. Decree's original −5 stray penalty is superseded by **§14.6** (−15); harmony count grew from seven to nine by §17.
+- **§12.5's five-band auto-finish claim is superseded by §18.4**: stability <= 0 or both actual caps. §12.1–§12.4 remain reward evidence, not termination rules.
+- **§14.5's late-neutral discordance account is superseded by §17.7 / §19**. **§15.4's automatic stack-trigger support claim is superseded by §19**: string-typed triggers alone do not dispatch stack events. §19 also narrows §18.6's unsupported surfaces to demonstrated stock uses versus latent technique triggers.
+- §13 is the dated blob-worker capability check. Historical check counts, paths/build coordinates and workflow descriptions below retain their original scope. Current model contracts/gaps are in `docs/MECHANICS_PARITY.md`; current commands are in `docs/DEVELOPMENT.md`.
+
 Findings extracted from the **installed** AFNM runtime, most recently
-**0.7.19-ac29603** (section 18). Earlier sections retain their historical build
+**0.7.19-ac29603** (sections 18–19). Earlier sections retain their historical build
 citations. The runtime is the sole authority here: where a tooltip, a
 patch note, or an earlier CraftBuddy note disagrees with the code below, the code
 below wins.
 
-**The filename carries no version on purpose.** This file used to be
-`RUNTIME_EVIDENCE_075.md`, which meant every game patch produced a rename plus a
-fan-out of link edits, and left stale per-version copies behind. The targeted
-build now lives in the `game_version` frontmatter field and in each finding's
-citation, so a future patch is a **content edit to this file**, not a new file.
+The filename is unversioned; each finding cites its own build so historical
+evidence can remain available without becoming current guidance.
 
 ## How to reproduce
 
@@ -312,7 +300,7 @@ Fixed identically in `calculateSkillGains` and `effects.rs::calculate_skill_gain
 11 of 585 corpus transitions shifted by one point and both engines still agree on
 every transition. No scoring constant was tuned. That fix landed in 6.0.0, when
 `bun run optimizer:bench` reported **98 of 98 contracts passing**; the current
-benchmark shape is recorded in `ENGINE_PERFORMANCE.md`.
+benchmark shape is recorded in `docs/ENGINE_DECISIONS.md`.
 
 One contract change came with the fix. The runner-up ordering clause is now
 materiality-aware: it always fails when the losing candidate is actually
@@ -764,7 +752,7 @@ Ue=(e.progressState?.stability??0)<=0||e.recipe&&e.recipeStats&&e.progressState&
 Decoded: finish when stability runs out, or both bars reach their caps, or —
 for `canOvercraft` recipes — completion holds **5 guaranteed bands** and
 perfection reaches its cap. CraftBuddy mirrored all three branches at the time;
-that claim no longer describes `src/optimizer/outcome.ts::willAutoFinish`.
+that claim no longer describes `willAutoFinish` in `src/optimizer/outcome.ts`.
 
 ## 13. Blob-URL search workers (Phase 2.4 capability verification)
 
@@ -787,7 +775,7 @@ Environment facts that shaped the design:
   proxy is Bun 1.3.14, whose `Worker` supports blob-URL scripts: the echo
   smoke test (`new Worker(blobUrl)` + postMessage round-trip) passes, and
   `bun scripts/bench-worker-pool.ts` drives the real worker entry through
-  full partitioned searches (see OPTIMIZER_ENGINE_FINDINGS "Worker pool").
+  full partitioned searches (see `docs/ENGINE_DECISIONS.md`, "Worker pool").
 
 The authoritative in-game check is the client's **once-per-session smoke
 probe**: on the first search dispatch the client spawns one worker, round-
@@ -1117,7 +1105,7 @@ the cost/droplet/mastery/trigger/scaling and buff-name timing corrections in
 both engines, then Returning Cycle, hydration/replay and the native bridge.
 The regenerated v4 corpus has 177 scenarios / 1,554 cases (1,352 legal
 transitions, 202 illegal-action checks). `MECHANICS_PARITY.md` records the
-current model and its deliberate approximations; `ENGINE_PERFORMANCE.md`
+current model and its deliberate approximations; `docs/ENGINE_DECISIONS.md`
 records the measured ~0.58 vs pre-retarget HEAD ~0.41 ms/node phase/cost
 overhead and the approved 6,000-node heat-one benchmark contract. The
 resonance safety prohibition remains; only its non-recommended runner-up
@@ -1422,8 +1410,8 @@ The runtime oracle and extraction passed. After this evidence update, the
 inventory generator ran with its output redirected to audit scratch, preserving
 the one-repository-file write limit. Documentation link and authority checks
 passed. The combined `docs:check` failed at freshness: 16 **untouched** documents
-exceeded their review periods; for example, `docs/DOC_INVENTORY.md:6-8` records
-2026-09-13 with a 30-day cycle, and `docs/project/ARCHITECTURE.md:7-9` records
+exceeded their review periods; for example, the then-current inventory metadata
+recorded 2026-09-13 with a 30-day cycle, and architecture metadata recorded
 2026-08-23 with a 30-day cycle. Those dates were not changed merely to make the
 check pass. Source tests, WASM/build/corpus generation, benchmarks, and live UI
 checks were not run in this read-only implementation audit. Only this evidence
@@ -1576,5 +1564,100 @@ read after initialization. See `MECHANICS_PARITY.md` for current limitations.
 No direct historical bundle/data diff, live UI check or demonstrated malformed
 stock crafting payload was available. The audit establishes the inspected
 paths and anchors, not exhaustive cross-version equivalence.
+
+## 19. Focused 0.7.19 follow-up (2026-11-02)
+
+Read-only inspection of the installed build, not a live game test. `G` below
+means zero-based **Buffer byte offsets** in the extracted 24,118,016-byte
+Game.js; `T` means its 140,104-byte ThemeProvider.js sibling. These were under
+the extractor's `3245624483-1793613141284` cache key. The offsets are not UTF-16
+string positions and should be re-resolved after a game update.
+
+### Stability cleanup, not per-application clamping
+
+`G:14930153–14930735` adds/subtracts stability without a zero floor or upper
+cap; payment calls the same applier (`G:14946058`). Buffs and harmony run
+before cleanup (`G:14952843–14953475`); `G:14953685` finally bounds stability
+to zero/recipe stability minus penalty, then floors it. Thus 1 − 10 + 7 ends
+at 0, not 7; 8/max 10 + 5 − 5 ends at 8, not 5. Max-stability effects also
+do not immediately cap current stability. Qi differs: ordinary payment and
+restoration clamp immediately (`G:14935853–14936307`). Local early stability
+bounds and the separate floor helper were confirmed gaps at inspection time.
+
+### Discordance precedes the entire forecast queue
+
+`G:14951647–14952538` takes the largest held positive `discordantConditions`
+without a stack-count test. If `d > 0`, first return neutral when a draw is
+≥d, then draw for an extreme with probability `0.18/d` (split equally), else
+split mild positive/negative by `0.5 + 0.25*harmony/100`. Only d=0 reaches the
+ordinary forecast branches. No explicit harmony/d probability clamp occurs
+here. At d=.7/harmony +100: neutral .30, extremes .09 each, positive .39,
+negative .13. Local late-neutral ordering and mild probabilities differed.
+
+### Stack mutations and group effects
+
+Actual event names are `stackGained.<buff name>` / `stackLost.<buff name>`
+(`G:5150521`), not onStacksGained/onStacksLost. Gain helper `G:14934829–14935456`
+floors the requested addition and reports that amount even if maxStacks caps
+the actual gain. Loss helper `G:14934231–14934786` reports the actual bounded
+removal and removes depleted buffs. Nonstackable existing buffs do not gain.
+Negative technique/mastery/item createBuff goes through the gain helper
+without a loss event/removal, unlike negative buff-effect createBuff. Negate
+dispatches the old held count; ordinary duration decay uses addStack and does
+emit loss. Direct harmony-created/replaced buffs and Completion Bonus can
+bypass those helpers/events. Dispatch is synchronous, checks held positive
+stacks and guards re-entry by trigger/buff name; numeric `amount` enters scope,
+string buffName does not (`G:14950331–14950464`).
+
+Both technique/mastery and buff executors implement `modifyBuffGroup`
+(`G:14939530–14939911`, `G:14943100–14943481`). Match exact buffType **or name**,
+evaluate amount once in source scope, select all/highest/lowest/random; ties
+keep the first. Apply ordinary per-target stack helper rules/events. Item use
+has no such switch branch. Stock owner enumeration found one crafting
+technique, **Elixir Renewal** (+3 Pill), no buff or item definitions using it.
+Forge Compression's **buff** owns the Pressure stack listener; no stock
+technique with its own triggeredEffects definition was found. The local model
+did not emit stack events or execute group changes at inspection time.
+
+### Stock companion and auto-use scope
+
+Su Lianhua's Assistance intercepts positive technique/mastery completion and
+perfection on `step % 3 == 2`, multiplying by 1.5 and flooring (`G:13041335`).
+Han Weiguang's Assistance prevents the first two negative stability
+applications, including payment, tracked in internal state
+(`G:13038068`, `G:14929654–14930317`). These were demonstrated stock gaps,
+whereas technique-level triggered effects were a latent compatibility gap.
+Uncontrollable Flames is the one stock discordance buff, carried by six
+Flame of Discordance item ranks.
+
+The native technique handler runs auto-use synchronously before dispatch
+(`G:17668521–17668647`), through the same consumePill reducer/item executor as
+manual use (`G:14948077–14948921`, `G:14958398`). Selection uses the shared
+`floor(pillsPerRound) - consumedPills` budget, reagents at step zero first,
+inventory/maxCount by **item name**, slot rules, active nonstackable-buff
+checks and cumulative toxicity (`G:17663914–17664875`). Selector variables are
+built once per batch, not updated by simulated selected-item effects. Actual
+item dispatch then applies sequentially. Training definedness suppresses
+inventory removal. CraftBuddy's native-control execution boundary preserves
+this hook; future auto-use prediction was not certified by that fact.
+
+### UI facts (definitions, not a screenshot)
+
+Game typography uses `normalFont, fancyFont[, custom families], langGlyphs,
+PT Serif, sans-serif`; crafting headings can explicitly use fancyFont
+(`T:123417–124553`, `G:6233968`). Default font assets are AfnmNormalFont.ttf
+and AfnmFancyFont.otf, subject to language/custom overrides. Theme primary is
+#8B2500, dark background/paper #1a1714/#2a2520 and dark text #e8d4a0/#c4b088;
+light background/paper #FFF8F0/#FFFAF5 and text #3E2723/#5D4037
+(`T:123598–124551`). CraftBuddy's own theme differs; that is not proof of a
+functional bug or a live visual review.
+
+`modAPI.gameData.registerOptionsUI(component)` and top-level
+`modAPI.injectUI(slotName, generator)` exist (`G:23992729`, `G:24002830`).
+Their public wrappers return undefined; options components receive an api prop.
+Injection defaults to appendChild for the slot root, otherwise after
+(`G:15102670`, `G:16030757`). A declaration example placing injectUI under
+modAPI.ui is misleading. CraftBuddy currently uses its own overlay mount;
+adopting these APIs is separate work.
 
 <!-- prettier-ignore-end -->
