@@ -30,6 +30,7 @@ import {
   type SearchPresetId,
 } from '../settings';
 import { formatAmbitionBands } from './ambitionBands';
+import { SEARCH_GOAL_PRIORITY_BIAS_STEP } from '../utils/searchGoalPriority';
 import { ActionButton, Disclosure, Help, PanelHeading } from './components';
 import { colors, uiLayers, reducedMotionSx } from './theme';
 import { ChoiceGroup } from './components/ChoiceGroup';
@@ -298,7 +299,7 @@ export function SettingsBody({
           draftValue={draftSettings.searchGoalPriorityBias}
           min={-100}
           max={100}
-          step={5}
+          step={SEARCH_GOAL_PRIORITY_BIAS_STEP}
           format={(value) =>
             value === 0
               ? 'Balanced'

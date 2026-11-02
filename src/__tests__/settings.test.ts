@@ -235,6 +235,15 @@ describe('settings search budget', () => {
     expect(rounded.searchGoalPriorityBias).toBe(75);
   });
 
+  it.each([-100, -75, -50, -25, 0, 25, 50, 75, 100])(
+    'persists bias slider position %s without changing its displayed value',
+    (searchGoalPriorityBias) => {
+      expect(
+        saveSettings({ searchGoalPriorityBias }).searchGoalPriorityBias,
+      ).toBe(searchGoalPriorityBias);
+    },
+  );
+
   it('resets stored search budgets to the legacy fast preset once while preserving display prefs', () => {
     saveSettings({
       compactMode: true,
