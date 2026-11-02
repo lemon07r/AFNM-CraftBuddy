@@ -785,14 +785,31 @@ describe('Safe Expression Parser', () => {
   });
 
   it('should substitute variables correctly', () => {
-    const vars = {
+    const vars: ScalingVariables = {
       control: 100,
       intensity: 50,
-      maxpool: 200,
-      pool: 150,
-    } as any;
+      critchance: 25,
+      critmultiplier: 150,
+      pool: 80,
+      maxpool: 100,
+      toxicity: 20,
+      maxtoxicity: 100,
+      resistance: 0,
+      itemEffectiveness: 0,
+      pillsPerRound: 1,
+      poolCostFlat: 0,
+      poolCostPercentage: 100,
+      stabilityCostPercentage: 100,
+      successChanceBonus: 0,
+      stacks: 0,
+      completionBoost: 0,
+      perfectionBoost: 0,
+      stabilityBoost: 0,
+      qiBoost: 0,
+    };
     expect(evalExpression('control * 2', vars)).toBeCloseTo(200);
     expect(evalExpression('intensity + control', vars)).toBeCloseTo(150);
+    expect(evalExpression('pool / maxpool', vars)).toBeCloseTo(0.8);
   });
 
   it('should not confuse variable names that are substrings of each other', () => {

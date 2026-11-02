@@ -38,11 +38,6 @@ describe('evalExpression', () => {
     warnSpy.mockRestore();
   });
 
-  it('should evaluate valid arithmetic expressions', () => {
-    const result = evalExpression('pool / maxpool', testVariables);
-    expect(result).toBeCloseTo(0.8);
-  });
-
   it('should reject blocked control-flow keywords', () => {
     const result = evalExpression('while(true){}', testVariables);
     expect(result).toBe(0);
