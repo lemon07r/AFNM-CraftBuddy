@@ -3973,6 +3973,26 @@ function hasLiteralPaymentStats(
   return literal;
 }
 
+const constantActivePaymentBuffs = new WeakMap<BuffDefinition, boolean>();
+function hasConstantActivePaymentStats(
+  definition: BuffDefinition | undefined,
+): boolean {
+  if (!definition) return true;
+  const cached = constantActivePaymentBuffs.get(definition);
+  if (cached !== undefined) return cached;
+  // Payment reads active buffs without mastery upgrades. upgradeKey is inert
+  // metadata here, but NOT on buffs/stacks created by this action's masteries.
+  const constant =
+    !definition.triggeredEffects?.length &&
+    PAYMENT_STAT_KEYS.every((key) =>
+      Object.keys(definition.stats?.[key] ?? {}).every(
+        (field) => field === 'value' || field === 'upgradeKey',
+      ),
+    );
+  constantActivePaymentBuffs.set(definition, constant);
+  return constant;
+}
+
 /** Constant cost stats cannot depend on the mastery bar/resource effects.
  * Project just buff creation for those common payloads; expressions, trigger
  * hooks and other mutations retain the full phase interpreter below. */
@@ -3982,12 +4002,15 @@ function literalMasteryPayment(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   entries: EffectMastery[],
-): { costs?: EffectiveActionCosts } | undefined {
+): { costs?: EffectiveActionCosts; projectBuffs?: boolean } | undefined {
   const active = getResolvedActiveBuffs(start, config);
+  let projectBuffs = false;
   if (
-    Array.from(active.values()).some(
-      (buff) => !hasLiteralPaymentStats(buff.definition),
-    )
+    Array.from(active.values()).some((buff) => {
+      if (hasLiteralPaymentStats(buff.definition)) return false;
+      projectBuffs = true;
+      return !hasConstantActivePaymentStats(buff.definition);
+    })
   )
     return undefined;
   const costNames = new Set<string>();
@@ -4020,6 +4043,12 @@ function literalMasteryPayment(
       }
     }
   }
+  // Newly admitted metadata cases must retain the general path's ENTIRE
+  // probability tree, including non-payment effects. Dropping those branches
+  // changes floating-point sums (e.g. 2.6 versus 2.6000000000000005). Project
+  // only their states below; leave branch order, multiplications and reductions
+  // untouched. Existing literal cases keep their original shortcut semantics.
+  if (projectBuffs) return { projectBuffs: true };
   let outcomes = [{ probability: 1, buffs: active }];
   let varies = false;
   const creations = entries.map((entry) => ({
@@ -4112,6 +4141,26 @@ function literalMasteryPayment(
   return different ? { costs } : {};
 }
 
+function projectMasteryPaymentState(
+  state: CraftingState,
+  effects: TechniqueEffect[],
+  config: OptimizerConfig,
+): CraftingState {
+  const buffs = new Map(getResolvedActiveBuffs(state, config));
+  for (const effect of effects) {
+    if (effect.kind !== 'createBuff') continue;
+    upsertBuffIntoMap(
+      buffs,
+      effect.buff,
+      evaluateScaling(effect.stacks, {} as ScalingVariables, 1),
+    );
+  }
+  // All payment stats are constant, all created stacks are literal, and no
+  // triggers/other buff mutations passed the gate. Bar/resource effects cannot
+  // affect costs, so only the ordered buff insertions need interpretation.
+  return state.copy({ buffs });
+}
+
 /** Resolve a phase gate without building an unused variable scope. */
 function evaluateMasteryPhaseCondition(
   condition: CraftingTechniqueCondition | undefined,
@@ -4171,7 +4220,7 @@ function expectedMasteryPayment(
     conditionEffects,
     entries,
   );
-  if (literal) return literal.costs;
+  if (literal && !literal.projectBuffs) return literal.costs;
   let outcomes = [{ probability: 1, state: start }];
   for (const entry of entries) {
     // An entry's chance gates its entire block; nested chances are independent.
@@ -4231,21 +4280,27 @@ function expectedMasteryPayment(
         const state =
           effects.effects.length === 0
             ? outcome.state
-            : applySkillTransition(
-                outcome.state,
-                masteryPhaseSkill(skill, effects.effects),
-                config,
-                conditionEffects,
-                targetCompletion,
-                currentCondition,
-                targetPerfection,
-                {
-                  ...phase,
-                  successChance: 1,
-                  masteryPhase: true,
-                  barContributions: [],
-                },
-              )!;
+            : literal?.projectBuffs
+              ? projectMasteryPaymentState(
+                  outcome.state,
+                  effects.effects,
+                  config,
+                )
+              : applySkillTransition(
+                  outcome.state,
+                  masteryPhaseSkill(skill, effects.effects),
+                  config,
+                  conditionEffects,
+                  targetCompletion,
+                  currentCondition,
+                  targetPerfection,
+                  {
+                    ...phase,
+                    successChance: 1,
+                    masteryPhase: true,
+                    barContributions: [],
+                  },
+                )!;
         next.push({
           state,
           probability:

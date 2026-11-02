@@ -50,7 +50,7 @@ The visible condition queue is normalized to length three; beyond it search uses
 
 Immediate survival is not flattened into EV. `calculateActionSurvivabilityFloor` estimates guaranteed stability, but has a known payment/mastery/cleanup divergence from the actual transition. Separately, a real forced-failure transition ending below target sets `requiresProbabilisticSurvival`. Safety precedence applies when a viable safe live alternative exists; a certain-failure line does not outrank a winnable gamble simply because it is “certain”. Worker merging preserves the same flags and score ordering.
 
-Chance-conditioned payment buffs use transient independent branches for expected current payment; they do not create a probability-aware persistent future-buff model.
+Chance-conditioned payment buffs use transient independent branches for expected current payment; they do not create a probability-aware persistent future-buff model. Constant active payment stats may carry inert `upgradeKey` metadata: that shortcut projects only buff creation while preserving the general interpreter's full probability-outcome multiplicity, order and scalar reductions. Created buffs/stacks still require literal values, and triggered buffs retain the full interpreter.
 
 ### Score layers
 
