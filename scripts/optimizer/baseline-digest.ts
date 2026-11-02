@@ -5,7 +5,7 @@
  * node budget, so the frontier depends only on code, not machine speed.
  *
  *   bun scripts/optimizer/baseline-digest.ts --out tmp/digest.json
- *   bun scripts/optimizer/baseline-digest.ts --compare tmp/digest.json
+ *   bun scripts/optimizer/baseline-digest.ts --compare tmp/digest.json [--ignore-work]
  *
  * `--compare` exits non-zero when any recommendation, ranking, score, safety
  * flag or rotation differs. Timing and nodes/sec are reported, never compared.
@@ -93,8 +93,21 @@ function run(): Record<string, DigestEntry> {
 }
 
 const args = process.argv.slice(2);
-const outIndex = args.indexOf('--out');
-const compareIndex = args.indexOf('--compare');
+const outPath = args.includes('--out')
+  ? args[args.indexOf('--out') + 1]
+  : undefined;
+const comparePath = args.includes('--compare')
+  ? args[args.indexOf('--compare') + 1]
+  : undefined;
+// Performance work may legitimately change how many nodes a fixed budget
+// reaches; `--ignore-work` drops depth/nodes from the comparison.
+const ignoreWork = args.includes('--ignore-work');
+const baseline = comparePath
+  ? (JSON.parse(readFileSync(comparePath, 'utf8')) as Record<
+      string,
+      DigestEntry
+    >)
+  : undefined;
 const digest = run();
 
 let totalNodes = 0;
@@ -108,30 +121,27 @@ console.log(
     `time: ${totalMs} ms, nodes/ms: ${(totalNodes / Math.max(1, totalMs)).toFixed(2)}`,
 );
 
-if (outIndex >= 0) {
-  const outPath = args[outIndex + 1];
+if (outPath) {
   mkdirSync(path.dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(digest, null, 2));
   console.log(`wrote ${outPath}`);
 }
 
-if (compareIndex >= 0) {
-  const baseline = JSON.parse(
-    readFileSync(args[compareIndex + 1], 'utf8'),
-  ) as Record<string, DigestEntry>;
+if (baseline) {
+  const strip = (entry: DigestEntry | undefined) =>
+    entry && {
+      recommendation: entry.recommendation,
+      ranked: entry.ranked,
+      rotation: entry.rotation,
+      ...(ignoreWork ? {} : { depth: entry.depth, nodes: entry.nodes }),
+    };
   let differences = 0;
   let baselineMs = 0;
-  for (const [key, expected] of Object.entries(baseline)) {
-    baselineMs += expected.timeMs;
+  const keys = new Set([...Object.keys(baseline), ...Object.keys(digest)]);
+  for (const key of [...keys].sort()) {
+    const expected = baseline[key];
     const actual = digest[key];
-    const strip = (entry: DigestEntry | undefined) =>
-      entry && {
-        recommendation: entry.recommendation,
-        ranked: entry.ranked,
-        rotation: entry.rotation,
-        depth: entry.depth,
-        nodes: entry.nodes,
-      };
+    baselineMs += expected?.timeMs ?? 0;
     if (JSON.stringify(strip(actual)) !== JSON.stringify(strip(expected))) {
       differences++;
       console.log(`DIFF ${key}`);
