@@ -35,6 +35,7 @@ import {
   SkillDefinition,
   SkillMastery,
   getBonusAndChance,
+  getBuffDiscordantConditions,
   normalizeForecastConditionQueue,
   setConditionTransitionProvider,
   VISIBLE_CONDITION_QUEUE_LENGTH,
@@ -754,6 +755,7 @@ function buildOptimizerReplayInputSnapshot(params: {
     params.forecastedConditionTypes as any,
     params.state.harmony,
     VISIBLE_CONDITION_QUEUE_LENGTH,
+    getBuffDiscordantConditions(params.state.buffs),
   ).map((entry) => String(entry));
 
   return {

@@ -32,6 +32,7 @@ export {
   getEffectiveStabilityCost,
   getBlockedSkillReasons,
   getConditionEffectsForConfig,
+  getBuffDiscordantConditions,
   setNativeCanUseActionProvider,
 } from './skills';
 export type {

@@ -24,6 +24,7 @@ import {
 import { BuffDefinition, getBonusAndChance } from '../optimizer/gameTypes';
 import {
   normalizeForecastConditionQueue,
+  lookaheadSearch,
   __testing,
 } from '../optimizer/search';
 
@@ -430,7 +431,7 @@ describe('0.7.7 discordantConditions (Uncontrollable Flames)', () => {
     const normal = normalizeForecastConditionQueue('positive', [], 0);
     expect(normal[0]).toBe('neutral');
 
-    // d=.7: neutral .30, extremes .09 each, mild conditions .26 each.
+    // d=.7 at harmony 0: neutral .30, extremes .09 each, mild .26 each.
     const discordant = normalizeForecastConditionQueue(
       'positive',
       [],
@@ -446,6 +447,7 @@ describe('0.7.7 discordantConditions (Uncontrollable Flames)', () => {
       ['veryPositive'],
       ['veryNegative'],
     ]) {
+      // At harmony +100 the mild split becomes .39 positive / .13 negative.
       const distribution = Object.fromEntries(
         __testing
           .getGeneratedConditionDistribution('positive', queue, 100, 0.7)
@@ -460,6 +462,46 @@ describe('0.7.7 discordantConditions (Uncontrollable Flames)', () => {
       }))
         expect(distribution[condition]).toBeCloseTo(expected, 12);
     }
+  });
+
+  it('fills the root forecast with held discordance, matching an explicit queue', () => {
+    const state = stateWithBuff(
+      'discordance',
+      {
+        name: 'Discordance',
+        canStack: false,
+        effects: [],
+        discordantConditions: 0.7,
+      },
+      undefined,
+      { harmony: 100 },
+    );
+    const config = createTestConfig({
+      skills: [
+        createTestSkill({ baseCompletionGain: 10, basePerfectionGain: 10 }),
+      ],
+    });
+    const filled = normalizeForecastConditionQueue(
+      'positive',
+      [],
+      100,
+      undefined,
+      0.7,
+    );
+    expect(filled).toEqual(['positive', 'positive', 'positive']);
+    const run = (queue: typeof filled) =>
+      lookaheadSearch(state, config, 100, 100, 3, 'positive', queue, {
+        maxNodes: 100,
+        timeBudgetMs: 60000,
+      });
+    const implicit = run([]);
+    const explicit = run(filled);
+    expect(implicit.recommendation?.skill.key).toBe(
+      explicit.recommendation?.skill.key,
+    );
+    expect(implicit.recommendation?.score).toBe(explicit.recommendation?.score);
+    expect(implicit.optimalRotation).toEqual(explicit.optimalRotation);
+    expect(implicit.expectedFinalState).toEqual(explicit.expectedFinalState);
   });
 
   it('saturates random comparisons, not harmony or discordance inputs', () => {

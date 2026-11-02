@@ -3943,6 +3943,7 @@ function runLookaheadSearch(
     forecastedConditionTypes,
     state.harmony,
     VISIBLE_CONDITION_QUEUE_LENGTH,
+    cfg.conditionDiscordance,
   );
 
   // Search metrics for performance monitoring
