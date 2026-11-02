@@ -3340,10 +3340,9 @@ describe('tutorial regression scenarios', () => {
       step: 3,
     });
 
-    // User's actual search budget is 1200ms.  Use a higher budget (3s) to
-    // account for test runner overhead (parallel tests reduce available CPU).
-    // The search will still hit its budget limit since depth 36 is far too
-    // deep to complete in 3s, exercising the budget-constrained code paths.
+    // Depth 36 cannot complete, so the node budget stops the search and
+    // exercises the budget-constrained paths. 7,000 nodes is what the former
+    // 3 s clock budget reached on a developer machine.
     const result = lookaheadSearch(
       state,
       snapshotConfig,
