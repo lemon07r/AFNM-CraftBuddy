@@ -2,11 +2,41 @@ import {
   applySkill,
   calculateActionSurvivabilityFloor,
 } from '../optimizer/skills';
-import { mechanics0719Scenarios } from './fixtures/mechanics0719';
+import {
+  mechanics0719Scenarios,
+  stackEventScenarios,
+} from './fixtures/mechanics0719';
 import { CraftingState } from '../optimizer/state';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
 describe('AFNM 0.7.19 audited mechanics', () => {
+  it.each([
+    ['capped', 3, 5, 0, 0],
+    ['nonstackable', 3, 0, 0, 0],
+    ['zero-cap', 5, 2, 0, 0],
+    ['negative-technique', -2, 0, 0, 0],
+    ['negative-buff', 0, 0, 3, 1],
+    ['expiry', 2, 0, 1, 1],
+    ['buff-cost', 2, 1, 2, 1],
+    ['recursive', 6, 3, 0, 0],
+    ['negate-zero', 0, 0, 0, 1],
+  ])(
+    'dispatches synchronous stack events: %s',
+    (edge, stacks, gained, lost, calls) => {
+      const { state, skill, config } = stackEventScenarios().find(
+        (s) => s.name === `0719-stack-${edge}`,
+      )!;
+      const next = applySkill(state, skill, config)!;
+      expect(next.getBuffStacks('pressure')).toBe(stacks);
+      const internal = next.buffs.get('observer')?.internalState;
+      expect(internal?.gained ?? 0).toBe(gained);
+      expect(internal?.lost ?? 0).toBe(lost);
+      expect(internal?.lossCalls ?? 0).toBe(calls);
+      if (edge === 'buff-cost') expect(next.qi).toBe(95);
+      if (edge === 'negative-technique')
+        expect(next.buffs.has('pressure')).toBe(true);
+    },
+  );
   it('retains pre-cleanup harmony for condition generation', () => {
     const skill = retargetSkill({
       qiCost: 0,

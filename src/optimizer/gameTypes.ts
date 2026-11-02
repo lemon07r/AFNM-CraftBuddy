@@ -162,7 +162,9 @@ export type CraftingBuffTrigger =
   | 'stabilitySpent'
   | 'stabilityRestored'
   | 'completionGained'
-  | 'perfectionGained';
+  | 'perfectionGained'
+  | `stackGained.${string}`
+  | `stackLost.${string}`;
 
 export interface CraftingTriggeredEffectBlock {
   trigger: CraftingBuffTrigger | string;

@@ -3657,7 +3657,7 @@ function upsertBuffIntoMap(
   definition: BuffDefinition | undefined,
   stacksDelta: number,
   seedVariables?: ScalingVariables,
-): void {
+): number | undefined {
   if (!definition || !Number.isFinite(stacksDelta)) return;
   const delta = Math.floor(stacksDelta);
   if (delta === 0) return;
@@ -3665,20 +3665,18 @@ function upsertBuffIntoMap(
   if (!key) return;
   const existing = buffs.get(key);
   const canStack =
-    definition.canStack ?? existing?.definition?.canStack ?? true;
-  const maxStacks = definition.maxStacks ?? existing?.definition?.maxStacks;
+    existing?.definition?.canStack ?? definition.canStack ?? true;
+  const maxStacks = existing?.definition?.maxStacks ?? definition.maxStacks;
   if (existing && !canStack) return;
   let stacks = (existing?.stacks ?? 0) + delta;
-  if (maxStacks !== undefined) stacks = Math.min(stacks, maxStacks);
+  if (maxStacks) stacks = Math.min(stacks, maxStacks);
   if (existing) {
-    if (stacks > 0)
-      buffs.set(key, {
-        ...existing,
-        definition: existing.definition ?? definition,
-        stacks: Math.floor(stacks),
-      });
-    else buffs.delete(key);
-  } else if (delta > 0) {
+    buffs.set(key, {
+      ...existing,
+      definition: existing.definition ?? definition,
+      stacks: Math.floor(stacks),
+    });
+  } else {
     buffs.set(key, {
       name: key,
       stacks: Math.floor(stacks),
@@ -3686,6 +3684,7 @@ function upsertBuffIntoMap(
       internalState: seedBuffInternalState(definition, seedVariables),
     });
   }
+  return delta > 0 ? delta : undefined;
 }
 
 function hasPaymentStats(definition: BuffDefinition | undefined): boolean {
@@ -4081,22 +4080,8 @@ export function applySkill(
             ),
           );
   }
-  const buffs = skill.buffCost ? new Map(existingBuffNames) : existingBuffNames;
-  if (skill.buffCost) {
-    const cost = skill.buffCost;
-    const owner = buffs.get(cost.buffName);
-    if (owner) {
-      const remaining = cost.consumeAll
-        ? 0
-        : Math.max(0, owner.stacks - (cost.amount ?? 0));
-      if (remaining > 0)
-        buffs.set(cost.buffName, { ...owner, stacks: remaining });
-      else buffs.delete(cost.buffName);
-    }
-  }
   let working = paysSetup
     ? state.copy({
-        buffs,
         toxicity: state.toxicity + (skill.toxicityCost ?? 0),
         qiDroplets: Math.max(0, state.qiDroplets - (skill.dropletCost ?? 0)),
       })
@@ -4108,6 +4093,35 @@ export function applySkill(
     barContributions: [],
     nativeSource: working,
   };
+  if (skill.buffCost) {
+    const owner = existingBuffNames.get(skill.buffCost.buffName);
+    if (owner) {
+      working = applySkillTransition(
+        working,
+        masteryPhaseSkill(skill, [
+          {
+            kind: 'consumeBuff',
+            buff: owner.definition ?? {
+              name: owner.name,
+              canStack: true,
+              effects: [],
+            },
+            stacks: {
+              value: skill.buffCost.consumeAll
+                ? owner.stacks
+                : (skill.buffCost.amount ?? 0),
+            },
+          },
+        ]),
+        config,
+        conditionEffects,
+        targetCompletion,
+        currentCondition,
+        targetPerfection,
+        { ...context, successChance: 1, masteryPhase: true },
+      )!;
+    }
+  }
   const paymentCosts = expectedMasteryPayment(
     working,
     skill,
@@ -4439,7 +4453,14 @@ function applySkillTransition(
     stacksDelta: number,
     seedVariables?: ScalingVariables,
   ): void => {
-    upsertBuffIntoMap(newBuffs, definition, stacksDelta, seedVariables);
+    const gained = upsertBuffIntoMap(
+      newBuffs,
+      definition,
+      stacksDelta,
+      seedVariables,
+    );
+    if (gained !== undefined && definition)
+      dispatchBuffTriggers(`stackGained.${definition.name}`, gained);
   };
 
   const adjustExistingBuffStacks = (
@@ -4449,19 +4470,23 @@ function applySkillTransition(
     const existing = newBuffs.get(buffKey);
     if (!existing || !Number.isFinite(stacksDelta)) return;
 
-    const delta = Math.floor(stacksDelta);
-    if (delta === 0) return;
-
-    let nextStacks = existing.stacks + delta;
-    const maxStacks = existing.definition?.maxStacks;
-    if (maxStacks !== undefined) {
-      nextStacks = Math.min(nextStacks, maxStacks);
+    if (stacksDelta >= 0) {
+      upsertBuffFromDefinition(existing.definition, stacksDelta);
+      return;
     }
+    const removal = Math.floor(-stacksDelta);
+    const lost = Math.min(existing.stacks, removal);
+    const nextStacks = existing.stacks - removal;
     if (nextStacks > 0) {
       newBuffs.set(buffKey, { ...existing, stacks: Math.floor(nextStacks) });
     } else {
       newBuffs.delete(buffKey);
     }
+    if (lost > 0)
+      dispatchBuffTriggers(
+        `stackLost.${existing.definition?.name ?? existing.name}`,
+        lost,
+      );
   };
 
   const actionSuccessChance =
@@ -4490,12 +4515,19 @@ function applySkillTransition(
     amount: number,
     percentGained: number = 0,
   ): void => {
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (
+      !Number.isFinite(amount) ||
+      (amount <= 0 && !trigger.startsWith('stackLost.'))
+    ) {
       return;
     }
     for (const [buffKey, buff] of Array.from(newBuffs.entries())) {
       const blocks = buff.definition?.triggeredEffects;
-      if (!blocks || blocks.length === 0) {
+      if (
+        !blocks?.some((block) => block.trigger === trigger) ||
+        !newBuffs.get(buffKey) ||
+        (newBuffs.get(buffKey)?.stacks ?? 0) <= 0
+      ) {
         continue;
       }
       const guardKey = `${trigger}:${buffKey}`;
@@ -4631,12 +4663,12 @@ function applySkillTransition(
     }
   }
 
-  const executeBuffEffect = (
+  function executeBuffEffect(
     effect: BuffEffect,
     ownerBuffKey: string,
     ownerBuff: { name: string; stacks: number; definition?: BuffDefinition },
     scalingVars: ScalingVariables,
-  ): void => {
+  ): void {
     const liveOwner = newBuffs.get(ownerBuffKey);
     if (!liveOwner) return;
     Object.assign(
@@ -4765,6 +4797,10 @@ function applySkillTransition(
         break;
       case 'negate':
         newBuffs.delete(ownerBuffKey);
+        dispatchBuffTriggers(
+          `stackLost.${liveOwner.definition?.name ?? liveOwner.name}`,
+          liveOwner.stacks,
+        );
         break;
       case 'createBuff': {
         const stacksToAdd =
@@ -4774,7 +4810,12 @@ function applySkillTransition(
             scalingVars,
             1,
           ) * conditionFactor;
-        upsertBuffFromDefinition(effect.buff, stacksToAdd, scalingVars);
+        if (stacksToAdd < 0)
+          adjustExistingBuffStacks(
+            normalizeBuffName(effect.buff?.name),
+            stacksToAdd,
+          );
+        else upsertBuffFromDefinition(effect.buff, stacksToAdd, scalingVars);
         break;
       }
       case 'addStack': {
@@ -4828,7 +4869,7 @@ function applySkillTransition(
         break;
       }
     }
-  };
+  }
 
   // Fire the cost/technique triggers before per-turn buff effects run,
   // matching the runtime order (costs, technique effects, then buff effects).

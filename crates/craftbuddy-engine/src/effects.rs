@@ -1985,7 +1985,7 @@ fn dispatch_buff_triggers(
     new_toxicity: f64,
     max_toxicity: f64,
 ) {
-    if !amount.is_finite() || amount <= 0.0 {
+    if !amount.is_finite() || (amount <= 0.0 && !trigger.starts_with("stackLost.")) {
         return;
     }
     let keys: Vec<String> = buffs
@@ -2002,6 +2002,9 @@ fn dispatch_buff_triggers(
         .collect();
 
     for key in keys {
+        if !buffs.get(&key).is_some_and(|owner| owner.stacks > 0) {
+            continue;
+        }
         let guard = format!("{trigger}:{key}");
         if !buffs.active_triggers.insert(guard.clone()) {
             continue;
@@ -2140,7 +2143,7 @@ fn dispatch_buff_triggers(
                         None
                     }
                     "negate" => {
-                        buffs.remove(&key);
+                        buffs.negate(&key);
                         None
                     }
                     "createBuff" => {
@@ -2150,7 +2153,20 @@ fn dispatch_buff_triggers(
                             &scope,
                             1.0,
                         ) * evaluation.probability;
-                        buffs.upsert_from_definition(effect.buff.as_ref(), change, Some(&scope));
+                        if change < 0.0 {
+                            if let Some(definition) = &effect.buff {
+                                buffs.adjust_existing(
+                                    &normalize_identifier(&definition.name),
+                                    change,
+                                );
+                            }
+                        } else {
+                            buffs.upsert_from_definition(
+                                effect.buff.as_ref(),
+                                change,
+                                Some(&scope),
+                            );
+                        }
                         None
                     }
                     "addStack" => {
@@ -2180,6 +2196,16 @@ fn dispatch_buff_triggers(
                         max_toxicity,
                     );
                 }
+                dispatch_stack_events(
+                    buffs,
+                    action_vars,
+                    state,
+                    upgrades,
+                    new_qi,
+                    qi_cap,
+                    new_toxicity,
+                    max_toxicity,
+                );
                 continue;
             }
             let Some(state_key) = effect.key.as_ref().filter(|key| !key.is_empty()) else {
@@ -2216,6 +2242,34 @@ fn dispatch_buff_triggers(
             buffs.set_internal_state(&key, working.clone());
         }
         buffs.active_triggers.remove(&guard);
+    }
+}
+
+fn dispatch_stack_events(
+    buffs: &mut BuffSet,
+    action_vars: &Variables,
+    state: &EngineState,
+    upgrades: &UpgradeMap,
+    new_qi: f64,
+    qi_cap: f64,
+    new_toxicity: f64,
+    max_toxicity: f64,
+) {
+    while !buffs.stack_events.is_empty() {
+        let (trigger, amount) = buffs.stack_events.remove(0);
+        dispatch_buff_triggers(
+            buffs,
+            &trigger,
+            amount,
+            0.0,
+            action_vars,
+            state,
+            upgrades,
+            new_qi,
+            qi_cap,
+            new_toxicity,
+            max_toxicity,
+        );
     }
 }
 
@@ -2283,6 +2337,7 @@ impl StabilityProjection {
 }
 
 pub struct BuffSet {
+    stack_events: Vec<(String, f64)>,
     stability: StabilityProjection,
     entries: Vec<ActiveBuff>,
     active_triggers: std::collections::HashSet<String>,
@@ -2306,6 +2361,7 @@ struct TriggeredGains {
 impl BuffSet {
     pub fn new(entries: Vec<ActiveBuff>) -> Self {
         Self {
+            stack_events: Vec::new(),
             stability: StabilityProjection::default(),
             entries,
             active_triggers: std::collections::HashSet::new(),
@@ -2363,6 +2419,18 @@ impl BuffSet {
         }
     }
 
+    fn negate(&mut self, key: &str) {
+        if let Some(owner) = self.get(key) {
+            let name = owner
+                .definition
+                .as_ref()
+                .map_or(&owner.name, |definition| &definition.name);
+            self.stack_events
+                .push((format!("stackLost.{name}"), owner.stacks as f64));
+        }
+        self.remove(key);
+    }
+
     pub fn set_stacks(&mut self, key: &str, stacks: i32) {
         if let Some(index) = self.index_of(key) {
             if stacks > 0 {
@@ -2398,34 +2466,33 @@ impl BuffSet {
                 .definition
                 .as_ref()
                 .and_then(|existing| existing.can_stack);
-            let can_stack = definition.can_stack.or(existing_can_stack).unwrap_or(true);
+            let can_stack = existing_can_stack.or(definition.can_stack).unwrap_or(true);
             if !can_stack {
                 return;
             }
-            let max_stacks = definition.max_stacks.or_else(|| {
-                self.entries[index]
-                    .definition
-                    .as_ref()
-                    .and_then(|existing| existing.max_stacks)
-            });
+            let max_stacks = self.entries[index]
+                .definition
+                .as_ref()
+                .and_then(|existing| existing.max_stacks)
+                .or(definition.max_stacks);
             let mut next = self.entries[index].stacks + delta;
-            if let Some(max) = max_stacks {
+            if let Some(max) = max_stacks.filter(|max| *max != 0.0) {
                 next = next.min(max.floor() as i32);
             }
-            if next > 0 {
-                if self.entries[index].definition.is_none() {
-                    self.entries[index].definition = Some(definition.clone());
-                }
-                self.entries[index].stacks = next;
-            } else {
-                self.entries.remove(index);
+            if self.entries[index].definition.is_none() {
+                self.entries[index].definition = Some(definition.clone());
+            }
+            self.entries[index].stacks = next;
+            if delta > 0 {
+                self.stack_events
+                    .push((format!("stackGained.{}", definition.name), delta as f64));
             }
             return;
         }
 
-        if delta > 0 {
+        {
             let mut next = delta;
-            if let Some(max) = definition.max_stacks {
+            if let Some(max) = definition.max_stacks.filter(|max| *max != 0.0) {
                 next = next.min(max.floor() as i32);
             }
             self.entries.push(ActiveBuff {
@@ -2435,6 +2502,10 @@ impl BuffSet {
                 definition: Some(definition.clone()),
                 internal_state: seed_internal_state(definition, seed_variables),
             });
+            if delta > 0 {
+                self.stack_events
+                    .push((format!("stackGained.{}", definition.name), delta as f64));
+            }
         }
     }
 
@@ -2446,18 +2517,22 @@ impl BuffSet {
         if !stacks_delta.is_finite() {
             return;
         }
-        let delta = stacks_delta.floor() as i32;
-        if delta == 0 {
+        if stacks_delta >= 0.0 {
+            let definition = self.entries[index].definition.clone();
+            self.upsert_from_definition(definition.as_ref(), stacks_delta, None);
             return;
         }
-        let mut next = self.entries[index].stacks + delta;
-        if let Some(max) = self.entries[index]
+        let removal = (-stacks_delta).floor() as i32;
+        let lost = self.entries[index].stacks.min(removal);
+        let name = self.entries[index]
             .definition
             .as_ref()
-            .and_then(|definition| definition.max_stacks)
-        {
-            next = next.min(max.floor() as i32);
+            .map_or(&self.entries[index].name, |definition| &definition.name);
+        if lost > 0 {
+            self.stack_events
+                .push((format!("stackLost.{name}"), lost as f64));
         }
+        let next = self.entries[index].stacks - removal;
         if next > 0 {
             self.entries[index].stacks = next;
         } else {
@@ -3275,21 +3350,59 @@ pub fn apply_skill_with_buffs(
         payment_costs: None,
         payment_stability_outcomes: Vec::new(),
     };
-    if let Some(cost) = &skill.buff_cost {
-        let have = buffs.stacks(&cost.buff_name);
-        let remaining = if cost.consume_all {
-            0
-        } else {
-            (have - cost.amount.unwrap_or(0.0).floor() as i32).max(0)
-        };
-        buffs.set_stacks(&cost.buff_name, remaining);
-    }
     let mut working = EngineState {
         buffs: buffs.into_vec(),
         toxicity: state.toxicity + skill.toxicity_cost,
         qi_droplets: (state.qi_droplets - skill.droplet_cost).max(0.0),
         ..state.clone()
     };
+    if let Some(cost) = &skill.buff_cost {
+        if let Some(owner) = working
+            .buffs
+            .iter()
+            .find(|owner| owner.key == cost.buff_name)
+        {
+            let definition = owner.definition.clone().unwrap_or_else(|| BuffDefinition {
+                name: owner.name.clone(),
+                ..BuffDefinition::default()
+            });
+            let amount = if cost.consume_all {
+                owner.stacks as f64
+            } else {
+                cost.amount.unwrap_or(0.0)
+            };
+            let phase_skill = EngineSkill {
+                name: skill.name.clone(),
+                key: skill.key.clone(),
+                technique_type: skill.technique_type.clone(),
+                no_qi_cost: true,
+                consumes_turn: false,
+                effects: vec![Effect {
+                    kind: "consumeBuff".to_string(),
+                    buff: Some(definition),
+                    stacks: Some(Scaling {
+                        value: amount,
+                        ..Scaling::default()
+                    }),
+                    ..Effect::default()
+                }],
+                ..EngineSkill::default()
+            };
+            let captured = phase.success_chance;
+            phase.success_chance = 1.0;
+            working = apply_skill_transition(
+                env,
+                &working,
+                skill_index,
+                &phase_skill,
+                condition_effects,
+                target_completion,
+                &working.buffs,
+                &mut phase,
+            );
+            phase.success_chance = captured;
+        }
+    }
     let captured_success = phase.success_chance;
     let payment_costs = expected_mastery_payment(
         env,
@@ -3734,6 +3847,8 @@ fn apply_skill_transition(
 
     let action_vars = apply_mastery_to_variables(&resolved.variables, &resolved.mastery);
     let action_success_chance = phase.success_chance;
+    buffs.trigger_bars = [state.completion, state.perfection];
+    buffs.trigger_targets = [target_completion, config.target_perfection];
 
     let mut technique_pool_delta = 0.0;
     let mut technique_max_stability_delta = 0.0;
@@ -3829,6 +3944,16 @@ fn apply_skill_transition(
             }
             _ => {}
         }
+        dispatch_stack_events(
+            &mut buffs,
+            &action_vars,
+            state,
+            &resolved.upgrades,
+            new_qi,
+            qi_cap,
+            new_toxicity,
+            config.max_toxicity,
+        );
     }
 
     // 0.7.7+ triggered buff effects (the runtime `_6` dispatcher). The runtime
@@ -3836,8 +3961,6 @@ fn apply_skill_transition(
     // applications, then per-turn buff effects - so dispatches run after the
     // technique effects and the buff fold re-reads the mutated state.
     let trigger_buffs_present = has_triggered_effect_buffs(buffs.as_slice());
-    buffs.trigger_bars = [state.completion, state.perfection];
-    buffs.trigger_targets = [target_completion, config.target_perfection];
 
     if trigger_buffs_present {
         if qi_spent_by_cost > 0.0 {
@@ -4217,7 +4340,7 @@ fn apply_skill_transition(
                         // Runtime `changeToxicity` does `toxicity -= amount`, so a
                         // positive amount cleanses and a negative amount inflicts.
                         "changeToxicity" => buff_toxicity_delta -= amount,
-                        "negate" => buffs.remove(&owner.key),
+                        "negate" => buffs.negate(&owner.key),
                         "createBuff" => {
                             let stacks = evaluate_scaling_with_upgrades(
                                 effect.stacks.as_ref(),
@@ -4225,11 +4348,20 @@ fn apply_skill_transition(
                                 &scaling_vars,
                                 1.0,
                             ) * condition_factor;
-                            buffs.upsert_from_definition(
-                                effect.buff.as_ref(),
-                                stacks,
-                                Some(&scaling_vars),
-                            );
+                            if stacks < 0.0 {
+                                if let Some(definition) = &effect.buff {
+                                    buffs.adjust_existing(
+                                        &normalize_identifier(&definition.name),
+                                        stacks,
+                                    );
+                                }
+                            } else {
+                                buffs.upsert_from_definition(
+                                    effect.buff.as_ref(),
+                                    stacks,
+                                    Some(&scaling_vars),
+                                );
+                            }
                         }
                         "addStack" => {
                             let change = evaluate_scaling_with_upgrades(
@@ -4294,6 +4426,16 @@ fn apply_skill_transition(
                         }
                         _ => {}
                     }
+                    dispatch_stack_events(
+                        &mut buffs,
+                        &action_vars,
+                        state,
+                        &resolved.upgrades,
+                        new_qi,
+                        qi_cap,
+                        new_toxicity,
+                        config.max_toxicity,
+                    );
                 }
             };
 
@@ -4313,6 +4455,16 @@ fn apply_skill_transition(
         if grants_turbid_qi_stack(next_step) {
             if let Some(key) = find_turbid_qi_buff_key(buffs.as_slice()) {
                 buffs.adjust_existing(&key, 1.0);
+                dispatch_stack_events(
+                    &mut buffs,
+                    &action_vars,
+                    state,
+                    &resolved.upgrades,
+                    new_qi,
+                    qi_cap,
+                    new_toxicity,
+                    config.max_toxicity,
+                );
             }
         }
     }

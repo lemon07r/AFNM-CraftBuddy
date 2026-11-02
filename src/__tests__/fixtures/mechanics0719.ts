@@ -4,6 +4,7 @@ import type { BuffDefinition } from '../../optimizer/gameTypes';
 
 export function mechanics0719Scenarios() {
   return [
+    ...stackEventScenarios(),
     ...[
       { name: 'overdraft', stability: 1, cost: 10, gain: 0, tick: 7 },
       { name: 'overdraft-rescue', stability: 1, cost: 10, gain: 0, tick: 12 },
@@ -44,4 +45,134 @@ export function mechanics0719Scenarios() {
       };
     }),
   ];
+}
+
+export function stackEventScenarios() {
+  return [
+    'capped',
+    'nonstackable',
+    'zero-cap',
+    'negative-technique',
+    'negative-buff',
+    'expiry',
+    'buff-cost',
+    'recursive',
+    'negate-zero',
+  ].map((edge) => {
+    const pressure: BuffDefinition = {
+      name: 'Pressure',
+      canStack: edge !== 'nonstackable',
+      maxStacks: edge === 'zero-cap' ? 0 : 3,
+      effects: [],
+    };
+    const observer: BuffDefinition = {
+      name: 'Forge Compression observer',
+      canStack: true,
+      effects: [],
+      triggeredEffects: [
+        {
+          trigger: 'stackGained.Pressure',
+          effects: [
+            {
+              kind: 'setState',
+              key: 'gained',
+              mode: 'add',
+              value: { value: 1, eqn: 'amount' },
+            },
+          ],
+        },
+        {
+          trigger: 'stackLost.Pressure',
+          effects: [
+            {
+              kind: 'setState',
+              key: 'lost',
+              mode: 'add',
+              value: { value: 1, eqn: 'amount' },
+            },
+            {
+              kind: 'setState',
+              key: 'lossCalls',
+              mode: 'add',
+              value: { value: 1 },
+            },
+          ],
+        },
+      ],
+    };
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      effects: [{ kind: 'createBuff', buff: pressure, stacks: { value: 5.9 } }],
+    });
+    const buffs = new Map([
+      [
+        'pressure',
+        {
+          name: pressure.name,
+          stacks: edge === 'negate-zero' ? 0 : 3,
+          definition: pressure,
+        },
+      ],
+      ['observer', { name: observer.name, stacks: 1, definition: observer }],
+    ]);
+    if (edge === 'negative-technique') skill.effects![0].stacks = { value: -5 };
+    if (edge === 'zero-cap') skill.effects![0].stacks = { value: 2 };
+    if (['negative-buff', 'expiry', 'negate-zero'].includes(edge)) {
+      skill.effects = [];
+      pressure.effects =
+        edge === 'negative-buff'
+          ? [
+              {
+                kind: 'createBuff',
+                buff: { ...pressure },
+                stacks: { value: -5 },
+              },
+            ]
+          : edge === 'expiry'
+            ? [{ kind: 'addStack', stacks: { value: -1.9 } }]
+            : [{ kind: 'negate' }];
+    }
+    if (edge === 'buff-cost') {
+      skill.buffCost = { buffName: 'pressure', amount: 2 };
+      skill.qiCost = 10;
+      skill.effects = [];
+      observer.triggeredEffects![1].effects.push({
+        kind: 'createBuff',
+        buff: {
+          name: 'Payment discount',
+          canStack: true,
+          effects: [],
+          stats: { qiCostReduction: { value: 50 } },
+        },
+        stacks: { value: 1 },
+      });
+      skill.masteryEntries = [
+        {
+          kind: 'effect',
+          effects: [
+            { kind: 'createBuff', buff: pressure, stacks: { value: 1 } },
+          ],
+        },
+      ];
+    }
+    if (edge === 'recursive') {
+      pressure.maxStacks = 0;
+      pressure.triggeredEffects = [
+        {
+          trigger: 'stackGained.Pressure',
+          effects: [
+            { kind: 'createBuff', buff: { ...pressure }, stacks: { value: 1 } },
+          ],
+        },
+      ];
+      skill.effects![0].stacks = { value: 2 };
+    }
+    return {
+      name: `0719-stack-${edge}`,
+      state: new CraftingState({ qi: 100, stability: 50, buffs }),
+      skill,
+      config: retargetConfig(skill),
+    };
+  });
 }
