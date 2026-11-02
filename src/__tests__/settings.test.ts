@@ -126,21 +126,36 @@ describe('settings search budget', () => {
     },
   );
 
-  it('moves a saved experimental preset budget to the same-named preset', () => {
-    storageData['craftbuddy_settings'] = JSON.stringify({
-      optimizerEngine: 'experimental',
-      lookaheadDepth: 48,
-      searchTimeBudgetMs: 2250,
-      searchMaxNodes: 800000,
-      searchBeamWidth: 5,
-    });
-    storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
-      SEARCH_DEFAULTS_RESET_VERSION;
-    storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
-      DISPLAY_DEFAULTS_RESET_VERSION;
+  it.each([
+    ['instant', 32, 1250, 400000, 5],
+    ['fast', 32, 1500, 500000, 5],
+    ['balanced', 48, 2250, 800000, 5],
+    ['high_accuracy', 64, 3250, 1300000, 5],
+    ['max', 80, 4000, 2000000, 5],
+  ] as const)(
+    'moves a saved experimental %s budget to the same-named preset',
+    (
+      presetId,
+      lookaheadDepth,
+      searchTimeBudgetMs,
+      searchMaxNodes,
+      searchBeamWidth,
+    ) => {
+      storageData['craftbuddy_settings'] = JSON.stringify({
+        optimizerEngine: 'experimental',
+        lookaheadDepth,
+        searchTimeBudgetMs,
+        searchMaxNodes,
+        searchBeamWidth,
+      });
+      storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+        SEARCH_DEFAULTS_RESET_VERSION;
+      storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+        DISPLAY_DEFAULTS_RESET_VERSION;
 
-    expect(loadSettings()).toMatchObject(SEARCH_PRESET_BUDGETS.balanced);
-  });
+      expect(loadSettings()).toMatchObject(SEARCH_PRESET_BUDGETS[presetId]);
+    },
+  );
 
   it('keeps a custom experimental budget as saved', () => {
     const custom = {

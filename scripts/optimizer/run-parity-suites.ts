@@ -43,8 +43,6 @@ interface SuiteResult {
   readonly passed: number;
   readonly failed: number;
   readonly failures: readonly string[];
-  /** Transition count reported by the differential suites, when present. */
-  readonly transitions?: number;
   readonly tail: string;
 }
 
@@ -141,16 +139,9 @@ function parseJest(output: RunOutput): {
   };
 }
 
-function parseJestTransitions(output: RunOutput): number | undefined {
-  const combined = `${output.stdout}\n${output.stderr}`;
-  const match = /(\d+)\s+transitions/.exec(combined);
-  return match ? Number(match[1]) : undefined;
-}
-
 async function runSuite(spec: SuiteSpec): Promise<SuiteResult> {
   const output = await runProcess(spec);
   const parsed = parseJest(output);
-  const transitions = parseJestTransitions(output);
   const tailSource = `${output.stdout}\n${output.stderr}`.trim().split('\n');
   return {
     id: spec.id,
@@ -160,7 +151,6 @@ async function runSuite(spec: SuiteSpec): Promise<SuiteResult> {
     passed: parsed.passed,
     failed: parsed.failed,
     failures: parsed.failures,
-    transitions,
     tail: tailSource.slice(-40).join('\n'),
   };
 }
@@ -236,10 +226,7 @@ async function main(): Promise<void> {
         ? `${result.passed} passed, ${result.failed} failed`
         : 'n/a';
     console.log(
-      `${result.id.padEnd(width)}  ${status.padEnd(8)} ${formatDuration(result.durationMs).padEnd(8)} ${tests}` +
-        (result.transitions === undefined
-          ? ''
-          : ` (${result.transitions} transitions)`),
+      `${result.id.padEnd(width)}  ${status.padEnd(8)} ${formatDuration(result.durationMs).padEnd(8)} ${tests}`,
     );
   }
 

@@ -1040,24 +1040,6 @@ export const SettingsPanel = memo(function SettingsPanel({
                     gap={0.65}
                     sx={{ flexWrap: 'wrap', alignItems: 'center', mt: 1 }}
                   >
-                    <Tooltip
-                      title={renderHelpContent(SEARCH_THREADS_HELP)}
-                      enterDelay={250}
-                      placement="top"
-                      arrow
-                      PopperProps={getTooltipPopperProps()}
-                    >
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: colors.textSecondary,
-                          cursor: 'help',
-                          mr: 0.5,
-                        }}
-                      >
-                        Threads
-                      </Typography>
-                    </Tooltip>
                     {SEARCH_THREAD_OPTIONS.map((option) => {
                       const active = settings.searchThreads === option.id;
                       return (
