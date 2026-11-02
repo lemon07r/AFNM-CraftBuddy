@@ -1,15 +1,11 @@
 /**
- * Regenerate the cross-engine differential corpus.
+ * Regenerate the TypeScript transition golden corpus.
  *
- *   bun run optimizer:differential-corpus
+ *   bun run optimizer:transition-corpus
  *
- * Writes `crates/craftbuddy-engine/tests/differential_corpus.json` from the
- * TypeScript simulator. The Rust engine replays the same file in
- * `cargo test`, so any divergence between the two implementations fails a test
- * instead of silently changing recommendations.
- *
- * Run this after intentional TypeScript mechanics changes, then re-run
- * `bun run wasm:test` to see what the Rust engine still gets wrong.
+ * Writes `src/__tests__/fixtures/transition_corpus.json` from the TypeScript
+ * simulator. Run only after intentional mechanics changes and inspect the
+ * expected-output diff before accepting it.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -19,7 +15,7 @@ import { buildDifferentialCorpus } from '../../src/__tests__/fixtures/differenti
 
 const OUTPUT_PATH = resolve(
   __dirname,
-  '../../crates/craftbuddy-engine/tests/differential_corpus.json',
+  '../../src/__tests__/fixtures/transition_corpus.json',
 );
 
 function main(): void {

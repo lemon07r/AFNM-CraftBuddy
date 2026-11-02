@@ -39,10 +39,6 @@ interface BenchmarkConfig {
     maxNodes: number;
     beamWidth: number;
     goalPriorityBias?: number;
-    useMonteCarloTreeSearch?: boolean;
-    mctsIterations?: number;
-    mctsRolloutDepth?: number;
-    mctsMaxNodes?: number;
   };
 }
 
@@ -76,7 +72,7 @@ interface FixtureContract {
     toleranceRatio?: number;
   }>;
   minDepthReached?: number;
-  /** Explicit work-bound fixture override; preset beam/MCTS settings remain. */
+  /** Explicit work-bound fixture override; preset beam settings remain. */
   searchBudget?: { maxNodes: number; timeBudgetMs: number };
   notes: string;
 }
@@ -101,14 +97,6 @@ interface BenchmarkRunResult {
   nodesExplored: number;
   cacheHits: number;
   timeTakenMs: number;
-  mcts?: {
-    backend: string;
-    iterations: number;
-    nodes: number;
-    rolloutDepth: number;
-    bestSkillKey?: string;
-    policyCount: number;
-  };
   earlyExit?: {
     reason: string;
     depth: number;
@@ -144,7 +132,6 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
       timeBudgetMs: 1000,
       maxNodes: 400000,
       beamWidth: 5,
-      useMonteCarloTreeSearch: false,
     },
   },
   {
@@ -155,7 +142,6 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
       timeBudgetMs: 2000,
       maxNodes: 1000000,
       beamWidth: 5,
-      useMonteCarloTreeSearch: false,
     },
   },
   {
@@ -166,21 +152,6 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
       timeBudgetMs: 2000,
       maxNodes: 1000000,
       beamWidth: 5,
-      useMonteCarloTreeSearch: false,
-    },
-  },
-  {
-    id: 'same_budget_mcts_2s',
-    label: 'Same Budget MCTS (48d, 2s, 1M)',
-    lookaheadDepth: 48,
-    searchConfig: {
-      timeBudgetMs: 2000,
-      maxNodes: 1000000,
-      beamWidth: 5,
-      useMonteCarloTreeSearch: true,
-      mctsIterations: 250,
-      mctsRolloutDepth: 12,
-      mctsMaxNodes: 5000,
     },
   },
   {
@@ -191,35 +162,6 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
       timeBudgetMs: 4500,
       maxNodes: 2000000,
       beamWidth: 5,
-      useMonteCarloTreeSearch: false,
-    },
-  },
-  {
-    id: 'experimental_fast',
-    label: 'Experimental Fast (32d, 1.5s, 500k)',
-    lookaheadDepth: 32,
-    searchConfig: {
-      timeBudgetMs: 1500,
-      maxNodes: 500000,
-      beamWidth: 5,
-      useMonteCarloTreeSearch: true,
-      mctsIterations: 250,
-      mctsRolloutDepth: 8,
-      mctsMaxNodes: 5000,
-    },
-  },
-  {
-    id: 'experimental_balanced',
-    label: 'Experimental Balanced (48d, 2.25s, 800k)',
-    lookaheadDepth: 48,
-    searchConfig: {
-      timeBudgetMs: 2250,
-      maxNodes: 800000,
-      beamWidth: 5,
-      useMonteCarloTreeSearch: true,
-      mctsIterations: 250,
-      mctsRolloutDepth: 12,
-      mctsMaxNodes: 5000,
     },
   },
 ];
@@ -605,7 +547,6 @@ function runBenchmark(options: {
           nodesExplored: result.searchMetrics?.nodesExplored ?? 0,
           cacheHits: result.searchMetrics?.cacheHits ?? 0,
           timeTakenMs: result.searchMetrics?.timeTakenMs ?? 0,
-          mcts: result.searchMetrics?.mcts,
           earlyExit: result.searchMetrics?.earlyExit,
           requiresProbabilisticSurvival:
             recommendation?.requiresProbabilisticSurvival ?? false,

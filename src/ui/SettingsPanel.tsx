@@ -31,13 +31,10 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import {
   AMBITION_BAND_MAX,
   CraftBuddySettings,
-  EXPERIMENTAL_SEARCH_PRESET_BUDGETS,
   getSettings,
-  LEGACY_SEARCH_PRESET_BUDGETS,
+  SEARCH_PRESET_BUDGETS,
   saveSettings,
-  OPTIMIZER_ENGINE_OPTIONS,
   SEARCH_THREAD_OPTIONS,
-  type OptimizerEngine,
   type SearchPresetBudget,
   type SearchPresetId,
   type SearchThreadCount,
@@ -111,13 +108,8 @@ const SEARCH_PRESETS: SearchPreset[] = [
   },
 ];
 
-function getSearchPresetBudget(
-  presetId: SearchPresetId,
-  engine: OptimizerEngine,
-): SearchPresetBudget {
-  return engine === 'experimental'
-    ? EXPERIMENTAL_SEARCH_PRESET_BUDGETS[presetId]
-    : LEGACY_SEARCH_PRESET_BUDGETS[presetId];
+function getSearchPresetBudget(presetId: SearchPresetId): SearchPresetBudget {
+  return SEARCH_PRESET_BUDGETS[presetId];
 }
 
 function matchesSearchPresetBudget(
@@ -137,13 +129,6 @@ const SEARCH_BUDGET_HELP: SettingHelpContent = {
   description:
     'Depth, time, nodes, and beam width work as one shared budget. Pushing one much higher than the others can waste search and sometimes make partial-frontier recommendations worse.',
   note: 'If you are unsure, start from a preset and only tune one step at a time.',
-};
-
-const OPTIMIZER_ENGINE_HELP: SettingHelpContent = {
-  title: 'Optimizer Engine',
-  description:
-    'Chooses which search engine contributes to recommendations. Legacy uses the established TypeScript search only; Experimental adds the Rust/WASM MCTS policy prior for harder crafts.',
-  note: 'Legacy is the v5 default. Experimental is opt-in while MCTS behavior is still being validated.',
 };
 
 const SEARCH_THREADS_HELP: SettingHelpContent = {
@@ -586,7 +571,6 @@ export const SettingsPanel = memo(function SettingsPanel({
     | 'overcraftAmbition'
     | 'perfectionBandGoal'
     | 'completionBandCeiling'
-    | 'optimizerEngine'
     | 'searchThreads';
 
   const applySettingsPatch = useCallback(
@@ -625,7 +609,6 @@ export const SettingsPanel = memo(function SettingsPanel({
     'overcraftAmbition',
     'perfectionBandGoal',
     'completionBandCeiling',
-    'optimizerEngine',
     'searchThreads',
   ];
 
@@ -665,42 +648,17 @@ export const SettingsPanel = memo(function SettingsPanel({
     [settings, handleSettingChange, onSearchSettingsChange],
   );
 
-  const handleEngineChange = useCallback(
-    (engine: OptimizerEngine) => {
-      if (settings.optimizerEngine === engine) return;
-      const activePreset = SEARCH_PRESETS.find((preset) =>
-        matchesSearchPresetBudget(
-          settings,
-          getSearchPresetBudget(preset.id, settings.optimizerEngine),
-        ),
-      );
-      const newSettings = applySettingsPatch({
-        optimizerEngine: engine,
-        ...(activePreset
-          ? getSearchPresetBudget(activePreset.id, engine)
-          : {}),
-      });
-      onSearchSettingsChange?.(newSettings);
-    },
-    [settings, applySettingsPatch, onSearchSettingsChange],
-  );
-
   const handleApplyPreset = useCallback(
     (preset: SearchPreset) => {
-      const newSettings = applySettingsPatch(
-        getSearchPresetBudget(preset.id, settings.optimizerEngine),
-      );
+      const newSettings = applySettingsPatch(getSearchPresetBudget(preset.id));
       onSearchSettingsChange?.(newSettings);
     },
-    [settings.optimizerEngine, applySettingsPatch, onSearchSettingsChange],
+    [applySettingsPatch, onSearchSettingsChange],
   );
 
   const isPresetActive = useCallback(
     (preset: SearchPreset): boolean =>
-      matchesSearchPresetBudget(
-        settings,
-        getSearchPresetBudget(preset.id, settings.optimizerEngine),
-      ),
+      matchesSearchPresetBudget(settings, getSearchPresetBudget(preset.id)),
     [settings],
   );
 
@@ -1075,76 +1033,13 @@ export const SettingsPanel = memo(function SettingsPanel({
             >
               <Box sx={{ gridColumn: compact ? 'auto' : '1 / -1' }}>
                 <SettingsGroup
-                  title="Search Engine"
-                  help={OPTIMIZER_ENGINE_HELP}
-                  description="Legacy is stable. Experimental adds the native MCTS policy prior for difficult crafts."
+                  title="Search Threads"
+                  help={SEARCH_THREADS_HELP}
                 >
-                  <FlexRow gap={0.65} sx={{ flexWrap: 'wrap' }}>
-                    {OPTIMIZER_ENGINE_OPTIONS.map((option) => {
-                      const active = settings.optimizerEngine === option.id;
-                      return (
-                        <Tooltip
-                          key={option.id}
-                          title={renderHelpContent({
-                            title: option.label,
-                            description: option.description,
-                            note: option.note,
-                          })}
-                          enterDelay={250}
-                          placement="top"
-                          arrow
-                          PopperProps={getTooltipPopperProps()}
-                        >
-                          <Button
-                            size="small"
-                            variant={active ? 'contained' : 'outlined'}
-                            onClick={() => handleEngineChange(option.id)}
-                            sx={{
-                              minWidth: compact ? 104 : 122,
-                              color: active ? '#141414' : colors.textSecondary,
-                              backgroundColor: active
-                                ? colors.gold
-                                : 'transparent',
-                              borderColor: active
-                                ? colors.gold
-                                : `${colors.borderMedium}`,
-                              transition: transitions.smooth,
-                              '&:hover': {
-                                borderColor: colors.gold,
-                                backgroundColor: active
-                                  ? colors.goldDark
-                                  : 'rgba(197, 160, 89, 0.12)',
-                              },
-                            }}
-                          >
-                            {option.label}
-                          </Button>
-                        </Tooltip>
-                      );
-                    })}
-                  </FlexRow>
                   <FlexRow
                     gap={0.65}
                     sx={{ flexWrap: 'wrap', alignItems: 'center', mt: 1 }}
                   >
-                    <Tooltip
-                      title={renderHelpContent(SEARCH_THREADS_HELP)}
-                      enterDelay={250}
-                      placement="top"
-                      arrow
-                      PopperProps={getTooltipPopperProps()}
-                    >
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: colors.textSecondary,
-                          cursor: 'help',
-                          mr: 0.5,
-                        }}
-                      >
-                        Threads
-                      </Typography>
-                    </Tooltip>
                     {SEARCH_THREAD_OPTIONS.map((option) => {
                       const active = settings.searchThreads === option.id;
                       return (
@@ -1196,10 +1091,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                   <FlexRow gap={0.65} sx={{ flexWrap: 'wrap' }}>
                     {SEARCH_PRESETS.map((preset) => {
                       const active = isPresetActive(preset);
-                      const values = getSearchPresetBudget(
-                        preset.id,
-                        settings.optimizerEngine,
-                      );
+                      const values = getSearchPresetBudget(preset.id);
                       return (
                         <Tooltip
                           key={preset.id}

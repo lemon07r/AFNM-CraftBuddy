@@ -1,10 +1,8 @@
 import {
   DEFAULT_AUTO_CRAFT_POLICY,
-  DEFAULT_OPTIMIZER_ENGINE,
   DEFAULT_SETTINGS,
-  EXPERIMENTAL_SEARCH_PRESET_BUDGETS,
   getSearchConfig,
-  LEGACY_SEARCH_PRESET_BUDGETS,
+  SEARCH_PRESET_BUDGETS,
   loadSettings,
   resetSettings,
   resolveSearchThreadCount,
@@ -68,77 +66,114 @@ describe('settings search budget', () => {
 
   it('keeps the legacy fast preset as the default search budget', () => {
     expect(DEFAULT_SETTINGS.lookaheadDepth).toBe(
-      LEGACY_SEARCH_PRESET_BUDGETS.fast.lookaheadDepth,
+      SEARCH_PRESET_BUDGETS.fast.lookaheadDepth,
     );
     expect(DEFAULT_SETTINGS.searchTimeBudgetMs).toBe(
-      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchTimeBudgetMs,
+      SEARCH_PRESET_BUDGETS.fast.searchTimeBudgetMs,
     );
     expect(DEFAULT_SETTINGS.searchMaxNodes).toBe(
-      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchMaxNodes,
+      SEARCH_PRESET_BUDGETS.fast.searchMaxNodes,
     );
     expect(DEFAULT_SETTINGS.searchBeamWidth).toBe(
-      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchBeamWidth,
+      SEARCH_PRESET_BUDGETS.fast.searchBeamWidth,
     );
     expect(DEFAULT_SETTINGS.searchGoalPriorityBias).toBe(0);
-    expect(DEFAULT_SETTINGS.optimizerEngine).toBe(DEFAULT_OPTIMIZER_ENGINE);
     expect(DEFAULT_SETTINGS.maxAlternatives).toBe(1);
     expect(DEFAULT_SETTINGS.preferredAutoModePolicy).toBe(
       DEFAULT_AUTO_CRAFT_POLICY,
     );
     expect(getSearchConfig().timeBudgetMs).toBe(
-      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchTimeBudgetMs,
+      SEARCH_PRESET_BUDGETS.fast.searchTimeBudgetMs,
     );
     expect(getSearchConfig().maxNodes).toBe(
-      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchMaxNodes,
+      SEARCH_PRESET_BUDGETS.fast.searchMaxNodes,
     );
     expect(getSearchConfig().beamWidth).toBe(
-      LEGACY_SEARCH_PRESET_BUDGETS.fast.searchBeamWidth,
+      SEARCH_PRESET_BUDGETS.fast.searchBeamWidth,
     );
     expect(getSearchConfig().goalPriorityBias).toBe(0);
-    expect(getSearchConfig().useMonteCarloTreeSearch).toBe(false);
-    expect(getSearchConfig().mctsIterations).toBeUndefined();
   });
 
-  it('keeps every experimental preset within the 4.5 second cap', () => {
-    for (const preset of Object.values(EXPERIMENTAL_SEARCH_PRESET_BUDGETS)) {
-      expect(preset.searchTimeBudgetMs).toBeLessThanOrEqual(4500);
-    }
-    expect(EXPERIMENTAL_SEARCH_PRESET_BUDGETS.max.searchTimeBudgetMs).toBe(
-      4000,
-    );
-  });
+  it.each(['legacy', 'experimental', 'fast-native'])(
+    'discards the retired engine selector %s without changing saved preferences',
+    (optimizerEngine) => {
+      storageData['craftbuddy_settings'] = JSON.stringify({
+        optimizerEngine,
+        ...SEARCH_PRESET_BUDGETS.balanced,
+        compactMode: true,
+        perfectionBandGoal: 3,
+      });
+      storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+        SEARCH_DEFAULTS_RESET_VERSION;
+      storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+        DISPLAY_DEFAULTS_RESET_VERSION;
 
-  it('defaults to legacy engine and enables bounded native MCTS only for experimental engine', () => {
-    expect(loadSettings().optimizerEngine).toBe('legacy');
-    expect(getSearchConfig().useMonteCarloTreeSearch).toBe(false);
+      const migrated = loadSettings();
 
-    const experimental = saveSettings({ optimizerEngine: 'experimental' });
+      expect(migrated).not.toHaveProperty('optimizerEngine');
+      expect(migrated).toMatchObject({
+        ...SEARCH_PRESET_BUDGETS.balanced,
+        compactMode: true,
+        perfectionBandGoal: 3,
+      });
+      expect(JSON.parse(storageData['craftbuddy_settings'])).not.toHaveProperty(
+        'optimizerEngine',
+      );
+      expect(loadSettings()).toEqual(migrated);
+      expect(saveSettings({ panelVisible: false })).not.toHaveProperty(
+        'optimizerEngine',
+      );
+    },
+  );
 
-    expect(experimental.optimizerEngine).toBe('experimental');
-    expect(getSearchConfig().useMonteCarloTreeSearch).toBe(true);
-    expect(getSearchConfig().mctsIterations).toBe(250);
-    expect(getSearchConfig().mctsRolloutDepth).toBe(12);
-    expect(getSearchConfig().mctsMaxNodes).toBe(5000);
+  it.each([
+    ['instant', 32, 1250, 400000, 5],
+    ['fast', 32, 1500, 500000, 5],
+    ['balanced', 48, 2250, 800000, 5],
+    ['high_accuracy', 64, 3250, 1300000, 5],
+    ['max', 80, 4000, 2000000, 5],
+  ] as const)(
+    'moves a saved experimental %s budget to the same-named preset',
+    (
+      presetId,
+      lookaheadDepth,
+      searchTimeBudgetMs,
+      searchMaxNodes,
+      searchBeamWidth,
+    ) => {
+      storageData['craftbuddy_settings'] = JSON.stringify({
+        optimizerEngine: 'experimental',
+        lookaheadDepth,
+        searchTimeBudgetMs,
+        searchMaxNodes,
+        searchBeamWidth,
+      });
+      storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
+        SEARCH_DEFAULTS_RESET_VERSION;
+      storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
+        DISPLAY_DEFAULTS_RESET_VERSION;
 
-    saveSettings(EXPERIMENTAL_SEARCH_PRESET_BUDGETS.max);
+      expect(loadSettings()).toMatchObject(SEARCH_PRESET_BUDGETS[presetId]);
+    },
+  );
 
-    expect(getSearchConfig().timeBudgetMs).toBe(4000);
-    expect(getSearchConfig().mctsRolloutDepth).toBe(16);
-  });
-
-  it('normalizes unknown optimizer engine values back to legacy', () => {
+  it('keeps a custom experimental budget as saved', () => {
+    const custom = {
+      lookaheadDepth: 40,
+      searchTimeBudgetMs: 2250,
+      searchMaxNodes: 800000,
+      searchBeamWidth: 5,
+    };
     storageData['craftbuddy_settings'] = JSON.stringify({
-      optimizerEngine: 'fast-native',
+      optimizerEngine: 'experimental',
+      ...custom,
     });
     storageData[SEARCH_DEFAULTS_RESET_VERSION_KEY] =
       SEARCH_DEFAULTS_RESET_VERSION;
     storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
       DISPLAY_DEFAULTS_RESET_VERSION;
 
-    const migrated = loadSettings();
-
-    expect(migrated.optimizerEngine).toBe('legacy');
-    expect(getSearchConfig().useMonteCarloTreeSearch).toBe(false);
+    expect(loadSettings()).toMatchObject(custom);
   });
 
   it('keeps searchThreads at 1 by default and normalizes invalid values', () => {
@@ -209,7 +244,6 @@ describe('settings search budget', () => {
       searchMaxNodes: 400000,
       searchBeamWidth: 8,
       searchGoalPriorityBias: SEARCH_GOAL_PRIORITY_BIAS_MAX,
-      optimizerEngine: 'experimental',
     });
     storageData[DISPLAY_DEFAULTS_RESET_VERSION_KEY] =
       DISPLAY_DEFAULTS_RESET_VERSION;
@@ -225,7 +259,6 @@ describe('settings search budget', () => {
     expect(migrated.searchGoalPriorityBias).toBe(
       DEFAULT_SETTINGS.searchGoalPriorityBias,
     );
-    expect(migrated.optimizerEngine).toBe(DEFAULT_SETTINGS.optimizerEngine);
     expect(migrated.compactMode).toBe(true);
     expect(migrated.maxAlternatives).toBe(1);
 
@@ -235,7 +268,6 @@ describe('settings search budget', () => {
       searchMaxNodes: 5000000,
       searchBeamWidth: 12,
       searchGoalPriorityBias: SEARCH_GOAL_PRIORITY_BIAS_MAX,
-      optimizerEngine: 'experimental',
     });
 
     const reloaded = loadSettings();
@@ -244,7 +276,6 @@ describe('settings search budget', () => {
     expect(reloaded.searchMaxNodes).toBe(5000000);
     expect(reloaded.searchBeamWidth).toBe(12);
     expect(reloaded.searchGoalPriorityBias).toBe(SEARCH_GOAL_PRIORITY_BIAS_MAX);
-    expect(reloaded.optimizerEngine).toBe('experimental');
   });
 
   it('migrates the legacy guaranteed-completion toggle to full completion bias', () => {

@@ -269,7 +269,6 @@ export async function requestWorkerSearch(options: {
   epoch: number;
   scope: string;
   threads: number;
-  baseSeed: number;
   rootSkillKeys: string[];
   input: PlainSearchInput;
 }): Promise<WorkerSearchOutcome> {
@@ -299,15 +298,17 @@ export async function requestWorkerSearch(options: {
     for (let index = 0; index < threads; index++) {
       const entry = pool[index];
       entry.busyEpoch = options.epoch;
-      entry.worker.onmessage = (
-        event: MessageEvent<SearchWorkerResponse>,
-      ) => {
+      entry.worker.onmessage = (event: MessageEvent<SearchWorkerResponse>) => {
         const message = event.data;
         if (!message || message.kind === 'probe') {
           return;
         }
         entry.busyEpoch = null;
-        if (!pending || pending.epoch !== options.epoch || message.epoch !== options.epoch) {
+        if (
+          !pending ||
+          pending.epoch !== options.epoch ||
+          message.epoch !== options.epoch
+        ) {
           return;
         }
         if (message.kind === 'error') {
@@ -347,7 +348,6 @@ export async function requestWorkerSearch(options: {
         epoch: options.epoch,
         scope: options.scope,
         partition: { index, of: threads },
-        baseSeed: options.baseSeed,
         rootSkillKeys: options.rootSkillKeys,
         input: options.input,
       };

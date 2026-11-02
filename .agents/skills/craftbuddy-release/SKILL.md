@@ -20,7 +20,7 @@ This is the release procedure. Validation details live in `docs/DEVELOPMENT.md`,
    ```bash
    bun run release:validate
    ```
-   For mechanics/Rust changes, regenerate the differential corpus and run both sides plus `bun run optimizer:bench` as described in the development matrix. The release gate compiles Rust/WASM (through `build`) but does not run `cargo test` (`bun run wasm:test`) or `bun run optimizer:bench`. A harness build is useful for UI changes; live testing is an escalation, not an automatic release step.
+   For mechanics changes, regenerate the transition golden, inspect its diff and run its Jest test plus `bun run optimizer:bench` as described in the development matrix. The release gate builds the TypeScript worker/mod and does not run `bun run optimizer:bench`. A harness build is useful for UI changes; live testing is an escalation, not an automatic release step.
 2. Review the diff and commit the release (for example `chore(release): vX.Y.Z`). Keep generated outputs and local Steam files out of the commit.
 3. Push the release commit on main:
    ```bash
@@ -36,7 +36,7 @@ This is the release procedure. Validation details live in `docs/DEVELOPMENT.md`,
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
-   `.github/workflows/release.yml` checks the tag matches `package.json`, runs `release:validate` plus `wasm:test`, and creates the GitHub Release with the zip. Pushing main alone does not create that release or upload to Workshop.
+   `.github/workflows/release.yml` checks the tag matches `package.json`, runs `release:validate`, and creates the GitHub Release with the zip. Pushing main alone does not create that release or upload to Workshop.
 6. Confirm package version, tag, Workshop change note and uploaded build agree.
 
 ## Failure clues

@@ -6,7 +6,7 @@ Unresolved requests after the AFNM 0.7.19 audit. Runtime facts live in [Runtime 
 
 | Request | Why / current position |
 | --- | --- |
-| Finalized post-modifier Qi/stability payment preview | Validate mastery/buff/condition order against a canonical helper. `getActionCost` previews an individual cost, not final execution after effect masteries; CraftBuddy has no wrapper for it. Both engines simulate payment locally. |
+| Finalized post-modifier Qi/stability payment preview | Validate mastery/buff/condition order against a canonical helper. `getActionCost` previews an individual cost, not final execution after effect masteries; CraftBuddy has no wrapper for it. The simulator models payment locally. |
 | Pure hypothetical-state scaling contract | `evaluateScaling` exists, but a live provider can disagree on future state. A documented pure input/output contract is needed before using it inside search. |
 | Stable auto-use slot/rule contract | Document item reference, condition groups/self-effect references and `maxCount`, so projection need not conservatively assume unknown conditions fire. Actual native selection/consumption remains authoritative. |
 | Normalized craft-time consumable effect preview | Could reduce item-family parsing heuristics; no finalized preview contract is recorded. |

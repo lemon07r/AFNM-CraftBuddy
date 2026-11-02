@@ -17,11 +17,6 @@
  *   tiebreak. Per-candidate deep scores are absolute (not relative to the
  *   root sibling set), so the merged ranking matches an unpartitioned
  *   search up to the per-partition early-exit frontier.
- * - Native MCTS prior: root-parallel. Worker i runs an independent tree
- *   with `seed = baseSeed + i` (`SearchConfig.mctsSeed`); the policy merge
- *   sums root-child visits and value and argmax-picks. In the composed
- *   pipeline each worker's prior covers only its own root subset, so the
- *   beam merge above remains the combining step.
  */
 
 import { CraftingState, type CraftingStateData } from './state';
@@ -51,8 +46,6 @@ export interface SearchWorkerSearchRequest {
   /** Cross-step cache scope signature; the worker drops its table on change. */
   scope: string;
   partition: { index: number; of: number };
-  /** Base seed for the native MCTS policy; worker i runs baseSeed + i. */
-  baseSeed: number;
   /** Every key that could appear at the root; the worker strides its slice. */
   rootSkillKeys: string[];
   input: PlainSearchInput;

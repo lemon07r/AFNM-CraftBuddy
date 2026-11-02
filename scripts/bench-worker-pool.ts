@@ -89,7 +89,6 @@ async function runWorkerPoolSearch(
             epoch,
             scope,
             partition: { index, of: workers.length },
-            baseSeed: epoch,
             rootSkillKeys,
             input: plain,
           };

@@ -10,7 +10,6 @@ export type LastSearchSettings = Pick<
   | 'searchMaxNodes'
   | 'searchBeamWidth'
   | 'searchGoalPriorityBias'
-  | 'optimizerEngine'
   | 'overcraftAmbition'
   | 'perfectionBandGoal'
   | 'completionBandCeiling'
@@ -25,7 +24,6 @@ export function snapshotSearchSettings(
     searchMaxNodes: settings.searchMaxNodes,
     searchBeamWidth: settings.searchBeamWidth,
     searchGoalPriorityBias: settings.searchGoalPriorityBias,
-    optimizerEngine: settings.optimizerEngine,
     overcraftAmbition: settings.overcraftAmbition,
     perfectionBandGoal: settings.perfectionBandGoal,
     completionBandCeiling: settings.completionBandCeiling,

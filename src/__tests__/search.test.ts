@@ -5653,7 +5653,6 @@ describe('scoreState (isolated)', () => {
       ...input.searchConfig,
       timeBudgetMs: FIXED_WORK_CLOCK_MS,
       maxNodes: 400,
-      useMonteCarloTreeSearch: false,
     };
 
     const result = lookaheadSearch(
@@ -5720,7 +5719,6 @@ describe('scoreState (isolated)', () => {
       ...input.searchConfig,
       timeBudgetMs: FIXED_WORK_CLOCK_MS,
       maxNodes: 550,
-      useMonteCarloTreeSearch: false,
     };
 
     const result = lookaheadSearch(
@@ -6534,7 +6532,6 @@ describe('user-report-resonance-regression: deterministic contract', () => {
         timeBudgetMs: 600000,
         maxNodes: 1000,
         beamWidth: 5,
-        useMonteCarloTreeSearch: false,
         goalPriorityBias: input.searchConfig.goalPriorityBias ?? 0,
       },
     );

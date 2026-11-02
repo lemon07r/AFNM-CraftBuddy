@@ -445,7 +445,6 @@ describe('search backend client fallback', () => {
       epoch: 1,
       scope: 'test-scope',
       threads: 1,
-      baseSeed: 0,
       rootSkillKeys: [...input.config.skills.map((skill) => skill.key)],
       input: serializeSearchInput(input),
     });
@@ -461,7 +460,6 @@ describe('search backend client fallback', () => {
       epoch: 2,
       scope: 'test-scope',
       threads: 1,
-      baseSeed: 0,
       rootSkillKeys: [],
       input: serializeSearchInput(input),
     });

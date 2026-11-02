@@ -352,7 +352,7 @@ export function techniqueDisplayName(
  *
  * Eccentric Decree is the only harmony that scores per bar change, so recording
  * the ordering for anything else would allocate on every node of the search for
- * data nobody reads. Mirrors `needs_bar_contributions` in the Rust engine.
+ * data nobody reads.
  */
 function needsBarContributions(config: OptimizerConfig): boolean {
   return (

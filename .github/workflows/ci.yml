@@ -20,26 +20,9 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: crates/craftbuddy-engine
-
-      - name: Install wasm-pack
-        run: cargo install wasm-pack --locked --version 0.14.0
-
       - run: bun install --frozen-lockfile
 
-      - name: Build WASM engine
-        run: bun run wasm:build
-
       - run: bun run typecheck
-
-      - name: Rust engine and parity tests
-        run: bun run wasm:test
 
       - run: bun run test
 

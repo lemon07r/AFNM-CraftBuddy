@@ -7,14 +7,10 @@
   },
   "main": "dist/mod.js",
   "scripts": {
-    "prebuild": "bun run wasm:build && rm -rf dist/afnm-craftbuddy",
+    "prebuild": "rm -rf dist/afnm-craftbuddy",
     "build": "bun run webpack --mode production",
     "postbuild": "bun scripts/zip-dist.js",
     "workshop:upload": "bun run scripts/workshop-upload.ts",
-    "wasm:build:core": "wasm-pack build crates/craftbuddy-engine --target web --out-dir ../../src/optimizer/wasm/generated --release",
-    "wasm:inline": "node scripts/wasm/inline-wasm.js",
-    "wasm:build": "bun run wasm:build:core && bun run wasm:inline",
-    "wasm:test": "cargo test --manifest-path crates/craftbuddy-engine/Cargo.toml",
     "typecheck": "tsc --noEmit",
     "test": "bun run jest",
     "test:watch": "bun run jest --watch",
@@ -31,7 +27,7 @@
     "optimizer:bench": "bun run scripts/optimizer/benchmark-engines.ts",
     "optimizer:digest": "bun run scripts/optimizer/baseline-digest.ts",
     "optimizer:parity": "bun run scripts/optimizer/run-parity-suites.ts",
-    "optimizer:differential-corpus": "bun run scripts/optimizer/generate-differential-corpus.ts",
+    "optimizer:transition-corpus": "bun run scripts/optimizer/generate-differential-corpus.ts",
     "release:validate": "bun run typecheck && bun run test && bun run build && bun run docs:check"
   },
   "devDependencies": {

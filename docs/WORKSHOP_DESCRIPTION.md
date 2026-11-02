@@ -16,7 +16,7 @@ Latest in 6.9.0:
 [*] [b]Your band goals stay in effect[/b] — Perfection Band Goal and Completion Band Ceiling now reach every craft-ending score. Changing ambition settings marks old recommendations stale.
 [*] [b]Safer choices[/b] — guaranteed routes take precedence over techniques whose failure would end below target, including when search uses multiple workers.
 [*] [b]Auto-use fixes[/b] — respects the game's crafting auto-use toggle and tracks consumed pills correctly. Thanks to PommesMitChips for the report.
-[*] [b]Game-accurate simulation[/b] — payment phases, droplets, buffs, quality caps, ambition targets and overcraft rewards remain modelled, with optional Rust/WASM assistance checked against the TypeScript simulator.
+[*] [b]Game-accurate simulation[/b] — payment phases, droplets, buffs, quality caps, ambition targets and overcraft rewards remain modelled.
 [/list]
 
 [hr][/hr]
@@ -65,7 +65,7 @@ Settings live behind the gear icon inside the CraftBuddy panel and open as a sli
 [h2]Search Presets[/h2]
 Pick a preset to adjust all four search parameters together.
 [list]
-[*] [b]Instant[/b] — lowest search budget, minimal lookahead (1-second Legacy / 1.25-second Experimental time budget)
+[*] [b]Instant[/b] — lowest search budget, minimal lookahead (1-second time budget)
 [*] [b]Fast[/b] — quick results, good for simple crafts
 [*] [b]Balanced[/b] — more search time than Fast, for harder crafts
 [*] [b]High Accuracy[/b] — deeper search for complex or high-value crafts
@@ -92,13 +92,6 @@ Both use bands ("stars") and default to [b]Auto[/b], following your target outco
 
 [h2]Display Options[/h2]
 Toggle predicted rotation, final state estimates, upcoming conditions and alternative actions independently.
-
-[h2]Engine Selector[/h2]
-[list]
-[*] [b]Legacy engine[/b] — the established lookahead optimizer. Reliable and thoroughly tested for all crafting.
-[*] [b]Experimental engine[/b] — opt-in Rust/WASM assistance for difficult late-game, sublime and harmony-heavy crafts, modelling the same mechanics as the main engine.
-[/list]
-[b]Recommendation:[/b] keep Legacy for everyday crafting. Try Experimental for difficult crafts; switch back if a recommendation looks wrong.
 
 [hr][/hr]
 

@@ -1,19 +1,10 @@
 /**
- * CraftBuddy - Cross-engine differential corpus.
+ * CraftBuddy - TypeScript transition golden corpus.
  *
- * The TypeScript simulator in `src/optimizer` and the Rust engine in
- * `crates/craftbuddy-engine` implement the same crafting mechanics twice. This
- * module builds a deterministic corpus of `(state, config, technique)` triples
- * together with the transition the TypeScript simulator produces for each one.
- *
- * The corpus is serialised to
- * `crates/craftbuddy-engine/tests/differential_corpus.json` by
- * `scripts/optimizer/generate-differential-corpus.ts`:
- *
- * - `src/__tests__/engineDifferential.test.ts` asserts the checked-in file
- *   still matches what TypeScript produces, so TS-side drift is caught.
- * - a Rust test in `crates/craftbuddy-engine/src/lib.rs` replays the same
- *   corpus and asserts the Rust engine agrees, so Rust-side drift is caught.
+ * Builds deterministic `(state, config, technique)` inputs and expected
+ * transitions. `bun run optimizer:transition-corpus` writes
+ * `src/__tests__/fixtures/transition_corpus.json`; the golden test replays
+ * those stored inputs to catch unintended simulator changes.
  *
  * Scope: the corpus covers the whole searchable action space - scalar
  * techniques, effect-tree techniques, mastery (including conditional and
@@ -29,7 +20,10 @@ import {
   OptimizerConfig,
   SkillDefinition,
 } from '../../optimizer/skills';
-import { buildNativeMctsInput } from '../../optimizer/nativeMcts';
+import {
+  serializeSearchInput,
+  type PlainSearchInput,
+} from '../../optimizer/searchBackend';
 import type {
   BuffDefinition,
   HarmonyData,
@@ -107,7 +101,7 @@ export interface DifferentialHarmonyDigest {
   cycleLastOutcome?: string;
 }
 
-/** Fields both engines must agree on after a single transition. */
+/** Golden fields after a single transition. */
 export interface DifferentialExpectation {
   itemEffectiveness: number;
   qiDroplets: number;
@@ -131,7 +125,7 @@ export interface DifferentialExpectation {
 }
 
 export interface DifferentialCase {
-  /** Index into the scenario's `skills` array, matching the Rust input order. */
+  /** Index into the scenario's config `skills` array. */
   skillIndex: number;
   skillKey: string;
   /** `null` when the TypeScript simulator rejects the action as illegal. */
@@ -140,8 +134,8 @@ export interface DifferentialCase {
 
 export interface DifferentialScenario {
   name: string;
-  /** Rust `MctsInput`-shaped payload, produced by `buildNativeMctsInput`. */
-  input: unknown;
+  /** Plain TypeScript worker-wire input, including all transition state. */
+  input: PlainSearchInput;
   cases: DifferentialCase[];
 }
 
@@ -163,8 +157,11 @@ export interface DifferentialCorpus {
  *
  * 4 added `captivatingCadence` fields to the harmony digest and cadence
  * scenarios.
+ *
+ * 5 replaces the retired bridge payload with TypeScript worker-wire inputs.
+ * Expected transition outputs are unchanged.
  */
-export const DIFFERENTIAL_CORPUS_VERSION = 4;
+export const DIFFERENTIAL_CORPUS_VERSION = 5;
 
 /**
  * Deterministic 32-bit LCG.
@@ -852,9 +849,8 @@ function digestHarmonyData(
 }
 
 function buildScenario(spec: ScenarioSpec): DifferentialScenario {
-  // Item actions are part of the searchable action space on both sides now, so
-  // the corpus must not filter them out: doing so would leave pills and
-  // reagents unproven precisely where the two engines could disagree.
+  // Item actions are part of the searchable action space, so retain pills and
+  // reagents alongside techniques in the transition golden.
   const skills = spec.config.skills || [];
   const conditionEffects = getConditionEffectsForConfig(
     spec.config,
@@ -913,13 +909,15 @@ function buildScenario(spec: ScenarioSpec): DifferentialScenario {
 
   return {
     name: spec.name,
-    input: buildNativeMctsInput({
+    input: serializeSearchInput({
       state: spec.state,
       config: spec.config,
       targetCompletion: spec.targetCompletion,
       targetPerfection: spec.targetPerfection,
-      currentConditionType: spec.condition,
-      forecastedConditionTypes: [],
+      currentCondition: spec.condition,
+      forecast: [],
+      lookaheadDepth: 1,
+      searchConfig: {},
     }),
     cases,
   };
@@ -1090,7 +1088,7 @@ function handWrittenScenarios(): ScenarioSpec[] {
 }
 
 /**
- * Scenarios for the mechanics the Rust engine gained in this pass.
+ * Scenarios for effect-tree, mastery, buff and item mechanics.
  *
  * Each one is aimed at a specific divergence risk rather than at coverage for
  * its own sake, so a failure names the mechanic that broke.

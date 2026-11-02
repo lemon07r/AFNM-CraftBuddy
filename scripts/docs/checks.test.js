@@ -24,7 +24,7 @@ test('inline local links resolve relative to the document; code paths to the rep
       file,
       '[design](OPTIMIZER_DESIGN.md#search) [root](/README.md "readme") ' +
         '`src/settings/index.ts:181-189,230-240` ' +
-        '`scripts/docs/check-links.js` `crates/craftbuddy-engine/Cargo.toml` ' +
+        '`scripts/docs/check-links.js` `src/__tests__/fixtures/transition_corpus.json` ' +
         '`.agents/skills/craftbuddy-optimizer/SKILL.md`',
     ),
     [],
