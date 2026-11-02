@@ -40,11 +40,36 @@
  * bar can raise the weighted score while leaving the outcome stuck at `basic`.
  */
 
-import { getBonusAndChance } from './gameTypes';
 import type { OptimizerConfig } from './skills';
 
 /** Ratio by which each successive band's width grows (runtime `qIa`). */
 export const BAND_GROWTH_RATIO = 1.3;
+
+/** Runtime band count, fractional bonus roll, and next threshold. */
+export function getBonusAndChance(
+  value: number,
+  target: number,
+): { guaranteed: number; bonusChance: number; nextThreshold: number } {
+  if (target <= 0) {
+    return { guaranteed: 0, bonusChance: 0, nextThreshold: 0 };
+  }
+
+  let currentTarget = target;
+  let remainingValue = value;
+  let guaranteed = 0;
+  while (
+    remainingValue > 0 &&
+    currentTarget > 0 &&
+    remainingValue >= currentTarget
+  ) {
+    remainingValue -= currentTarget;
+    guaranteed++;
+    currentTarget = Math.floor(currentTarget * BAND_GROWTH_RATIO);
+  }
+  const bonusChance = currentTarget > 0 ? remainingValue / currentTarget : 0;
+  const nextThreshold = value + (currentTarget - remainingValue);
+  return { guaranteed, bonusChance, nextThreshold };
+}
 
 export type OutcomeTier = 'failed' | 'basic' | 'perfect' | 'sublime';
 

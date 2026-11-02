@@ -20,12 +20,12 @@ use effects::{
 };
 use outcome::{
     band_threshold, build_outcome_bands, classify_outcome, compute_overcraft_extras,
-    tier_requirement, OutcomeBands, OutcomeClassification, OutcomeTier,
+    get_bonus_and_chance, tier_requirement, OutcomeBands, OutcomeClassification, OutcomeTier,
+    EXPONENTIAL_SCALING_FACTOR,
 };
 
 const FINISH_CRAFT_KEY: &str = "__finish_craft__";
 const FINISH_CRAFT_NAME: &str = "Finish Craft";
-const EXPONENTIAL_SCALING_FACTOR: f64 = 1.3;
 const RESOURCE_TIEBREAKER: f64 = 0.001;
 
 // Conjunctive goal-score weights. Mirrors `SCORING` in
@@ -1643,46 +1643,10 @@ impl EngineState {
 }
 
 #[derive(Clone, Copy)]
-struct BonusProgress {
-    guaranteed: i32,
-    bonus_chance: f64,
-    #[allow(dead_code)]
-    next_threshold: f64,
-}
-
-#[derive(Clone, Copy)]
 struct BonusOutcome {
     guaranteed: i32,
     probability: f64,
     threshold: f64,
-}
-
-fn get_bonus_and_chance(value: f64, target: f64) -> BonusProgress {
-    if target <= 0.0 {
-        return BonusProgress {
-            guaranteed: 0,
-            bonus_chance: 0.0,
-            next_threshold: 0.0,
-        };
-    }
-    let mut current_target = target;
-    let mut remaining_value = value;
-    let mut guaranteed = 0;
-    while remaining_value > 0.0 && current_target > 0.0 && remaining_value >= current_target {
-        remaining_value -= current_target;
-        guaranteed += 1;
-        current_target = (current_target * EXPONENTIAL_SCALING_FACTOR).floor();
-    }
-    let bonus_chance = if current_target > 0.0 {
-        remaining_value / current_target
-    } else {
-        0.0
-    };
-    BonusProgress {
-        guaranteed,
-        bonus_chance,
-        next_threshold: value + (current_target - remaining_value),
-    }
 }
 
 fn bonus_outcomes(value: f64, target: f64) -> Vec<BonusOutcome> {
@@ -1716,13 +1680,8 @@ fn threshold_for_guaranteed_count(target: f64, guaranteed: i32) -> f64 {
     if target <= 0.0 || guaranteed <= 0 {
         return 0.0;
     }
-    let mut total = 0.0;
-    let mut current = target;
-    for _ in 0..guaranteed {
-        total += current;
-        current = (current * EXPONENTIAL_SCALING_FACTOR).floor();
-    }
-    total
+    // Preserve the legacy fractional first width during consolidation.
+    band_threshold(target, guaranteed) + (target - target.floor())
 }
 fn expected_crit_multiplier(crit_chance: f64, crit_multiplier: f64) -> f64 {
     let excess_crit = (crit_chance - 100.0).max(0.0);

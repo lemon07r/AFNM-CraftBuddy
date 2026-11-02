@@ -51,6 +51,7 @@ import {
   classifyOutcome,
   computeOvercraftExtras,
   tierRank,
+  tierForBands,
   TIER_REQUIREMENTS,
   willAutoFinish,
   type OutcomeBands,
@@ -1296,16 +1297,11 @@ function getThresholdForGuaranteedBonusCount(
     return 0;
   }
 
-  let threshold = 0;
-  let currentTarget = target;
   const cappedCount = Math.max(0, Math.floor(guaranteedCount));
-
-  for (let index = 0; index < cappedCount; index++) {
-    threshold += currentTarget;
-    currentTarget = Math.floor(currentTarget * 1.3);
-  }
-
-  return threshold;
+  // Preserve the legacy fractional first width during authority consolidation.
+  return cappedCount > 0
+    ? bandThreshold(target, cappedCount) + (target - Math.floor(target))
+    : 0;
 }
 
 function getProgressTowardRawGoal(
@@ -1483,25 +1479,16 @@ function evaluateCraftEndOutcomeDistribution(params: {
         continue;
       }
 
-      const craftSucceeded =
-        targetCompletion <= 0 || completionOutcome.guaranteed > 0;
-      if (!craftSucceeded) {
+      const tier = tierForBands(
+        targetCompletion > 0 ? completionOutcome.guaranteed : 1,
+        targetPerfection > 0 ? perfectionOutcome.guaranteed : 0,
+        hasDistinctSublimeOutcome && targetCompletion > 0 && targetPerfection > 0,
+      );
+      if (tier === 'failed') {
         failChance += probability;
-        continue;
-      }
-
-      const hasPerfection =
-        targetPerfection > 0 ? perfectionOutcome.guaranteed > 0 : false;
-      const isSublime =
-        hasDistinctSublimeOutcome &&
-        targetCompletion > 0 &&
-        targetPerfection > 0 &&
-        completionOutcome.guaranteed > 1 &&
-        perfectionOutcome.guaranteed > 1;
-
-      if (isSublime) {
+      } else if (tier === 'sublime') {
         sublimeChance += probability;
-      } else if (hasPerfection) {
+      } else if (tier === 'perfect') {
         perfectChance += probability;
       } else {
         basicChance += probability;

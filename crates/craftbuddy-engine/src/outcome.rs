@@ -10,7 +10,43 @@
 //! `computeConjunctiveGoalScore` in `src/optimizer/search.ts` are the
 //! TypeScript callers of the same model.
 
-use super::{get_bonus_and_chance, EXPONENTIAL_SCALING_FACTOR};
+pub(crate) const EXPONENTIAL_SCALING_FACTOR: f64 = 1.3;
+
+#[derive(Clone, Copy)]
+pub struct BonusProgress {
+    pub guaranteed: i32,
+    pub bonus_chance: f64,
+    #[allow(dead_code)]
+    pub next_threshold: f64,
+}
+
+pub fn get_bonus_and_chance(value: f64, target: f64) -> BonusProgress {
+    if target <= 0.0 {
+        return BonusProgress {
+            guaranteed: 0,
+            bonus_chance: 0.0,
+            next_threshold: 0.0,
+        };
+    }
+    let mut current_target = target;
+    let mut remaining_value = value;
+    let mut guaranteed = 0;
+    while remaining_value > 0.0 && current_target > 0.0 && remaining_value >= current_target {
+        remaining_value -= current_target;
+        guaranteed += 1;
+        current_target = (current_target * EXPONENTIAL_SCALING_FACTOR).floor();
+    }
+    let bonus_chance = if current_target > 0.0 {
+        remaining_value / current_target
+    } else {
+        0.0
+    };
+    BonusProgress {
+        guaranteed,
+        bonus_chance,
+        next_threshold: value + (current_target - remaining_value),
+    }
+}
 
 /// Tier ranks, ascending. Mirrors `OUTCOME_TIER_ORDER`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

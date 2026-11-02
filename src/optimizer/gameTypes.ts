@@ -504,10 +504,11 @@ export interface ScalingVariables {
   [key: string]: number;
 }
 
-/**
- * Exponential scaling factor for bonus thresholds.
- */
-export const EXPONENTIAL_SCALING_FACTOR = 1.3;
+// Compatibility exports; outcome owns all band arithmetic.
+export {
+  BAND_GROWTH_RATIO as EXPONENTIAL_SCALING_FACTOR,
+  getBonusAndChance,
+} from './outcome';
 
 export interface NativeCraftingUtils {
   evaluateScaling?: (
@@ -534,38 +535,6 @@ export function setNativeCraftingUtils(
 ): void {
   activeNativeCraftingUtils = nativeUtils;
   warnedNativeOvercritFailure = false;
-}
-
-/**
- * Calculate bonus count and chance from completion/perfection progress.
- * Matches game's getBonusAndChance function.
- */
-export function getBonusAndChance(
-  value: number,
-  target: number,
-): { guaranteed: number; bonusChance: number; nextThreshold: number } {
-  if (target <= 0) {
-    return { guaranteed: 0, bonusChance: 0, nextThreshold: 0 };
-  }
-
-  let currentTarget = target;
-  let remainingValue = value;
-  let guaranteed = 0;
-
-  while (
-    remainingValue > 0 &&
-    currentTarget > 0 &&
-    remainingValue >= currentTarget
-  ) {
-    remainingValue -= currentTarget;
-    guaranteed++;
-    currentTarget = Math.floor(currentTarget * EXPONENTIAL_SCALING_FACTOR);
-  }
-
-  const bonusChance = currentTarget > 0 ? remainingValue / currentTarget : 0;
-  const nextThreshold = value + (currentTarget - remainingValue);
-
-  return { guaranteed, bonusChance, nextThreshold };
 }
 
 /**
