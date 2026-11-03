@@ -611,7 +611,7 @@ Recorded here so the evidence and its resolution stay together.
 | Auto-use loadout pairing (7) | No change: the game resolves the pairing before CraftBuddy reads state. The `(This Effect)` condition falls to the conservative "will fire" default. |
 | False Fusion rename (8) | Display-only; labels resolve through `techniqueDisplayName()` while internal keys keep using `name`. Since 6.4.0 the auto-craft DOM fallback (`buildSearchAliases` in `src/modContent/autoCraftExecutor.ts`) indexes both spellings, because the in-game button carries the display name. |
 | Cleanse never critted in crafting (9) | No change in either engine. |
-| Overcraft extras are unilateral (12) | `src/optimizer/search.ts` scores extra perfection and extra completion bands as two independent post-tier terms, mirrored in the Rust engine; the conjunctive tier gate itself is untouched. Terminal scoring prices each bar's craft-end bonus-roll chance as expected value (the Rust engine enumerates the roll branches to the same effect); live horizon leaves bank guaranteed bands only. Extras are bounded by the finish flat's band count, since the runtime clamps bars there (section 2). |
+| Overcraft extras are unilateral (12) | `src/optimizer/search/scoring.ts` scores extra perfection and extra completion bands as two independent post-tier terms, mirrored in the Rust engine; the conjunctive tier gate itself is untouched. Terminal scoring prices each bar's craft-end bonus-roll chance as expected value (the Rust engine enumerates the roll branches to the same effect); live horizon leaves bank guaranteed bands only. Extras are bounded by the finish flat's band count, since the runtime clamps bars there (section 2). |
 
 ---
 
@@ -1326,8 +1326,10 @@ discordance, constants 0.25/0.18 (old helper byte 11365410), extremes, and queue
 neutral handling. `getNextCondition(progress, entity?)` is not a new migration
 requirement. A pre-existing model discrepancy was noticed, not expanded here:
 the runtime handles nonzero discordance before queue-based branches, whereas
-`src/optimizer/search.ts:906-949` applies a different late neutral gate. This is
-not a newly introduced 0.7.17 condition rule.
+the then-inspected local fallback applied a different late neutral gate. The
+helper now lives in `src/optimizer/search/conditions.ts`
+(`getGeneratedConditionDistribution`). This is not a newly introduced 0.7.17
+condition rule.
 
 **Outcome gates/termination are unchanged.** Baseline old helper byte 5797785
 matches G:318413-318419: end on stability <= 0 or both maximum flats. Baseline

@@ -17,6 +17,8 @@ bun install
 | `src/mod.ts` | Bootstrap, metadata; imports integration for its side effects |
 | `src/optimizer/index.ts` | Facade used by integration/UI; workers and tests may import internal modules |
 | `src/optimizer/` | Pure state transitions, search and scoring; no runtime, DOM, Redux or settings storage access |
+| `src/optimizer/search.ts` | Compatibility facade, `findBestSkill` dispatch and the existing isolated-test surface |
+| `src/optimizer/search/` | Focused search helpers and the intact greedy/lookahead algorithms; shared types in `types.ts` |
 | `src/optimizer/outcome.ts` | TS bands, conjunctive tiers and auto-finish; UI consumes its projection rather than recomputing thresholds |
 | `src/modContent/index.ts` | Polling/session lifecycle, config construction, search and auto-mode wiring |
 | `src/modContent/craftStateExtraction.ts`, `modApiProviders.ts` | Runtime normalization and optional provider probes |
@@ -32,6 +34,8 @@ bun install
 | `src/worker/searchWorker.ts` | Background search and its own cache/engine instance |
 
 Dependency direction: integration → optimizer facade/settings/UI/utils; UI → optimizer facade/settings/utils; optimizer → pure utils. `src/utils/outcomeSummary.ts` is the exception that reads the optimizer facade, because it formats `outcomeProjection`. Settings **does** depend on `src/utils/searchGoalPriority.ts` and its own auto-craft policy module. It is not dependency-free.
+
+Inside `src/optimizer/search/`, `config.ts`, `conditions.ts`, `goals.ts` and `cacheKey.ts` own configuration, forecast transitions, goal helpers and cache keys. `scoringContext.ts`, `harmonyScoring.ts` and `scoring.ts` own score inputs and evaluation; `safety.ts`, `ranking.ts`, `unlocks.ts` and `presentation.ts` own survival precedence, ordering, gate detection and result text/projections. `greedy.ts` and `lookahead.ts` consume those helpers. Imports form a DAG and never point back to `search.ts`; only `conditions.ts` owns the mutable condition-transition provider.
 
 The mutable auto-craft lifecycle remains beside the polling loop intentionally: splitting it would require threading a live view through many stateful closures, not a neutral file move. Harmony selection/hydration already have their own modules; another context wrapper would add indirection.
 
