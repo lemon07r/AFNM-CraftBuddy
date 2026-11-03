@@ -1,9 +1,9 @@
 /**
  * CraftBuddy - Large Number Utilities
- * 
+ *
  * Provides utilities for handling large numbers that may appear in late-game crafting.
  * JavaScript numbers are safe up to ~9 quadrillion (Number.MAX_SAFE_INTEGER = 9,007,199,254,740,991).
- * 
+ *
  * This module provides:
  * - Safe arithmetic with overflow detection
  * - Formatting for display (e.g., "1.5M" instead of "1500000")
@@ -25,11 +25,11 @@ export const LARGE_NUMBER_THRESHOLD = 10000;
  * Number suffixes for formatting (K, M, B, T, Q for quadrillion)
  */
 const SUFFIXES = [
-  { value: 1e15, suffix: 'Q' },  // Quadrillion
-  { value: 1e12, suffix: 'T' },  // Trillion
-  { value: 1e9, suffix: 'B' },   // Billion
-  { value: 1e6, suffix: 'M' },   // Million
-  { value: 1e3, suffix: 'K' },   // Thousand
+  { value: 1e15, suffix: 'Q' }, // Quadrillion
+  { value: 1e12, suffix: 'T' }, // Trillion
+  { value: 1e9, suffix: 'B' }, // Billion
+  { value: 1e6, suffix: 'M' }, // Million
+  { value: 1e3, suffix: 'K' }, // Thousand
 ];
 
 const SUFFIX_MULTIPLIERS = new Map(
@@ -55,7 +55,7 @@ function parseFormattedNumberString(value: string): number | undefined {
   }
 
   const multiplier = match[2]
-    ? SUFFIX_MULTIPLIERS.get(match[2].toLowerCase()) ?? 1
+    ? (SUFFIX_MULTIPLIERS.get(match[2].toLowerCase()) ?? 1)
     : 1;
   return clampToSafe(baseValue * multiplier).value;
 }
@@ -64,15 +64,17 @@ function parseFormattedNumberString(value: string): number | undefined {
  * Check if a number is within safe integer range for precise arithmetic.
  */
 export function isSafeNumber(value: number): boolean {
-  return Number.isFinite(value) && 
-         Math.abs(value) <= Number.MAX_SAFE_INTEGER;
+  return Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER;
 }
 
 /**
  * Clamp a number to safe range to prevent overflow issues.
  * Returns the clamped value and a flag indicating if clamping occurred.
  */
-export function clampToSafe(value: number): { value: number; clamped: boolean } {
+export function clampToSafe(value: number): {
+  value: number;
+  clamped: boolean;
+} {
   if (!Number.isFinite(value)) {
     return { value: MAX_SAFE_VALUE, clamped: true };
   }
@@ -118,7 +120,7 @@ export function safeFloor(value: number): number {
  *   12345 -> "12.3K"
  *   1234567 -> "1.23M"
  *   1234567890 -> "1.23B"
- * 
+ *
  * @param value - The number to format
  * @param decimals - Number of decimal places for suffixed numbers (default: 2)
  * @param threshold - Minimum value to apply suffix formatting (default: LARGE_NUMBER_THRESHOLD)
@@ -126,7 +128,7 @@ export function safeFloor(value: number): number {
 export function formatLargeNumber(
   value: number,
   decimals: number = 2,
-  threshold: number = LARGE_NUMBER_THRESHOLD
+  threshold: number = LARGE_NUMBER_THRESHOLD,
 ): string {
   if (!Number.isFinite(value)) {
     return '∞';
@@ -137,7 +139,9 @@ export function formatLargeNumber(
 
   // For small numbers, use locale formatting with commas
   if (absValue < threshold) {
-    return sign + absValue.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    return (
+      sign + absValue.toLocaleString('en-US', { maximumFractionDigits: 0 })
+    );
   }
 
   // Find appropriate suffix
@@ -157,7 +161,7 @@ export function formatLargeNumber(
 /**
  * Format a number as a compact display string.
  * Similar to formatLargeNumber but always uses at most 1 decimal place.
- * 
+ *
  * @param value - The number to format
  */
 export function formatCompact(value: number): string {
@@ -165,27 +169,8 @@ export function formatCompact(value: number): string {
 }
 
 /**
- * Format a progress value (current/target) with appropriate formatting.
- * Handles large numbers gracefully.
- * 
- * @param current - Current progress value
- * @param target - Target value
- * @param useCompact - Whether to use compact formatting for large numbers
- */
-export function formatProgress(
-  current: number,
-  target: number,
-  useCompact: boolean = true
-): string {
-  if (useCompact && (current >= LARGE_NUMBER_THRESHOLD || target >= LARGE_NUMBER_THRESHOLD)) {
-    return `${formatCompact(current)}/${formatCompact(target)}`;
-  }
-  return `${current.toLocaleString()}/${target.toLocaleString()}`;
-}
-
-/**
  * Calculate percentage safely, handling edge cases.
- * 
+ *
  * @param current - Current value
  * @param target - Target value (denominator)
  * @returns Percentage as a number (0-100+), or 100 if target is 0
@@ -199,7 +184,7 @@ export function safePercentage(current: number, target: number): number {
 
 /**
  * Format a percentage for display.
- * 
+ *
  * @param current - Current value
  * @param target - Target value
  * @param decimals - Number of decimal places (default: 0)
@@ -207,7 +192,7 @@ export function safePercentage(current: number, target: number): number {
 export function formatPercentage(
   current: number,
   target: number,
-  decimals: number = 0
+  decimals: number = 0,
 ): string {
   const pct = safePercentage(current, target);
   return `${pct.toFixed(decimals)}%`;
@@ -216,46 +201,51 @@ export function formatPercentage(
 /**
  * Check if a value might cause precision issues in calculations.
  * Logs a warning if the value is approaching unsafe territory.
- * 
+ *
  * @param value - The value to check
  * @param context - Description of where this value came from (for logging)
  * @returns true if the value is safe, false if it might cause issues
  */
 export function checkPrecision(value: number, context: string): boolean {
   if (!Number.isFinite(value)) {
-    console.warn(`[CraftBuddy] Non-finite number detected in ${context}: ${value}`);
+    console.warn(
+      `[CraftBuddy] Non-finite number detected in ${context}: ${value}`,
+    );
     return false;
   }
-  
+
   // Warn if we're getting close to precision limits (within 1000x of MAX_SAFE_INTEGER)
   if (Math.abs(value) > Number.MAX_SAFE_INTEGER / 1000) {
     console.warn(
       `[CraftBuddy] Large number detected in ${context}: ${formatLargeNumber(value)}. ` +
-      `Precision may be affected.`
+        `Precision may be affected.`,
     );
     return false;
   }
-  
+
   return true;
 }
 
 /**
  * Parse a potentially large number from game data.
  * Handles string inputs, scientific notation, and edge cases.
- * 
+ *
  * @param value - The value to parse (number, string, or undefined)
  * @param defaultValue - Default value if parsing fails (default: 0)
  */
-export function parseGameNumber(value: unknown, defaultValue: number = 0): number {
+export function parseGameNumber(
+  value: unknown,
+  defaultValue: number = 0,
+): number {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : defaultValue;
   }
-  
+
   if (typeof value === 'string') {
     const parsed = parseFormattedNumberString(value);
     return parsed !== undefined ? parsed : defaultValue;
   }
-  
+
   if (typeof value === 'bigint') {
     // Convert BigInt to number, clamping if necessary
     const num = Number(value);
@@ -285,6 +275,6 @@ export function parseGameNumber(value: unknown, defaultValue: number = 0): numbe
       }
     }
   }
-  
+
   return defaultValue;
 }

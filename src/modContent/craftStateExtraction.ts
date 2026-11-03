@@ -29,7 +29,6 @@ import type {
 import {
   BuffType,
   getBonusAndChance,
-  type CraftingState,
   type SkillDefinition,
   type SkillMastery,
   type BuffDefinition,
@@ -235,20 +234,16 @@ export function extractBuffInfo(buffs: CraftingBuff[] | undefined): {
 /**
  * Extract mastery data from a technique's mastery array.
  *
- * In addition to simple numeric bonuses, some masteries use `kind: 'effect'`
- * and add additional technique effects (e.g., granting extra buff stacks).
+ * Preserve raw mastery entries for the simulator's ordered mastery phase.
  */
 export function extractMasteryData(mastery: any[] | undefined): {
   bonuses: SkillMastery;
-  extraEffects: any[];
   masteryEntries: any[];
 } {
   const bonuses: SkillMastery = {};
-  const extraEffects: any[] = [];
   const masteryEntries: any[] = [];
 
-  if (!mastery || mastery.length === 0)
-    return { bonuses, extraEffects, masteryEntries };
+  if (!mastery || mastery.length === 0) return { bonuses, masteryEntries };
 
   for (const m of mastery) {
     if (!m) continue;
@@ -283,25 +278,10 @@ export function extractMasteryData(mastery: any[] | undefined): {
         bonuses.critMultiplierBonus =
           (bonuses.critMultiplierBonus || 0) + (m.percentage || 0);
         break;
-      case 'effect':
-        if (Array.isArray(m.effects)) {
-          if (m.condition) {
-            for (const effect of m.effects) {
-              if (!effect) continue;
-              extraEffects.push({
-                ...effect,
-                condition: effect.condition || m.condition,
-              });
-            }
-          } else {
-            extraEffects.push(...m.effects);
-          }
-        }
-        break;
     }
   }
 
-  return { bonuses, extraEffects, masteryEntries };
+  return { bonuses, masteryEntries };
 }
 
 export function normalizeChance(value: number | undefined): number {
