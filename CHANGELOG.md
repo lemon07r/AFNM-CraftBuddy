@@ -2,6 +2,8 @@
 
 ### Unreleased — 7.0.0
 
+- Model Su Lianhua's effect interception and Han Weiguang's stability-loss prevention when those companions are held.
+- Apply technique and buff Qi changes individually with clamped event amounts (including zero), and match signed stability events and loss reductions with or without companions.
 - Retire the opt-in Rust/WASM MCTS prior and engine selector; the established TypeScript search and its preset budgets are unchanged.
 - Preserve old settings/replay compatibility and retain the 1,588-transition corpus as a TypeScript golden test. Builds no longer require Rust or wasm-pack.
 - Redesign the panel and settings in the game's own style: one clear next action, the outcome being worked towards, and collapsible plan, other-action and automation sections. Settings use plain names, are keyboard and screen-reader friendly, and also appear in the game's mod options screen.

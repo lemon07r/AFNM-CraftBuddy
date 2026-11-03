@@ -20,7 +20,113 @@ import {
   setNativeCanUseActionProvider,
   techniqueDisplayName,
 } from '../optimizer/skills';
-import { evaluateScaling, type ScalingVariables } from '../optimizer/gameTypes';
+import {
+  evaluateScaling,
+  type ScalingVariables,
+  type BuffDefinition,
+} from '../optimizer/gameTypes';
+
+describe('runtime per-application stability', () => {
+  it.each(
+    (['technique', 'mastery', 'buff', 'triggered'] as const).flatMap((source) =>
+      [
+        { reduction: 0, penalty: 0, spent: 3 },
+        { reduction: 50, penalty: 25, spent: 2 },
+        { reduction: 100, penalty: 0, spent: 0 },
+      ].map((channels) => ({ source, ...channels })),
+    ),
+  )(
+    'reduces/floors $source loss before dispatch ($reduction / $penalty)',
+    ({ source, reduction, penalty, spent }) => {
+      const effects = [
+        { kind: 'stability' as const, amount: { value: 5 } },
+        { kind: 'stability' as const, amount: { value: -3.9 } },
+      ];
+      const observer: BuffDefinition = {
+        name: 'Stability observer',
+        canStack: false,
+        effects: [],
+        stats: { stabilityBoost: { value: 100 } },
+        triggeredEffects: (
+          ['stabilityRestored', 'stabilitySpent'] as const
+        ).map((trigger, index) => ({
+          trigger,
+          effects: [
+            {
+              kind: 'setState',
+              key: trigger,
+              mode: 'add',
+              value: { value: 1, eqn: 'amount' },
+            },
+            {
+              kind: 'setState',
+              key: `${trigger}Calls`,
+              mode: 'add',
+              value: { value: 1 },
+            },
+            {
+              kind: 'setState',
+              key: 'order',
+              value: { value: 1, eqn: `order * 10 + ${index + 1}` },
+            },
+          ],
+        })),
+      };
+      const driver: BuffDefinition = {
+        name: 'Stability driver',
+        canStack: false,
+        effects: source === 'buff' ? effects : [],
+        triggeredEffects:
+          source === 'triggered'
+            ? [{ trigger: 'poolRestored', effects }]
+            : undefined,
+      };
+      const state = new CraftingState({
+        qi: 100,
+        stability: 40,
+        stabilityCostReduction: reduction,
+        stabilityCostPenalty: penalty,
+        buffs: new Map([
+          [
+            'stability_observer',
+            { name: observer.name, stacks: 1, definition: observer },
+          ],
+          [
+            'stability_driver',
+            { name: driver.name, stacks: 1, definition: driver },
+          ],
+        ]),
+      });
+      const skill = createTestSkill({
+        qiCost: 0,
+        stabilityCost: 0,
+        effects:
+          source === 'technique'
+            ? effects
+            : [{ kind: 'pool', amount: { value: 0 } }],
+        masteryEntries:
+          source === 'mastery' ? [{ kind: 'effect', effects }] : undefined,
+      });
+      const next = applySkill(state, skill, createTestConfig())!;
+      expect(next.stability).toBe(50 - spent);
+      expect(next.buffs.get('stability_observer')?.internalState).toEqual({
+        stabilityRestored: 10,
+        stabilityRestoredCalls: 1,
+        stabilitySpent: spent,
+        stabilitySpentCalls: 1,
+        order: 12,
+      });
+      if (source === 'technique') {
+        expect(
+          calculateSkillGains(state, skill, createTestConfig()).stability,
+        ).toBe(10 - spent);
+      }
+      expect(
+        state.buffs.get('stability_observer')?.internalState,
+      ).toBeUndefined();
+    },
+  );
+});
 
 // Helper to create a basic test config
 function createTestConfig(
