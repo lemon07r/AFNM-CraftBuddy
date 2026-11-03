@@ -34,6 +34,8 @@ export function companionScenarios() {
     ...companionCapScenarios(),
     ...companionWeightedBarScenarios(),
     ...companionPoolScenarios(),
+    ...companionPoolScenarios('buff'),
+    ...companionPoolScenarios('triggered'),
     ...companionDisciplinedScenarios(),
     ...companionCritScenarios(),
     ...companionPhasePreviewScenarios(),
@@ -200,7 +202,9 @@ export function companionDisciplinedScenarios() {
   });
 }
 
-export function companionPoolScenarios() {
+export function companionPoolScenarios(
+  source: 'technique' | 'buff' | 'triggered' = 'technique',
+) {
   return (['su', 'han'] as const).flatMap((companion) =>
     [
       {
@@ -279,13 +283,38 @@ export function companionPoolScenarios() {
         stacks: 1,
         definition: observer,
       });
+      const effects = amounts.map((value) => ({
+        kind: 'pool' as const,
+        amount: { value },
+      }));
+      if (source !== 'technique') {
+        const driver: BuffDefinition = {
+          name: 'Pool driver',
+          canStack: false,
+          effects: source === 'buff' ? effects : [],
+          triggeredEffects:
+            source === 'triggered'
+              ? [{ trigger: 'stabilityRestored', effects }]
+              : undefined,
+        };
+        buffs.set('pool_driver', {
+          name: driver.name,
+          stacks: 1,
+          definition: driver,
+        });
+      }
       const skill = retargetSkill({
         qiCost: 0,
         stabilityCost: 0,
-        effects: amounts.map((value) => ({ kind: 'pool', amount: { value } })),
+        effects:
+          source === 'technique'
+            ? effects
+            : source === 'triggered'
+              ? [{ kind: 'stability', amount: { value: 1 } }]
+              : undefined,
       });
       return {
-        name: `companion-pool-technique-${companion}-${edge}`,
+        name: `companion-pool-${source}-${companion}-${edge}`,
         state: base.state.copy({ qi, buffs }),
         skill,
         config: retargetConfig(skill),

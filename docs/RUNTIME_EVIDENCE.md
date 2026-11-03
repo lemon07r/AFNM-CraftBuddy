@@ -1711,23 +1711,46 @@ rule. CraftBuddy's scalar restore compatibility path therefore follows the
 same realized-delta and zero-event semantics. Earlier local documentation
 claiming a zero restoration emitted no event was incorrect.
 
-CraftBuddy's ordinary/triggered buff pool executor still defers its pool
-write and dispatches nonzero requested amounts. An experimental correction
-to use the same immediate pool application passed 12 targeted regressions
-and the 32-entry fixed-work digest, but changed 13 existing non-companion
-transition scenarios. It was reverted to preserve the companion-only golden
-scope; both that gap and legacy non-companion technique net aggregation are
-recorded in [mechanics parity](MECHANICS_PARITY.md#known-gaps).
+The mechanics follow-up ports the previously deferred buff-pool correction:
+ordinary and triggered effects now write/clamp each application immediately,
+then dispatch its realized delta, including zero, for every holder. The
+caller at `G:14938504` and shared `u7c` applier at `G:14935853–14936694`
+were re-read in the installed bundle. Full, partially spent and empty pool
+regressions cover fixed payouts, amount-scaled listeners and event counts
+both with and without companions; this is no longer a companion-only fix.
 
-The inert-companion corpus audit also checked `r7c` in the byte window
-`G:14929800–14931400`: for negative `e`, it computes
-`-Math.floor(Rko(-e, stabilityCostReduction, stabilityCostPenalty))`, checks
-prevention, writes the signed result, then dispatches `stabilitySpent` with
-its magnitude. The nonnegative branch writes the boosted amount and emits
-`stabilityRestored`. These are per-application events, not an aggregate
-net restore. This explains the explicitly enumerated legacy stability
-exceptions in the differential regression; it is not an inert-companion
-rounding exception.
+Non-companion technique/mastery applications now use this same applier too,
+instead of aggregating a net write/event after the buff fold. The caller at
+`G:14942802` passes each evaluated amount to `u7c`, whose positive branch
+floors the Qi-boosted application before dispatch. The EV model weights that
+individual boosted amount afterward; it does not floor a boosted weighted
+mean. Pool-bound regressions require separate restore/spend calls even when
+their requested amounts cancel, and unchanged zero-event listener payouts.
+
+#### Universal signed stability applications
+
+The mechanics follow-up re-read `r7c` at `G:14930153` in the byte window
+`G:14929800–14931500`. For negative `e`, it computes
+`-(override ?? Math.floor(Rko(-e, stabilityCostReduction, stabilityCostPenalty)))`
+**before** checking optional prevention. `Rko` at `G:8585641` is the ordinary
+cost-channel multiplier/floor; `n1i` at `G:6321504` computes
+`max(0, 100 - reduction) * max(0, 100 + penalty) / 10000` and `r1i` at
+`G:6321559` floors after ten-decimal rounding. No holder/Han test surrounds
+this reduction. The buff and technique callers pass no payment override,
+so they do not apply payment-only flat/percentage/harmony factors.
+
+After reduction, only a strictly negative amount can spend a prevention
+use; a prevented loss returns before writing or dispatching. Otherwise
+`r7c` writes the signed amount without a cap and emits `stabilitySpent`
+with its magnitude, even if reduction made it zero. The nonnegative branch
+applies Stability Boost with its own floor, writes, and unconditionally
+emits `stabilityRestored`, including zero. The buff/triggered caller is in
+`G:14938200–14938900` and the technique/mastery caller in
+`G:14942400–14943500`; both share this applier. Non-companion technique
+events and negative buff/technique reductions now use these semantics,
+not a net restoration or Han-only reduction. The existing certainty-only
+Han policy is unchanged. All 350 inert-companion persisted-state
+comparisons now require equality without the former 44 field masks.
 
 #### Bar overflow and companion ordering
 

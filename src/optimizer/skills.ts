@@ -786,9 +786,9 @@ function preventCertainStabilityLoss(
 function appliedStabilityAmount(
   amount: number,
   variables: ScalingVariables,
-  buffs: ActiveBuffMap,
 ): number {
-  return amount < 0 && hasStabilityPrevention(buffs)
+  // r7c reduces/floors every loss before the optional Han prevention check.
+  return amount < 0
     ? -floorCost(
         -amount *
           costMultiplier(
@@ -1867,7 +1867,10 @@ function advanceTechniqueProgress(
       : kind === 'completion'
         ? variables.completionBoost
         : variables.perfectionBoost;
-  progress[kind] += applyGainBoost(amount, boost) * probability;
+  progress[kind] +=
+    (kind === 'stability'
+      ? appliedStabilityAmount(applyGainBoost(amount, boost), variables)
+      : applyGainBoost(amount, boost)) * probability;
 }
 
 function resolveMasteryBonuses(
@@ -2713,11 +2716,17 @@ function calculateUninterceptedSkillGains(
         }
         case 'stability':
           stabilityGain +=
-            evaluateScalingWithMasteryUpgrades(
-              effect.amount,
-              masteryUpgrades,
+            appliedStabilityAmount(
+              applyGainBoost(
+                evaluateScalingWithMasteryUpgrades(
+                  effect.amount,
+                  masteryUpgrades,
+                  scalingVars,
+                  0,
+                ),
+                scalingVars.stabilityBoost,
+              ),
               scalingVars,
-              0,
             ) * conditionFactor;
           break;
         case 'cleanseToxicity':
@@ -2748,11 +2757,6 @@ function calculateUninterceptedSkillGains(
             scalingVars.perfectionBoost,
           )
         : perfectionGain;
-    const stabilityGainBoosted =
-      stabilityGain > 0
-        ? applyGainBoost(stabilityGain, scalingVars.stabilityBoost)
-        : stabilityGain;
-
     return {
       completion: expectedProgressGain(
         completionWithCrit,
@@ -2766,7 +2770,7 @@ function calculateUninterceptedSkillGains(
         config.maxPerfection,
         expectedFactor,
       ),
-      stability: safeFloor(safeMultiply(stabilityGainBoosted, expectedFactor)),
+      stability: safeFloor(safeMultiply(stabilityGain, expectedFactor)),
       toxicityCleanse: safeFloor(safeMultiply(toxicityCleanse, expectedFactor)),
       barContributions,
     };
@@ -3265,13 +3269,9 @@ export function calculateActionSurvivabilityFloor(
             0,
           );
           const probability = actionSuccessChance * conditionResult.probability;
-          // Same Han reduction and certain-only prevention as the transition,
+          // Same universal reduction and certain-only prevention as the transition,
           // on the realized amount, in effect order.
-          const amount = appliedStabilityAmount(
-            rawAmount,
-            actionVars,
-            newBuffs,
-          );
+          const amount = appliedStabilityAmount(rawAmount, actionVars);
           if (preventCertainStabilityLoss(newBuffs, amount, probability === 1))
             break;
           guaranteedTechniqueStabilityDelta += resolveGuaranteedContribution(
@@ -3420,7 +3420,6 @@ export function calculateActionSurvivabilityFloor(
             0,
           ),
           scalingVars,
-          newBuffs,
         );
         if (
           preventCertainStabilityLoss(
@@ -4579,6 +4578,9 @@ function applySkillTransition(
           },
           evaluation,
         );
+  // Authoritative stability effects apply individually below, not as a net
+  // prefolded gain. Scalar compatibility still uses its aggregate fallback.
+  if (skill.effects?.length) gains.stability = 0;
 
   // Action-level scaling variables (carry the 0.7.10 boost stats). Pure over
   // the pre-action state, so they are built up front and shared by the cost
@@ -4760,7 +4762,6 @@ function applySkillTransition(
   const recordBarChanges = needsBarContributions(config);
   const buffBarContributions: BarContribution[] = [];
   let buffStabilityDelta = 0;
-  let buffPoolDelta = 0;
   let buffToxicityDelta = 0;
   let buffMaxStabilityDelta = 0;
   // Without maxpool buffs the helper never reads state; avoid a dead copy.
@@ -4883,6 +4884,8 @@ function applySkillTransition(
       (amount <= 0 &&
         trigger !== 'poolRestored' &&
         trigger !== 'poolSpent' &&
+        trigger !== 'stabilityRestored' &&
+        trigger !== 'stabilitySpent' &&
         !trigger.startsWith('stackLost.'))
     ) {
       return;
@@ -4935,7 +4938,6 @@ function applySkillTransition(
     );
   };
 
-  let techniquePoolDelta = 0;
   let techniqueMaxStabilityDelta = 0;
   const techniqueProgress: LiveProgress = {
     completion: state.completion,
@@ -5061,7 +5063,6 @@ function applySkillTransition(
       application.realizedAmount = appliedStabilityAmount(
         application.realizedAmount,
         actionVars,
-        newBuffs,
       );
       application.amount = application.realizedAmount;
       if (
@@ -5071,7 +5072,7 @@ function applySkillTransition(
           certainApplication && factor === 1,
         )
       )
-        application.amount = application.realizedAmount = 0;
+        return;
     }
     const amount = application.amount * factor;
     if (isBar) {
@@ -5154,11 +5155,10 @@ function applySkillTransition(
         application.realizedAmount * conditionProbability;
       newStability += amount;
       gains.stability += amount;
-      if (amount !== 0)
-        dispatchBuffTriggers(
-          amount > 0 ? 'stabilityRestored' : 'stabilitySpent',
-          Math.abs(amount),
-        );
+      dispatchBuffTriggers(
+        raw < 0 ? 'stabilitySpent' : 'stabilityRestored',
+        Math.abs(amount),
+      );
     } else if (effect.kind === 'pool') {
       if (factor > 0) applyPoolChange(amount);
     } else if (effect.kind === 'maxStability') {
@@ -5212,15 +5212,16 @@ function applySkillTransition(
       const previousCertainty: boolean = certainApplication;
       certainApplication = previousCertainty && factor === 1;
       if (
-        orderedEffects &&
-        [
-          'completion',
-          'perfection',
-          'stability',
-          'pool',
-          'maxStability',
-          'cleanseToxicity',
-        ].includes(effect.kind)
+        effect.kind === 'stability' ||
+        (orderedEffects &&
+          [
+            'completion',
+            'perfection',
+            'stability',
+            'pool',
+            'maxStability',
+            'cleanseToxicity',
+          ].includes(effect.kind))
       ) {
         applyTechniqueNumeric(effect, factor, conditionResult.probability);
         certainApplication = previousCertainty;
@@ -5237,34 +5238,18 @@ function applySkillTransition(
       );
 
       switch (effect.kind) {
-        case 'stability': {
-          const raw = evaluateScalingWithMasteryUpgrades(
+        case 'pool': {
+          // Runtime routes positive pool effects through applyPool, which
+          // applies the 0.7.10 Qi Boost stat to the restored amount.
+          const poolAmount = evaluateScalingWithMasteryUpgrades(
             effect.amount,
             actionMasteryUpgrades,
             actionVars,
             0,
           );
-          stabilityProjection.changeTechnique(
-            applyGainBoost(raw, actionVars.stabilityBoost),
-            0,
-            conditionResult.probability,
+          applyPoolChange(
+            applyGainBoost(poolAmount, actionVars.qiBoost) * factor,
           );
-          break;
-        }
-        case 'pool': {
-          // Runtime routes positive pool effects through applyPool, which
-          // applies the 0.7.10 Qi Boost stat to the restored amount.
-          const poolAmount =
-            evaluateScalingWithMasteryUpgrades(
-              effect.amount,
-              actionMasteryUpgrades,
-              actionVars,
-              0,
-            ) * factor;
-          techniquePoolDelta +=
-            poolAmount > 0
-              ? applyGainBoost(poolAmount, actionVars.qiBoost)
-              : poolAmount;
           break;
         }
         case 'maxStability':
@@ -5407,7 +5392,6 @@ function applySkillTransition(
       application.realizedAmount = appliedStabilityAmount(
         application.realizedAmount,
         scalingVars,
-        newBuffs,
       );
       application.amount = application.realizedAmount * conditionFactor;
       if (
@@ -5417,7 +5401,7 @@ function applySkillTransition(
           certainApplication && conditionFactor === 1,
         )
       )
-        application.amount = application.realizedAmount = 0;
+        return;
     }
     const amount = application.amount;
     const previousCertainty: boolean = certainApplication;
@@ -5463,21 +5447,15 @@ function applySkillTransition(
           conditionFactor,
         );
         buffStabilityDelta += amount;
-        if (triggerBuffsPresent && amount !== 0) {
+        if (triggerBuffsPresent) {
           dispatchBuffTriggers(
-            amount > 0 ? 'stabilityRestored' : 'stabilitySpent',
+            raw < 0 ? 'stabilitySpent' : 'stabilityRestored',
             Math.abs(amount),
           );
         }
         break;
       case 'pool':
-        buffPoolDelta += amount;
-        if (triggerBuffsPresent && amount !== 0) {
-          dispatchBuffTriggers(
-            amount > 0 ? 'poolRestored' : 'poolSpent',
-            Math.abs(amount),
-          );
-        }
+        applyPoolChange(amount);
         break;
       case 'maxStability':
         stabilityProjection.change(
@@ -5603,16 +5581,11 @@ function applySkillTransition(
         dispatchBuffTriggers('poolRestored', qiRestoredBySkill);
       }
     }
-    if (techniquePoolDelta > 0) {
-      dispatchBuffTriggers('poolRestored', techniquePoolDelta);
-    } else if (techniquePoolDelta < 0) {
-      dispatchBuffTriggers('poolSpent', -techniquePoolDelta);
-    }
     if (!orderedNumeric && effectiveStabilityCost > 0) {
       dispatchBuffTriggers('stabilitySpent', effectiveStabilityCost);
     }
     if (!orderedEffects) {
-      if (gains.stability > 0) {
+      if (!skill.effects?.length && gains.stability > 0) {
         dispatchBuffTriggers('stabilityRestored', gains.stability);
       }
       // Bar applications fire per application in runtime order; True Bifang
@@ -5732,7 +5705,6 @@ function applySkillTransition(
     state.perfection,
     gains.perfection + buffPerfection,
   );
-  newQi = clampQi(newQi + techniquePoolDelta);
 
   // Clamp to optional hard craft caps when available.
   if (
@@ -5772,7 +5744,6 @@ function applySkillTransition(
 
   // Apply buff per-turn state changes
   newStability += buffStabilityDelta;
-  newQi = clampQi(newQi + buffPoolDelta);
   newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
   if (buffMaxStabilityDelta !== 0) {
     const effectiveBuffMaxStabilityDelta =
