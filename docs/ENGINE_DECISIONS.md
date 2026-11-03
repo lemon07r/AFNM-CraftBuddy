@@ -164,8 +164,10 @@ Fixed-node probing: pre-retarget **.405737 ms/node**, initial phase/cost port **
 bun run optimizer:digest -- --out tmp/baseline.json
 # After a neutral refactor:
 bun run optimizer:digest -- --compare tmp/baseline.json
-bun run optimizer:bench
+bun run optimizer:bench:gate
 ```
+
+The gate runs every benchmark contract with fixed node budgets (each preset's time budget at the 7.0 reference rate of ~1.33 nodes/ms: 1,330, 2,660 and 6,000 nodes), so it is deterministic and part of `release:validate` and CI. In 7.0 two consecutive gate runs matched in all 64 fixture×preset results and passed 60/60 contracts.
 
 The retired Rust profiling commands are no longer supported. Benchmark JSON/Markdown output options are available in `scripts/optimizer/benchmark-engines.ts`; run clock measurements without competing test loads. A failing contract is a reproduction lead, not permission to tune a constant.
 

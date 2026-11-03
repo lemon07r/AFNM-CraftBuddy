@@ -13,6 +13,8 @@
  *   --markdown <path>   Output Markdown report path (default: tmp/engine-benchmark.md)
  *   --configs <ids>     Comma-separated config IDs to run (default: all)
  *   --fixture <name>    Run only a single fixture (by filename, without .snapshot.json)
+ *   --fixed-work        Replace each preset's wall-clock budget with its fixed
+ *                       node budget (deterministic; used by the release gate)
  *   --verbose           Print per-fixture results to console as they run
  */
 
@@ -40,7 +42,16 @@ interface BenchmarkConfig {
     beamWidth: number;
     goalPriorityBias?: number;
   };
+  /**
+   * Node budget for `--fixed-work`: the preset's time budget at the mean rate
+   * of the fixed-work digest on the reference workstation (~1.33 nodes/ms in
+   * 7.0). Results then depend on the code, not on machine speed or load.
+   */
+  fixedWorkNodes: number;
 }
+
+/** Wall-clock ceiling for fixed-work runs; node budgets end them first. */
+const FIXED_WORK_TIME_CEILING_MS = 120000;
 
 interface FixtureContract {
   fixture: string;
@@ -133,6 +144,7 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
       maxNodes: 400000,
       beamWidth: 5,
     },
+    fixedWorkNodes: 1330,
   },
   {
     id: 'legacy_fast',
@@ -143,6 +155,7 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
       maxNodes: 1000000,
       beamWidth: 5,
     },
+    fixedWorkNodes: 2660,
   },
   {
     id: 'same_budget_legacy_2s',
@@ -153,6 +166,7 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
       maxNodes: 1000000,
       beamWidth: 5,
     },
+    fixedWorkNodes: 2660,
   },
   {
     id: 'legacy_balanced',
@@ -163,6 +177,7 @@ const BENCHMARK_CONFIGS: BenchmarkConfig[] = [
       maxNodes: 2000000,
       beamWidth: 5,
     },
+    fixedWorkNodes: 6000,
   },
 ];
 
@@ -400,8 +415,9 @@ function runBenchmark(options: {
   configIds?: string[];
   singleFixture?: string;
   verbose?: boolean;
+  fixedWork?: boolean;
 }): BenchmarkReport {
-  const { fixturesDir, configIds, singleFixture, verbose } = options;
+  const { fixturesDir, configIds, singleFixture, verbose, fixedWork } = options;
 
   const allFiles = readdirSync(fixturesDir).filter((f) =>
     f.endsWith('.snapshot.json'),
@@ -492,6 +508,12 @@ function runBenchmark(options: {
       try {
         const searchConfig = {
           ...cfg.searchConfig,
+          ...(fixedWork
+            ? {
+                maxNodes: cfg.fixedWorkNodes,
+                timeBudgetMs: FIXED_WORK_TIME_CEILING_MS,
+              }
+            : {}),
           ...contract?.searchBudget,
           goalPriorityBias:
             cfg.searchConfig.goalPriorityBias ??
@@ -532,7 +554,9 @@ function runBenchmark(options: {
           config: cfg.id,
           configLabel: contract?.searchBudget
             ? `${cfg.label}; fixture budget: ${contract.searchBudget.maxNodes} nodes`
-            : cfg.label,
+            : fixedWork
+              ? `${cfg.label}; fixed work: ${cfg.fixedWorkNodes} nodes`
+              : cfg.label,
           lookaheadDepth: cfg.lookaheadDepth,
           recommendationKey: recommendation?.skill.key ?? null,
           recommendationName: recommendation?.skill.name ?? null,
@@ -700,6 +724,7 @@ const configIds = configsArg
   : undefined;
 const singleFixture = getArg('--fixture');
 const verbose = hasFlag('--verbose') || hasFlag('-v');
+const fixedWork = hasFlag('--fixed-work');
 
 if (!existsSync(fixturesDir)) {
   console.error(`Fixtures directory not found: ${fixturesDir}`);
@@ -710,9 +735,16 @@ console.log(`CraftBuddy Optimizer Benchmark`);
 console.log(`  Fixtures: ${fixturesDir}`);
 console.log(`  Configs:  ${configIds?.join(', ') ?? 'all'}`);
 if (singleFixture) console.log(`  Fixture filter: ${singleFixture}`);
+if (fixedWork) console.log('  Budgets:  fixed work (node budgets)');
 console.log('');
 
-const report = runBenchmark({ fixturesDir, configIds, singleFixture, verbose });
+const report = runBenchmark({
+  fixturesDir,
+  configIds,
+  singleFixture,
+  verbose,
+  fixedWork,
+});
 
 // Write outputs
 const outDir = path.dirname(jsonOutput);

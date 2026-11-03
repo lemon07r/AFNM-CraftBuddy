@@ -73,13 +73,13 @@ Choose checks by the changed surface. This is the shared iteration/hand-off/rele
 | --- | --- | --- | --- |
 | Docs/skills | `bun run docs:check` | Same after final edit | Included in `release:validate` |
 | TS behavior | Focused Jest, `bun run typecheck` | Typecheck + `bun run test`; build if shipping/runtime code changed | `bun run release:validate` |
-| Optimizer ranking | Focused search/replay/simulation test; before/after replay evidence | Full tests + `bun run optimizer:bench`; neutral refactors compare `optimizer:digest` | Release gate + benchmark |
-| Mechanics | Regenerate `optimizer:transition-corpus`, inspect diff; focused transition tests | `transitionCorpus.test.ts`, full tests + build | Release gate + benchmark |
+| Optimizer ranking | Focused search/replay/simulation test; before/after replay evidence | Full tests + `bun run optimizer:bench:gate`; neutral refactors compare `optimizer:digest` | Release gate |
+| Mechanics | Regenerate `optimizer:transition-corpus`, inspect diff; focused transition tests | `transitionCorpus.test.ts`, full tests + `optimizer:bench:gate` + build | Release gate |
 | Runtime/automation | Oracle/targeted bundle grep; relevant extraction, signature, native-auto-use, controller/executor suites | Typecheck + full tests + build; runtime evidence for changed assumptions | Release gate + relevant runtime checks |
 | UI/settings/harness | `bun run ui:harness:build`, harness screenshots; pure helper tests | Typecheck + tests + harness build; short viewport and affected states | Release gate + harness build |
 | Packaging/dependencies/check scripts | Focused script tests; typecheck | Production build + harness build for dependency changes; docs checks | Release gate |
 
-`release:validate` runs typecheck, Jest, production build and docs checks. It does **not** run the benchmark contracts (`bun run optimizer:bench`); replay-based Jest tests do run. Publishing order and commands live only in `.agents/skills/craftbuddy-release/SKILL.md`.
+`release:validate` runs typecheck, Jest, the benchmark contracts at fixed work (`bun run optimizer:bench:gate`), production build and docs checks; CI runs the same steps. Fixed work gives each preset a node budget instead of its wall-clock budget, so contract results depend on the code, not on machine speed or load. `bun run optimizer:bench` without `--fixed-work` measures the real time-limited presets; run it without competing load. Publishing order and commands live only in `.agents/skills/craftbuddy-release/SKILL.md`.
 
 ### Test/evidence details
 
