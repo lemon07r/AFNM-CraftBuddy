@@ -6,6 +6,7 @@
 - Preserve old settings/replay compatibility and retain the 1,588-transition corpus as a TypeScript golden test. Builds no longer require Rust or wasm-pack.
 - Redesign the panel and settings in the game's own style: one clear next action, the outcome being worked towards, and collapsible plan, other-action and automation sections. Settings use plain names, are keyboard and screen-reader friendly, and also appear in the game's mod options screen.
 - Show "Craft failed" when a craft resolves below the lowest tier.
+- Search evaluates techniques faster at identical recommendations (about 9% more search per second across the replay set, up to 32% on one replay), so time-limited presets look further ahead on slower machines.
 
 ## 6.9.0 — AFNM 0.7.19
 

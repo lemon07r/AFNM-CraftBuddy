@@ -2005,6 +2005,51 @@ export interface EffectiveActionCosts {
   stabilityOutcomes?: Array<{ cost: number; probability: number }>;
 }
 
+interface ActionEvaluationFrame {
+  readonly preMasteryVariables: Readonly<ScalingVariables>;
+  readonly variables: Readonly<ScalingVariables>;
+  readonly mastery: Readonly<ResolvedMasteryBonuses>;
+}
+
+function buildActionEvaluationFrame(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ConditionEffect[],
+): ActionEvaluationFrame {
+  const harmonyMods = getHarmonyStatModifiers(
+    state.harmonyData,
+    config.craftingType,
+  );
+  let preMasteryVariables = buildPreMasteryActionVariables(
+    state,
+    config,
+    conditionEffects,
+    harmonyMods,
+  );
+  let mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
+  if (hasMasteryUpgrades(mastery.upgrades)) {
+    preMasteryVariables = buildPreMasteryActionVariables(
+      state,
+      config,
+      conditionEffects,
+      harmonyMods,
+      mastery.upgrades,
+    );
+    mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
+  }
+  const variables = { ...preMasteryVariables };
+  variables.control *= 1 + (mastery.bonuses.controlBonus || 0);
+  variables.intensity *= 1 + (mastery.bonuses.intensityBonus || 0);
+  variables.critchance += mastery.bonuses.critChanceBonus || 0;
+  variables.critmultiplier += mastery.bonuses.critMultiplierBonus || 0;
+  variables.successChanceBonus += mastery.bonuses.successChanceBonus || 0;
+  // Private read-only inputs only: effect/progress outputs remain caller-owned.
+  // A transition passes this exact frame down to its gain calculation rather
+  // than repeating the condition/harmony overlay and two-pass mastery fold.
+  return { preMasteryVariables, variables, mastery };
+}
+
 interface PostCostStabilityFrame {
   effectiveCosts: EffectiveActionCosts;
   stabilityAfterCosts: number;
@@ -2292,29 +2337,25 @@ export function calculateDisciplinedTouchGains(
   conditionEffects: ConditionEffect[] = [],
   options: SkillGainOptions = {},
 ): SkillGains {
-  const harmonyMods = getHarmonyStatModifiers(
-    state.harmonyData,
-    config.craftingType,
-  );
-  let preMasteryVars = buildPreMasteryActionVariables(
+  return calculateDisciplinedTouchGainsWithFrame(
     state,
+    skill,
     config,
     conditionEffects,
-    harmonyMods,
+    options,
   );
-  let resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
-  if (hasMasteryUpgrades(resolvedMastery.upgrades)) {
-    preMasteryVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      harmonyMods,
-      resolvedMastery.upgrades,
-    );
-    resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
-  }
+}
 
-  const mastery = resolvedMastery.bonuses;
+function calculateDisciplinedTouchGainsWithFrame(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ConditionEffect[],
+  options: SkillGainOptions,
+  frame = buildActionEvaluationFrame(state, skill, config, conditionEffects),
+): SkillGains {
+  const preMasteryVars = frame.preMasteryVariables;
+  const mastery = frame.mastery.bonuses;
   const effectiveVars: ScalingVariables = {
     ...preMasteryVars,
     control: preMasteryVars.control * (1 + (mastery.controlBonus || 0)),
@@ -2380,6 +2421,23 @@ export function calculateSkillGains(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[] = [],
   options: SkillGainOptions = {},
+): SkillGains {
+  return calculateSkillGainsWithFrame(
+    state,
+    skill,
+    config,
+    conditionEffects,
+    options,
+  );
+}
+
+function calculateSkillGainsWithFrame(
+  state: CraftingState,
+  skill: SkillDefinition,
+  config: OptimizerConfig,
+  conditionEffects: ConditionEffect[],
+  options: SkillGainOptions,
+  frame?: ActionEvaluationFrame,
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
   if (
@@ -2464,6 +2522,7 @@ export function calculateSkillGains(
     config,
     conditionEffects,
     options,
+    frame,
   );
 }
 
@@ -2474,6 +2533,7 @@ function calculateUninterceptedSkillGains(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   options: SkillGainOptions,
+  frame?: ActionEvaluationFrame,
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
   const clampPredictedProgressGain = (
@@ -2518,12 +2578,13 @@ function calculateUninterceptedSkillGains(
 
   // Handle Disciplined Touch specially - it uses both intensity and control with buffs
   if (skill.isDisciplinedTouch) {
-    const disciplined = calculateDisciplinedTouchGains(
+    const disciplined = calculateDisciplinedTouchGainsWithFrame(
       state,
       skill,
       config,
       conditionEffects,
       options,
+      frame,
     );
     return {
       ...disciplined,
@@ -2544,41 +2605,10 @@ function calculateUninterceptedSkillGains(
     };
   }
 
-  const harmonyMods = getHarmonyStatModifiers(
-    state.harmonyData,
-    config.craftingType,
-  );
-  let preMasteryVars = buildPreMasteryActionVariables(
-    state,
-    config,
-    conditionEffects,
-    harmonyMods,
-  );
-  let resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
-  if (hasMasteryUpgrades(resolvedMastery.upgrades)) {
-    preMasteryVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      harmonyMods,
-      resolvedMastery.upgrades,
-    );
-    resolvedMastery = resolveMasteryBonuses(state, skill, preMasteryVars);
-  }
-
-  const mastery = resolvedMastery.bonuses;
-  const masteryUpgrades = resolvedMastery.upgrades;
-
-  const scalingVars: ScalingVariables = {
-    ...preMasteryVars,
-  };
-
-  // Mastery stat bonuses apply to action variables before effect scaling.
-  scalingVars.control *= 1 + (mastery.controlBonus || 0);
-  scalingVars.intensity *= 1 + (mastery.intensityBonus || 0);
-  scalingVars.critchance += mastery.critChanceBonus || 0;
-  scalingVars.critmultiplier += mastery.critMultiplierBonus || 0;
-  scalingVars.successChanceBonus += mastery.successChanceBonus || 0;
+  const evaluation =
+    frame ?? buildActionEvaluationFrame(state, skill, config, conditionEffects);
+  const masteryUpgrades = evaluation.mastery.upgrades;
+  const scalingVars = evaluation.variables;
 
   const critFactor = includeExpectedValue
     ? calculateExpectedCritMultiplier(
@@ -3169,46 +3199,14 @@ export function calculateActionSurvivabilityFloor(
     return Math.max(0, Math.min(1, survivalProbability));
   };
 
-  const harmonyMods = getHarmonyStatModifiers(
-    state.harmonyData,
-    config.craftingType,
-  );
-  let preMasteryActionVars = buildPreMasteryActionVariables(
-    state,
-    config,
-    conditionEffects,
-    harmonyMods,
-  );
-  let resolvedActionMastery = resolveMasteryBonuses(
+  const evaluation = buildActionEvaluationFrame(
     state,
     skill,
-    preMasteryActionVars,
+    config,
+    conditionEffects,
   );
-  if (hasMasteryUpgrades(resolvedActionMastery.upgrades)) {
-    preMasteryActionVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      harmonyMods,
-      resolvedActionMastery.upgrades,
-    );
-    resolvedActionMastery = resolveMasteryBonuses(
-      state,
-      skill,
-      preMasteryActionVars,
-    );
-  }
-
-  const mastery = resolvedActionMastery.bonuses;
-  const actionMasteryUpgrades = resolvedActionMastery.upgrades;
-  const actionVars = {
-    ...preMasteryActionVars,
-  };
-  actionVars.control *= 1 + (mastery.controlBonus || 0);
-  actionVars.intensity *= 1 + (mastery.intensityBonus || 0);
-  actionVars.critchance += mastery.critChanceBonus || 0;
-  actionVars.critmultiplier += mastery.critMultiplierBonus || 0;
-  actionVars.successChanceBonus += mastery.successChanceBonus || 0;
+  const actionMasteryUpgrades = evaluation.mastery.upgrades;
+  const actionVars = evaluation.variables;
 
   const actionSuccessChance = isItemAction
     ? 1
@@ -3382,17 +3380,20 @@ export function calculateActionSurvivabilityFloor(
   let buffMaxStabilityDelta = 0;
   let buffPoolDelta = 0;
   let buffToxicityDelta = 0;
-  qiCap = getEffectiveMaxPool(
-    state.copy({
-      qi: newQi,
-      stability: newStability,
-      stabilityPenalty: newStabilityPenalty,
-      toxicity: newToxicity,
-      buffs: newBuffs,
-    }),
-    config,
-    newBuffs,
-  );
+  // Without maxpool buffs the helper never reads state; avoid a dead copy.
+  qiCap = buffsCanChangeMaxPool(newBuffs)
+    ? getEffectiveMaxPool(
+        state.copy({
+          qi: newQi,
+          stability: newStability,
+          stabilityPenalty: newStabilityPenalty,
+          toxicity: newToxicity,
+          buffs: newBuffs,
+        }),
+        config,
+        newBuffs,
+      )
+    : Math.max(1, config.maxQi);
 
   const applyGuaranteedBuffEffect = (
     effect: BuffEffect,
@@ -3970,6 +3971,26 @@ function hasLiteralPaymentStats(
   return literal;
 }
 
+const constantActivePaymentBuffs = new WeakMap<BuffDefinition, boolean>();
+function hasConstantActivePaymentStats(
+  definition: BuffDefinition | undefined,
+): boolean {
+  if (!definition) return true;
+  const cached = constantActivePaymentBuffs.get(definition);
+  if (cached !== undefined) return cached;
+  // Payment reads active buffs without mastery upgrades. upgradeKey is inert
+  // metadata here, but NOT on buffs/stacks created by this action's masteries.
+  const constant =
+    !definition.triggeredEffects?.length &&
+    PAYMENT_STAT_KEYS.every((key) =>
+      Object.keys(definition.stats?.[key] ?? {}).every(
+        (field) => field === 'value' || field === 'upgradeKey',
+      ),
+    );
+  constantActivePaymentBuffs.set(definition, constant);
+  return constant;
+}
+
 /** Constant cost stats cannot depend on the mastery bar/resource effects.
  * Project just buff creation for those common payloads; expressions, trigger
  * hooks and other mutations retain the full phase interpreter below. */
@@ -3979,11 +4000,23 @@ function literalMasteryPayment(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   entries: EffectMastery[],
-): { costs?: EffectiveActionCosts } | undefined {
+): { costs?: EffectiveActionCosts; projectBuffs?: boolean } | undefined {
   const active = getResolvedActiveBuffs(start, config);
+  let projectBuffs = false;
+  if (
+    Array.from(active.values()).some((buff) => {
+      if (hasLiteralPaymentStats(buff.definition)) return false;
+      projectBuffs = true;
+      return !hasConstantActivePaymentStats(buff.definition);
+    })
+  )
+    return undefined;
+  // Interceptors can create payment buffs as numeric mastery side effects,
+  // whether held or created earlier in this action; the full interpreter
+  // replays those.
   if (
     Array.from(active.values()).some(
-      (buff) => !hasLiteralPaymentStats(buff.definition),
+      (buff) => buff.definition?.craftingEffectInterceptors !== undefined,
     )
   )
     return undefined;
@@ -3996,6 +4029,7 @@ function literalMasteryPayment(
     for (const effect of entry.effects) {
       if (effect.kind === 'createBuff') {
         if (
+          effect.buff?.craftingEffectInterceptors !== undefined ||
           !hasLiteralPaymentStats(effect.buff) ||
           !isLiteralScaling(effect.stacks) ||
           (effect.condition && effect.condition.kind !== 'chance')
@@ -4017,6 +4051,12 @@ function literalMasteryPayment(
       }
     }
   }
+  // Newly admitted metadata cases must retain the general path's ENTIRE
+  // probability tree, including non-payment effects. Dropping those branches
+  // changes floating-point sums (e.g. 2.6 versus 2.6000000000000005). Project
+  // only their states below; leave branch order, multiplications and reductions
+  // untouched. Existing literal cases keep their original shortcut semantics.
+  if (projectBuffs) return { projectBuffs: true };
   let outcomes = [{ probability: 1, buffs: active }];
   let varies = false;
   const creations = entries.map((entry) => ({
@@ -4109,6 +4149,26 @@ function literalMasteryPayment(
   return different ? { costs } : {};
 }
 
+function projectMasteryPaymentState(
+  state: CraftingState,
+  effects: TechniqueEffect[],
+  config: OptimizerConfig,
+): CraftingState {
+  const buffs = new Map(getResolvedActiveBuffs(state, config));
+  for (const effect of effects) {
+    if (effect.kind !== 'createBuff') continue;
+    upsertBuffIntoMap(
+      buffs,
+      effect.buff,
+      evaluateScaling(effect.stacks, {} as ScalingVariables, 1),
+    );
+  }
+  // All payment stats are constant, all created stacks are literal, and no
+  // triggers/other buff mutations passed the gate. Bar/resource effects cannot
+  // affect costs, so only the ordered buff insertions need interpretation.
+  return state.copy({ buffs });
+}
+
 /** Resolve a phase gate without building an unused variable scope. */
 function evaluateMasteryPhaseCondition(
   condition: CraftingTechniqueCondition | undefined,
@@ -4168,7 +4228,7 @@ function expectedMasteryPayment(
     conditionEffects,
     entries,
   );
-  if (literal) return literal.costs;
+  if (literal && !literal.projectBuffs) return literal.costs;
   let outcomes = [{ probability: 1, state: start }];
   for (const entry of entries) {
     // An entry's chance gates its entire block; nested chances are independent.
@@ -4228,21 +4288,27 @@ function expectedMasteryPayment(
         const state =
           effects.effects.length === 0
             ? outcome.state
-            : applySkillTransition(
-                outcome.state,
-                masteryPhaseSkill(skill, effects.effects),
-                config,
-                conditionEffects,
-                targetCompletion,
-                currentCondition,
-                targetPerfection,
-                {
-                  ...phase,
-                  successChance: 1,
-                  masteryPhase: true,
-                  barContributions: [],
-                },
-              )!;
+            : literal?.projectBuffs
+              ? projectMasteryPaymentState(
+                  outcome.state,
+                  effects.effects,
+                  config,
+                )
+              : applySkillTransition(
+                  outcome.state,
+                  masteryPhaseSkill(skill, effects.effects),
+                  config,
+                  conditionEffects,
+                  targetCompletion,
+                  currentCondition,
+                  targetPerfection,
+                  {
+                    ...phase,
+                    successChance: 1,
+                    masteryPhase: true,
+                    barContributions: [],
+                  },
+                )!;
         next.push({
           state,
           probability:
@@ -4499,6 +4565,12 @@ function applySkillTransition(
   const orderedEffects = orderedNumeric && !!skill.effects?.length;
   const newBuffs = new Map(resolvedActiveBuffs);
   let certainApplication = true;
+  const evaluation = buildActionEvaluationFrame(
+    state,
+    skill,
+    config,
+    conditionEffects,
+  );
   const gains: SkillGains =
     orderedEffects ||
     (!skill.isDisciplinedTouch &&
@@ -4507,56 +4579,26 @@ function applySkillTransition(
         (effect) => effect.kind === 'createBuff' && !effect.condition,
       ))
       ? { completion: 0, perfection: 0, stability: 0 }
-      : calculateSkillGains(state, skill, config, conditionEffects, {
-          includeExpectedValue: phase.includeExpectedValue,
-          successChance: phase.successChance,
-          stabilityCost: effectiveCosts.stabilityCost,
-        });
+      : calculateSkillGainsWithFrame(
+          state,
+          skill,
+          config,
+          conditionEffects,
+          {
+            includeExpectedValue: phase.includeExpectedValue,
+            successChance: phase.successChance,
+            stabilityCost: effectiveCosts.stabilityCost,
+          },
+          evaluation,
+        );
 
   // Action-level scaling variables (carry the 0.7.10 boost stats). Pure over
   // the pre-action state, so they are built up front and shared by the cost
   // restore, technique effects, and buff effects below.
-  const harmonyMods = getHarmonyStatModifiers(
-    state.harmonyData,
-    config.craftingType,
-  );
-  let preMasteryActionVars = buildPreMasteryActionVariables(
-    state,
-    config,
-    conditionEffects,
-    harmonyMods,
-  );
-  let resolvedActionMastery = resolveMasteryBonuses(
-    state,
-    skill,
-    preMasteryActionVars,
-  );
-  if (hasMasteryUpgrades(resolvedActionMastery.upgrades)) {
-    preMasteryActionVars = buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      harmonyMods,
-      resolvedActionMastery.upgrades,
-    );
-    resolvedActionMastery = resolveMasteryBonuses(
-      state,
-      skill,
-      preMasteryActionVars,
-    );
-  }
-
-  const mastery = resolvedActionMastery.bonuses;
-  const actionMasteryUpgrades = resolvedActionMastery.upgrades;
-  const actionVars = {
-    ...preMasteryActionVars,
-    ...(orderedNumeric ? { step: state.step } : {}),
-  };
-  actionVars.control *= 1 + (mastery.controlBonus || 0);
-  actionVars.intensity *= 1 + (mastery.intensityBonus || 0);
-  actionVars.critchance += mastery.critChanceBonus || 0;
-  actionVars.critmultiplier += mastery.critMultiplierBonus || 0;
-  actionVars.successChanceBonus += mastery.successChanceBonus || 0;
+  const actionMasteryUpgrades = evaluation.mastery.upgrades;
+  const actionVars = orderedNumeric
+    ? { ...evaluation.variables, step: state.step }
+    : evaluation.variables;
 
   const effectiveQiCost = effectiveCosts.qiCost;
   let effectiveStabilityCost = effectiveCosts.stabilityCost;
@@ -4738,17 +4780,20 @@ function applySkillTransition(
   let buffPoolDelta = 0;
   let buffToxicityDelta = 0;
   let buffMaxStabilityDelta = 0;
-  qiCap = getEffectiveMaxPool(
-    state.copy({
-      qi: newQi,
-      stability: newStability,
-      stabilityPenalty: newStabilityPenalty,
-      toxicity: newToxicity,
-      buffs: newBuffs,
-    }),
-    config,
-    newBuffs,
-  );
+  // Without maxpool buffs the helper never reads state; avoid a dead copy.
+  qiCap = buffsCanChangeMaxPool(newBuffs)
+    ? getEffectiveMaxPool(
+        state.copy({
+          qi: newQi,
+          stability: newStability,
+          stabilityPenalty: newStabilityPenalty,
+          toxicity: newToxicity,
+          buffs: newBuffs,
+        }),
+        config,
+        newBuffs,
+      )
+    : Math.max(1, config.maxQi);
 
   const upsertBuffFromDefinition = (
     definition: BuffDefinition | undefined,

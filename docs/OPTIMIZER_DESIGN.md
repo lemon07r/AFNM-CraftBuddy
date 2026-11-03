@@ -10,6 +10,7 @@ Integration/UI use `src/optimizer/index.ts`; workers and tests may import intern
 - Techniques consume lookahead turn depth; supplied pill/reagent actions do not. Integration excludes items covered by native auto-use.
 - Persist only canonical supplemental native variables; derive state/buff/harmony aliases at evaluation time so stale mirrors do not pollute keys.
 - Transitions include the payment/mastery/buff phases in [Mechanics parity](MECHANICS_PARITY.md#execution-contract). Decree alone collects ordered bar-change contributions through the allocation gate; Returning Cycle is simulated state, not a flat score bonus.
+- Within a transition, gains reuse its private read-only action frame (buff/condition/harmony variables and the ordered two-pass mastery resolution); success/payment overrides and mutable effect outputs stay separate. Survival uses the same frame builder independently, not a cache across differing setup/mastery phases.
 
 ## Outcome and goals
 
@@ -50,7 +51,7 @@ The visible condition queue is normalized to length three; beyond it search uses
 
 Immediate survival is not flattened into EV. `calculateActionSurvivabilityFloor` estimates guaranteed stability, but has a known payment/mastery/cleanup divergence from the actual transition. Separately, a real forced-failure transition ending below target sets `requiresProbabilisticSurvival`. Safety precedence applies when a viable safe live alternative exists; a certain-failure line does not outrank a winnable gamble simply because it is “certain”. Worker merging preserves the same flags and score ordering.
 
-Chance-conditioned payment buffs use transient independent branches for expected current payment; they do not create a probability-aware persistent future-buff model.
+Chance-conditioned payment buffs use transient independent branches for expected current payment; they do not create a probability-aware persistent future-buff model. Constant active payment stats may carry inert `upgradeKey` metadata: that shortcut projects only buff creation while preserving the general interpreter's full probability-outcome multiplicity, order and scalar reductions. Created buffs/stacks still require literal values, and triggered buffs retain the full interpreter. Metadata projection also excludes held crafting-effect interceptors, whose numeric mastery side effects can create payment buffs.
 
 ### Score layers
 
