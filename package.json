@@ -25,7 +25,7 @@
     "docs:test": "node --test scripts/docs/checks.test.js",
     "docs:check": "bun run docs:test && bun run docs:check-links && bun run docs:check-consistency",
     "optimizer:bench": "bun run scripts/optimizer/benchmark-engines.ts",
-    "optimizer:bench:gate": "bun run scripts/optimizer/benchmark-engines.ts --fixed-work",
+    "optimizer:bench:gate": "bun run scripts/optimizer/benchmark-engines.ts --fixed-work --json tmp/engine-benchmark-gate.json --markdown tmp/engine-benchmark-gate.md",
     "optimizer:digest": "bun run scripts/optimizer/baseline-digest.ts",
     "optimizer:parity": "bun run scripts/optimizer/run-parity-suites.ts",
     "optimizer:transition-corpus": "bun run scripts/optimizer/generate-differential-corpus.ts",

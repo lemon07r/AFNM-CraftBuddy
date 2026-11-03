@@ -290,11 +290,24 @@ function getContractForFixture(
   );
 }
 
+/** Whether a contract checks anything; notes-only contracts do not. */
+function hasAssertions(contract: FixtureContract): boolean {
+  return (
+    !!contract.mustRecommendRealAction ||
+    !!contract.mustRecommendOneOf?.length ||
+    !!contract.mustNotRecommend?.length ||
+    !!contract.preferredTypes?.length ||
+    !!contract.forbiddenTypes?.length ||
+    !!contract.mustRankBefore?.length ||
+    contract.minDepthReached !== undefined
+  );
+}
+
 function evaluateContract(
   result: BenchmarkRunResult,
   contract: FixtureContract | undefined,
 ): { pass: boolean | null; reasons: string[] } {
-  if (!contract) {
+  if (!contract || !hasAssertions(contract)) {
     return { pass: null, reasons: [] };
   }
 
@@ -505,6 +518,7 @@ function runBenchmark(options: {
       }
 
       let runResult: BenchmarkRunResult;
+      let runTimeBudgetMs = cfg.searchConfig.timeBudgetMs;
       try {
         const searchConfig = {
           ...cfg.searchConfig,
@@ -521,6 +535,7 @@ function runBenchmark(options: {
             0,
         };
 
+        runTimeBudgetMs = searchConfig.timeBudgetMs;
         const result = lookaheadSearch(
           input.state,
           input.config,
@@ -555,7 +570,7 @@ function runBenchmark(options: {
           configLabel: contract?.searchBudget
             ? `${cfg.label}; fixture budget: ${contract.searchBudget.maxNodes} nodes`
             : fixedWork
-              ? `${cfg.label}; fixed work: ${cfg.fixedWorkNodes} nodes`
+              ? `Fixed ${cfg.fixedWorkNodes} nodes: ${cfg.label}`
               : cfg.label,
           lookaheadDepth: cfg.lookaheadDepth,
           recommendationKey: recommendation?.skill.key ?? null,
@@ -610,7 +625,16 @@ function runBenchmark(options: {
         continue;
       }
 
-      const { pass, reasons } = evaluateContract(runResult, contract);
+      const evaluation = evaluateContract(runResult, contract);
+      let pass = evaluation.pass;
+      const reasons = evaluation.reasons;
+      // Fixed work is only deterministic if node budgets end every run.
+      if (fixedWork && runResult.timeTakenMs >= runTimeBudgetMs * 0.95) {
+        pass = false;
+        reasons.push(
+          `fixed-work run reached the ${runTimeBudgetMs} ms wall-clock ceiling`,
+        );
+      }
       runResult.contractPass = pass;
       runResult.contractFailReasons = reasons;
 
@@ -623,7 +647,7 @@ function runBenchmark(options: {
       if (verbose) {
         const status =
           pass === null
-            ? '(no contract)'
+            ? '(no assertions)'
             : pass
               ? 'PASS'
               : `FAIL: ${reasons.join('; ')}`;
@@ -661,7 +685,9 @@ function buildMarkdownReport(report: BenchmarkReport): string {
   lines.push(`| Total runs | ${report.totalRuns} |`);
   lines.push(`| Contracts passed | ${report.passedContracts} |`);
   lines.push(`| Contracts failed | ${report.failedContracts} |`);
-  lines.push(`| No contract | ${report.skippedContracts} |`);
+  lines.push(
+    `| No assertions (absent or notes-only) | ${report.skippedContracts} |`,
+  );
   lines.push('');
 
   // Group by fixture
@@ -758,7 +784,7 @@ writeFileSync(markdownOutput, markdown, 'utf8');
 console.log(`\nResults:`);
 console.log(`  Contracts passed: ${report.passedContracts}`);
 console.log(`  Contracts failed: ${report.failedContracts}`);
-console.log(`  No contract:      ${report.skippedContracts}`);
+console.log(`  No assertions:    ${report.skippedContracts}`);
 console.log(`\nOutput:`);
 console.log(`  JSON:     ${jsonOutput}`);
 console.log(`  Markdown: ${markdownOutput}`);

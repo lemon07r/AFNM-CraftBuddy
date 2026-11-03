@@ -167,7 +167,7 @@ bun run optimizer:digest -- --compare tmp/baseline.json
 bun run optimizer:bench:gate
 ```
 
-The gate runs every benchmark contract with fixed node budgets (each preset's time budget at the 7.0 reference rate of ~1.33 nodes/ms: 1,330, 2,660 and 6,000 nodes), so it is deterministic and part of `release:validate` and CI. In 7.0 two consecutive gate runs matched in all 64 fixture×preset results and passed 60/60 contracts.
+The gate runs every benchmark contract with fixed node budgets (each preset's time budget at the 7.0 reference rate of ~1.33 nodes/ms: 1,330, 2,660 and 6,000 nodes) and is part of `release:validate` and CI. Results are deterministic while node budgets end each run; a run that reaches the 120 s wall-clock ceiling fails the gate instead of passing on a time-dependent result. Notes-only fixtures are reported as having no assertions, not as passes. In 7.0 two consecutive gate runs matched in all 64 fixture×preset results; 36 asserted runs passed and 28 runs (seven fixtures) carry no assertion.
 
 The retired Rust profiling commands are no longer supported. Benchmark JSON/Markdown output options are available in `scripts/optimizer/benchmark-engines.ts`; run clock measurements without competing test loads. A failing contract is a reproduction lead, not permission to tune a constant.
 
