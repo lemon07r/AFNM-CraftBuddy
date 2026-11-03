@@ -2,6 +2,7 @@
 
 ### Unreleased — 7.0.0
 
+- Derive survival floors and projected survival odds from the actual action transition, fixing buff-consumption/mastery ordering and signed maximum-stability cleanup without a duplicate simulator.
 - Model Su Lianhua's effect interception and Han Weiguang's stability-loss prevention when those companions are held.
 - Apply technique and buff Qi changes individually with clamped event amounts (including zero), and match signed stability events and loss reductions with or without companions.
 - Retire the opt-in Rust/WASM MCTS prior and engine selector; the established TypeScript search and its preset budgets are unchanged.
