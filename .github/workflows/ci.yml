@@ -26,6 +26,9 @@ jobs:
 
       - run: bun run test
 
+      - name: Benchmark contracts (fixed work)
+        run: bun run optimizer:bench:gate
+
       - run: bun run docs:check
 
       - name: Production build
