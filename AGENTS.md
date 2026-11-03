@@ -4,7 +4,7 @@ Crafting assistant mod for Ascend From Nine Mountains (AFNM). It reads the live 
 
 ## Where things are
 
-- `src/optimizer/`: pure simulation and search (`skills.ts` transitions, `search.ts` ranking, `outcome.ts` bands/tiers/auto-finish). Integration code uses it through `src/optimizer/index.ts`.
+- `src/optimizer/`: pure simulation and search (`skills.ts` transitions, `search/` search/scoring/ranking behind the `search.ts` facade, `outcome.ts` bands/tiers/auto-finish). Integration code uses it through `src/optimizer/index.ts`.
 - `src/modContent/`: everything that touches the game (state extraction, ModAPI, auto-craft dispatch).
 - `src/ui/`, `src/settings/`: overlay and settings. `src/worker/`: background search.
 - `docs/`: design, mechanics, runtime evidence, development guide. Commands live in `package.json`.

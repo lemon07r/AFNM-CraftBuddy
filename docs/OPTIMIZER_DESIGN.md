@@ -60,7 +60,7 @@ Chance-conditioned payment buffs use transient independent branches for expected
 4. Stability/runway penalties while the goal is unsecured.
 5. Overshoot/hard-cap and finished-shortfall penalties; tiny resource tie-breakers after goals are met.
 
-The constants' commensurability is documented beside them in `search.ts`: a tier step exceeds the within-tier stack; death exceeds a tier step. Scale matters across early/late crafts, so isolated fixed bonuses are dangerous.
+The constants' commensurability is documented beside them in `src/optimizer/search/scoring.ts`: a tier step exceeds the within-tier stack; death exceeds a tier step. Scale matters across early/late crafts, so isolated fixed bonuses are dangerous.
 
 Extra perfection bands scale stacks by 20% of base per band beyond the tier baseline; sublime also earns harmony-augment quality. Completion extras increase the sublime-capable material refund by 20% per band, capped at 80%. These are independent rewards, not a reason to abandon the binding tier gate.
 
