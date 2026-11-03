@@ -621,6 +621,101 @@ describe('Han survivability floor for effect losses', () => {
   );
 });
 
+describe('Han survivability floor buff order', () => {
+  it('spends prevention on action hooks before ordinary buff effects', () => {
+    const drain: BuffDefinition = {
+      name: 'Refine drain',
+      canStack: false,
+      effects: [{ kind: 'stability', amount: { value: -1 } }],
+      onRefine: [{ kind: 'stability', amount: { value: -10 } }],
+    };
+    const base = hanScenarios()[0];
+    const buffs = new Map(base.state.buffs);
+    const han = buffs.get(HAN_KEY)!;
+    buffs.set(HAN_KEY, {
+      ...han,
+      internalState: { preventedStabilityLosses: 1 },
+    });
+    buffs.set('refine_drain', {
+      name: drain.name,
+      stacks: 1,
+      definition: drain,
+    });
+    const state = base.state.copy({ stability: 5, buffs });
+    const skill = retargetSkill({
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 0,
+      successChance: 1,
+      effects: [{ kind: 'completion', amount: { value: 1 } }],
+    });
+    const config = retargetConfig(skill);
+    const next = applySkill(state, skill, config)!;
+    expect(next.stability).toBe(4);
+    expect(
+      calculateActionSurvivabilityFloor(state, skill, config)!.stability,
+    ).toBe(next.stability);
+  });
+});
+
+describe('inert companion hydrated listeners', () => {
+  it('keeps bar events for listeners hydrated from config skills', () => {
+    const observer: BuffDefinition = {
+      name: 'Hydrated observer',
+      canStack: false,
+      effects: [],
+      triggeredEffects: [
+        {
+          trigger: 'completionGained',
+          effects: [
+            {
+              kind: 'setState',
+              key: 'calls',
+              mode: 'add',
+              value: { value: 1 },
+            },
+          ],
+        },
+      ],
+    };
+    const su = suBuff();
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      successChance: 1,
+      effects: [{ kind: 'completion', amount: { value: 5 } }],
+    });
+    const source = retargetSkill({
+      name: 'Observer source',
+      key: 'observer_source',
+      effects: [{ kind: 'createBuff', buff: observer, stacks: { value: 1 } }],
+    });
+    const config = retargetConfig(skill, { skills: [skill, source] });
+    const tracked: CraftingState['buffs'] = new Map([
+      ['hydrated_observer', { name: observer.name, stacks: 1 }],
+    ]);
+    const bare = applySkill(
+      new CraftingState({ qi: 100, stability: 50, step: 0, buffs: tracked }),
+      skill,
+      config,
+    )!;
+    const withSu = new Map(tracked);
+    withSu.set("su_lianhua's_assistance", {
+      name: su.name,
+      stacks: 1,
+      definition: su,
+    });
+    const next = applySkill(
+      new CraftingState({ qi: 100, stability: 50, step: 0, buffs: withSu }),
+      skill,
+      config,
+    )!;
+    expect(bare.buffs.get('hydrated_observer')?.internalState?.calls).toBe(1);
+    expect(next.buffs.get('hydrated_observer')?.internalState?.calls).toBe(1);
+    expect(next.completion).toBe(bare.completion);
+  });
+});
+
 describe('companion probability-weighted bar events', () => {
   it.each(companionWeightedBarScenarios())(
     'matches the non-companion contributions and listener gains: $name',

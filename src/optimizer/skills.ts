@@ -3540,12 +3540,8 @@ export function calculateActionSurvivabilityFloor(
         }
       }
 
-      if (buff.definition.effects) {
-        for (const effect of buff.definition.effects) {
-          applyGuaranteedBuffEffect(effect, buffKey, buff, scalingVars);
-        }
-      }
-
+      // Action hooks run before ordinary effects, as in the transition; Han's
+      // limited prevention uses make this order observable.
       const actionEffects: BuffEffect[] | undefined =
         skill.type === 'fusion'
           ? buff.definition.onFusion
@@ -3558,6 +3554,12 @@ export function calculateActionSurvivabilityFloor(
                 : undefined;
       if (actionEffects) {
         for (const effect of actionEffects) {
+          applyGuaranteedBuffEffect(effect, buffKey, buff, scalingVars);
+        }
+      }
+
+      if (buff.definition.effects) {
+        for (const effect of buff.definition.effects) {
           applyGuaranteedBuffEffect(effect, buffKey, buff, scalingVars);
         }
       }
@@ -5043,8 +5045,9 @@ function applySkillTransition(
         raw === uninterceptedRaw
       ) {
         if (!inertBarScales) {
+          // Use the resolved buffs so hydrated listener definitions count.
           const reference = calculateUninterceptedSkillGains(
-            state,
+            state.copy({ buffs: resolvedActiveBuffs }),
             skill,
             config,
             conditionEffects,
