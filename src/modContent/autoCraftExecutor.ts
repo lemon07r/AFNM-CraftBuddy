@@ -224,11 +224,6 @@ function isProbablyClickableElement(element: HTMLElement): boolean {
   return style.cursor === 'pointer';
 }
 
-function rectArea(element: HTMLElement): number {
-  const rect = element.getBoundingClientRect();
-  return rect.width * rect.height;
-}
-
 function addCandidate(
   target: Map<HTMLElement, ButtonCandidate>,
   element: HTMLElement,

@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Box, Typography } from '@mui/material';
 import type {
   CraftingConditionType,

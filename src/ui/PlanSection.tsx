@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Typography } from '@mui/material';
 import type { SearchResult } from '../optimizer';
 import type { CraftBuddySettings } from '../settings';

@@ -20,10 +20,7 @@ import {
   CraftingCondition,
   RecipeConditionEffect,
   CraftingBuff,
-  CraftingPillItem,
-  CraftingReagentItem,
   RecipeItem,
-  type RootState,
   type ModReduxAPI,
 } from 'afnm-types';
 import {
@@ -31,11 +28,8 @@ import {
   findBestSkill,
   SearchResult,
   SkillRecommendation,
-  BuffType,
   OptimizerConfig,
   SkillDefinition,
-  SkillMastery,
-  getBonusAndChance,
   getBuffDiscordantConditions,
   normalizeForecastConditionQueue,
   setConditionTransitionProvider,
@@ -100,8 +94,6 @@ import {
   applyHarmonyComplexityToTargets,
   shouldUseCapAsTargetFallback,
   type CraftingType,
-  type CraftingTypeDetectionSource,
-  type SublimeDetectionSignal,
 } from './craftingContext';
 import {
   hasReliableCraftingActivity as hasReliableCraftingActivityState,
@@ -111,8 +103,6 @@ import {
 import {
   hasCraftingActionCue,
   hasVisibleCraftingUiSignals,
-  isRenderableOnscreenElement,
-  parseCraftingProgressPair,
 } from './craftingUiDetection';
 import {
   createModApiStateStore,
@@ -132,10 +122,6 @@ import {
   type OptimizerReplayTurnSnapshot,
 } from './replaySnapshot';
 import { resolveConditionEffectsData } from './conditionEffects';
-import {
-  buildKnownCraftingTechniqueNameMap,
-  resolveLiveCraftingTechnique,
-} from './techniqueResolution';
 import { computeMaxStepsBoost } from './qualityCap';
 import {
   copyTextToClipboard,
@@ -146,14 +132,11 @@ import {
   createTitleScreenIndicator,
   extractCraftingProgressPair,
   findVisibleCraftingProgressElement,
-  getElementRectSnapshot,
   getGameRootElement,
   getVisibleCraftingUiOccupiedRect,
   isElementInCraftBuddyOverlay,
   isElementVisible,
-  pickCraftingHudAnchorRect,
   renderReactRoot,
-  scheduleAfterNextPaint,
   scheduleSearchAfterLoadingShell,
   unmountOverlayRoot,
 } from './overlayMount';
@@ -165,48 +148,25 @@ import {
   extractTrackedBuffs,
   extractCapCandidate,
   extractCompletionBonusStacks,
-  extractMasteryData,
   findPositiveGameNumber,
   getKnownCraftingTechniquesFromState,
-  normalizeChance,
   normalizeConditionKey,
-  normalizeRuntimeCostPercentage,
   parsePositiveGameNumber,
-  pickPositiveGameNumber,
   resolveDomProgressTarget,
   resolveMaxToxicityCap,
   resolveNativeCraftingVariables,
-  sanitizeNativeCraftingVariables,
   serializeCraftingBuffs,
   serializeQuickAccessInventory,
   serializeTechniqueCooldowns,
-  toFiniteNumber,
   toFinitePositiveNumber,
   type InventoryItemLike,
 } from './craftStateExtraction';
-import {
-  findFirstFunction,
-  getModApiCompletionBonusBuffKey,
-  getModApiNextConditionResolver,
-  getModApiTechniqueFromKnownResolver,
-  getPathValue,
-} from './modApiProviders';
-import {
-  integrationDiagnostics,
-  type CompletionBonusSource,
-  type IntegrationDiagnostics,
-} from './craftSession';
+import { getModApiNextConditionResolver } from './modApiProviders';
+import { integrationDiagnostics } from './craftSession';
 import { getCraftBuddyHotkeyAction } from './hotkeys';
 import { debugLog } from '../utils/debug';
 import { checkPrecision, parseGameNumber } from '../utils/largeNumbers';
-import {
-  computeOverlayLayout,
-  expandOverlayRect,
-  isOverlayParentRectUsable,
-  isRectInOverlayHudCluster,
-  unionOverlayRects,
-  type OverlayRectLike,
-} from '../utils/overlayLayout';
+import { computeOverlayLayout } from '../utils/overlayLayout';
 
 declare const MOD_METADATA: {
   name: string;
@@ -1664,17 +1624,9 @@ function updateRecommendation(
 
   const extractedBuffs = extractTrackedBuffs(buffs);
 
-  // Read pool/stability cost percentage modifiers from entity stats + buffs.
-  // Runtime can report neutral baseline as 0, while optimizer internals use 100.
-  const poolCostPercentage = normalizeRuntimeCostPercentage(
-    (entity as any)?.stats?.poolCostPercentage,
-  );
   const poolCostFlat = Math.max(
     0,
     parseGameNumber((entity as any)?.stats?.poolCostFlat, 0),
-  );
-  const stabilityCostPercentage = normalizeRuntimeCostPercentage(
-    (entity as any)?.stats?.stabilityCostPercentage,
   );
 
   // Extract completion bonus stacks from the Completion Bonus buff
@@ -3125,130 +3077,125 @@ function stopPolling(): void {
  * Register lifecycle hooks for crafting events.
  */
 try {
-  window.modAPI.hooks.onDeriveRecipeDifficulty(
-    (recipe, recipeStats, gameFlags) => {
-      debugLog(
-        '[CraftBuddy] onDeriveRecipeDifficulty called for:',
-        recipe?.name,
-      );
-      debugLog(
-        '[CraftBuddy] Full recipeStats:',
-        JSON.stringify(recipeStats, null, 2),
-      );
+  window.modAPI.hooks.onDeriveRecipeDifficulty((recipe, recipeStats) => {
+    debugLog('[CraftBuddy] onDeriveRecipeDifficulty called for:', recipe?.name);
+    debugLog(
+      '[CraftBuddy] Full recipeStats:',
+      JSON.stringify(recipeStats, null, 2),
+    );
 
-      // Reset optional progress caps for the new craft. They will be repopulated
-      // when exposed by recipeStats (or remain undefined if unavailable).
-      maxCompletionCap = undefined;
-      maxPerfectionCap = undefined;
+    // Reset optional progress caps for the new craft. They will be repopulated
+    // when exposed by recipeStats (or remain undefined if unavailable).
+    maxCompletionCap = undefined;
+    maxPerfectionCap = undefined;
 
-      if (recipeStats) {
-        const statsAny = recipeStats as any;
-        lastRecipe = recipe as RecipeItem | undefined;
-        lastRecipeStats = recipeStats as CraftingRecipeStats;
-        const explicitCompletionTarget = findPositiveGameNumber([
-          statsAny.completionTarget,
-          statsAny.targetCompletion,
-          statsAny.completion,
-        ]);
-        const explicitPerfectionTarget = findPositiveGameNumber([
-          statsAny.perfectionTarget,
-          statsAny.targetPerfection,
-          statsAny.perfection,
-        ]);
-        const explicitStabilityTarget = findPositiveGameNumber([
-          statsAny.stabilityTarget,
-          statsAny.targetStability,
-          statsAny.stability,
-        ]);
-        targetCompletion = explicitCompletionTarget ?? 100;
-        targetPerfection = explicitPerfectionTarget ?? 100;
-        targetStability = explicitStabilityTarget ?? 60;
-        // This hook fires before `initCrafting` applies the harmony complexity
-        // multiplier, so these targets are still unscaled.
-        targetsNeedComplexityScaling = true;
-        updateProgressCapsFromRecipeStats(statsAny);
-        updateProgressCapsFromModApi(
-          recipe as RecipeItem | undefined,
-          recipeStats as CraftingRecipeStats,
-          (lastEntity?.realm as string | undefined) ||
-            ((recipe as any)?.realm as string | undefined),
-          // This hook fires before the craft entity exists, so the newest
-          // entity we have is the last one seen. Its buffs are the best
-          // available basis for the cap boost; a fresh craft simply has none.
-          lastEntity ?? undefined,
-        );
-        applyCapTargetFallbacks({
-          recipe: recipe as RecipeItem | undefined,
-          recipeStats: recipeStats as CraftingRecipeStats,
-          hasExplicitCompletionTarget: explicitCompletionTarget !== undefined,
-          hasExplicitPerfectionTarget: explicitPerfectionTarget !== undefined,
-        });
-
-        const conditionType = (recipeStats as any)?.conditionType;
-        conditionEffectsCache = conditionType?.conditionEffects
-          ? (conditionType as RecipeConditionEffect)
-          : null;
-
-        debugLog(
-          `[CraftBuddy] Targets: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}, caps=${maxCompletionCap ?? 'n/a'}/${maxPerfectionCap ?? 'n/a'}`,
-        );
-
-        // Cache targets for mid-craft save recovery
-        cacheTargets(recipe?.name);
-      }
-
-      syncCraftingContextFromState(
+    if (recipeStats) {
+      const statsAny = recipeStats as any;
+      lastRecipe = recipe as RecipeItem | undefined;
+      lastRecipeStats = recipeStats as CraftingRecipeStats;
+      const explicitCompletionTarget = findPositiveGameNumber([
+        statsAny.completionTarget,
+        statsAny.targetCompletion,
+        statsAny.completion,
+      ]);
+      const explicitPerfectionTarget = findPositiveGameNumber([
+        statsAny.perfectionTarget,
+        statsAny.targetPerfection,
+        statsAny.perfection,
+      ]);
+      const explicitStabilityTarget = findPositiveGameNumber([
+        statsAny.stabilityTarget,
+        statsAny.targetStability,
+        statsAny.stability,
+      ]);
+      targetCompletion = explicitCompletionTarget ?? 100;
+      targetPerfection = explicitPerfectionTarget ?? 100;
+      targetStability = explicitStabilityTarget ?? 60;
+      // This hook fires before `initCrafting` applies the harmony complexity
+      // multiplier, so these targets are still unscaled.
+      targetsNeedComplexityScaling = true;
+      updateProgressCapsFromRecipeStats(statsAny);
+      updateProgressCapsFromModApi(
         recipe as RecipeItem | undefined,
-        recipeStats as CraftingRecipeStats | undefined,
-        lastEntity || undefined,
+        recipeStats as CraftingRecipeStats,
+        (lastEntity?.realm as string | undefined) ||
+          ((recipe as any)?.realm as string | undefined),
+        // This hook fires before the craft entity exists, so the newest
+        // entity we have is the last one seen. Its buffs are the best
+        // available basis for the cap boost; a fresh craft simply has none.
+        lastEntity ?? undefined,
       );
+      applyCapTargetFallbacks({
+        recipe: recipe as RecipeItem | undefined,
+        recipeStats: recipeStats as CraftingRecipeStats,
+        hasExplicitCompletionTarget: explicitCompletionTarget !== undefined,
+        hasExplicitPerfectionTarget: explicitPerfectionTarget !== undefined,
+      });
+
+      const conditionType = (recipeStats as any)?.conditionType;
+      conditionEffectsCache = conditionType?.conditionEffects
+        ? (conditionType as RecipeConditionEffect)
+        : null;
 
       debugLog(
-        `[CraftBuddy] Craft context: type=${currentCraftingType} (${integrationDiagnostics.lastCraftingTypeDetectionSource}), sublime=${isSublimeCraft} [${integrationDiagnostics.lastSublimeDetectionSignals.join(', ') || 'none'}], multiplier=${sublimeTargetMultiplier}`,
+        `[CraftBuddy] Targets: completion=${targetCompletion}, perfection=${targetPerfection}, stability=${targetStability}, caps=${maxCompletionCap ?? 'n/a'}/${maxPerfectionCap ?? 'n/a'}`,
       );
 
-      const hasVisibleCraftingUi = detectActiveCraftingUi();
-      if (
-        !shouldPrimeCraftSessionFromRecipeDifficultyHook({
-          hasVisibleCraftingUi,
-          hasConfirmedCraftSession,
-        })
-      ) {
-        debugLog(
-          '[CraftBuddy] Recipe difficulty hook fired before crafting UI was visible; cached targets without priming the overlay',
-        );
-        return recipeStats;
-      }
+      // Cache targets for mid-craft save recovery
+      cacheTargets(recipe?.name);
+    }
 
-      // Reset state
-      currentRecommendation = null;
-      currentCompletion = 0;
-      currentPerfection = 0;
-      currentStability = 0;
-      currentMaxStability = targetStability;
-      currentToxicity = 0;
-      currentCooldowns = new Map();
-      currentConfig = null;
-      nextConditions = [];
+    syncCraftingContextFromState(
+      recipe as RecipeItem | undefined,
+      recipeStats as CraftingRecipeStats | undefined,
+      lastEntity || undefined,
+    );
 
-      // Show panel when crafting starts without mutating persisted user visibility settings.
-      // Set craftStartPending so the overlay stays visible while waiting for the
-      // first recommendation, even if the Redux subscription hasn't delivered
-      // entity/progress data yet.
-      const wasVisibleBeforeCraft = isOverlayVisible;
-      overlayForcedByActiveCraft = !wasVisibleBeforeCraft;
-      wasCraftingActive = true;
-      hasConfirmedCraftSession = true;
-      markCraftStartPending();
-      isOverlayVisible = false; // Reset so showOverlay will work
-      debugLog('[CraftBuddy] Crafting starting, syncing panel visibility');
-      if (currentSettings.panelVisible) {
-        showOverlay({ sync: true });
-      }
+    debugLog(
+      `[CraftBuddy] Craft context: type=${currentCraftingType} (${integrationDiagnostics.lastCraftingTypeDetectionSource}), sublime=${isSublimeCraft} [${integrationDiagnostics.lastSublimeDetectionSignals.join(', ') || 'none'}], multiplier=${sublimeTargetMultiplier}`,
+    );
 
+    const hasVisibleCraftingUi = detectActiveCraftingUi();
+    if (
+      !shouldPrimeCraftSessionFromRecipeDifficultyHook({
+        hasVisibleCraftingUi,
+        hasConfirmedCraftSession,
+      })
+    ) {
+      debugLog(
+        '[CraftBuddy] Recipe difficulty hook fired before crafting UI was visible; cached targets without priming the overlay',
+      );
       return recipeStats;
-    },
-  );
+    }
+
+    // Reset state
+    currentRecommendation = null;
+    currentCompletion = 0;
+    currentPerfection = 0;
+    currentStability = 0;
+    currentMaxStability = targetStability;
+    currentToxicity = 0;
+    currentCooldowns = new Map();
+    currentConfig = null;
+    nextConditions = [];
+
+    // Show panel when crafting starts without mutating persisted user visibility settings.
+    // Set craftStartPending so the overlay stays visible while waiting for the
+    // first recommendation, even if the Redux subscription hasn't delivered
+    // entity/progress data yet.
+    const wasVisibleBeforeCraft = isOverlayVisible;
+    overlayForcedByActiveCraft = !wasVisibleBeforeCraft;
+    wasCraftingActive = true;
+    hasConfirmedCraftSession = true;
+    markCraftStartPending();
+    isOverlayVisible = false; // Reset so showOverlay will work
+    debugLog('[CraftBuddy] Crafting starting, syncing panel visibility');
+    if (currentSettings.panelVisible) {
+      showOverlay({ sync: true });
+    }
+
+    return recipeStats;
+  });
 
   debugLog('[CraftBuddy] Lifecycle hooks registered');
 } catch (e) {

@@ -2,7 +2,7 @@
  * Unit tests for CraftingState class
  */
 
-import { CraftingState, BuffType } from '../optimizer/state';
+import { CraftingState } from '../optimizer/state';
 
 describe('CraftingState', () => {
   describe('constructor', () => {
