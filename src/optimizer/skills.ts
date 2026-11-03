@@ -3269,15 +3269,15 @@ export function calculateActionSurvivabilityFloor(
             actionVars,
             0,
           );
+          const probability = actionSuccessChance * conditionResult.probability;
+          // Same certain-only Han prevention as the transition, in effect order.
+          if (preventCertainStabilityLoss(newBuffs, amount, probability === 1))
+            break;
           guaranteedTechniqueStabilityDelta += resolveGuaranteedContribution(
             amount,
-            actionSuccessChance * conditionResult.probability,
+            probability,
           );
-          queueSurvivalEvent(
-            actionSuccessChance * conditionResult.probability,
-            amount,
-            0,
-          );
+          queueSurvivalEvent(probability, amount, 0);
           break;
         }
         case 'maxStability': {
@@ -3412,6 +3412,14 @@ export function calculateActionSurvivabilityFloor(
           scalingVars,
           0,
         );
+        if (
+          preventCertainStabilityLoss(
+            newBuffs,
+            amount,
+            conditionResult.probability === 1,
+          )
+        )
+          break;
         buffStabilityDelta += resolveGuaranteedContribution(
           amount,
           conditionResult.probability,

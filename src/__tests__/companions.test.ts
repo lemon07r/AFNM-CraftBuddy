@@ -571,6 +571,56 @@ describe('Han survivability floor', () => {
   });
 });
 
+describe('Han survivability floor for effect losses', () => {
+  const drain: BuffDefinition = {
+    name: 'Stability drain',
+    canStack: false,
+    effects: [{ kind: 'stability', amount: { value: -5 } }],
+  };
+  it.each([
+    ['technique', 0],
+    ['technique', 1],
+    ['technique', 2],
+    ['buff', 0],
+    ['buff', 2],
+  ] as const)(
+    'matches certain %s stability prevention after %s uses',
+    (source, used) => {
+      const base = hanScenarios()[0];
+      const buffs = new Map(base.state.buffs);
+      const han = buffs.get(HAN_KEY)!;
+      buffs.set(HAN_KEY, {
+        ...han,
+        internalState: { preventedStabilityLosses: used },
+      });
+      if (source === 'buff')
+        buffs.set('stability_drain', {
+          name: drain.name,
+          stacks: 1,
+          definition: drain,
+        });
+      const state = base.state.copy({ stability: 1, buffs });
+      const skill = retargetSkill({
+        qiCost: 0,
+        stabilityCost: 0,
+        successChance: 1,
+        effects: [
+          ...(source === 'technique'
+            ? [{ kind: 'stability' as const, amount: { value: -5 } }]
+            : []),
+          { kind: 'completion', amount: { value: 1 } },
+        ],
+      });
+      const config = retargetConfig(skill);
+      const next = applySkill(state, skill, config)!;
+      const floor = calculateActionSurvivabilityFloor(state, skill, config)!;
+      expect(floor.stability).toBe(next.stability);
+      expect(floor.survivalProbability).toBe(next.stability > 0 ? 1 : 0);
+      if (used === 0) expect(next.stability).toBe(1);
+    },
+  );
+});
+
 describe('companion probability-weighted bar events', () => {
   it.each(companionWeightedBarScenarios())(
     'matches the non-companion contributions and listener gains: $name',
