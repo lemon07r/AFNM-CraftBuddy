@@ -1687,12 +1687,93 @@ did not emit stack events or execute group changes at inspection time.
 
 ### Stock companion and auto-use scope
 
+#### Realized pool deltas and zero-amount events
+
+Pool applier `u7c` starts at `G:14935853`, snapshots the old pool, applies
+the signed amount (including Qi Boost for restoration), and immediately
+clamps spending at zero or restoration at maxpool. Its `poolSpent` payload
+is old minus new (`G:14936191`); `poolRestored` is new minus old
+(`G:14936588`). These calls are unconditional within the respective branch,
+even when the realized delta is zero. The registered dispatcher at
+`G:14949950–14951600` filters held listeners/re-entry but does not filter a
+zero numeric amount. A full 200 pool with +10 then −10 therefore emits
+`poolRestored(0)` then `poolSpent(10)`, finishing at 190. A fixed-payout or
+event-count listener still fires on the zero restoration; an amount-scaled
+listener receives zero.
+
+Technique/mastery pool effects call this applier at `G:14942802`; ordinary
+and triggered buff effects use the same applier at `G:14938504`.
+The technique handler inspected at `G:14944000–14948000` executes effect
+trees and has no scalar `restoresQi`/`qiRestore` route with a separate skip
+rule. CraftBuddy's scalar restore compatibility path therefore follows the
+same realized-delta and zero-event semantics. Earlier local documentation
+claiming a zero restoration emitted no event was incorrect.
+
+CraftBuddy's ordinary/triggered buff pool executor still defers its pool
+write and dispatches nonzero requested amounts. An experimental correction
+to use the same immediate pool application passed 12 targeted regressions
+and the 32-entry fixed-work digest, but changed 13 existing non-companion
+transition scenarios. It was reverted to preserve the companion-only golden
+scope; both that gap and legacy non-companion technique net aggregation are
+recorded in [mechanics parity](MECHANICS_PARITY.md#known-gaps).
+
+The inert-companion corpus audit also checked `r7c` in the byte window
+`G:14929800–14931400`: for negative `e`, it computes
+`-Math.floor(Rko(-e, stabilityCostReduction, stabilityCostPenalty))`, checks
+prevention, writes the signed result, then dispatches `stabilitySpent` with
+its magnitude. The nonnegative branch writes the boosted amount and emits
+`stabilityRestored`. These are per-application events, not an aggregate
+net restore. This explains the explicitly enumerated legacy stability
+exceptions in the differential regression; it is not an inert-companion
+rounding exception.
+
+#### Bar overflow and companion ordering
+
+In the current 0.7.19 bundle, perfection applier `s7c` (`G:14932019`) and
+completion applier `c7c` (`G:14933194`) use signed `r.perfection += e` /
+`r.completion += e`, without an immediate cap. Their bar hooks and positive
+gain listeners observe those applications before cleanup. `I7c` caps/floors
+perfection at `G:14953909` and completion at `G:14954060`, after ordinary buff
+effects and harmony. Thus 90/cap 100 with +20 then −10 reaches 110 then 100,
+not 100 then 90. This confirms the additive appliers described earlier in
+§17 and the historical hook evidence above; holding a companion does not
+change that rule. CraftBuddy's ordered path retains this overflow and, like
+its non-companion EV preview, caps the combined successful technique gain
+before weighting by the single action success chance.
+
 Su Lianhua's Assistance intercepts positive technique/mastery completion and
 perfection on `step % 3 == 2`, multiplying by 1.5 and flooring (`G:13041335`).
-Han Weiguang's Assistance prevents the first two negative stability
-applications, including payment, tracked in internal state
-(`G:13038068`, `G:14929654–14930317`). These were demonstrated stock gaps,
-whereas technique-level triggered effects were a latent compatibility gap.
+Runtime `y7c` (`G:14941598–14943000`) walks held buffs in order, chooses the
+first matching interceptor **per buff**, and floors every multiplication
+before the ordinary numeric applier/crit/boost. Its `ZS(c.trigger, ..., r, ...)`
+uses the same live progress `r` as technique conditions, not the frozen
+expression variables. Optional effects execute synchronously via `g7c`
+before the intercepted numeric application. Interception is enabled for
+technique/mastery effects, not payment, items or buff effects.
+
+Han Weiguang's stock definition has `stabilityLossPrevention: { uses: 2 }`
+(`G:13038068`). Helper `n7c` (`G:14929654`) selects the first held eligible
+buff, without checking positive stacks, and increments
+`internalState.preventedStabilityLosses`. Applier `r7c`
+(`G:14930153–14930317`) checks genuinely negative reduced/floored loss
+before stability writes, spend tracking or `stabilitySpent`; prevention
+returns before all three. Zero loss does not consume a use. Direct harmony
+writes and maximum-stability decay do not call this applier.
+
+The simulator now models stock Su interception and certainty-only Han prevention;
+the latter leaves uncertain losses charged without consuming an integer use.
+That approximation is not a lower bound: saving an uncertain small loss's use
+for a later large loss can overestimate expected stability and survival; the
+counterexample is recorded in the mechanics-parity gap below.
+Optional stochastic interceptor effects/triggers are skipped rather than
+persisting joint companion outcome branches; stock Su has no optional effects.
+These model limits are tracked in [mechanics parity](MECHANICS_PARITY.md#known-gaps).
+Technique-level triggered effects remain a latent compatibility gap.
+The technique handler `b7c` (`G:14944000–14948000`) executes only the
+`e.effects` tree through `y7c`; it has no scalar completion/perfection fallback.
+The optimizer's effect-less scalar fields and special Disciplined Touch path
+are offline/legacy compatibility inputs. Held companions must not erase their
+existing gains, but Su interception is not extended to those synthetic fields.
 Uncontrollable Flames is the one stock discordance buff, carried by six
 Flame of Discordance item ranks.
 

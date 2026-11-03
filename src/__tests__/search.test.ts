@@ -34,6 +34,7 @@ import {
 } from './__fixtures__/replaySnapshots';
 import { createForcefulOvercapReplayInput } from './__fixtures__/forcefulOvercapReplay';
 import { bandThreshold, TIER_REQUIREMENTS } from '../optimizer/outcome';
+import { hanScenarios, suScenarios } from './fixtures/companions';
 
 freezeSearchClock();
 
@@ -2595,6 +2596,34 @@ describe('overcraft extras scoring', () => {
   });
 });
 
+describe('normalized transposition keys', () => {
+  const keyFor = (state: CraftingState) =>
+    __testing.getNormalizedCacheKey(state, 100, 100, 4, 'neutral', [], 100);
+
+  it('separates full steps while an effect interceptor is held', () => {
+    const base = suScenarios()[0].state;
+    const step1 = base.copy({ step: 1 });
+    const step2 = base.copy({ step: 2 });
+    const step5 = base.copy({ step: 5 });
+    expect(step1.getCacheKey()).toBe(step2.getCacheKey());
+    expect(keyFor(step1)).not.toBe(keyFor(step2));
+    // Generic interceptor expressions can read arbitrary steps, not just mod 3.
+    expect(keyFor(step2)).not.toBe(keyFor(step5));
+  });
+
+  it.each(['bare', 'han'] as const)(
+    'preserves the byte-identical legacy key without interceptors: %s',
+    (kind) => {
+      const base = hanScenarios()[0].state;
+      const state = kind === 'bare' ? base.copy({ buffs: new Map() }) : base;
+      const step1 = state.copy({ step: 1 });
+      const step2 = state.copy({ step: 2 });
+      expect(keyFor(step1)).toBe(`${step1.getCacheKey()}:0:0:4:neutral:-`);
+      expect(keyFor(step1)).toBe(keyFor(step2));
+    },
+  );
+});
+
 describe('cross-step transposition cache', () => {
   // Node-budget behavior only: wall-clock budgets intentionally scale with
   // machine speed, so these contracts assert explored-node counts.
@@ -3469,6 +3498,41 @@ describe('tutorial regression scenarios', () => {
 });
 
 describe('survivability-first recommendation gate', () => {
+  it.each([0, 1, 2])(
+    'keeps Han-prevented payment live at depth %s',
+    (depth) => {
+      const state = hanScenarios()[0].state.copy({ stability: 1 });
+      const skill = createCustomSkill({
+        qiCost: 0,
+        stabilityCost: 10,
+        successChance: 1,
+        effects: [{ kind: 'completion', amount: { value: 1 } }],
+      });
+      const config = createTestConfig({
+        minStability: 0,
+        maxCompletion: 100,
+        maxPerfection: 100,
+        skills: [skill],
+      });
+      expect(applySkill(state, skill, config)?.stability).toBe(1);
+      const result = findBestSkill(
+        state,
+        config,
+        100,
+        100,
+        false,
+        depth,
+        'neutral',
+        [],
+        { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 10000 },
+      );
+      expect(result.recommendation?.skill.key).toBe(skill.key);
+      expect(result.recommendation?.requiresProbabilisticSurvival).toBe(false);
+      expect(result.expectedFinalState?.stability).toBe(1);
+      if (depth === 2) expect(result.optimalRotation).toHaveLength(2);
+    },
+  );
+
   it.each([0, 1, 2])(
     'prefers guaranteed completion over a fatal gamble at depth %s',
     (depth) => {

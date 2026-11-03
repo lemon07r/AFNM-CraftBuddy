@@ -1556,7 +1556,12 @@ function getNormalizedCacheKey(
   const queueKey =
     nextConditionQueue.length > 0 ? nextConditionQueue.join('|') : '-';
 
-  return `${state.getCacheKey()}:${compKey}:${perfKey}:${remainingDepth}:${conditionType || 'n'}:${queueKey}`;
+  const key = `${state.getCacheKey()}:${compKey}:${perfKey}:${remainingDepth}:${conditionType || 'n'}:${queueKey}`;
+  // Generic interceptor expressions can read the full step, not just Su's phase.
+  const intercepted = Array.from(state.buffs.values()).some(
+    (buff) => buff.definition?.craftingEffectInterceptors?.length,
+  );
+  return intercepted ? `${key}:step:${state.step}` : key;
 }
 
 function getTechniqueNeedAlignment(
@@ -5859,6 +5864,7 @@ export function findBestSkill(
 
 // Internals exposed for isolated unit testing only — not part of the public API.
 export const __testing = {
+  getNormalizedCacheKey,
   getGeneratedConditionDistribution,
   scoreState,
   scoreFinishedOutcome,

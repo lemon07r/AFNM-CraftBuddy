@@ -191,7 +191,24 @@ export interface BuffStats {
 /**
  * Complete buff definition matching game structure.
  */
+export interface CraftingEffectInterceptor {
+  techniqueTypes?: TechniqueType[];
+  trigger?: CraftingTechniqueCondition;
+  modifier: { kind: 'multiply'; value: number };
+  appliesTo: Array<
+    | 'completion'
+    | 'perfection'
+    | 'stability'
+    | 'maxStability'
+    | 'pool'
+    | 'cleanseToxicity'
+  >;
+  effects?: BuffEffect[];
+}
+
 export interface BuffDefinition {
+  craftingEffectInterceptors?: CraftingEffectInterceptor[];
+  stabilityLossPrevention?: { uses: number };
   additionalVariables?: Record<string, number>;
   name: string;
   buffType?: string;
