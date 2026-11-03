@@ -166,7 +166,7 @@ A Node CPU profile at fixed work put **93.5%** of search time in candidate build
 2. Project metadata-only mastery payment states instead of replaying the full payment interpreter. Branch multiplicity, order and reductions stay exactly as before, and any action with a held or created crafting-effect interceptor keeps the full interpreter.
 3. Share read-only action frames (buffed variables, condition overlay, mastery, costs) within one transition.
 
-Combined fixed-work medians against the pre-change head: forge heat runway **1.17×**, alchemical sequence **1.11×**, fairy recovery **1.32×**, overcraft endgame **1.06×**. The 32-entry digest kept all 95,688 nodes and unrounded outputs, and went from **1.08 to 1.38 nodes/ms**. A score memo was not pursued: repeat scoring measured under 1%.
+Combined fixed-work transition medians on four replays against the pre-change head `4214bd1`: forge heat runway **1.17×**, alchemical sequence **1.11×**, fairy recovery **1.32×**, overcraft endgame **1.06×**. Measured back-to-back against main `e577ae1` after rebasing, the 32-entry digest kept all 95,688 nodes and unrounded outputs and went from **1.22 to 1.33 nodes/ms** (78.4 s to 71.7 s). A score memo was not pursued: repeat scoring measured under 1%.
 
 ## Endgame beam width, 7.0
 
