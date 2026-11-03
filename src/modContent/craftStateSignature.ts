@@ -51,6 +51,8 @@ export interface CraftStateSignatureInput {
   readonly stability: number;
   readonly maxStability: number;
   readonly toxicity: number;
+  readonly qiDroplets: number;
+  readonly maxQiDroplets: number;
   readonly condition: string | undefined;
   readonly forecastConditions: readonly (string | undefined)[];
   readonly buffs: readonly CraftStateBuffLike[] | undefined;
@@ -234,6 +236,7 @@ export function buildCraftStateSignature(
     `stab:${readNumber(input.stability)}`,
     `max:${readNumber(input.maxStability)}`,
     `tox:${readNumber(input.toxicity)}`,
+    `droplets:${readNumber(input.qiDroplets)}/${readNumber(input.maxQiDroplets)}`,
     `pills:${readNumber(input.consumedPills)}`,
     `cond:${normalizeKey(input.condition) || 'none'}`,
     `queue:${
@@ -353,6 +356,8 @@ export function readLiveCraftStateSignature(
         ? targetStability - stabilityPenalty
         : -stabilityPenalty,
     toxicity: readNumber(stats?.toxicity, 0),
+    qiDroplets: readNumber(stats?.qiDroplets, 0),
+    maxQiDroplets: readNumber(stats?.maxqiDroplets, 0),
     condition:
       typeof progressState.condition === 'string'
         ? progressState.condition
