@@ -18,6 +18,8 @@ function baseInput(
     stability: 42,
     maxStability: 60,
     toxicity: 10,
+    qiDroplets: 2,
+    maxQiDroplets: 5,
     condition: 'positive',
     forecastConditions: ['neutral', 'veryPositive'],
     buffs: [{ name: 'Inner Focus', stacks: 2 }],
@@ -58,6 +60,8 @@ describe('buildCraftStateSignature', () => {
     ['stability', { stability: 41 }, 'stab'],
     ['max stability', { maxStability: 50 }, 'max'],
     ['toxicity', { toxicity: 11 }, 'tox'],
+    ['qi droplets', { qiDroplets: 1 }, 'droplets'],
+    ['max qi droplets', { maxQiDroplets: 6 }, 'droplets'],
     ['consumed pills', { consumedPills: 2 }, 'pills'],
     ['condition', { condition: 'negative' }, 'cond'],
     ['forecast queue', { forecastConditions: ['neutral'] }, 'queue'],
@@ -200,6 +204,31 @@ describe('readLiveCraftStateSignature', () => {
     expect(reading.signature).toContain('harmony:6');
     expect(reading.signature).toContain('max:55');
     expect(reading.signature).toContain('techniques:simple_fusion');
+  });
+
+  it('detects a droplet change without a progress change', () => {
+    const withDroplets = (qiDroplets: number) => ({
+      ...liveState,
+      crafting: {
+        ...liveState.crafting,
+        player: {
+          ...liveState.crafting.player,
+          stats: {
+            ...liveState.crafting.player.stats,
+            qiDroplets,
+            maxqiDroplets: 3,
+          },
+        },
+      },
+    });
+    const before = readLiveCraftStateSignature(createStore(withDroplets(1)));
+    const after = readLiveCraftStateSignature(createStore(withDroplets(2)));
+    expect(before.ok && after.ok).toBe(true);
+    if (!before.ok || !after.ok) return;
+    expect(before.signature).toContain('droplets:1/3');
+    expect([
+      ...diffCraftStateSignatures(before.signature, after.signature),
+    ]).toEqual(['droplets']);
   });
 
   it('detects pills consumed on the crafting state without a progress change', () => {
