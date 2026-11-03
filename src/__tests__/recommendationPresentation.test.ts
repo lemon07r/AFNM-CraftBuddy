@@ -16,7 +16,6 @@ import {
   recommendationGainsCopy,
   relativeChoiceLabel,
   rotationDisplayNames,
-  successPercentage,
 } from '../utils/recommendationPresentation';
 import { DEFAULT_SETTINGS } from '../settings';
 
@@ -313,14 +312,6 @@ describe('action labels', () => {
       }),
     ).toBe('Expected: no gains');
   });
-  it.each([
-    [0, 0],
-    [0.5, 50],
-    [0.996, 99],
-    [1, 100],
-  ])('floors success chance %s to %s percent', (chance, percent) =>
-    expect(successPercentage(chance)).toBe(percent),
-  );
   it.each([undefined, 0, 35, 50, 70, 90, 100])(
     'never renders candidate rating %s as a percentage or a probability',
     (rating) => {

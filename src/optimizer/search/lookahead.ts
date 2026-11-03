@@ -21,10 +21,7 @@ import type {
   ActionSurvivabilityFloor,
   TranspositionCache,
   TranspositionCacheEntry,
-  CandidateTieBreakMetrics,
   SkillRecommendation,
-  GainPreview,
-  ActionCostPreview,
   UnsafeCandidateClassification,
 } from './types';
 
@@ -62,6 +59,7 @@ import {
   computeScoreTieWindow,
   compareTieBreakMetrics,
   rankRecommendations,
+  createRecommendationTieMetrics,
 } from './ranking';
 
 import { willAutoFinish } from '../outcome';
@@ -174,7 +172,6 @@ function runLookaheadSearch(
     cacheHits: 0,
     timeTakenMs: 0,
     depthReached: 0,
-    pruned: 0,
   };
   const startTime = Date.now();
 
@@ -198,8 +195,6 @@ function runLookaheadSearch(
     cfg.completionBandCeiling,
   );
   const {
-    baseCompGoal,
-    basePerfGoal,
     effectiveCompGoal,
     effectivePerfGoal,
     bands: outcomeBands,
@@ -1280,45 +1275,16 @@ function runLookaheadSearch(
     normalizedCurrentCondition,
   );
   let unsafeRootRecommendationKeys = new Set<string>();
-  const recommendationTieMetricCache = new Map<
-    string,
-    CandidateTieBreakMetrics
-  >();
-  const getRecommendationTieMetrics = (
-    recommendation: SkillRecommendation,
-  ): CandidateTieBreakMetrics => {
-    const cached = recommendationTieMetricCache.get(recommendation.skill.key);
-    if (cached) {
-      return cached;
-    }
-
-    const displayState =
-      applySkill(
-        state,
-        recommendation.skill,
-        config,
-        rootConditionEffects,
-        targetCompletion,
-        normalizedCurrentCondition,
-      ) ?? state;
-    const metrics: CandidateTieBreakMetrics = {
-      immediateProgress: calculateImmediateProgressTowardGoals(
-        state,
-        displayState,
-        modeCompGoal,
-        modePerfGoal,
-        targetCompletion,
-        targetPerfection,
-      ),
-      isStabilize: recommendation.skill.type === 'stabilize',
-      requiresProbabilisticSurvival:
-        recommendation.requiresProbabilisticSurvival === true,
-      qiSpent: Math.max(0, state.qi - displayState.qi),
-      skillKey: recommendation.skill.key,
-    };
-    recommendationTieMetricCache.set(recommendation.skill.key, metrics);
-    return metrics;
-  };
+  const getRecommendationTieMetrics = createRecommendationTieMetrics(
+    state,
+    config,
+    rootConditionEffects,
+    targetCompletion,
+    targetPerfection,
+    normalizedCurrentCondition,
+    modeCompGoal,
+    modePerfGoal,
+  );
   const compareRecommendationScores = (
     a: SkillRecommendation,
     b: SkillRecommendation,
@@ -1354,7 +1320,6 @@ function runLookaheadSearch(
     depthIndex: number,
     conditionAtDepth: CraftingConditionType,
     nextConditionQueueAtDepth: CraftingConditionType[],
-    useDeepLookahead: boolean = false,
   ): SkillRecommendation['followUpSkill'] | undefined {
     if (stateWillAutoFinish(stateAfterSkill)) {
       return undefined;
@@ -1431,106 +1396,25 @@ function runLookaheadSearch(
       return undefined;
     }
 
-    if (!useDeepLookahead || maxRemainingDepth <= 0) {
-      const fallbackCandidate = orderedFollowUpCandidates[0];
-      const followUpSkill = fallbackCandidate.skill;
-      const { expectedGains, immediateGains, effectiveCosts } =
-        calculateRecommendationGains(
-          stateAfterSkill,
-          followUpSkill,
-          config,
-          followUpConditionEffects,
-          fallbackCandidate.searchState,
-        );
-      return {
-        name: followUpSkill.name,
-        displayName: followUpSkill.displayName,
-        type: followUpSkill.type,
-        actionKind: followUpSkill.actionKind,
-        icon: followUpSkill.icon,
-        expectedGains,
-        immediateGains,
-        effectiveCosts,
-      };
-    }
-
-    let bestFollowUp: SkillDefinition | null = null;
-    let bestFollowUpCandidate: SearchMoveCandidate | null = null;
-    let bestFollowUpScore = -Infinity;
-    let bestFollowUpExpectedGains: GainPreview = {
-      completion: 0,
-      perfection: 0,
-      stability: 0,
-    };
-    let bestFollowUpImmediateGains: GainPreview = {
-      completion: 0,
-      perfection: 0,
-      stability: 0,
-    };
-    let bestFollowUpEffectiveCosts: ActionCostPreview = {
-      qi: 0,
-      stability: 0,
-    };
-    let bestFollowUpSuccessChance: number | undefined = undefined;
-
-    for (const candidate of orderedFollowUpCandidates) {
-      const followUp = candidate.skill;
-      const nextState = candidate.searchState;
-
-      const { expectedGains, immediateGains, effectiveCosts } =
-        calculateRecommendationGains(
-          stateAfterSkill,
-          followUp,
-          config,
-          followUpConditionEffects,
-          nextState,
-        );
-      const followUpScore = evaluateFutureScoreAfterSkill(
-        nextState,
-        Math.max(0, depthToSearch - 1 - depthIndex),
-        depthIndex + 1,
-        conditionAtDepth,
-        nextConditionQueueAtDepth,
-        followUp,
+    const fallbackCandidate = orderedFollowUpCandidates[0];
+    const followUpSkill = fallbackCandidate.skill;
+    const { expectedGains, immediateGains, effectiveCosts } =
+      calculateRecommendationGains(
+        stateAfterSkill,
+        followUpSkill,
+        config,
+        followUpConditionEffects,
+        fallbackCandidate.searchState,
       );
-
-      const scoreDelta = followUpScore - bestFollowUpScore;
-      const isClearImprovement = scoreDelta > scoreTieWindow;
-      const isScoreTie =
-        Math.abs(scoreDelta) <= scoreTieWindow && bestFollowUpCandidate;
-      const winsTie =
-        isScoreTie &&
-        compareMoveCandidatesForTie(
-          candidate,
-          bestFollowUpCandidate!,
-          stateAfterSkill,
-        ) > 0;
-
-      if (isClearImprovement || winsTie || bestFollowUpCandidate === null) {
-        bestFollowUpScore = followUpScore;
-        bestFollowUp = followUp;
-        bestFollowUpCandidate = candidate;
-        bestFollowUpExpectedGains = expectedGains;
-        bestFollowUpImmediateGains = immediateGains;
-        bestFollowUpEffectiveCosts = effectiveCosts;
-        bestFollowUpSuccessChance = candidate.projectedSuccessChance;
-      }
-    }
-
-    if (!bestFollowUp) {
-      return undefined;
-    }
-
     return {
-      name: bestFollowUp.name,
-      displayName: bestFollowUp.displayName,
-      type: bestFollowUp.type,
-      actionKind: bestFollowUp.actionKind,
-      icon: bestFollowUp.icon,
-      expectedGains: bestFollowUpExpectedGains,
-      immediateGains: bestFollowUpImmediateGains,
-      effectiveCosts: bestFollowUpEffectiveCosts,
-      projectedSuccessChance: bestFollowUpSuccessChance,
+      name: followUpSkill.name,
+      displayName: followUpSkill.displayName,
+      type: followUpSkill.type,
+      actionKind: followUpSkill.actionKind,
+      icon: followUpSkill.icon,
+      expectedGains,
+      immediateGains,
+      effectiveCosts,
     };
   }
 
@@ -1604,8 +1488,6 @@ function runLookaheadSearch(
         newState,
         config,
         firstMoveConditionState.nextCondition,
-        modeCompGoal,
-        modePerfGoal,
       );
       const endsCraft = stateWillAutoFinish(newState);
 
@@ -1642,7 +1524,6 @@ function runLookaheadSearch(
         reasoning,
         consumesBuff: skill.isDisciplinedTouch === true,
         followUpSkill: undefined,
-        projectedSuccessChance: candidate.projectedSuccessChance,
         endsCraft,
         endsCraftBelowTarget:
           (endsCraft || terminalState.isTerminal) &&
@@ -1653,7 +1534,7 @@ function runLookaheadSearch(
     }
 
     const scored: SkillRecommendation[] = orderRootRecommendations(
-      evaluatedFirstMoves.map(({ isTerminal, isTerminalUnmet, ...rec }) => rec),
+      evaluatedFirstMoves.map(({ isTerminal, ...rec }) => rec),
       unsafeRecommendationKeys,
     );
     unsafeRootRecommendationKeys = unsafeRecommendationKeys;
@@ -1791,14 +1672,12 @@ function runLookaheadSearch(
       // Follow-up display must not consume the remaining search budget after
       // ranking is finished. Use cache-probed best moves first, then the
       // shallow ordered fallback inside findFollowUpSkill.
-      const canUseDeepLookahead = false;
       rec.followUpSkill = findFollowUpSkill(
         stateAfterSkill,
         depthToSearch,
         1,
         followUpConditionState.nextCondition,
         followUpConditionState.nextQueue,
-        canUseDeepLookahead,
       );
     }
   }

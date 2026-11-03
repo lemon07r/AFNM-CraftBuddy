@@ -14,7 +14,6 @@ import type {
   CraftingConditionType,
   SearchConfig,
   SearchResult,
-  CandidateTieBreakMetrics,
   SkillRecommendation,
   UnsafeCandidateClassification,
 } from './types';
@@ -32,16 +31,13 @@ import { buildScoringContext } from './scoringContext';
 
 import { normalizeConditionType } from './conditions';
 
-import {
-  deriveBandGoals,
-  goalsMet,
-  calculateImmediateProgressTowardGoals,
-} from './goals';
+import { deriveBandGoals, goalsMet } from './goals';
 
 import {
   computeScoreTieWindow,
   compareTieBreakMetrics,
   rankRecommendations,
+  createRecommendationTieMetrics,
 } from './ranking';
 
 import { willAutoFinish } from '../outcome';
@@ -116,8 +112,6 @@ function runGreedySearch(
     cfg.completionBandCeiling,
   );
   const {
-    baseCompGoal,
-    basePerfGoal,
     effectiveCompGoal,
     effectivePerfGoal,
     bands: outcomeBands,
@@ -164,45 +158,16 @@ function runGreedySearch(
     config,
     normalizedCurrentCondition,
   );
-  const recommendationTieMetricCache = new Map<
-    string,
-    CandidateTieBreakMetrics
-  >();
-  const getRecommendationTieMetrics = (
-    recommendation: SkillRecommendation,
-  ): CandidateTieBreakMetrics => {
-    const cached = recommendationTieMetricCache.get(recommendation.skill.key);
-    if (cached) {
-      return cached;
-    }
-
-    const displayState =
-      applySkill(
-        state,
-        recommendation.skill,
-        config,
-        conditionEffects,
-        targetCompletion,
-        normalizedCurrentCondition,
-      ) ?? state;
-    const metrics: CandidateTieBreakMetrics = {
-      immediateProgress: calculateImmediateProgressTowardGoals(
-        state,
-        displayState,
-        modeCompGoal,
-        modePerfGoal,
-        targetCompletion,
-        targetPerfection,
-      ),
-      isStabilize: recommendation.skill.type === 'stabilize',
-      requiresProbabilisticSurvival:
-        recommendation.requiresProbabilisticSurvival === true,
-      qiSpent: Math.max(0, state.qi - displayState.qi),
-      skillKey: recommendation.skill.key,
-    };
-    recommendationTieMetricCache.set(recommendation.skill.key, metrics);
-    return metrics;
-  };
+  const getRecommendationTieMetrics = createRecommendationTieMetrics(
+    state,
+    config,
+    conditionEffects,
+    targetCompletion,
+    targetPerfection,
+    normalizedCurrentCondition,
+    modeCompGoal,
+    modePerfGoal,
+  );
   const compareRecommendationTies = (
     a: SkillRecommendation,
     b: SkillRecommendation,
@@ -311,8 +276,6 @@ function runGreedySearch(
       newState,
       config,
       normalizedCurrentCondition,
-      modeCompGoal,
-      modePerfGoal,
     );
     const endsByAutoFinish = stateWillAutoFinish(newState);
     // Auto-resolved and blocked successors have final bars. A playable
@@ -374,7 +337,7 @@ function runGreedySearch(
   }
 
   const scoredSkills: SkillRecommendation[] = evaluatedMoves.map(
-    ({ isTerminal, isTerminalUnmet, ...rec }) => rec,
+    ({ isTerminal, ...rec }) => rec,
   );
 
   const rankedSkills = rankRecommendations(

@@ -21,9 +21,7 @@ import {
 } from '../optimizer/skills';
 import {
   findBestSkill,
-  greedySearch,
   lookaheadSearch,
-  SearchResult,
   CraftingConditionType,
   SearchConfig,
   normalizeForecastConditionQueue,
@@ -1589,8 +1587,6 @@ describe('craft simulation — sublime crafts', () => {
         recommendedTechniqueTypes: ['fusion'],
       },
     });
-    const neutralOnly: CraftingConditionType[] = ['neutral'];
-
     const result = lookaheadSearch(
       state,
       config,

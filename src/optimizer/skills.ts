@@ -34,7 +34,6 @@ import {
   getHarmonyStatModifiers,
   getHarmonyCostMultipliers,
   BarChangeEvent,
-  HarmonyStatModifiers,
 } from './harmony';
 import {
   collectDerivedNativeVariableAliases,
@@ -2451,7 +2450,6 @@ function calculateSkillGainsWithFrame(
       config,
       conditionEffects,
       config.targetCompletion ?? 0,
-      undefined,
       config.targetPerfection ?? 0,
       {
         ...options,
@@ -2486,7 +2484,6 @@ function calculateSkillGainsWithFrame(
       config,
       conditionEffects,
       config.targetCompletion ?? 0,
-      undefined,
       config.targetPerfection ?? 0,
       phase,
     );
@@ -4203,7 +4200,6 @@ function expectedMasteryPayment(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   targetCompletion: number,
-  currentCondition: string | undefined,
   targetPerfection: number,
   phase: ActionPhaseContext,
 ): EffectiveActionCosts | undefined {
@@ -4300,7 +4296,6 @@ function expectedMasteryPayment(
                   config,
                   conditionEffects,
                   targetCompletion,
-                  currentCondition,
                   targetPerfection,
                   {
                     ...phase,
@@ -4386,7 +4381,6 @@ export function applySkill(
     config,
     conditionEffects,
     targetCompletion,
-    currentCondition,
     targetPerfection,
     options,
   );
@@ -4396,7 +4390,6 @@ export function applySkill(
     config,
     conditionEffects,
     targetCompletion,
-    currentCondition,
     targetPerfection,
     prepared.context,
   );
@@ -4410,7 +4403,6 @@ function prepareActionPhases(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   targetCompletion: number,
-  currentCondition: string | undefined,
   targetPerfection: number,
   options: SkillGainOptions,
 ): { state: CraftingState; context: ActionPhaseContext } {
@@ -4458,7 +4450,6 @@ function prepareActionPhases(
         config,
         conditionEffects,
         targetCompletion,
-        currentCondition,
         targetPerfection,
         { ...context, successChance: 1, masteryPhase: true },
       )!;
@@ -4490,7 +4481,6 @@ function prepareActionPhases(
     config,
     conditionEffects,
     targetCompletion,
-    currentCondition,
     targetPerfection,
     context,
   );
@@ -4515,7 +4505,6 @@ function prepareActionPhases(
       config,
       conditionEffects,
       targetCompletion,
-      currentCondition,
       targetPerfection,
       { ...context, successChance: condition.probability, masteryPhase: true },
     )!;
@@ -4532,7 +4521,6 @@ function applySkillTransition(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[] = [],
   targetCompletion: number = 0,
-  currentCondition: string | undefined,
   targetPerfection: number = 0,
   phase: ActionPhaseContext,
 ): CraftingState | null {
@@ -4653,9 +4641,6 @@ function applySkillTransition(
     state.initialMaxStability,
   );
 
-  // Calculate the new max stability
-  let newMaxStability = state.initialMaxStability - newStabilityPenalty;
-
   // Apply max stability changes from skill
   if (skill.maxStabilityChange) {
     // Negative changes to max stability increase the penalty
@@ -4670,12 +4655,10 @@ function applySkillTransition(
       Math.max(0, newStabilityPenalty - effectiveMaxStabilityChange),
     );
     stabilityProjection.change(0, -effectiveMaxStabilityChange);
-    newMaxStability = state.initialMaxStability - newStabilityPenalty;
   }
 
   if (skill.restoresMaxStabilityToFull && !maxStabilitySealed) {
     newStabilityPenalty = 0;
-    newMaxStability = state.initialMaxStability;
     stabilityProjection.restoreMaximum();
   }
 
@@ -4934,7 +4917,7 @@ function applySkillTransition(
           continue;
         }
         for (const effect of block.effects ?? []) {
-          if (effect) executeBuffEffect(effect, buffKey, buff, scope);
+          if (effect) executeBuffEffect(effect, buffKey, scope);
         }
       }
       activeTriggers.delete(guardKey);
@@ -5045,7 +5028,6 @@ function applySkillTransition(
               executeBuffEffect(
                 { ...sideEffect, condition: undefined },
                 key,
-                owner,
                 sideScope,
               );
           }
@@ -5378,7 +5360,6 @@ function applySkillTransition(
   function executeBuffEffect(
     effect: BuffEffect,
     ownerBuffKey: string,
-    ownerBuff: { name: string; stacks: number; definition?: BuffDefinition },
     scalingVars: ScalingVariables,
   ): void {
     const liveOwner = newBuffs.get(ownerBuffKey);
@@ -5678,7 +5659,7 @@ function applySkillTransition(
   }
 
   if (consumesTurn) {
-    for (const [buffKey, buff] of Array.from(newBuffs.entries())) {
+    for (const [buffKey] of Array.from(newBuffs.entries())) {
       // Triggered effects may have rewritten this buff's internal state
       // already this action, so read the live entry, not the snapshot.
       if (!phase.existingBuffNames.has(buffKey)) continue;
@@ -5723,11 +5704,11 @@ function applySkillTransition(
                 : undefined;
       if (actionEffects) {
         for (const effect of actionEffects) {
-          executeBuffEffect(effect, buffKey, liveBuff, scalingVars);
+          executeBuffEffect(effect, buffKey, scalingVars);
         }
       }
       for (const effect of liveBuff.definition.effects ?? []) {
-        executeBuffEffect(effect, buffKey, liveBuff, scalingVars);
+        executeBuffEffect(effect, buffKey, scalingVars);
       }
     }
 

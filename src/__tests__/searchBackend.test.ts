@@ -234,7 +234,6 @@ describe('mergePartitionedResults', () => {
         cacheHits: metrics.hits,
         timeTakenMs: 1,
         depthReached: metrics.depth,
-        pruned: 0,
       },
     };
   }
@@ -243,6 +242,25 @@ describe('mergePartitionedResults', () => {
     const partial = makePartial([['a', 10]], { nodes: 5, hits: 1, depth: 3 });
     expect(mergePartitionedResults([partial])).toBe(partial);
   });
+
+  it.each([undefined, 0, 7])(
+    'merges payloads with or without a legacy pruned metric (%s)',
+    (pruned) => {
+      const left = makePartial([['a', 10]], { nodes: 5, hits: 1, depth: 3 });
+      const right = makePartial([['b', 9]], { nodes: 2, hits: 0, depth: 2 });
+      const legacyMetrics = {
+        ...left.searchMetrics!,
+        ...(pruned === undefined ? {} : { pruned }),
+      };
+      left.searchMetrics = legacyMetrics;
+
+      const merged = mergePartitionedResults([left, right]);
+
+      expect(merged.recommendation?.skill.key).toBe('a');
+      expect(merged.searchMetrics?.nodesExplored).toBe(7);
+      expect(merged.searchMetrics).not.toHaveProperty('pruned');
+    },
+  );
 
   it('pools, dedupes by key, and ranks the union by score', () => {
     const left = makePartial(

@@ -1,13 +1,12 @@
-import React, { memo } from 'react';
+import { memo } from 'react';
 import { Box, Typography } from '@mui/material';
 import { techniqueDisplayName, type SkillRecommendation } from '../optimizer';
 import { formatLargeNumber } from '../utils/largeNumbers';
 import {
   recommendationGainsCopy,
   relativeChoiceLabel,
-  successPercentage,
 } from '../utils/recommendationPresentation';
-import { ActionButton, Help } from './components';
+import { ActionButton } from './components';
 import { colors, getSkillTypeColor } from './theme';
 
 export const ActionRecommendation = memo(function ActionRecommendation({
@@ -120,23 +119,6 @@ export const ActionRecommendation = memo(function ActionRecommendation({
               : 'This technique ends the craft.'}
         </Typography>
       )}
-      {rec.projectedSuccessChance !== undefined &&
-        rec.projectedSuccessChance < 1 && (
-          <Typography
-            variant="caption"
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              color: colors.textSecondary,
-            }}
-          >
-            Technique success: {successPercentage(rec.projectedSuccessChance)}%
-            <Help title="Technique success">
-              This is the action’s success chance, not a ranking or the chance
-              of reaching the planned final outcome.
-            </Help>
-          </Typography>
-        )}
     </Box>
   );
 });

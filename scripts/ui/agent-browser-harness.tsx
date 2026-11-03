@@ -274,7 +274,6 @@ function buildFixtureResult(state: string): HarnessResult {
           immediateGains: { completion: 0, perfection: 10, stability: 0 },
           expectedGains: { completion: 0, perfection: 5, stability: 0 },
           effectiveCosts: { qi: 18, stability: 10 },
-          projectedSuccessChance: 0.5,
           reasoning:
             'Expected gains account for the technique’s 50% success chance.',
         },

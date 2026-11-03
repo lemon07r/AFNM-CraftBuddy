@@ -348,10 +348,6 @@ export function mergePartitionedResults(
     (sum, partial) => sum + (partial.searchMetrics?.crossStepHits ?? 0),
     0,
   );
-  const pruned = partials.reduce(
-    (sum, partial) => sum + (partial.searchMetrics?.pruned ?? 0),
-    0,
-  );
   const referencePartial = winningPartial ?? partials[0];
   // Rotation and final-state projections describe the partition's own top
   // move; drop them when merging promoted one of its alternatives instead.
@@ -384,7 +380,6 @@ export function mergePartitionedResults(
       depthReached: Math.max(
         ...partials.map((partial) => partial.searchMetrics?.depthReached ?? 0),
       ),
-      pruned,
     },
   };
 }

@@ -10,7 +10,6 @@ import {
   safeFloor,
   formatLargeNumber,
   formatCompact,
-  formatProgress,
   safePercentage,
   formatPercentage,
   checkPrecision,
@@ -154,26 +153,6 @@ describe('formatCompact', () => {
 
   it('should use lower threshold', () => {
     expect(formatCompact(1500)).toBe('1.5K');
-  });
-});
-
-describe('formatProgress', () => {
-  it('should format small progress normally', () => {
-    expect(formatProgress(50, 100)).toBe('50/100');
-  });
-
-  it('should format large progress with compact notation', () => {
-    expect(formatProgress(500000, 1000000)).toBe('500K/1M');
-  });
-
-  it('should handle mixed sizes', () => {
-    expect(formatProgress(5000, 100000)).toBe('5K/100K');
-    // Below the compact threshold the default locale formats each value.
-    expect(formatProgress(1234, 9999)).toBe(
-      `${(1234).toLocaleString()}/${(9999).toLocaleString()}`,
-    );
-    expect(formatProgress(1234, 10000)).toBe('1.2K/10K');
-    expect(formatProgress(10000, 1234)).toBe('10K/1.2K');
   });
 });
 

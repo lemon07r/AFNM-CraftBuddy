@@ -14,7 +14,6 @@ import {
 
 export {
   deriveBandGoals,
-  hasAnyActiveGoal,
   goalsMet,
   calculateImmediateProgressTowardGoals,
   calculateFinishSuccessChance,
@@ -40,16 +39,6 @@ function goalsMet(
   return (
     (!hasCompletionGoal || state.completion >= completionGoal) &&
     (!hasPerfectionGoal || state.perfection >= perfectionGoal)
-  );
-}
-
-function hasAnyActiveGoal(
-  completionGoal: number,
-  perfectionGoal: number,
-): boolean {
-  return (
-    (Number.isFinite(completionGoal) && completionGoal > 0) ||
-    (Number.isFinite(perfectionGoal) && perfectionGoal > 0)
   );
 }
 

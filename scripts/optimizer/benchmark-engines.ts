@@ -115,7 +115,6 @@ interface BenchmarkRunResult {
     scoreMargin: number;
   };
   requiresProbabilisticSurvival: boolean;
-  projectedSuccessChance?: number;
   optimalRotation: string[];
   contractPass: boolean | null;
   contractFailReasons: string[];
@@ -589,7 +588,6 @@ function runBenchmark(options: {
           earlyExit: result.searchMetrics?.earlyExit,
           requiresProbabilisticSurvival:
             recommendation?.requiresProbabilisticSurvival ?? false,
-          projectedSuccessChance: recommendation?.projectedSuccessChance,
           optimalRotation: result.optimalRotation ?? [],
           contractPass: null,
           contractFailReasons: [],

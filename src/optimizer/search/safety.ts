@@ -17,7 +17,7 @@ import type {
   SkillRecommendation,
 } from './types';
 
-import { hasAnyActiveGoal, goalsMet } from './goals';
+import { goalsMet } from './goals';
 
 import { SCORING } from './scoring';
 
@@ -34,15 +34,9 @@ function classifyTerminalState(
   state: CraftingState,
   config: OptimizerConfig,
   condition: CraftingConditionType,
-  completionGoal: number,
-  perfectionGoal: number,
 ): TerminalStateClassification {
   const isTerminal = isTerminalState(state, config, condition);
-  const isTerminalUnmet =
-    isTerminal &&
-    hasAnyActiveGoal(completionGoal, perfectionGoal) &&
-    !goalsMet(state, completionGoal, perfectionGoal);
-  return { isTerminal, isTerminalUnmet };
+  return { isTerminal };
 }
 
 function applySurvivabilityFloorToState(
@@ -198,7 +192,6 @@ function shouldDeprioritizeAgainstGuaranteedSafeStabilize(params: {
 }): boolean {
   const {
     currentStability,
-    displayStability,
     floorStability,
     goalsMetAfterAction,
     baseSuccessSecuredAfterAction,

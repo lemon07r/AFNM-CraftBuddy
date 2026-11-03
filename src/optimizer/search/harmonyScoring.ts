@@ -6,6 +6,14 @@ import { CraftingState } from '../state';
 
 export { evaluateHarmonySubsystemQuality };
 
+const clampQuality = (value: number): number =>
+  Math.max(-1, Math.min(1, value));
+const normalizeMultiplierQuality = (multiplier: number): number => {
+  if (multiplier >= 1.5) return 1;
+  if (multiplier <= 0) return -1;
+  return (multiplier - 1) / 0.5;
+};
+
 function getTechniqueNeedAlignment(
   techniqueType: TechniqueType | undefined,
   completionPriorityShare: number,
@@ -26,14 +34,6 @@ function evaluateGenericHarmonyModifierQuality(
   completionPriorityShare: number,
   perfectionPriorityShare: number,
 ): number {
-  const clampQuality = (value: number): number =>
-    Math.max(-1, Math.min(1, value));
-  const normalizeMultiplierQuality = (multiplier: number): number => {
-    if (multiplier >= 1.5) return 1;
-    if (multiplier <= 0) return -1;
-    return (multiplier - 1) / 0.5;
-  };
-
   let weightedTotal = 0;
   let totalWeight = 0;
   const addQuality = (quality: number, weight: number, active: boolean) => {
@@ -101,14 +101,6 @@ function evaluateHarmonySubsystemQuality(
   completionPriorityShare: number = 0.5,
   perfectionPriorityShare: number = 0.5,
 ): number {
-  const clampQuality = (value: number): number =>
-    Math.max(-1, Math.min(1, value));
-  const normalizeMultiplierQuality = (multiplier: number): number => {
-    if (multiplier >= 1.5) return 1;
-    if (multiplier <= 0) return -1;
-    return (multiplier - 1) / 0.5;
-  };
-
   // Forge works: use heat-based modifiers directly.
   if (harmonyData.forgeWorks) {
     const heat = harmonyData.forgeWorks.heat;

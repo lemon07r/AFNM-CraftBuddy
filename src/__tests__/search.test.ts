@@ -1394,7 +1394,6 @@ describe('finish craft policy', () => {
 
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation!.skill.name).not.toBe('Finish Craft');
-    expect(result.recommendation!.projectedSuccessChance).toBeUndefined();
   });
 
   it('shifts completion vs perfection lines according to the goal priority bias', () => {

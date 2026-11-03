@@ -1,4 +1,3 @@
-import React from 'react';
 import { Typography } from '@mui/material';
 import { AUTO_CRAFT_POLICY_OPTIONS, type AutoCraftPolicy } from '../settings';
 import type { AutoCraftUiState } from '../settings/autoCraft';

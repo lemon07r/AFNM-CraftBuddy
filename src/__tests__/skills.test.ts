@@ -7,7 +7,6 @@ import {
   SkillDefinition,
   OptimizerConfig,
   DEFAULT_SKILLS,
-  DEFAULT_CONFIG,
   canApplySkill,
   applySkill,
   calculateActionSurvivabilityFloor,
@@ -2684,8 +2683,12 @@ describe('success chance and progress headroom interaction', () => {
       // Headroom is 100 while the raw gain is 5 * 400 = 2000.
       maxCompletion: 1000,
     });
-    return calculateSkillGains(state, overshootingSkill(successChance), config, [])
-      .completion;
+    return calculateSkillGains(
+      state,
+      overshootingSkill(successChance),
+      config,
+      [],
+    ).completion;
   }
 
   it('weights an overshooting gain by success chance instead of hiding it behind the cap', () => {

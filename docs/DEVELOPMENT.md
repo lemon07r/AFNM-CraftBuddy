@@ -67,7 +67,7 @@ Every host hide (including panel visibility changes, polling transitions and cra
 
 ## TypeScript and build conventions
 
-Strict TypeScript, type-only AFNM imports where appropriate, `unknown` plus narrowing at runtime boundaries, and optional chaining for drift-prone APIs keep failures localized. Globals belong in `src/global.d.ts`. Formatting follows `.prettierrc` (single quotes, trailing commas, LF). React/ReactDOM/MUI/MUI Icons are game externals in `webpack.config.js`; avoid bundling second copies.
+Strict TypeScript with `noUnusedLocals` and `noUnusedParameters`, type-only AFNM imports where appropriate, `unknown` plus narrowing at runtime boundaries, and optional chaining for drift-prone APIs keep failures localized. Delete dead declarations rather than suppressing unused checks; reserve `_` parameters for required signatures. Globals belong in `src/global.d.ts`. Formatting follows `.prettierrc` (single quotes, trailing commas, LF). React/ReactDOM/MUI/MUI Icons are game externals in `webpack.config.js`; avoid bundling second copies.
 
 ## Validation matrix
 

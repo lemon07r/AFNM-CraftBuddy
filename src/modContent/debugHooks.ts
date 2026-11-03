@@ -9,8 +9,6 @@
  * Extracted verbatim from `src/modContent/index.ts` during the 6.0.0 split.
  */
 
-import { debugLog } from '../utils/debug';
-
 export let debugToastTimeout: number | null = null;
 
 export async function copyTextToClipboard(text: string): Promise<boolean> {
