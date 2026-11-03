@@ -658,6 +658,74 @@ describe('Han survivability floor buff order', () => {
   });
 });
 
+describe('survivability floor realized losses and removed owners', () => {
+  it('spends Han prevention only on realized stability losses', () => {
+    const ward: BuffDefinition = {
+      name: 'Loss ward',
+      canStack: false,
+      effects: [],
+      stats: { stabilityCostReduction: { value: 60 } },
+    };
+    const base = hanScenarios()[0];
+    const buffs = new Map(base.state.buffs);
+    const han = buffs.get(HAN_KEY)!;
+    buffs.set(HAN_KEY, {
+      ...han,
+      internalState: { preventedStabilityLosses: 1 },
+    });
+    buffs.set('loss_ward', { name: ward.name, stacks: 1, definition: ward });
+    const state = base.state.copy({ stability: 5, buffs });
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      successChance: 1,
+      effects: [
+        { kind: 'stability', amount: { value: -1 } },
+        { kind: 'stability', amount: { value: -10 } },
+        { kind: 'completion', amount: { value: 1 } },
+      ],
+    });
+    const config = retargetConfig(skill);
+    const next = applySkill(state, skill, config)!;
+    expect(next.stability).toBe(5);
+    expect(
+      calculateActionSurvivabilityFloor(state, skill, config)!.stability,
+    ).toBe(next.stability);
+  });
+
+  it('skips ordinary effects after an action hook removes their owner', () => {
+    const fragile: BuffDefinition = {
+      name: 'Fragile drain',
+      canStack: false,
+      effects: [{ kind: 'stability', amount: { value: -10 } }],
+      onRefine: [{ kind: 'negate' }],
+    };
+    const skill = retargetSkill({
+      type: 'refine',
+      qiCost: 0,
+      stabilityCost: 0,
+      successChance: 1,
+      effects: [{ kind: 'completion', amount: { value: 1 } }],
+    });
+    const config = retargetConfig(skill);
+    const state = new CraftingState({
+      qi: 100,
+      stability: 5,
+      buffs: new Map([
+        [
+          'fragile_drain',
+          { name: fragile.name, stacks: 1, definition: fragile },
+        ],
+      ]),
+    });
+    const next = applySkill(state, skill, config)!;
+    expect(next.stability).toBe(5);
+    expect(
+      calculateActionSurvivabilityFloor(state, skill, config)!.stability,
+    ).toBe(next.stability);
+  });
+});
+
 describe('inert companion hydrated listeners', () => {
   it('keeps bar events for listeners hydrated from config skills', () => {
     const observer: BuffDefinition = {

@@ -3263,14 +3263,20 @@ export function calculateActionSurvivabilityFloor(
 
       switch (effect.kind) {
         case 'stability': {
-          const amount = evaluateScalingWithMasteryUpgrades(
+          const rawAmount = evaluateScalingWithMasteryUpgrades(
             effect.amount,
             actionMasteryUpgrades,
             actionVars,
             0,
           );
           const probability = actionSuccessChance * conditionResult.probability;
-          // Same certain-only Han prevention as the transition, in effect order.
+          // Same Han reduction and certain-only prevention as the transition,
+          // on the realized amount, in effect order.
+          const amount = appliedStabilityAmount(
+            rawAmount,
+            actionVars,
+            newBuffs,
+          );
           if (preventCertainStabilityLoss(newBuffs, amount, probability === 1))
             break;
           guaranteedTechniqueStabilityDelta += resolveGuaranteedContribution(
@@ -3394,6 +3400,8 @@ export function calculateActionSurvivabilityFloor(
     ownerBuff: { name: string; stacks: number; definition?: BuffDefinition },
     scalingVars: ScalingVariables,
   ): void => {
+    // As in the transition, a removed owner's remaining effects do nothing.
+    if (!newBuffs.has(ownerBuffKey)) return;
     const conditionResult = evaluateEffectCondition(
       effect.condition,
       state,
@@ -3406,11 +3414,15 @@ export function calculateActionSurvivabilityFloor(
 
     switch (effect.kind) {
       case 'stability': {
-        const amount = evaluateScalingWithMasteryUpgrades(
-          effect.amount,
-          actionMasteryUpgrades,
+        const amount = appliedStabilityAmount(
+          evaluateScalingWithMasteryUpgrades(
+            effect.amount,
+            actionMasteryUpgrades,
+            scalingVars,
+            0,
+          ),
           scalingVars,
-          0,
+          newBuffs,
         );
         if (
           preventCertainStabilityLoss(
