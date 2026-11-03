@@ -1,15 +1,17 @@
 # Changelog
 
-### Unreleased — 7.0.0
+## 7.0.0 — AFNM 0.7.19
 
 - Derive survival floors and projected survival odds from the actual action transition, fixing buff-consumption/mastery ordering and signed maximum-stability cleanup without a duplicate simulator.
 - Model Su Lianhua's effect interception and Han Weiguang's stability-loss prevention when those companions are held.
 - Apply technique and buff Qi changes individually with clamped event amounts (including zero), and match signed stability events and loss reductions with or without companions.
 - Retire the opt-in Rust/WASM MCTS prior and engine selector; the established TypeScript search and its preset budgets are unchanged.
-- Preserve old settings/replay compatibility and retain the 1,588-transition corpus as a TypeScript golden test. Builds no longer require Rust or wasm-pack.
+- Preserve old settings/replay compatibility and keep the transition corpus (now 1,670 transitions) as a TypeScript golden test. Builds no longer require Rust or wasm-pack.
 - Redesign the panel and settings in the game's own style: one clear next action, the outcome being worked towards, and collapsible plan, other-action and automation sections. Settings use plain names, are keyboard and screen-reader friendly, and also appear in the game's mod options screen.
 - Show "Craft failed" when a craft resolves below the lowest tier.
-- Search evaluates techniques faster at identical recommendations (about 9% more search per second across the replay set, up to 32% on one replay), so time-limited presets look further ahead on slower machines.
+- Search evaluates techniques faster at identical recommendations (about 15% more search per second across the replay set, 1.22 to 1.40 nodes/ms at fixed work), so time-limited presets look further ahead on slower machines.
+- Recalculate when only Qi droplets change, so automatic crafting no longer waits on a stale recommendation.
+- Run the benchmark contracts at fixed node budgets in CI and release validation.
 
 ## 6.9.0 — AFNM 0.7.19
 

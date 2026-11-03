@@ -3,20 +3,22 @@
 
 CraftBuddy reads your live craft, simulates possible continuations, and recommends the next action — and [i]why[/i].
 
-[b]CraftBuddy 6.9.0 — updated for game version 0.7.19.[/b]
+[b]CraftBuddy 7.0.0 — for game version 0.7.19.[/b]
 
 [hr][/hr]
 
-[h1]What's New in v6[/h1]
-Latest in 6.9.0:
+[h1]What's New in v7[/h1]
+Latest in 7.0.0:
 
 [list]
-[*] [b]0.7.19 ready[/b] — audited crafting rules, with all nine harmonies including Returning Cycle and Captivating Cadence still supported.
-[*] [b]Correct auto-finish[/b] — no premature stop at five completion bands. The craft ends when stability runs out or both bars reach their actual caps.
-[*] [b]Your band goals stay in effect[/b] — Perfection Band Goal and Completion Band Ceiling now reach every craft-ending score. Changing ambition settings marks old recommendations stale.
-[*] [b]Safer choices[/b] — guaranteed routes take precedence over techniques whose failure would end below target, including when search uses multiple workers.
-[*] [b]Auto-use fixes[/b] — respects the game's crafting auto-use toggle and tracks consumed pills correctly. Thanks to PommesMitChips for the report.
-[*] [b]Game-accurate simulation[/b] — payment phases, droplets, buffs, quality caps, ambition targets and overcraft rewards remain modelled.
+[*] [b]New look[/b] — the panel and settings now use the game's own style. The panel shows one clear next action and the outcome you are working towards, with the plan, other actions and automatic crafting in collapsible sections. Settings use plain names, work with the keyboard and screen readers, and also appear in the game's mod options screen.
+[*] [b]Companions[/b] — Su Lianhua's effect interception and Han Weiguang's stability-loss protection are now simulated when you hold them.
+[*] [b]More accurate Qi and stability[/b] — every Qi and stability effect is applied one at a time, the way the game does it, and stability losses are reduced by your cost reductions whether or not you hold a companion.
+[*] [b]Safety checks match the real action[/b] — the survival check now uses the same simulation as the action itself, so buffs used up when you pay, mastery effects and max-stability repairs are counted correctly.
+[*] [b]Faster search[/b] — the same recommendations in less time, so each preset can look further ahead, which helps most on slower machines.
+[*] [b]Fresher recommendations[/b] — a change in Qi droplets alone now refreshes the recommendation, and automatic crafting no longer waits on an outdated one.
+[*] [b]Clearer results[/b] — a craft that ends below the lowest tier now shows "Craft failed".
+[*] [b]Simpler install[/b] — the experimental Rust/WASM engine option is gone. The regular search was always the default and is unchanged, and your saved settings carry over.
 [/list]
 
 [hr][/hr]
