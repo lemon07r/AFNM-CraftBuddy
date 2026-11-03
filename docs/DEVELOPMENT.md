@@ -59,7 +59,7 @@ Every host hide (including panel visibility changes, polling transitions and cra
 
 ### Automation
 
-- Re-read the live revision immediately before dispatch. `stale` means recalculate; `unverifiable` means pause and dispatch nothing. The signature includes resources, conditions/queue, buffs, cooldowns, inventory, harmony/state digest, roster and consumed pills.
+- Re-read the live revision immediately before dispatch. `stale` means recalculate; `unverifiable` means pause and dispatch nothing. The signature includes resources (including Qi droplets), conditions/queue, buffs, cooldowns, inventory, harmony/state digest, roster and consumed pills.
 - Native auto-use executes **before** each technique in the game's UI handler. When active, click that control; direct technique dispatch would skip the loadout. Covered items are withheld from CraftBuddy, and unknown slot conditions conservatively assume native consumption.
 - `craftingAutoUseEnabled === false` disables the loadout. `consumedPills` is on the crafting slice. Training uses definedness (`trainingMode !== undefined`), so applying an item without inventory removal is expected.
 - Item settlement is distinct from a technique state advance. On timeout, a changed signature resumes; unchanged state resends once; unreadable state never retries. Repeated rejection leaves a recoverable armed pause until a real craft change.
