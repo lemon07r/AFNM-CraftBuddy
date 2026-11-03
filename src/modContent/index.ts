@@ -379,6 +379,22 @@ function buildAutoCraftInventorySignature(): string {
   return serializeQuickAccessInventory(quickAccess, inventoryItems);
 }
 
+/** Current/max Qi droplets, which gate droplet-cost techniques. */
+function readDropletSignature(entity: unknown): string {
+  const stats =
+    entity && typeof entity === 'object'
+      ? (
+          entity as {
+            stats?: { qiDroplets?: unknown; maxqiDroplets?: unknown };
+          }
+        ).stats
+      : undefined;
+  return `${parseGameNumber(stats?.qiDroplets, 0)}/${parseGameNumber(
+    stats?.maxqiDroplets,
+    0,
+  )}`;
+}
+
 function buildAutoCraftStateFingerprint(): string {
   if (!lastEntity || !lastProgressState) {
     return 'inactive';
@@ -388,6 +404,7 @@ function buildAutoCraftStateFingerprint(): string {
   return [
     `step:${currentStep}`,
     `pool:${pool}`,
+    `droplets:${readDropletSignature(lastEntity)}`,
     `comp:${currentCompletion}`,
     `perf:${currentPerfection}`,
     `stab:${currentStability}`,
@@ -4325,6 +4342,7 @@ function processCraftingState(craftingState: any): void {
     normalizedCondition !== currentCondition ||
     queueChanged ||
     progressPool !== previousPool ||
+    readDropletSignature(entity) !== readDropletSignature(lastEntity) ||
     observedMaxStability !== currentMaxStability ||
     currentCooldownSignature !== previousCooldownSignature ||
     currentBuffSignature !== previousBuffSignature ||
