@@ -81,6 +81,8 @@ Workers receive plain data and reconstruct local caches/abort hooks. Root keys p
 
 Published completion/perfection gains diff the simulated post-state (`calculateRecommendationGains`) so triggered procs are visible. Stability uses the direct readout rather than presenting a projected survival floor as a promise. Craft-ending reasoning says it ends the craft, not that a buff will help nonexistent future turns.
 
+Recommendations publish expected gains and survival flags, not a per-action `projectedSuccessChance`; the separate `expectedFinalState.projectedSuccessChance` is computed from the projected final bars. Search metrics report work, cache hits, completed depth, time and optional early-exit details, without a pruning counter. Historical replay outputs may still carry retired recommendation chance fields or `pruned`; they remain diagnostic records, not inputs to scoring, and missing or extra fields are tolerated.
+
 ## Determinism and tuning
 
 Equal state, config and **fixed node work** can reproduce a recommendation when the clock is nonbinding; ordinary millisecond budgets cannot guarantee it. TS explicitly checks `Date.now()` as well as max nodes, so the same presets can reach different completed frontiers across machines or under load. Worker partitioning also needs to be held fixed for a like-for-like comparison.

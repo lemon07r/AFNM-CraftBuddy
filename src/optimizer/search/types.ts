@@ -60,10 +60,7 @@ export interface SkillRecommendation {
     expectedGains: GainPreview;
     immediateGains: GainPreview;
     effectiveCosts: ActionCostPreview;
-    projectedSuccessChance?: number;
   };
-  /** Success chance if this recommendation ends the craft immediately. */
-  projectedSuccessChance?: number;
   /** Whether executing this action would resolve the craft immediately. */
   endsCraft?: boolean;
   /** Whether the line depends on probabilistic survival rather than a guaranteed floor. */
@@ -189,7 +186,6 @@ export interface SearchResult {
     timeTakenMs: number;
     /** Deepest fully completed frontier kept for the returned result set. */
     depthReached: number;
-    pruned: number;
     /** Iterative-deepening exited after a stable completed frontier. */
     earlyExit?: {
       reason: 'stableRecommendation';
@@ -307,7 +303,6 @@ export type ConditionTransitionProvider = (
 
 interface TerminalStateClassification {
   isTerminal: boolean;
-  isTerminalUnmet: boolean;
 }
 
 interface UnsafeCandidateClassification extends TerminalStateClassification {
@@ -331,7 +326,6 @@ interface SearchMoveCandidate {
   immediateProgress: number;
   requiresProbabilisticSurvival: boolean;
   unsafeWithGuaranteedSafeAlternative?: boolean;
-  projectedSuccessChance?: number;
 }
 
 // Structural aliases for the shared types; `CrossStepSearchCache` in

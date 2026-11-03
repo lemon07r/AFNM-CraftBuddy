@@ -626,7 +626,6 @@ describe('optimizer replay state snapshots', () => {
         cacheHits: 0,
         timeTakenMs: 1,
         depthReached: 1,
-        pruned: 0,
       },
     });
 
@@ -637,6 +636,53 @@ describe('optimizer replay state snapshots', () => {
         projectedSuccessChance: 0.69,
       },
     });
+  });
+
+  it.each([undefined, 0])(
+    'serializes metrics with or without a legacy pruned field (%s)',
+    (pruned) => {
+      const searchMetrics = {
+        nodesExplored: 1,
+        cacheHits: 0,
+        timeTakenMs: 1,
+        depthReached: 1,
+        ...(pruned === undefined ? {} : { pruned }),
+      };
+      const snapshot = buildResultSnapshot({
+        status: 'autoResolved',
+        recommendation: null,
+        alternativeSkills: [],
+        isTerminal: true,
+        targetsMet: false,
+        searchMetrics,
+      });
+
+      expect(snapshot.searchMetrics).toEqual(searchMetrics);
+    },
+  );
+
+  it('tolerates retired recommendation chance fields in old result payloads', () => {
+    const recommendation = {
+      skill: createSkill(),
+      expectedGains: { completion: 0, perfection: 0, stability: 0 },
+      immediateGains: { completion: 0, perfection: 0, stability: 0 },
+      effectiveCosts: { qi: 0, stability: 0 },
+      score: 0,
+      reasoning: '',
+      projectedSuccessChance: 0.5,
+    };
+    const snapshot = buildResultSnapshot({
+      status: 'live',
+      recommendation,
+      alternativeSkills: [recommendation],
+      isTerminal: false,
+      targetsMet: false,
+    });
+
+    expect(snapshot.recommendation).not.toHaveProperty(
+      'projectedSuccessChance',
+    );
+    expect(snapshot.alternatives).toEqual([snapshot.recommendation]);
   });
 
   it('keeps the current turn plus the newest bounded previous turns', () => {
@@ -1140,14 +1186,8 @@ describe('integration regression - forge heat parity', () => {
         searchConfig: withFixedWork(fixture.input.searchConfig, 600),
       },
     });
-    const {
-      state,
-      config,
-      currentCondition,
-      forecastConditions,
-      targetCompletion,
-      targetPerfection,
-    } = getReplaySearchInput(fixture);
+    const { state, config, currentCondition, targetCompletion } =
+      getReplaySearchInput(fixture);
     const { result } = replayed;
 
     const allRecommendations = [

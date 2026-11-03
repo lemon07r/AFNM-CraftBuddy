@@ -374,7 +374,6 @@ describe('autoCraftController', () => {
               immediateGains: { completion: 0, perfection: 0, stability: 0 },
               effectiveCosts: { qi: 0, stability: 10 },
               score: 80,
-              projectedSuccessChance: 1,
               endsCraft: true,
               reasoning: 'Ends the craft.',
             },

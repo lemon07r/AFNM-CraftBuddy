@@ -43,10 +43,6 @@ export function recommendationGainsCopy(
   return { primary: gainsLabel(rec.immediateGains), secondary: expected };
 }
 
-export function successPercentage(chance: number): number {
-  return Math.floor(chance * 100);
-}
-
 export interface LegacyOutcomeProgress {
   currentCompletion?: number;
   currentPerfection?: number;

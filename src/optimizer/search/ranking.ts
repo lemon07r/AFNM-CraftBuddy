@@ -1,4 +1,15 @@
-import type { CandidateTieBreakMetrics, SkillRecommendation } from './types';
+import type {
+  CandidateTieBreakMetrics,
+  CraftingConditionType,
+  SkillRecommendation,
+} from './types';
+import type { CraftingState } from '../state';
+import {
+  applySkill,
+  type OptimizerConfig,
+  type getConditionEffectsForConfig,
+} from '../skills';
+import { calculateImmediateProgressTowardGoals } from './goals';
 
 import { SCORING } from './scoring';
 
@@ -7,6 +18,55 @@ import { orderRecommendationsBySafety } from './safety';
 export { computeScoreTieWindow, compareTieBreakMetrics, rankRecommendations };
 
 const DIVERSITY_TIEBREAK_SCORE_WINDOW = 1;
+
+export function createRecommendationTieMetrics(
+  state: CraftingState,
+  config: OptimizerConfig,
+  conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
+  targetCompletion: number,
+  targetPerfection: number,
+  normalizedCurrentCondition: CraftingConditionType,
+  modeCompGoal: number,
+  modePerfGoal: number,
+): (recommendation: SkillRecommendation) => CandidateTieBreakMetrics {
+  const recommendationTieMetricCache = new Map<
+    string,
+    CandidateTieBreakMetrics
+  >();
+  return (recommendation: SkillRecommendation): CandidateTieBreakMetrics => {
+    const cached = recommendationTieMetricCache.get(recommendation.skill.key);
+    if (cached) {
+      return cached;
+    }
+
+    const displayState =
+      applySkill(
+        state,
+        recommendation.skill,
+        config,
+        conditionEffects,
+        targetCompletion,
+        normalizedCurrentCondition,
+      ) ?? state;
+    const metrics: CandidateTieBreakMetrics = {
+      immediateProgress: calculateImmediateProgressTowardGoals(
+        state,
+        displayState,
+        modeCompGoal,
+        modePerfGoal,
+        targetCompletion,
+        targetPerfection,
+      ),
+      isStabilize: recommendation.skill.type === 'stabilize',
+      requiresProbabilisticSurvival:
+        recommendation.requiresProbabilisticSurvival === true,
+      qiSpent: Math.max(0, state.qi - displayState.qi),
+      skillKey: recommendation.skill.key,
+    };
+    recommendationTieMetricCache.set(recommendation.skill.key, metrics);
+    return metrics;
+  };
+}
 
 function compareTieBreakMetrics(
   a: CandidateTieBreakMetrics,
