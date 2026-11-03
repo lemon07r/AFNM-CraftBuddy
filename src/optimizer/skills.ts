@@ -41,7 +41,11 @@ import {
   buildCanonicalNativeVariables,
 } from './nativeVariables';
 import { normalizeIdentifier } from './nameNormalization';
-import { StabilityProjection } from './stability';
+import {
+  StabilityProjection,
+  type ActionSurvivabilityFloor,
+} from './stability';
+export type { ActionSurvivabilityFloor } from './stability';
 import {
   applyGainBoost,
   prepareNumericApplication,
@@ -313,13 +317,6 @@ function evaluateScalingWithMasteryUpgrades(
   );
 }
 
-function clampStabilityToBounds(
-  stability: number,
-  maxStability: number,
-): number {
-  return Math.max(0, Math.min(maxStability, stability));
-}
-
 /**
  * One completion/perfection effect, in the order the runtime applies it.
  *
@@ -465,11 +462,26 @@ export interface SkillGains {
   barContributions?: readonly BarContribution[];
 }
 
-export interface ActionSurvivabilityFloor {
-  stability: number;
-  maxStability: number;
-  survivalProbability: number;
-}
+const appliedSurvivabilityFloors = new WeakMap<
+  CraftingState,
+  ActionSurvivabilityFloor
+>();
+const masteryStabilityProjections = new WeakMap<
+  CraftingState,
+  StabilityProjection
+>();
+
+const appliedActionInputs = new WeakMap<
+  CraftingState,
+  {
+    state: CraftingState;
+    skill: SkillDefinition;
+    config: OptimizerConfig;
+    conditionEffects: ConditionEffect[];
+    currentCondition?: string;
+    successChance?: number;
+  }
+>();
 
 export interface SkillGainOptions {
   successChance?: number;
@@ -2887,35 +2899,9 @@ export function calculateDisplayedSkillGains(
   };
 }
 
-function resolveGuaranteedContribution(
-  amount: number,
-  probability: number,
-): number {
-  if (!Number.isFinite(amount) || amount === 0) {
-    return 0;
-  }
-  if (!Number.isFinite(probability) || probability <= 0) {
-    return 0;
-  }
-  if (probability >= 1) {
-    return amount;
-  }
-  return amount < 0 ? amount : 0;
-}
-
 /**
- * Compute a guaranteed post-action stability floor for survivability checks.
- *
- * The main simulator uses expected value for chance-based effects. That is
- * appropriate for progress scoring, but it can make a proc-dependent survival
- * line look "safe" when the craft actually dies on the unlucky branch. This
- * helper replays only the immediate stability/max-stability state changes with a
- * pessimistic probability policy:
- * - beneficial probabilistic stability/max-stability effects are treated as 0
- * - harmful probabilistic stability/max-stability effects are treated as happening
- *
- * Search uses this floor to keep guaranteed-safe lines ahead of proc-dependent
- * survival lines when goals are still unmet.
+ * Read the minimum cleaned stability/maximum and live probability mass from
+ * the real transition's stability projection, not a second effect interpreter.
  */
 export function calculateActionSurvivabilityFloor(
   state: CraftingState,
@@ -2923,743 +2909,32 @@ export function calculateActionSurvivabilityFloor(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[] = [],
   currentCondition?: string,
+  appliedState?: CraftingState,
 ): ActionSurvivabilityFloor | null {
-  const maxToxicity = config.maxToxicity || 0;
-  const resolvedActiveBuffs = getResolvedActiveBuffs(state, config);
-
+  // Search already executed this candidate. Reuse that exact projection,
+  // including its target-dependent listener context, without caching by value
+  // or accepting a state from another action/forced-success transition.
+  const inputs = appliedState && appliedActionInputs.get(appliedState);
   if (
-    !canApplySkill(
-      state,
-      skill,
-      config.minStability,
-      maxToxicity,
-      currentCondition,
-      conditionEffects,
-      config.pillsPerRound || 1,
-      config,
-    )
+    inputs &&
+    inputs.state === state &&
+    inputs.skill === skill &&
+    inputs.config === config &&
+    inputs.conditionEffects === conditionEffects &&
+    inputs.currentCondition === currentCondition &&
+    inputs.successChance === undefined
   ) {
-    return null;
+    return { ...appliedSurvivabilityFloors.get(appliedState!)! };
   }
-
-  const isItemAction = skill.actionKind === 'item';
-  const consumesTurn = skill.consumesTurn ?? !isItemAction;
-  const effectiveCosts = calculateEffectiveActionCosts(
-    state,
-    skill,
-    config.minStability,
-    conditionEffects,
-    config,
-  );
-
-  // 0.7.8 Illume Crucible seal: forced decay + no restoration (runtime
-  // `E7o`/`D7o`), mirrored from `applySkill`.
-  const maxStabilitySealed = hasSealedMaxStabilityBuff(state.buffs);
-
-  let newStabilityPenalty = state.stabilityPenalty;
-  newStabilityPenalty = Math.min(
-    newStabilityPenalty,
-    state.initialMaxStability,
-  );
-
-  if (skill.maxStabilityChange) {
-    const effectiveMaxStabilityChange =
-      maxStabilitySealed && skill.maxStabilityChange > 0
-        ? 0
-        : skill.maxStabilityChange;
-    newStabilityPenalty = Math.min(
-      state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - effectiveMaxStabilityChange),
-    );
-  }
-  if (skill.restoresMaxStabilityToFull && !maxStabilitySealed) {
-    newStabilityPenalty = 0;
-  }
-
-  let newMaxStability = state.initialMaxStability - newStabilityPenalty;
-  let newStability = state.stability - effectiveCosts.stabilityCost;
-
-  // Track deterministic qi/toxicity for runtime-shaped buff conditions.
-  let qiCap = getEffectiveMaxPool(state, config, resolvedActiveBuffs);
-  const clampQi = (value: number): number =>
-    Math.max(0, Math.min(qiCap, value));
-  let newQi = clampQi(state.qi - effectiveCosts.qiCost);
-  const hasExplicitPoolEffect =
-    Array.isArray(skill.effects) &&
-    skill.effects.some((effect) => effect?.kind === 'pool');
-  if (
-    !hasExplicitPoolEffect &&
-    skill.restoresQi &&
-    skill.qiRestore &&
-    skill.qiRestore > 0
-  ) {
-    newQi = clampQi(newQi + skill.qiRestore);
-  }
-  let newToxicity = state.toxicity + (skill.toxicityCost || 0);
-
-  const newBuffs = new Map(resolvedActiveBuffs);
-  if (skill.buffCost) {
-    const buff = newBuffs.get(skill.buffCost.buffName);
-    if (buff) {
-      const have = buff.stacks;
-      const consume = skill.buffCost.consumeAll
-        ? have
-        : Math.min(have, skill.buffCost.amount ?? 0);
-      const remaining = Math.max(0, have - consume);
-      if (remaining > 0) {
-        newBuffs.set(skill.buffCost.buffName, { ...buff, stacks: remaining });
-      } else {
-        newBuffs.delete(skill.buffCost.buffName);
-      }
-    }
-  }
-
-  // Payment is certain only when every payment branch loses stability. Share
-  // the transition's integer-use prevention without mutating the input buffs.
-  if (
-    preventCertainStabilityLoss(
-      newBuffs,
-      -effectiveCosts.stabilityCost,
-      effectiveCosts.stabilityOutcomes?.every((outcome) => outcome.cost > 0) ??
-        true,
-    )
-  ) {
-    newStability += effectiveCosts.stabilityCost;
-  }
-
-  const upsertBuffFromDefinition = (
-    definition: BuffDefinition | undefined,
-    stacksDelta: number,
-    seedVariables?: ScalingVariables,
-  ): void => {
-    if (!definition || !Number.isFinite(stacksDelta)) return;
-    const delta = Math.floor(stacksDelta);
-    if (delta === 0) return;
-
-    const buffKey = normalizeBuffName(definition.name);
-    if (!buffKey) return;
-
-    const existing = newBuffs.get(buffKey);
-    const canStack =
-      definition.canStack ?? existing?.definition?.canStack ?? true;
-    const maxStacks = definition.maxStacks ?? existing?.definition?.maxStacks;
-
-    if (existing) {
-      if (!canStack) {
-        return;
-      }
-      let nextStacks = existing.stacks + delta;
-      if (maxStacks !== undefined) {
-        nextStacks = Math.min(nextStacks, maxStacks);
-      }
-      if (nextStacks > 0) {
-        newBuffs.set(buffKey, {
-          ...existing,
-          definition: existing.definition ?? definition,
-          stacks: Math.floor(nextStacks),
-        });
-      } else {
-        newBuffs.delete(buffKey);
-      }
-      return;
-    }
-
-    if (delta > 0) {
-      let nextStacks = delta;
-      if (maxStacks !== undefined) {
-        nextStacks = Math.min(nextStacks, maxStacks);
-      }
-      newBuffs.set(buffKey, {
-        name: buffKey,
-        stacks: Math.floor(nextStacks),
-        definition,
-        internalState: seedBuffInternalState(definition, seedVariables),
-      });
-    }
-  };
-
-  const adjustExistingBuffStacks = (
-    buffKey: string,
-    stacksDelta: number,
-  ): void => {
-    const existing = newBuffs.get(buffKey);
-    if (!existing || !Number.isFinite(stacksDelta)) return;
-
-    const delta = Math.floor(stacksDelta);
-    if (delta === 0) return;
-
-    let nextStacks = existing.stacks + delta;
-    const maxStacks = existing.definition?.maxStacks;
-    if (maxStacks !== undefined) {
-      nextStacks = Math.min(nextStacks, maxStacks);
-    }
-    if (nextStacks > 0) {
-      newBuffs.set(buffKey, { ...existing, stacks: Math.floor(nextStacks) });
-    } else {
-      newBuffs.delete(buffKey);
-    }
-  };
-
-  interface SurvivalEvent {
-    probability: number;
-    stabilityDelta: number;
-    maxStabilityDelta: number;
-  }
-
-  const survivalEvents: SurvivalEvent[] = [];
-
-  const queueSurvivalEvent = (
-    probability: number,
-    stabilityDelta: number,
-    maxStabilityDelta: number,
-  ): void => {
-    if (!Number.isFinite(probability) || probability <= 0 || probability >= 1) {
-      return;
-    }
-    if (
-      !Number.isFinite(stabilityDelta) ||
-      !Number.isFinite(maxStabilityDelta)
-    ) {
-      return;
-    }
-    if (stabilityDelta <= 0 && maxStabilityDelta <= 0) {
-      return;
-    }
-
-    survivalEvents.push({
-      probability,
-      stabilityDelta,
-      maxStabilityDelta,
-    });
-  };
-
-  const calculateSurvivalProbability = (
-    baseStability: number,
-    baseMaxStability: number,
-  ): number => {
-    type SurvivalOutcome = {
-      probability: number;
-      stability: number;
-      maxStability: number;
-    };
-
-    const addOutcome = (
-      outcomes: Map<string, SurvivalOutcome>,
-      outcome: SurvivalOutcome,
-    ): void => {
-      if (outcome.probability <= 0) return;
-      const key = `${outcome.stability}|${outcome.maxStability}`;
-      const existing = outcomes.get(key);
-      if (existing) {
-        existing.probability += outcome.probability;
-        return;
-      }
-      outcomes.set(key, outcome);
-    };
-
-    let outcomes = new Map<string, SurvivalOutcome>();
-    addOutcome(outcomes, {
-      probability: 1,
-      stability: baseStability,
-      maxStability: Math.max(0, Math.floor(baseMaxStability)),
-    });
-
-    for (const event of survivalEvents) {
-      const nextOutcomes = new Map<string, SurvivalOutcome>();
-      for (const outcome of Array.from(outcomes.values())) {
-        addOutcome(nextOutcomes, {
-          probability: outcome.probability * (1 - event.probability),
-          stability: outcome.stability,
-          maxStability: outcome.maxStability,
-        });
-
-        const nextMaxStability = Math.max(
-          0,
-          Math.min(
-            state.initialMaxStability,
-            Math.floor(outcome.maxStability + event.maxStabilityDelta),
-          ),
-        );
-        const nextStability = outcome.stability + event.stabilityDelta;
-        addOutcome(nextOutcomes, {
-          probability: outcome.probability * event.probability,
-          stability: nextStability,
-          maxStability: nextMaxStability,
-        });
-      }
-      outcomes = nextOutcomes;
-    }
-
-    let survivalProbability = 0;
-    for (const outcome of Array.from(outcomes.values())) {
-      if (Math.floor(Math.min(outcome.stability, outcome.maxStability)) > 0) {
-        survivalProbability += outcome.probability;
-      }
-    }
-
-    return Math.max(0, Math.min(1, survivalProbability));
-  };
-
-  const evaluation = buildActionEvaluationFrame(
+  const next = applySkill(
     state,
     skill,
     config,
     conditionEffects,
+    0,
+    currentCondition,
   );
-  const actionMasteryUpgrades = evaluation.mastery.upgrades;
-  const actionVars = evaluation.variables;
-
-  const actionSuccessChance = isItemAction
-    ? 1
-    : Math.max(
-        0,
-        Math.min(1, (skill.successChance ?? 1) + actionVars.successChanceBonus),
-      );
-
-  if (!skill.effects || skill.effects.length === 0) {
-    let guaranteedDirectStabilityGain = skill.stabilityGain;
-
-    if (
-      skill.buffCost &&
-      !skill.scalesWithControl &&
-      !skill.scalesWithIntensity
-    ) {
-      const have = state.getBuffStacks(skill.buffCost.buffName);
-      const stacksUsed = skill.buffCost.consumeAll
-        ? have
-        : Math.min(have, skill.buffCost.amount ?? 0);
-      if (stacksUsed > 1) {
-        guaranteedDirectStabilityGain = safeMultiply(
-          guaranteedDirectStabilityGain,
-          stacksUsed,
-        );
-      }
-    }
-
-    newStability += resolveGuaranteedContribution(
-      guaranteedDirectStabilityGain,
-      actionSuccessChance,
-    );
-  }
-
-  let guaranteedTechniqueStabilityDelta = 0;
-  let guaranteedTechniqueMaxStabilityDelta = 0;
-  let guaranteedTechniquePoolDelta = 0;
-  let guaranteedTechniqueToxicityDelta = 0;
-
-  if (skill.effects && skill.effects.length > 0) {
-    for (const effect of skill.effects) {
-      if (!effect) continue;
-      const conditionResult = evaluateEffectCondition(
-        effect.condition,
-        state,
-        actionVars,
-        0,
-      );
-      if (!conditionResult.met || conditionResult.probability <= 0) {
-        continue;
-      }
-
-      switch (effect.kind) {
-        case 'stability': {
-          const rawAmount = evaluateScalingWithMasteryUpgrades(
-            effect.amount,
-            actionMasteryUpgrades,
-            actionVars,
-            0,
-          );
-          const probability = actionSuccessChance * conditionResult.probability;
-          // Same universal reduction and certain-only prevention as the transition,
-          // on the realized amount, in effect order.
-          const amount = appliedStabilityAmount(rawAmount, actionVars);
-          if (preventCertainStabilityLoss(newBuffs, amount, probability === 1))
-            break;
-          guaranteedTechniqueStabilityDelta += resolveGuaranteedContribution(
-            amount,
-            probability,
-          );
-          queueSurvivalEvent(probability, amount, 0);
-          break;
-        }
-        case 'maxStability': {
-          const amount = evaluateScalingWithMasteryUpgrades(
-            effect.amount,
-            actionMasteryUpgrades,
-            actionVars,
-            0,
-          );
-          guaranteedTechniqueMaxStabilityDelta += resolveGuaranteedContribution(
-            amount,
-            actionSuccessChance * conditionResult.probability,
-          );
-          queueSurvivalEvent(
-            actionSuccessChance * conditionResult.probability,
-            0,
-            amount,
-          );
-          break;
-        }
-        case 'pool': {
-          const amount = evaluateScalingWithMasteryUpgrades(
-            effect.amount,
-            actionMasteryUpgrades,
-            actionVars,
-            0,
-          );
-          guaranteedTechniquePoolDelta += resolveGuaranteedContribution(
-            amount,
-            actionSuccessChance * conditionResult.probability,
-          );
-          break;
-        }
-        case 'cleanseToxicity': {
-          const amount = evaluateScalingWithMasteryUpgrades(
-            effect.amount,
-            actionMasteryUpgrades,
-            actionVars,
-            0,
-          );
-          guaranteedTechniqueToxicityDelta += resolveGuaranteedContribution(
-            -amount,
-            actionSuccessChance * conditionResult.probability,
-          );
-          break;
-        }
-        case 'createBuff': {
-          const stacksToAdd = evaluateScalingWithMasteryUpgrades(
-            effect.stacks,
-            actionMasteryUpgrades,
-            actionVars,
-            1,
-          );
-          if (
-            resolveGuaranteedContribution(
-              stacksToAdd,
-              actionSuccessChance * conditionResult.probability,
-            ) > 0
-          ) {
-            upsertBuffFromDefinition(effect.buff, stacksToAdd, actionVars);
-          }
-          break;
-        }
-        case 'consumeBuff': {
-          const buffKey = normalizeBuffName(effect.buff?.name);
-          if (!buffKey) break;
-          const stacksToConsume = evaluateScalingWithMasteryUpgrades(
-            effect.stacks,
-            actionMasteryUpgrades,
-            actionVars,
-            1,
-          );
-          const guaranteedStacksToConsume = Math.abs(
-            resolveGuaranteedContribution(
-              -stacksToConsume,
-              actionSuccessChance * conditionResult.probability,
-            ),
-          );
-          if (guaranteedStacksToConsume > 0) {
-            adjustExistingBuffStacks(
-              buffKey,
-              -Math.floor(guaranteedStacksToConsume),
-            );
-          }
-          break;
-        }
-      }
-    }
-  }
-
-  newQi = clampQi(newQi + guaranteedTechniquePoolDelta);
-  newToxicity = Math.max(0, newToxicity + guaranteedTechniqueToxicityDelta);
-  newStability += guaranteedTechniqueStabilityDelta;
-
-  let buffStabilityDelta = 0;
-  let buffMaxStabilityDelta = 0;
-  let buffPoolDelta = 0;
-  let buffToxicityDelta = 0;
-  // Without maxpool buffs the helper never reads state; avoid a dead copy.
-  qiCap = buffsCanChangeMaxPool(newBuffs)
-    ? getEffectiveMaxPool(
-        state.copy({
-          qi: newQi,
-          stability: newStability,
-          stabilityPenalty: newStabilityPenalty,
-          toxicity: newToxicity,
-          buffs: newBuffs,
-        }),
-        config,
-        newBuffs,
-      )
-    : Math.max(1, config.maxQi);
-
-  const applyGuaranteedBuffEffect = (
-    effect: BuffEffect,
-    ownerBuffKey: string,
-    ownerBuff: { name: string; stacks: number; definition?: BuffDefinition },
-    scalingVars: ScalingVariables,
-  ): void => {
-    // As in the transition, a removed owner's remaining effects do nothing.
-    if (!newBuffs.has(ownerBuffKey)) return;
-    const conditionResult = evaluateEffectCondition(
-      effect.condition,
-      state,
-      scalingVars,
-      ownerBuff.stacks,
-    );
-    if (!conditionResult.met || conditionResult.probability <= 0) {
-      return;
-    }
-
-    switch (effect.kind) {
-      case 'stability': {
-        const amount = appliedStabilityAmount(
-          evaluateScalingWithMasteryUpgrades(
-            effect.amount,
-            actionMasteryUpgrades,
-            scalingVars,
-            0,
-          ),
-          scalingVars,
-        );
-        if (
-          preventCertainStabilityLoss(
-            newBuffs,
-            amount,
-            conditionResult.probability === 1,
-          )
-        )
-          break;
-        buffStabilityDelta += resolveGuaranteedContribution(
-          amount,
-          conditionResult.probability,
-        );
-        queueSurvivalEvent(conditionResult.probability, amount, 0);
-        break;
-      }
-      case 'maxStability': {
-        const amount = evaluateScalingWithMasteryUpgrades(
-          effect.amount,
-          actionMasteryUpgrades,
-          scalingVars,
-          0,
-        );
-        buffMaxStabilityDelta += resolveGuaranteedContribution(
-          amount,
-          conditionResult.probability,
-        );
-        queueSurvivalEvent(conditionResult.probability, 0, amount);
-        break;
-      }
-      case 'pool': {
-        const amount = evaluateScalingWithMasteryUpgrades(
-          effect.amount,
-          actionMasteryUpgrades,
-          scalingVars,
-          0,
-        );
-        buffPoolDelta += resolveGuaranteedContribution(
-          amount,
-          conditionResult.probability,
-        );
-        break;
-      }
-      case 'changeToxicity': {
-        const amount = evaluateScalingWithMasteryUpgrades(
-          effect.amount,
-          actionMasteryUpgrades,
-          scalingVars,
-          0,
-        );
-        // Runtime `changeToxicity` does `stats.toxicity -= amount`: a positive
-        // amount cleanses toxicity, a negative amount inflicts it.
-        buffToxicityDelta -= resolveGuaranteedContribution(
-          amount,
-          conditionResult.probability,
-        );
-        break;
-      }
-      case 'createBuff': {
-        const stacksToAdd = evaluateScalingWithMasteryUpgrades(
-          effect.stacks,
-          actionMasteryUpgrades,
-          scalingVars,
-          1,
-        );
-        if (
-          resolveGuaranteedContribution(
-            stacksToAdd,
-            conditionResult.probability,
-          ) > 0
-        ) {
-          upsertBuffFromDefinition(effect.buff, stacksToAdd, scalingVars);
-        }
-        break;
-      }
-      case 'addStack': {
-        const stackChange = evaluateScalingWithMasteryUpgrades(
-          effect.stacks,
-          actionMasteryUpgrades,
-          scalingVars,
-          1,
-        );
-        const guaranteedStackChange = resolveGuaranteedContribution(
-          stackChange,
-          conditionResult.probability,
-        );
-        if (guaranteedStackChange !== 0) {
-          adjustExistingBuffStacks(
-            ownerBuffKey,
-            Math.floor(guaranteedStackChange),
-          );
-        }
-        break;
-      }
-      case 'negate':
-        if (conditionResult.probability > 0) {
-          newBuffs.delete(ownerBuffKey);
-        }
-        break;
-    }
-  };
-
-  if (consumesTurn) {
-    for (const [buffKey, buff] of Array.from(newBuffs.entries())) {
-      if (!resolvedActiveBuffs.has(buffKey)) continue;
-      if (!buff.definition) continue;
-      const scalingVars: ScalingVariables = {
-        ...actionVars,
-        pool: newQi,
-        maxpool: qiCap,
-        toxicity: newToxicity,
-        maxtoxicity: config.maxToxicity || 0,
-        poolCostFlat: state.poolCostFlat,
-        poolCostPercentage: state.poolCostPercentage,
-        stabilityCostPercentage: state.stabilityCostPercentage,
-        stacks: buff.stacks,
-      };
-      // 0.7.7+ buffs read trigger-written internal state from their eqns
-      // (e.g. True Bifang Flame's per-action payout scaling on `blaze`).
-      if (buff.internalState) {
-        for (const [stateKey, stateValue] of Object.entries(
-          buff.internalState,
-        )) {
-          if (typeof stateValue === 'number' && Number.isFinite(stateValue)) {
-            scalingVars[stateKey] = stateValue;
-          }
-        }
-      }
-
-      // Action hooks run before ordinary effects, as in the transition; Han's
-      // limited prevention uses make this order observable.
-      const actionEffects: BuffEffect[] | undefined =
-        skill.type === 'fusion'
-          ? buff.definition.onFusion
-          : skill.type === 'refine'
-            ? buff.definition.onRefine
-            : skill.type === 'stabilize'
-              ? buff.definition.onStabilize
-              : skill.type === 'support'
-                ? buff.definition.onSupport
-                : undefined;
-      if (actionEffects) {
-        for (const effect of actionEffects) {
-          applyGuaranteedBuffEffect(effect, buffKey, buff, scalingVars);
-        }
-      }
-
-      if (buff.definition.effects) {
-        for (const effect of buff.definition.effects) {
-          applyGuaranteedBuffEffect(effect, buffKey, buff, scalingVars);
-        }
-      }
-    }
-
-    // Mirror the reducer's post-turn Turbid Qi grant so the projected buff map
-    // stays in parity with `applySkill`.
-    if (grantsTurbidQiStack(state.step + 1)) {
-      const turbidQiKey = findTurbidQiBuffKey(newBuffs);
-      if (turbidQiKey) {
-        adjustExistingBuffStacks(turbidQiKey, 1);
-      }
-    }
-  }
-
-  if (guaranteedTechniqueMaxStabilityDelta !== 0) {
-    const effectiveGuaranteedMaxStabilityDelta =
-      maxStabilitySealed && guaranteedTechniqueMaxStabilityDelta > 0
-        ? 0
-        : guaranteedTechniqueMaxStabilityDelta;
-    newStabilityPenalty = Math.min(
-      state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - effectiveGuaranteedMaxStabilityDelta),
-    );
-    newMaxStability = state.initialMaxStability - newStabilityPenalty;
-  }
-
-  newStability += buffStabilityDelta;
-  newQi = clampQi(newQi + buffPoolDelta);
-  newToxicity = Math.max(0, newToxicity + buffToxicityDelta);
-  if (buffMaxStabilityDelta !== 0) {
-    const effectiveBuffMaxStabilityDelta =
-      maxStabilitySealed && buffMaxStabilityDelta > 0
-        ? 0
-        : buffMaxStabilityDelta;
-    newStabilityPenalty = Math.min(
-      state.initialMaxStability,
-      Math.max(0, newStabilityPenalty - effectiveBuffMaxStabilityDelta),
-    );
-    newMaxStability = state.initialMaxStability - newStabilityPenalty;
-  }
-
-  if (
-    consumesTurn &&
-    !isItemAction &&
-    config.isSublimeCraft &&
-    config.craftingType &&
-    (state.harmonyData || config.craftingType === 'returningCycle')
-  ) {
-    const harmonyResult = processHarmonyEffect(
-      state.harmonyData ?? { recommendedTechniqueTypes: [] },
-      config.craftingType,
-      skill.type,
-    );
-    if (harmonyResult.stabilityDelta !== 0) {
-      newStability += harmonyResult.stabilityDelta;
-    }
-    if (harmonyResult.stabilityPenaltyDelta !== 0) {
-      newStabilityPenalty += harmonyResult.stabilityPenaltyDelta;
-      newStabilityPenalty = Math.min(
-        newStabilityPenalty,
-        state.initialMaxStability,
-      );
-      newMaxStability = state.initialMaxStability - newStabilityPenalty;
-    }
-  }
-
-  if (
-    consumesTurn &&
-    (!skill.preventsMaxStabilityDecay || maxStabilitySealed)
-  ) {
-    newStabilityPenalty++;
-  }
-  newStabilityPenalty = Math.min(
-    state.initialMaxStability,
-    Math.max(0, Math.ceil(newStabilityPenalty)),
-  );
-  newMaxStability = state.initialMaxStability - newStabilityPenalty;
-  const finalStability = Math.floor(
-    clampStabilityToBounds(newStability, newMaxStability),
-  );
-  const finalMaxStability = Math.max(0, Math.floor(newMaxStability));
-
-  return {
-    stability: finalStability,
-    maxStability: finalMaxStability,
-    survivalProbability: calculateSurvivalProbability(
-      newStability,
-      finalMaxStability,
-    ),
-  };
+  return next ? { ...appliedSurvivabilityFloors.get(next)! } : null;
 }
 
 /**
@@ -3852,6 +3127,7 @@ interface ActionPhaseContext {
   barContributions: BarContribution[];
   paymentCosts?: EffectiveActionCosts;
   nativeSource?: CraftingState;
+  stabilityProjection?: StabilityProjection;
 }
 
 const masteryPhaseSkills = new WeakMap<
@@ -4383,7 +3659,7 @@ export function applySkill(
     targetPerfection,
     options,
   );
-  return applySkillTransition(
+  const next = applySkillTransition(
     prepared.state,
     skill,
     config,
@@ -4392,6 +3668,17 @@ export function applySkill(
     targetPerfection,
     prepared.context,
   );
+  if (next) {
+    appliedActionInputs.set(next, {
+      state,
+      skill,
+      config,
+      conditionEffects,
+      currentCondition,
+      successChance: options.successChance,
+    });
+  }
+  return next;
 }
 
 /** Shared setup, success capture and effect-mastery preparation for execution
@@ -4452,6 +3739,7 @@ function prepareActionPhases(
         targetPerfection,
         { ...context, successChance: 1, masteryPhase: true },
       )!;
+      context.stabilityProjection = masteryStabilityProjections.get(working);
     }
   }
   // Runtime captures success after setup payment/listeners, before masteries.
@@ -4507,6 +3795,7 @@ function prepareActionPhases(
       targetPerfection,
       { ...context, successChance: condition.probability, masteryPhase: true },
     )!;
+    context.stabilityProjection = masteryStabilityProjections.get(working);
   }
   // Keep HEAD's expected-stack approximation for future turns. Only the
   // current payment uses realized costs, rounded before probability mixing.
@@ -4590,11 +3879,24 @@ function applySkillTransition(
     ? { ...evaluation.variables, step: state.step }
     : evaluation.variables;
 
+  const actionSuccessChance =
+    phase.successChance ??
+    (isItemAction
+      ? 1
+      : Math.max(
+          0,
+          Math.min(
+            1,
+            (skill.successChance ?? 1) + actionVars.successChanceBonus,
+          ),
+        ));
+
   const effectiveQiCost = effectiveCosts.qiCost;
   let effectiveStabilityCost = effectiveCosts.stabilityCost;
   const stabilityProjection = new StabilityProjection(
     state.stability,
     state.stabilityPenalty,
+    phase.stabilityProjection,
   );
   if (!orderedNumeric)
     stabilityProjection.pay(
@@ -4669,7 +3971,23 @@ function applySkillTransition(
     state.stability -
     (orderedNumeric ? 0 : effectiveStabilityCost) +
     gains.stability;
-  if (!skill.effects?.length) stabilityProjection.change(gains.stability);
+  if (!skill.effects?.length) {
+    if (actionSuccessChance < 1 && skill.stabilityGain !== 0) {
+      const realized = calculateSkillGainsWithFrame(
+        state,
+        skill,
+        config,
+        conditionEffects,
+        { successChance: 1 },
+        evaluation,
+      ).stability;
+      stabilityProjection.changeExpectedTechnique(
+        gains.stability,
+        realized,
+        actionSuccessChance,
+      );
+    } else stabilityProjection.change(gains.stability);
+  }
 
   // Stability can overdraw and exceed its ceiling until turn cleanup. Qi's
   // immediate clamp above is intentionally different.
@@ -4819,18 +4137,6 @@ function applySkillTransition(
         lost,
       );
   };
-
-  const actionSuccessChance =
-    phase.successChance ??
-    (isItemAction
-      ? 1
-      : Math.max(
-          0,
-          Math.min(
-            1,
-            (skill.successChance ?? 1) + actionVars.successChanceBonus,
-          ),
-        ));
 
   const modifyBuffGroup = (
     group: string | undefined,
@@ -5914,7 +5220,7 @@ function applySkillTransition(
         config.pillsPerRound || 1,
       );
 
-  return state.copy({
+  const next = state.copy({
     qi: newQi,
     qiDroplets: state.qiDroplets,
     stability: newStability,
@@ -5940,6 +5246,10 @@ function applySkillTransition(
       ? phase.barStart.history
       : [...phase.barStart.history, skill.name],
   });
+  appliedSurvivabilityFloors.set(next, cleanedStability.floor);
+  if (phase.masteryPhase)
+    masteryStabilityProjections.set(next, stabilityProjection);
+  return next;
 }
 
 /**

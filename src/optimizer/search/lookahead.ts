@@ -353,6 +353,7 @@ function runLookaheadSearch(
       config,
       conditionEffectsAtDepth,
       currentConditionAtDepth,
+      displayState,
     );
     const floorStability =
       survivabilityFloor?.stability ?? displayState.stability;

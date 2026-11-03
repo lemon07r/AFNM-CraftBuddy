@@ -1,3 +1,15 @@
+export interface ActionSurvivabilityFloor {
+  stability: number;
+  maxStability: number;
+  survivalProbability: number;
+}
+
+export interface StabilityOutcome {
+  stability: number;
+  maxStability: number;
+  probability: number;
+}
+
 /** Turn-local quadrature: cleanup rounds each realized outcome, not its mean. */
 export class StabilityProjection {
   private outcomes: Array<{
@@ -6,13 +18,53 @@ export class StabilityProjection {
     probability: number;
     techniqueSucceeded?: boolean;
   }>;
+  // Legacy scalar gains and phase boundaries retain their established EV
+  // state. When those collapse a roll, keep its survival branches through the
+  // very same appliers rather than teaching the floor another effect language.
+  private survival?: StabilityProjection;
 
-  constructor(stability: number, penalty: number) {
+  constructor(
+    stability: number,
+    penalty: number,
+    previous?: StabilityProjection,
+  ) {
     this.outcomes = [{ stability, penalty, probability: 1 }];
+    const inherited = previous?.survival ?? previous;
+    // Certain setup/mastery phases already have this exact point state. Only
+    // retain a separate distribution when the EV boundary actually lost one.
+    if (
+      inherited &&
+      (inherited.outcomes.length !== 1 ||
+        inherited.outcomes[0].stability !== stability ||
+        inherited.outcomes[0].penalty !== penalty)
+    ) {
+      this.survival = inherited.copySurvival();
+    }
+  }
+
+  private copySurvival(): StabilityProjection {
+    if (this.survival) return this.survival.copySurvival();
+    const copy = new StabilityProjection(0, 0);
+    copy.outcomes = this.outcomes.map((outcome) => ({ ...outcome }));
+    return copy;
+  }
+
+  /** Keep compatibility EV unchanged, without treating a scalar mean as certain. */
+  changeExpectedTechnique(
+    expected: number,
+    realized: number,
+    probability: number,
+  ): void {
+    const survival = this.survival ?? this.copySurvival();
+    this.survival = undefined;
+    this.change(expected);
+    survival.change(realized, 0, probability);
+    this.survival = survival;
   }
 
   /** One action success roll shared by every technique resource effect. */
   beginTechnique(probability: number): void {
+    this.survival?.beginTechnique(probability);
     if (probability >= 1) return;
     this.outcomes = this.outcomes.flatMap((outcome) => [
       ...(probability > 0
@@ -37,6 +89,7 @@ export class StabilityProjection {
   }
 
   endTechnique(): void {
+    this.survival?.endTechnique();
     for (const outcome of this.outcomes) delete outcome.techniqueSucceeded;
   }
 
@@ -54,6 +107,7 @@ export class StabilityProjection {
     probability = 1,
     successOnly = false,
   ): void {
+    this.survival?.change(stability, penalty, probability, successOnly);
     if (probability <= 0 || (stability === 0 && penalty === 0)) return;
     if (probability >= 1) {
       for (const outcome of this.outcomes) {
@@ -91,6 +145,7 @@ export class StabilityProjection {
   }
 
   restoreMaximum(): void {
+    this.survival?.restoreMaximum();
     this.outcomes = this.outcomes.map((outcome) => ({
       ...outcome,
       penalty: 0,
@@ -110,6 +165,7 @@ export class StabilityProjection {
     outcomes?: Array<{ cost: number; probability: number }>,
   ): void {
     if (!outcomes?.length) return this.change(-cost);
+    this.survival?.pay(cost, outcomes);
     this.outcomes = this.outcomes.flatMap((old) =>
       outcomes.map((payment) => ({
         ...old,
@@ -123,9 +179,17 @@ export class StabilityProjection {
     initialMaximum: number,
     decay: boolean,
     cleanup: boolean,
-  ): { stability: number; penalty: number } {
+    visitOutcome?: (outcome: StabilityOutcome) => void,
+  ): {
+    stability: number;
+    penalty: number;
+    floor: ActionSurvivabilityFloor;
+  } {
     let stability = 0;
     let penalty = 0;
+    let minimumStability = Infinity;
+    let minimumMaximum = Infinity;
+    let survivalProbability = 0;
     for (const outcome of this.outcomes) {
       const p = cleanup
         ? Math.max(
@@ -143,7 +207,26 @@ export class StabilityProjection {
         : outcome.stability;
       stability += outcome.probability * s;
       penalty += outcome.probability * p;
+      minimumStability = Math.min(minimumStability, s);
+      const maximum = Math.max(0, initialMaximum - p);
+      minimumMaximum = Math.min(minimumMaximum, maximum);
+      if (s > 0) survivalProbability += outcome.probability;
+      if (!this.survival)
+        visitOutcome?.({
+          stability: s,
+          maxStability: maximum,
+          probability: outcome.probability,
+        });
     }
-    return { stability, penalty };
+    return {
+      stability,
+      penalty,
+      floor: this.survival?.finish(initialMaximum, decay, cleanup, visitOutcome)
+        .floor ?? {
+        stability: minimumStability,
+        maxStability: minimumMaximum,
+        survivalProbability: Math.max(0, Math.min(1, survivalProbability)),
+      },
+    };
   }
 }

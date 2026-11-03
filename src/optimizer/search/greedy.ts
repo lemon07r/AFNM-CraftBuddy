@@ -223,6 +223,7 @@ function runGreedySearch(
       config,
       conditionEffects,
       normalizedCurrentCondition,
+      displayState,
     );
     const floorStability =
       survivabilityFloor?.stability ?? displayState.stability;
