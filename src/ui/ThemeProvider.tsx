@@ -6,7 +6,7 @@
  */
 
 import React, { memo } from 'react';
-import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
+import { ThemeProvider as MuiThemeProvider } from '@mui/material';
 import { craftBuddyTheme } from './theme';
 
 interface CraftBuddyThemeProviderProps {
