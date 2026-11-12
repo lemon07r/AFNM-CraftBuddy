@@ -29,16 +29,11 @@ import {
   evalExpression,
   parseRecipeConditionEffects,
   ConditionEffect,
-  setNativeCraftingUtils,
 } from '../optimizer/gameTypes';
 import { getConditionEffectsForConfig } from '../optimizer/skills';
 import { BuffType } from '../optimizer/state';
 
 describe('Game-Accurate Mechanics', () => {
-  afterEach(() => {
-    setNativeCraftingUtils(undefined);
-  });
-
   describe('Critical Hit Formula', () => {
     it('should calculate expected crit multiplier correctly for normal crit chance', () => {
       // 50% crit chance, 150% crit multiplier (1.5x)
@@ -78,42 +73,18 @@ describe('Game-Accurate Mechanics', () => {
       expect(result).toBeCloseTo(2.0, 2);
     });
 
-    it('should treat the native overcrit multiplier as a ratio, not a percentage', () => {
-      // Runtime calculateCraftingOvercrit already divides by 100:
-      // `let i = (critMultiplier + Math.max(0, critChance - 100) * 3) / 100`
-      // so a 150% crit is returned as 1.5.
-      const localFallback = calculateExpectedCritMultiplier(50, 150);
-
-      setNativeCraftingUtils({
-        calculateCraftingOvercrit: () => ({
-          multiplier: 1.5,
-          critCount: 1,
-          didCrit: true,
-        }),
+    it('never samples a native roll or Math.random', () => {
+      const random = jest.spyOn(Math, 'random').mockImplementation(() => {
+        throw new Error('RNG in EV');
       });
-
-      const nativeResult = calculateExpectedCritMultiplier(50, 150);
-      expect(nativeResult).toBeCloseTo(1.25, 5);
-      expect(nativeResult).toBeCloseTo(localFallback, 5);
-    });
-
-    it('should agree with the local fallback for overcrit inputs', () => {
-      // 150% crit chance, 150% base multiplier -> runtime ratio
-      // (150 + 50 * 3) / 100 = 3.
-      const localFallback = calculateExpectedCritMultiplier(150, 150);
-
-      setNativeCraftingUtils({
-        calculateCraftingOvercrit: () => ({
-          multiplier: 3,
-          critCount: 1,
-          didCrit: true,
-        }),
-      });
-
-      expect(calculateExpectedCritMultiplier(150, 150)).toBeCloseTo(
-        localFallback,
-        5,
-      );
+      try {
+        for (let i = 0; i < 20; i++) {
+          expect(calculateExpectedCritMultiplier(50, 150)).toBe(1.25);
+          expect(calculateExpectedCritMultiplier(150, 150)).toBe(3);
+        }
+      } finally {
+        random.mockRestore();
+      }
     });
   });
 
@@ -336,12 +307,7 @@ describe('Game-Accurate Mechanics', () => {
       expect(result).toBe(50); // 10 * 5
     });
 
-    it('should bypass native scaling for upgrade-bearing stat scalings', () => {
-      const nativeEvaluateScaling = jest.fn(() => 999999);
-      setNativeCraftingUtils({
-        evaluateScaling: nativeEvaluateScaling,
-      });
-
+    it('should evaluate upgrade-bearing stat scalings locally', () => {
       const scaling = {
         value: 3.5,
         stat: 'control',
@@ -366,15 +332,9 @@ describe('Game-Accurate Mechanics', () => {
       } as any;
 
       expect(evaluateScaling(scaling, variables, 0)).toBe(-8442);
-      expect(nativeEvaluateScaling).not.toHaveBeenCalled();
     });
 
-    it('should ignore native scaling for non-upgrade stat scalings in optimizer simulation', () => {
-      const nativeEvaluateScaling = jest.fn(() => 999999);
-      setNativeCraftingUtils({
-        evaluateScaling: nativeEvaluateScaling,
-      });
-
+    it('should evaluate non-upgrade stat scalings locally', () => {
       const scaling = {
         value: 0.8,
         stat: 'control',
@@ -398,7 +358,6 @@ describe('Game-Accurate Mechanics', () => {
       } as any;
 
       expect(evaluateScaling(scaling, variables, 0)).toBe(-2124);
-      expect(nativeEvaluateScaling).not.toHaveBeenCalled();
     });
 
     it('should respect max cap', () => {
@@ -790,6 +749,9 @@ describe('Safe Expression Parser', () => {
       intensity: 50,
       critchance: 25,
       critmultiplier: 150,
+      overcrit: 0,
+      overcritCapBonus: 0,
+      refinementCritChance: 0,
       pool: 80,
       maxpool: 100,
       toxicity: 20,

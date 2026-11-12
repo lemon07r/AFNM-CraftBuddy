@@ -52,6 +52,27 @@ import {
 import { debugLog } from '../utils/debug';
 import { parseGameNumber } from '../utils/largeNumbers';
 
+/** Raw entity stats, before the optimizer folds held buff contributions. */
+export function extractOvercritStats(
+  stats:
+    | {
+        overcrit?: unknown;
+        overcritCapBonus?: unknown;
+        refinementCritChance?: unknown;
+      }
+    | undefined,
+): {
+  overcrit: number;
+  overcritCapBonus: number;
+  refinementCritChance: number;
+} {
+  return {
+    overcrit: parseGameNumber(stats?.overcrit, 0),
+    overcritCapBonus: parseGameNumber(stats?.overcritCapBonus, 0),
+    refinementCritChance: parseGameNumber(stats?.refinementCritChance, 0),
+  };
+}
+
 /** Preserve the live definition and instance state, including companion uses. */
 export function extractTrackedBuffs(
   buffs: readonly CraftingBuff[] | undefined,

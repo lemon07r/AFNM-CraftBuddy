@@ -157,7 +157,6 @@ export {
   getBonusAndChance,
   parseRecipeConditionEffects,
   EXPONENTIAL_SCALING_FACTOR,
-  setNativeCraftingUtils,
 } from './gameTypes';
 export type {
   CraftingCondition,
@@ -181,5 +180,4 @@ export type {
   BuffDefinition,
   BuffEffect,
   ActiveBuff,
-  NativeCraftingUtils,
 } from './gameTypes';

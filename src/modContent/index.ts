@@ -34,7 +34,6 @@ import {
   normalizeForecastConditionQueue,
   setConditionTransitionProvider,
   VISIBLE_CONDITION_QUEUE_LENGTH,
-  setNativeCraftingUtils,
   setNativeCanUseActionProvider,
   buildCanonicalNativeVariables,
   CrossStepSearchCache,
@@ -146,6 +145,7 @@ import {
   convertGameTechniques,
   extractBuffInfo,
   extractTrackedBuffs,
+  extractOvercritStats,
   extractCapCandidate,
   extractCompletionBonusStacks,
   findPositiveGameNumber,
@@ -859,21 +859,9 @@ function configureNativeOptimizerProviders(): void {
   const modUtils = (window as any)?.modAPI?.utils;
   const nextConditionResolver = getModApiNextConditionResolver();
 
-  const nativeCalculateOvercrit =
-    typeof modUtils?.calculateCraftingOvercrit === 'function'
-      ? (critChance: number, critMultiplier: number) =>
-          modUtils.calculateCraftingOvercrit(critChance, critMultiplier)
-      : undefined;
-
-  setNativeCraftingUtils(
-    nativeCalculateOvercrit
-      ? {
-          calculateCraftingOvercrit: nativeCalculateOvercrit,
-        }
-      : undefined,
-  );
   integrationDiagnostics.usingModApiScalingEvaluator = false;
-  integrationDiagnostics.usingModApiOvercritHelper = !!nativeCalculateOvercrit;
+  // Compatibility diagnostic for old replay/debug consumers; EV never rolls RNG.
+  integrationDiagnostics.usingModApiOvercritHelper = false;
 
   const nativeCanUseAction =
     typeof modUtils?.canUseAction === 'function'
@@ -1088,7 +1076,6 @@ function ensureNativeProvidersInitialized(): void {
   configureNativeOptimizerProviders();
   nativeProvidersInitialized =
     integrationDiagnostics.usingModApiScalingEvaluator ||
-    integrationDiagnostics.usingModApiOvercritHelper ||
     integrationDiagnostics.usingModApiCanUseActionPrecheck ||
     integrationDiagnostics.usingModApiGetNextCondition ||
     integrationDiagnostics.usingModApiGetActionCost ||
@@ -1151,8 +1138,7 @@ function buildIntegrationDiagnosticsSummary(): Record<string, unknown> {
   const fallbackActive: string[] = [];
   if (d.usingModApiScalingEvaluator) nativeActive.push('scaling');
   else fallbackActive.push('scaling');
-  if (d.usingModApiOvercritHelper) nativeActive.push('overcrit');
-  else fallbackActive.push('overcrit');
+  fallbackActive.push('overcrit');
   if (d.usingModApiCanUseActionPrecheck) nativeActive.push('canUseAction');
   else fallbackActive.push('canUseAction');
   if (d.usingModApiGetNextCondition) nativeActive.push('conditionTransition');
@@ -1733,6 +1719,7 @@ function updateRecommendation(
     perfection,
     critChance,
     critMultiplier,
+    ...extractOvercritStats(entity?.stats),
     successChanceBonus,
     poolCostFlat,
     qiDroplets: parseGameNumber(entity?.stats?.qiDroplets, 0),

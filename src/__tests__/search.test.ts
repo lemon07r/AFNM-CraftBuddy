@@ -5637,7 +5637,7 @@ describe('scoreState (isolated)', () => {
     expect(result.optimalRotation?.slice(0, 4)).toEqual([
       'Gentle Stabilize',
       'Focus',
-      'Repurpose Qi',
+      'Unstable Refine',
       'Unstable Refine',
     ]);
     expect(result.expectedFinalState?.stability).toBe(0);

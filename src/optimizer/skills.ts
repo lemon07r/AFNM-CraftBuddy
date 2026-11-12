@@ -1510,6 +1510,83 @@ function getTechniqueScalingBase(
   return base;
 }
 
+/** The runtime serial deduplicates N4i across every applier of one technique. */
+function nextCritActionId(buffs: ActiveBuffMap): number {
+  let id = 0;
+  buffs.forEach((buff) => {
+    id = Math.max(id, buff.internalState?.critActionId ?? 0);
+  });
+  return id + 1;
+}
+
+function hasCritCycle(buffs: ActiveBuffMap): boolean {
+  return Array.from(buffs.values()).some(
+    (buff) => buff.stacks > 0 && buff.definition?.critCycle,
+  );
+}
+
+function needsOrderedCritBars(buffs: ActiveBuffMap): boolean {
+  return (
+    hasCritCycle(buffs) ||
+    Array.from(buffs.values()).some(
+      (buff) =>
+        buff.stacks > 0 &&
+        buff.definition?.triggeredEffects?.some(
+          (block) => block.trigger === 'crit',
+        ),
+    )
+  );
+}
+
+/** Call only for a positive bar application. Replaces entries, never mutates a
+ * tracked buff (previews pass their own map). Items have no action id. */
+function barCritInputs(
+  variables: Readonly<ScalingVariables>,
+  buffs: ActiveBuffMap,
+  actionId?: number,
+): { chance: number; overcrit: number; growth: number } {
+  let chance = variables.critchance;
+  let overcrit = variables.overcrit;
+  let growth = 0;
+  buffs.forEach((buff, key) => {
+    if (buff.stacks <= 0) return;
+    growth += buff.definition?.overcritChainGrowth ?? 0;
+    const cycle = buff.definition?.critCycle;
+    if (!cycle || actionId === undefined) return;
+    let internal = buff.internalState ?? {};
+    if (internal.critActionId !== actionId) {
+      const remaining = (internal.actionsRemaining ?? cycle.interval) - 1;
+      internal = {
+        ...internal,
+        critActionId: actionId,
+        critCycleReady: +(remaining <= 0),
+        actionsRemaining: remaining <= 0 ? cycle.interval : remaining,
+      };
+      buffs.set(key, { ...buff, internalState: internal });
+    }
+    if (internal.critCycleReady) {
+      chance += cycle.critchance;
+      overcrit += cycle.overcrit;
+    }
+  });
+  return { chance, overcrit, growth };
+}
+
+function expectedBarCrit(
+  variables: Readonly<ScalingVariables>,
+  buffs: ActiveBuffMap,
+  actionId?: number,
+): number {
+  const input = barCritInputs(variables, buffs, actionId);
+  return calculateExpectedCritMultiplier(
+    input.chance,
+    variables.critmultiplier,
+    input.overcrit,
+    variables.overcritCapBonus,
+    input.growth,
+  );
+}
+
 function buildTechniqueScalingVariables(
   state: CraftingState,
   config: OptimizerConfig,
@@ -1550,6 +1627,9 @@ function buildTechniqueScalingBase(
     intensity: 0,
     critchance: 0,
     critmultiplier: 0,
+    overcrit: state.overcrit,
+    overcritCapBonus: state.overcritCapBonus,
+    refinementCritChance: state.refinementCritChance,
     pool: state.qi,
     qiDroplets: state.qiDroplets,
     maxqiDroplets: state.maxQiDroplets,
@@ -2201,6 +2281,7 @@ function buildActionEvaluationFrame(
   skill: SkillDefinition,
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
+  includeRefinement = true,
 ): ActionEvaluationFrame {
   const harmonyMods = getHarmonyStatModifiers(
     state.harmonyData,
@@ -2228,6 +2309,14 @@ function buildActionEvaluationFrame(
   variables.intensity *= 1 + (mastery.bonuses.intensityBonus || 0);
   variables.critchance += mastery.bonuses.critChanceBonus || 0;
   variables.critmultiplier += mastery.bonuses.critMultiplierBonus || 0;
+  // Only the technique-effect frame receives this post-mastery refinement stat;
+  // payment and trigger frames retain the ordinary folded crit chance.
+  if (
+    includeRefinement &&
+    skill.actionKind !== 'item' &&
+    skill.type === 'refine'
+  )
+    variables.critchance += variables.refinementCritChance;
   variables.successChanceBonus += mastery.bonuses.successChanceBonus || 0;
   // Private read-only inputs only: effect/progress outputs remain caller-owned.
   // A transition passes this exact frame down to its gain calculation rather
@@ -2574,16 +2663,7 @@ function calculateDisciplinedTouchGainsWithFrame(
   options: SkillGainOptions,
   frame = buildActionEvaluationFrame(state, skill, config, conditionEffects),
 ): SkillGains {
-  const preMasteryVars = frame.preMasteryVariables;
-  const mastery = frame.mastery.bonuses;
-  const effectiveVars: ScalingVariables = {
-    ...preMasteryVars,
-    control: preMasteryVars.control * (1 + (mastery.controlBonus || 0)),
-    intensity: preMasteryVars.intensity * (1 + (mastery.intensityBonus || 0)),
-    critchance: preMasteryVars.critchance + (mastery.critChanceBonus || 0),
-    critmultiplier:
-      preMasteryVars.critmultiplier + (mastery.critMultiplierBonus || 0),
-  };
+  const effectiveVars = frame.variables;
 
   // Use skill's multipliers (baseCompletionGain and basePerfectionGain)
   // These are typically 0.5 each for Disciplined Touch
@@ -2597,9 +2677,13 @@ function calculateDisciplinedTouchGainsWithFrame(
   // Apply crit (only to positive gains)
   const includeExpectedValue = options.includeExpectedValue ?? true;
   const critMultiplier = includeExpectedValue
-    ? calculateExpectedCritMultiplier(
-        effectiveVars.critchance,
-        effectiveVars.critmultiplier,
+    ? expectedBarCrit(
+        effectiveVars,
+        new Map(state.buffs),
+        skill.actionKind === 'item' ||
+          (completionGain <= 0 && perfectionGain <= 0)
+          ? undefined
+          : nextCritActionId(state.buffs),
       )
     : 1;
 
@@ -2660,7 +2744,10 @@ function calculateSkillGainsWithFrame(
   frame?: ActionEvaluationFrame,
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
-  if (skill.effects?.length && hasEffectInterceptors(state.buffs)) {
+  if (
+    skill.effects?.length &&
+    (hasEffectInterceptors(state.buffs) || needsOrderedCritBars(state.buffs))
+  ) {
     const prepared = prepareActionPhases(
       state,
       skill,
@@ -2824,10 +2911,14 @@ function calculateUninterceptedSkillGains(
   const masteryUpgrades = evaluation.mastery.upgrades;
   const scalingVars = evaluation.variables;
 
+  const previewBuffs = hasCritCycle(state.buffs)
+    ? new Map(state.buffs)
+    : state.buffs;
   const critFactor = includeExpectedValue
-    ? calculateExpectedCritMultiplier(
-        scalingVars.critchance,
-        scalingVars.critmultiplier,
+    ? expectedBarCrit(
+        scalingVars,
+        previewBuffs,
+        skill.actionKind === 'item' ? undefined : nextCritActionId(state.buffs),
       )
     : 1;
 
@@ -3343,6 +3434,7 @@ export function canApplySkill(
  * @param targetCompletion - Target completion for completion bonus calculation
  */
 interface ActionPhaseContext {
+  critActionId?: number;
   preview?: boolean;
   includeExpectedValue?: boolean;
   previewGains?: SkillGains;
@@ -3932,6 +4024,10 @@ function prepareActionPhases(
       })
     : state;
   const context: ActionPhaseContext = {
+    critActionId:
+      skill.actionKind === 'item'
+        ? undefined
+        : nextCritActionId(existingBuffNames),
     includeExpectedValue: options.includeExpectedValue,
     existingBuffNames,
     successChance,
@@ -4062,7 +4158,9 @@ function applySkillTransition(
 
   // Calculate gains BEFORE applying buffs from this skill
   const orderedNumeric = hasEffectInterceptors(resolvedActiveBuffs);
-  const orderedEffects = orderedNumeric && !!skill.effects?.length;
+  const orderedEffects =
+    (orderedNumeric || needsOrderedCritBars(resolvedActiveBuffs)) &&
+    !!skill.effects?.length;
   const newBuffs = new Map(resolvedActiveBuffs);
   let certainApplication = true;
   const evaluation = buildActionEvaluationFrame(
@@ -4070,6 +4168,7 @@ function applySkillTransition(
     skill,
     config,
     conditionEffects,
+    !phase.masteryPhase,
   );
   const gains: SkillGains =
     orderedEffects ||
@@ -4099,9 +4198,13 @@ function applySkillTransition(
   // the pre-action state, so they are built up front and shared by the cost
   // restore, technique effects, and buff effects below.
   const actionMasteryUpgrades = evaluation.mastery.upgrades;
-  const actionVars = orderedNumeric
-    ? { ...evaluation.variables, step: state.step }
-    : evaluation.variables;
+  const actionVars = {
+    ...evaluation.variables,
+    ...(orderedNumeric ? { step: state.step } : {}),
+    ...(phase.critActionId === undefined
+      ? {}
+      : { critActionId: phase.critActionId }),
+  };
 
   const actionSuccessChance =
     phase.successChance ??
@@ -4405,10 +4508,37 @@ function applySkillTransition(
   let runningCompletion = state.completion;
   let runningPerfection = state.perfection;
 
+  // D4i/SC build a fresh wp entity frame, not the technique's mastery/refine
+  // frame. Refresh crit stats after earlier effects mutate buffs/internal state.
+  // Other buff scaling retains the established intra-turn approximation.
+  const buildBuffActionVariables = (): ScalingVariables => {
+    const plain = buildPreMasteryActionVariables(
+      state.copy({
+        buffs: newBuffs,
+        qi: newQi,
+        stability: newStability + buffStabilityDelta,
+      }),
+      config,
+      conditionEffects,
+      getHarmonyStatModifiers(state.harmonyData, config.craftingType),
+    );
+    const variables = {
+      ...actionVars,
+      critchance: plain.critchance,
+      critmultiplier: plain.critmultiplier,
+      overcrit: plain.overcrit,
+      overcritCapBonus: plain.overcritCapBonus,
+      refinementCritChance: plain.refinementCritChance,
+    };
+    delete variables.critActionId;
+    return variables;
+  };
+
   const dispatchBuffTriggers = (
     trigger: CraftingBuffTrigger,
     amount: number,
     percentGained: number = 0,
+    payload: Record<string, number> = {},
   ): void => {
     if (
       !Number.isFinite(amount) ||
@@ -4417,10 +4547,13 @@ function applySkillTransition(
         trigger !== 'poolSpent' &&
         trigger !== 'stabilityRestored' &&
         trigger !== 'stabilitySpent' &&
+        trigger !== 'actionResolved' &&
+        trigger !== 'actionFailed' &&
         !trigger.startsWith('stackLost.'))
     ) {
       return;
     }
+    let buffActionVars: ScalingVariables | undefined;
     for (const [buffKey, buff] of Array.from(newBuffs.entries())) {
       const blocks = buff.definition?.triggeredEffects;
       if (
@@ -4433,8 +4566,9 @@ function applySkillTransition(
       const guardKey = `${trigger}:${buffKey}`;
       if (activeTriggers.has(guardKey)) continue;
       activeTriggers.add(guardKey);
+      buffActionVars ??= buildBuffActionVariables();
       const scope: ScalingVariables = {
-        ...actionVars,
+        ...buffActionVars,
         roomEffectiveness: 0,
         pool: newQi,
         maxpool: qiCap,
@@ -4445,6 +4579,7 @@ function applySkillTransition(
         stacks: buff.stacks,
         amount,
         percentGained,
+        ...payload,
       };
       for (const block of blocks) {
         if (block.trigger !== trigger) {
@@ -4475,10 +4610,8 @@ function applySkillTransition(
     perfection: state.perfection,
     stability: state.stability - effectiveStabilityCost,
   };
-  const techniqueCritFactor = calculateExpectedCritMultiplier(
-    actionVars.critchance,
-    actionVars.critmultiplier,
-  );
+  // The nonordered path has no cycles; do not tick one merely by building a frame.
+  const techniqueCritFactor = expectedBarCrit(actionVars, new Map(newBuffs));
   const canNormalizeInertBars = !Array.from(newBuffs.values()).some((owner) =>
     getCraftingEffectInterceptors(owner.definition).some((interceptor) => {
       if (interceptor.legacyPreventionLimit !== undefined)
@@ -4560,14 +4693,23 @@ function applySkillTransition(
       certainApplication && factor === 1,
     );
     if (effect.kind === 'stability' && pricedRaw < 0 && raw === 0) return;
+    const isBar = effect.kind === 'completion' || effect.kind === 'perfection';
+    const critInputs =
+      raw > 0 && isBar
+        ? barCritInputs(actionVars, newBuffs, phase.critActionId)
+        : undefined;
     const crit =
       phase.includeExpectedValue === false
         ? 1
-        : calculateExpectedCritMultiplier(
-            actionVars.critchance,
-            actionVars.critmultiplier,
-          );
-    const isBar = effect.kind === 'completion' || effect.kind === 'perfection';
+        : critInputs
+          ? calculateExpectedCritMultiplier(
+              critInputs.chance,
+              actionVars.critmultiplier,
+              critInputs.overcrit,
+              actionVars.overcritCapBonus,
+              critInputs.growth,
+            )
+          : 1;
     const application = prepareNumericApplication(
       effect.kind,
       raw > 0 && isBar ? raw * crit : raw,
@@ -4654,6 +4796,21 @@ function applySkillTransition(
             completion ? targetCompletion : targetPerfection,
           ),
         );
+      if (
+        raw > 0 &&
+        certainApplication &&
+        factor === 1 &&
+        (critInputs?.chance ?? 0) >= 100
+      )
+        dispatchBuffTriggers(
+          'crit',
+          amount,
+          computeTriggerPercentGained(
+            amount,
+            before + amount,
+            completion ? targetCompletion : targetPerfection,
+          ),
+        );
     } else if (effect.kind === 'stability') {
       stabilityProjection.changeTechnique(
         application.realizedAmount,
@@ -4680,8 +4837,18 @@ function applySkillTransition(
     }
   };
   if (orderedNumeric) {
+    // A4i resets to wp after masteries for payment, keeping the technique id
+    // but adding neither mastery crit nor refinementCritChance until effects.
+    const paymentVars = {
+      ...buildBuffActionVariables(),
+      ...(phase.critActionId === undefined
+        ? {}
+        : { critActionId: phase.critActionId }),
+    };
     if (effectiveQiCost !== 0)
-      applyPoolChange(interceptResource('pool', -effectiveQiCost, true));
+      applyPoolChange(
+        interceptResource('pool', -effectiveQiCost, true, paymentVars),
+      );
     const paymentCertain =
       effectiveCosts.stabilityOutcomes?.every((outcome) => outcome.cost > 0) ??
       true;
@@ -4690,6 +4857,7 @@ function applySkillTransition(
       'stability',
       -effectiveStabilityCost,
       paymentCertain,
+      paymentVars,
     );
     stabilityProjection.pay(
       effectiveStabilityCost,
@@ -4882,6 +5050,9 @@ function applySkillTransition(
   ): void {
     const liveOwner = newBuffs.get(ownerBuffKey);
     if (!liveOwner) return;
+    // Internal critCycle bookkeeping is not an action frame: only an inherited
+    // caller id (interceptor effects) may make this application tick/use a cycle.
+    const callerCritActionId = scalingVars.critActionId;
     Object.assign(
       scalingVars,
       { roomEffectiveness: 0 },
@@ -4889,6 +5060,8 @@ function applySkillTransition(
       liveOwner.internalState,
       { stacks: liveOwner.stacks },
     );
+    if (callerCritActionId === undefined) delete scalingVars.critActionId;
+    else scalingVars.critActionId = callerCritActionId;
     const conditionResult = evaluateEffectCondition(
       effect.condition,
       state,
@@ -4925,6 +5098,19 @@ function applySkillTransition(
       scalingVars,
     );
     if (effect.kind === 'stability' && pricedRaw < 0 && raw === 0) return;
+    const bar = effect.kind === 'completion' || effect.kind === 'perfection';
+    const critInputs =
+      bar && raw > 0
+        ? barCritInputs(scalingVars, newBuffs, scalingVars.critActionId)
+        : undefined;
+    if (bar && raw > 0)
+      raw *= calculateExpectedCritMultiplier(
+        critInputs!.chance,
+        scalingVars.critmultiplier,
+        critInputs!.overcrit,
+        scalingVars.overcritCapBonus,
+        critInputs!.growth,
+      );
     const application = prepareNumericApplication(
       effect.kind,
       raw,
@@ -4953,6 +5139,16 @@ function applySkillTransition(
             computeTriggerPercentGained(amount, barAfter, targetCompletion),
           );
         }
+        if (raw > 0 && certainApplication && (critInputs?.chance ?? 0) >= 100)
+          dispatchBuffTriggers(
+            'crit',
+            amount,
+            computeTriggerPercentGained(
+              amount,
+              runningCompletion,
+              targetCompletion,
+            ),
+          );
         break;
       case 'perfection':
         buffPerfection += amount;
@@ -4968,6 +5164,16 @@ function applySkillTransition(
             computeTriggerPercentGained(amount, barAfter, targetPerfection),
           );
         }
+        if (raw > 0 && certainApplication && (critInputs?.chance ?? 0) >= 100)
+          dispatchBuffTriggers(
+            'crit',
+            amount,
+            computeTriggerPercentGained(
+              amount,
+              runningPerfection,
+              targetPerfection,
+            ),
+          );
         break;
       case 'stability':
         stabilityProjection.change(
@@ -5101,6 +5307,8 @@ function applySkillTransition(
     };
     return state;
   }
+  if (!orderedEffects && (gains.completion > 0 || gains.perfection > 0))
+    barCritInputs(actionVars, newBuffs, phase.critActionId);
   if (triggerBuffsPresent) {
     if (!orderedNumeric) {
       if (qiSpentByCost > 0) {
@@ -5160,6 +5368,14 @@ function applySkillTransition(
     }
   }
 
+  if (!isItemAction && !phase.masteryPhase) {
+    if (actionSuccessChance === 0) dispatchBuffTriggers('actionFailed', 0);
+    dispatchBuffTriggers('actionResolved', 0, 0, {
+      isRefinement: +(skill.type === 'refine'),
+      succeeded: actionSuccessChance,
+    });
+  }
+
   if (consumesTurn) {
     for (const [buffKey] of Array.from(newBuffs.entries())) {
       // Triggered effects may have rewritten this buff's internal state
@@ -5168,7 +5384,7 @@ function applySkillTransition(
       const liveBuff = newBuffs.get(buffKey);
       if (!liveBuff?.definition) continue;
       const scalingVars: ScalingVariables = {
-        ...actionVars,
+        ...buildBuffActionVariables(),
         roomEffectiveness: 0,
         stability: newStability + buffStabilityDelta,
         maxstability: state.initialMaxStability,

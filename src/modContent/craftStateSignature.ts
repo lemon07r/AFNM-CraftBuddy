@@ -62,6 +62,9 @@ export interface CraftStateSignatureInput {
   readonly harmony: number;
   readonly harmonyData: unknown;
   readonly consumedPills: number;
+  readonly overcrit?: number;
+  readonly overcritCapBonus?: number;
+  readonly refinementCritChance?: number;
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
@@ -228,7 +231,7 @@ function serializeQuickAccessInventory(
 export function buildCraftStateSignature(
   input: CraftStateSignatureInput,
 ): string {
-  return [
+  const fields = [
     `step:${readNumber(input.step)}`,
     `qi:${readNumber(input.qi)}`,
     `comp:${readNumber(input.completion)}`,
@@ -251,7 +254,14 @@ export function buildCraftStateSignature(
     `techniques:${serializeTechniqueRoster(input.techniques)}`,
     `buffs:${serializeBuffs(input.buffs)}`,
     `items:${serializeQuickAccessInventory(input.quickAccess, input.inventory)}`,
-  ].join(';');
+  ];
+  // Preserve signatures of old zero-stat states, but invalidate pending work
+  // if a live base stat changes. Buff-derived changes are already in `buffs`.
+  if (input.overcrit || input.overcritCapBonus || input.refinementCritChance)
+    fields.push(
+      `critStats:${readNumber(input.overcrit)},${readNumber(input.overcritCapBonus)},${readNumber(input.refinementCritChance)}`,
+    );
+  return fields.join(';');
 }
 
 /** The field names that differ between two signatures. */
@@ -348,6 +358,9 @@ export function readLiveCraftStateSignature(
   const signature = buildCraftStateSignature({
     step: readNumber(progressState.step, 0),
     qi: readNumber(stats?.pool, 0),
+    overcrit: readNumber(stats?.overcrit, 0),
+    overcritCapBonus: readNumber(stats?.overcritCapBonus, 0),
+    refinementCritChance: readNumber(stats?.refinementCritChance, 0),
     completion: readNumber(progressState.completion, 0),
     perfection: readNumber(progressState.perfection, 0),
     stability: readNumber(progressState.stability, 0),

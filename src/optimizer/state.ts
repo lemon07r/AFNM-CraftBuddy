@@ -153,6 +153,9 @@ export interface CraftingStateData {
   critChance: number;
   /** Base crit multiplier percentage (e.g., 150 for 1.5x). */
   critMultiplier: number;
+  overcrit: number;
+  overcritCapBonus: number;
+  refinementCritChance: number;
   /** Bonus added to technique success chance (0-1). */
   successChanceBonus: number;
   /** Flat Qi cost added after percentage modifiers. */
@@ -234,6 +237,9 @@ export class CraftingState implements CraftingStateData {
   readonly perfection: number;
   readonly critChance: number;
   readonly critMultiplier: number;
+  readonly overcrit: number;
+  readonly overcritCapBonus: number;
+  readonly refinementCritChance: number;
   readonly successChanceBonus: number;
   readonly poolCostFlat: number;
   readonly poolCostPercentage: number;
@@ -286,6 +292,9 @@ export class CraftingState implements CraftingStateData {
     this.perfection = data.perfection ?? 0;
     this.critChance = data.critChance ?? 0;
     this.critMultiplier = data.critMultiplier ?? 150; // 150% = 1.5x multiplier
+    this.overcrit = data.overcrit ?? 0;
+    this.overcritCapBonus = data.overcritCapBonus ?? 0;
+    this.refinementCritChance = data.refinementCritChance ?? 0;
     this.successChanceBonus = data.successChanceBonus ?? 0;
     this.poolCostFlat = data.poolCostFlat ?? 0;
     this.poolCostPercentage =
@@ -364,6 +373,10 @@ export class CraftingState implements CraftingStateData {
       perfection: overrides.perfection ?? this.perfection,
       critChance: overrides.critChance ?? this.critChance,
       critMultiplier: overrides.critMultiplier ?? this.critMultiplier,
+      overcrit: overrides.overcrit ?? this.overcrit,
+      overcritCapBonus: overrides.overcritCapBonus ?? this.overcritCapBonus,
+      refinementCritChance:
+        overrides.refinementCritChance ?? this.refinementCritChance,
       successChanceBonus:
         overrides.successChanceBonus ?? this.successChanceBonus,
       poolCostFlat: overrides.poolCostFlat ?? this.poolCostFlat,
@@ -573,6 +586,11 @@ export class CraftingState implements CraftingStateData {
       this.conditionGenerationHarmony !== this.harmony
     )
       this._cacheKey += `:${this.conditionGenerationHarmony}`;
+    // Base stats are fixed within a search; changing buffs/cycle state already
+    // distinguish branches above. Include nonzero base values for cross-step
+    // reuse, without changing any legacy zero-stat key.
+    if (this.overcrit || this.overcritCapBonus || this.refinementCritChance)
+      this._cacheKey += `:crit=${this.overcrit},${this.overcritCapBonus},${this.refinementCritChance}`;
     return this._cacheKey;
   }
 
@@ -610,6 +628,9 @@ export interface CreateStateOptions {
   buffs?: Map<string, TrackedBuff>;
   critChance?: number;
   critMultiplier?: number;
+  overcrit?: number;
+  overcritCapBonus?: number;
+  refinementCritChance?: number;
   successChanceBonus?: number;
   poolCostFlat?: number;
   poolCostPercentage?: number;
@@ -651,6 +672,9 @@ export function createStateFromGame(opts: CreateStateOptions): CraftingState {
     buffs: opts.buffs ?? new Map(),
     critChance: opts.critChance ?? 0,
     critMultiplier: opts.critMultiplier ?? 150,
+    overcrit: opts.overcrit ?? 0,
+    overcritCapBonus: opts.overcritCapBonus ?? 0,
+    refinementCritChance: opts.refinementCritChance ?? 0,
     successChanceBonus: opts.successChanceBonus ?? 0,
     poolCostFlat: opts.poolCostFlat ?? 0,
     poolCostPercentage: opts.poolCostPercentage ?? 100,
@@ -681,6 +705,9 @@ export function buildScalingVariables(
     intensity: state.getIntensity(baseIntensity),
     critchance: state.critChance,
     critmultiplier: state.critMultiplier,
+    overcrit: state.overcrit,
+    overcritCapBonus: state.overcritCapBonus,
+    refinementCritChance: state.refinementCritChance,
     pool: state.qi,
     qiDroplets: state.qiDroplets,
     maxqiDroplets: state.maxQiDroplets,

@@ -165,6 +165,9 @@ export type CraftingBuffTrigger =
   | 'stabilityRestored'
   | 'completionGained'
   | 'perfectionGained'
+  | 'actionResolved'
+  | 'actionFailed'
+  | 'crit'
   | `stackGained.${string}`
   | `stackLost.${string}`;
 
@@ -181,6 +184,9 @@ export interface BuffStats {
   intensity?: Scaling;
   critchance?: Scaling;
   critmultiplier?: Scaling;
+  overcrit?: Scaling;
+  overcritCapBonus?: Scaling;
+  refinementCritChance?: Scaling;
   poolCostFlat?: Scaling;
   poolCostPercentage?: Scaling;
   stabilityCostPercentage?: Scaling;
@@ -208,6 +214,8 @@ export interface CraftingEffectInterceptor {
 }
 
 export interface BuffDefinition {
+  overcritChainGrowth?: number;
+  critCycle?: { interval: number; critchance: number; overcrit: number };
   craftingEffectInterceptors?: CraftingEffectInterceptor[];
   /** @deprecated Compatibility with pre-0.7.20 replay snapshots only. */
   stabilityLossPrevention?: { uses: number };
@@ -498,6 +506,9 @@ export interface ScalingVariables {
   intensity: number;
   critchance: number;
   critmultiplier: number;
+  overcrit: number;
+  overcritCapBonus: number;
+  refinementCritChance: number;
   pool: number;
   maxpool: number;
   toxicity: number;
@@ -529,80 +540,48 @@ export {
   getBonusAndChance,
 } from './outcome';
 
-export interface NativeCraftingUtils {
-  evaluateScaling?: (
-    scaling: Record<string, unknown>,
-    variables: Record<string, number>,
-    stanceLength: number,
-    preMaxTransform?: (value: number) => number,
-  ) => number;
-  calculateCraftingOvercrit?: (
-    critChance: number,
-    critMultiplier: number,
-  ) => {
-    multiplier: number;
-    critCount: number;
-    didCrit: boolean;
-  };
-}
-
-let activeNativeCraftingUtils: NativeCraftingUtils | undefined;
-let warnedNativeOvercritFailure = false;
-
-export function setNativeCraftingUtils(
-  nativeUtils: NativeCraftingUtils | undefined,
-): void {
-  activeNativeCraftingUtils = nativeUtils;
-  warnedNativeOvercritFailure = false;
-}
-
 /**
- * Calculate crafting overcrit (excess crit > 100% converts to bonus multiplier).
- * Matches game's calculateCraftingOvercrit function.
- *
- * @param critChance - Crit chance percentage (0-100+)
- * @param critMultiplier - Base crit multiplier percentage (e.g., 150 for 1.5x)
- * @returns Expected multiplier for deterministic simulation
+ * Exact expectation of the 0.7.20 crit roll, without calling its random native
+ * helper. Each chain contribution is weighted by the probability of reaching
+ * it (all preceding chain rolls must succeed).
  */
 export function calculateExpectedCritMultiplier(
   critChance: number,
   critMultiplier: number,
+  overcrit = 0,
+  overcritCapBonus = 0,
+  chainGrowth = 0,
 ): number {
-  const nativeOvercrit = activeNativeCraftingUtils?.calculateCraftingOvercrit;
-  if (nativeOvercrit) {
-    try {
-      const nativeResult = nativeOvercrit(critChance, critMultiplier);
-      const nativeCritMultiplier = Number(nativeResult?.multiplier);
-      if (Number.isFinite(nativeCritMultiplier) && nativeCritMultiplier > 0) {
-        const actualCritChance = Math.min(Math.max(critChance, 0), 100) / 100;
-        // The runtime already divides by 100 inside calculateCraftingOvercrit
-        // (`(critMultiplier + Math.max(0, critChance - 100) * 3) / 100`), so the
-        // returned multiplier is a ratio (1.5 for a 150% crit). Dividing again
-        // here collapsed every crit to ~1.005x.
-        return 1 - actualCritChance + actualCritChance * nativeCritMultiplier;
-      }
-    } catch (error) {
-      if (!warnedNativeOvercritFailure) {
-        console.warn(
-          '[CraftBuddy] Native calculateCraftingOvercrit failed, using local fallback:',
-          error,
-        );
-        warnedNativeOvercritFailure = true;
-      }
-    }
-  }
-
   // Excess crit chance (>100%) converts to bonus multiplier at 1:3 ratio
   const excessCritChance = Math.max(0, critChance - 100);
   const bonusCritMultiplier = excessCritChance * 3;
-  const effectiveCritMultiplier = critMultiplier + bonusCritMultiplier;
+  const effectiveCritMultiplier =
+    critMultiplier + bonusCritMultiplier + Math.max(0, overcrit - 90) * 5;
 
   // For deterministic simulation, use expected value
   const actualCritChance = Math.min(critChance, 100) / 100;
   const critMultiplierAsRatio = effectiveCritMultiplier / 100;
 
-  // Expected value: (1 - critChance) * 1 + critChance * multiplier
-  return 1 - actualCritChance + actualCritChance * critMultiplierAsRatio;
+  let expectedChain = 1;
+  if (overcrit > 0) {
+    const cap = Math.min(
+      overcrit,
+      Math.min(99, 90 + Math.max(0, overcritCapBonus)),
+    );
+    let threshold = Math.min(critChance, 100);
+    let reachProbability = 1;
+    for (let step = 0; step < 9; step++) {
+      threshold = Math.floor((threshold * cap) / 100);
+      if (threshold <= 0) break;
+      reachProbability *= Math.min(threshold, 100) / 100;
+      expectedChain += reachProbability * (1 + chainGrowth / 100) ** step;
+    }
+  }
+  return (
+    1 -
+    actualCritChance +
+    actualCritChance * critMultiplierAsRatio * expectedChain
+  );
 }
 
 /**
@@ -615,7 +594,7 @@ const EXPRESSION_CACHE = new Map<
 >();
 const MAX_EXPRESSION_CACHE_SIZE = 256;
 const MAX_EXPRESSION_LENGTH = 1024;
-const ALLOWED_EXPRESSION_CHARS = /^[\w\s+\-*/%().,<>=!&|:{}]+$/;
+const ALLOWED_EXPRESSION_CHARS = /^[\w\s+\-*/%().,<>=!&|:{}?]+$/;
 const BLOCKED_EXPRESSION_KEYWORDS =
   /\b(?:while|for|do|switch|try|catch|finally|class|function|new|return|throw|import|export|await|yield|with|const|let|var|delete|this|super)\b/i;
 const ASSIGNMENT_OPERATOR_RE = /(^|[^=!<>])=($|[^=])/;
