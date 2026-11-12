@@ -184,6 +184,43 @@ describe('0.7.20 resource-scope crafting interceptors', () => {
     },
   );
 
+  it('re-reads owner state before each reaction condition', () => {
+    const definition = owner([
+      {
+        scope: 'resource',
+        appliesTo: ['completion'],
+        trigger: { kind: 'condition', condition: 'amount > 0' },
+        modifier: { kind: 'multiply', value: 1 },
+        effects: [
+          {
+            kind: 'setState',
+            key: 'charged',
+            mode: 'add',
+            value: { value: 1 },
+          },
+          {
+            kind: 'setState',
+            key: 'hits',
+            mode: 'add',
+            value: { value: 1 },
+            condition: { kind: 'condition', condition: 'charged >= 1' },
+          },
+        ],
+      },
+    ]);
+    definition.additionalVariables = { charged: 0, hits: 0 };
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      effects: [{ kind: 'completion', amount: { value: 10 } }],
+    });
+    const next = applySkill(held(definition), skill, retargetConfig(skill))!;
+    expect(next.buffs.get('perk')?.internalState).toMatchObject({
+      charged: 1,
+      hits: 1,
+    });
+  });
+
   it('still multiplies uncertain applications when the interceptor has no effects', () => {
     const definition = owner([
       {

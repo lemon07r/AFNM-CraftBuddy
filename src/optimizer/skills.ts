@@ -879,20 +879,30 @@ function interceptCraftingAmount(
       guards.add(guard);
       try {
         for (const effect of interceptor.effects ?? []) {
-          const reactionScope = { ...scope, amount, originalAmount };
+          // Runtime E4i re-reads the owner's state and stacks before each
+          // effect, so later conditions see earlier setState/stack changes.
+          const live = buffs.get(key) ?? owner;
+          const reactionScope: ScalingVariables = {
+            ...scope,
+            ...live.definition?.additionalVariables,
+            ...live.internalState,
+            stacks: live.stacks,
+            amount,
+            originalAmount,
+          };
           const condition = progress
             ? evaluateLiveProgressCondition(
                 effect.condition,
                 state,
                 reactionScope,
-                owner.stacks,
+                live.stacks,
                 progress,
               )
             : evaluateEffectCondition(
                 effect.condition,
                 state,
                 reactionScope,
-                owner.stacks,
+                live.stacks,
               );
           if (condition.met && condition.probability === 1)
             execute({ ...effect, condition: undefined }, key, reactionScope);
