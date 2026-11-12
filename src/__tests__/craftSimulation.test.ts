@@ -16,6 +16,7 @@ import {
   OptimizerConfig,
   DEFAULT_SKILLS,
   applySkill,
+  calculateActionSurvivabilityFloor,
   getConditionEffectsForConfig,
   isTerminalState,
 } from '../optimizer/skills';
@@ -1673,16 +1674,15 @@ describe('craft simulation — sublime crafts', () => {
     expect(zeroHeatRefines).toBe(0);
   });
 
-  it('should keep the full skyfall bow replay on a safe non-fusion line until forge heat recovers', () => {
+  it('should keep the full skyfall bow replay safe and fuse only in Perfect heat', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'skyfall-bow-heat-regression.snapshot.json',
     );
     const input = getReplaySearchInput(snapshot);
     const stableSearchConfig = {
       ...input.searchConfig,
-      // The 1,500-node probe follows the same stabilize/refine/fusion line as
-      // 6,000 nodes per turn. Compare fixed frontiers instead of whichever
-      // frontier a 12s deadline happens to reach under Jest.
+      // Compare fixed 1,500-node frontiers instead of whichever frontier a
+      // 12s deadline happens to reach under Jest.
       timeBudgetMs: 120000,
       maxNodes: 1500,
     };
@@ -1693,9 +1693,6 @@ describe('craft simulation — sublime crafts', () => {
       'neutral',
       'neutral',
     ];
-
-    const chosenKeys: string[] = [];
-    const chosenTypes: string[] = [];
 
     for (let turn = 0; turn < 3; turn++) {
       const currentCondition = conditionTimeline[turn] || 'neutral';
@@ -1714,18 +1711,32 @@ describe('craft simulation — sublime crafts', () => {
 
       expect(result.recommendation).not.toBeNull();
       const skill = result.recommendation!.skill;
-      chosenKeys.push(skill.key);
-      chosenTypes.push(skill.type);
+      const conditionEffects = getConditionEffectsForConfig(
+        input.config,
+        currentCondition,
+      );
+      const floor = calculateActionSurvivabilityFloor(
+        state,
+        skill,
+        input.config,
+        conditionEffects,
+        currentCondition,
+      );
+      expect(floor).not.toBeNull();
+      expect(floor!.stability).toBeGreaterThan(0);
+      expect(floor!.survivalProbability).toBe(1);
 
-      if (turn < 2) {
-        expect(skill.type).not.toBe('fusion');
+      if (skill.type === 'fusion') {
+        const heat = state.harmonyData?.forgeWorks?.heat;
+        expect(heat).toBeGreaterThanOrEqual(4);
+        expect(heat).toBeLessThanOrEqual(6);
       }
 
       const nextState = applySkill(
         state,
         skill,
         input.config,
-        getConditionEffectsForConfig(input.config, currentCondition),
+        conditionEffects,
         input.targetCompletion,
         currentCondition,
       );
@@ -1735,17 +1746,13 @@ describe('craft simulation — sublime crafts', () => {
       state = nextState!;
     }
 
-    // This 0.7.12-era capture now opens with stabilization: 0.7.17 recomputes
-    // technique variables after masteries, and new buff names survive the turn
-    // (RUNTIME_EVIDENCE §17.3; G:540571-540575,540622-540640,540937,541143).
-    // Forceful Stabilize retains Heightening (25%); Invasive Refine now reaches
-    // 1,907 rather than 1,617 perfection, and Delayed Refine stays at one stack
-    // rather than ticking to two. Preserve the safe non-fusion recovery contract,
-    // not the obsolete refine opener or a particular technique variant.
-    expect(chosenTypes[0]).toBe('stabilize');
-    expect(chosenTypes[1]).not.toBe('fusion');
+    // Additive harmony stats produce refine -> fusion -> stabilize: turn 2 at
+    // heat 5 prefers safe Invasive Fusion (floor 8, p 1) over Forceful Stabilize
+    // by 1,992. Heat runs 6 -> 5 -> 7 -> 6; turn 3 restores the Perfect band
+    // rather than stalling outside it. Keep the safety/heat contract, not the
+    // particular technique sequence.
+    expect(state.harmonyData?.forgeWorks?.heat).toBeGreaterThanOrEqual(4);
     expect(state.harmonyData?.forgeWorks?.heat).toBeLessThanOrEqual(6);
-    expect(chosenTypes[2]).toBe('fusion');
   });
 
   it('should not recommend Focused Fusion without a Focus buff (user report)', () => {
