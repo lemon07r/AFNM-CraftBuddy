@@ -167,6 +167,19 @@ function getForgeBandHeatFromBuffs(
   return undefined;
 }
 
+function buildForgeWorks(
+  rawHeat: number,
+  lastBuffedHeat: number | undefined,
+  buffs: Map<string, TrackedBuff> | undefined,
+): NonNullable<HarmonyData['forgeWorks']> {
+  const heat = clampForgeHeat(rawHeat);
+  const bandHeat =
+    heat === 1
+      ? (lastBuffedHeat ?? getForgeBandHeatFromBuffs(buffs))
+      : undefined;
+  return bandHeat === undefined ? { heat } : { heat, lastBuffedHeat: bandHeat };
+}
+
 function canonicalizeForgeHarmonyData(
   harmonyData: HarmonyData,
   nativeVariables: Record<string, number> | undefined,
@@ -179,13 +192,11 @@ function canonicalizeForgeHarmonyData(
     getForgeHeatFromBuffs(buffs);
 
   if (recoveredHeat !== undefined) {
-    const heat = clampForgeHeat(recoveredHeat);
-    const bandHeat =
-      heat === 1
-        ? (clone.forgeWorks?.lastBuffedHeat ?? getForgeBandHeatFromBuffs(buffs))
-        : undefined;
-    clone.forgeWorks =
-      bandHeat === undefined ? { heat } : { heat, lastBuffedHeat: bandHeat };
+    clone.forgeWorks = buildForgeWorks(
+      recoveredHeat,
+      clone.forgeWorks?.lastBuffedHeat,
+      buffs,
+    );
     clone.recommendedTechniqueTypes = getForgeRecommendedTechniqueTypes(
       clone.forgeWorks.heat,
     );
@@ -315,7 +326,7 @@ export function hydrateHarmonyData(params: {
   if (nativeHeat !== undefined) {
     return {
       harmonyData: {
-        forgeWorks: { heat: nativeHeat },
+        forgeWorks: buildForgeWorks(nativeHeat, undefined, buffs),
         recommendedTechniqueTypes:
           getForgeRecommendedTechniqueTypes(nativeHeat),
       },
@@ -327,7 +338,7 @@ export function hydrateHarmonyData(params: {
   if (buffHeat !== undefined) {
     return {
       harmonyData: {
-        forgeWorks: { heat: buffHeat },
+        forgeWorks: buildForgeWorks(buffHeat, undefined, buffs),
         recommendedTechniqueTypes: getForgeRecommendedTechniqueTypes(buffHeat),
       },
       source: 'buffs',
