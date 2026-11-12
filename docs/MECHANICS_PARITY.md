@@ -64,6 +64,12 @@ Technique stability and maximum-stability effects share one action-success branc
 | Boost stats | Completion/perfection/stability/Qi boosts affect positive gains after crit with flooring, not costs/max-stability/harmony. Completion Bonus adds **10 `perfectionBoost` per stack** once; skip its generic stat fold to avoid double application. |
 | Quality caps | `bonusMaximumQuality` is summed in `src/modContent/qualityCap.ts` with equations stripped, stacks fixed at one and per-buff floors, then passed to native cap getters as the fourth argument. |
 
+### Crit fast paths
+
+Zero overcrit uses the original closed form without a memo key; nonzero inputs use a bounded 128-entry memo keyed by all five crit inputs. Immutable state/resolved buff maps share a cycle/growth/serial summary; mutable transition maps never enter that cache. Cycle-free previews avoid private buff-map copies.
+
+Ordinary buffs without effects for the current action build no frame. Constant and stack-only crit contributions project only the five crit channels; arbitrary expressions and unfamiliar scaling fields retain the full live stat fold. Buff-frame snapshots are reused only while the buff revision, Qi and stability are unchanged; stack/definition/internal-state writes, removal and cycle writes invalidate them. Each owner/payload scope copies the snapshot before applying its overlays. Trigger dispatch with no potential listeners allocates no guard set or entry snapshot; creating a listener enables later dispatches during that same action.
+
 ## Outcomes and harmony
 
 `src/optimizer/outcome.ts` owns the conjunction, band thresholds and auto-finish. Basic requires one completion band; perfect one of each; sublime two of each and a sublime item. Widths grow by 1.3×. Termination is stability <= 0 or **both actual caps**, never the five-band refund ceiling. Overcraft extras are independent per-bar rewards gated on the secured tier; terminal scores include bonus-roll fractions. Goal/bias settings change search ambition, not game thresholds.

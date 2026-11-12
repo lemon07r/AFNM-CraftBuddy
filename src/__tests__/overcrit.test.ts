@@ -94,6 +94,50 @@ describe('0.7.20 exact crit expectation', () => {
       calculateExpectedCritMultiplier(100, 200, 95),
     );
   });
+
+  it('preserves exact results across memo hits, all five inputs and bounded-cache turnover', () => {
+    const inputs: Array<[number, number, number, number, number]> = [];
+    for (const chance of [0, 0.25, 50, 100, 150])
+      for (const multiplier of [100, 150, 200])
+        for (const overcrit of [0, 25, 90, 95, 150])
+          for (const cap of [-5, 0, 9])
+            for (const growth of [-10, 0, 100])
+              inputs.push([chance, multiplier, overcrit, cap, growth]);
+    const reference = ([
+      chance,
+      multiplier,
+      overcrit,
+      capBonus,
+      growth,
+    ]: (typeof inputs)[number]) => {
+      const p = Math.min(chance, 100) / 100;
+      const c =
+        (multiplier +
+          Math.max(0, chance - 100) * 3 +
+          Math.max(0, overcrit - 90) * 5) /
+        100;
+      let chain = 1;
+      let probability = 1;
+      let threshold = Math.min(chance, 100);
+      if (overcrit > 0) {
+        const cap = Math.min(
+          overcrit,
+          Math.min(99, 90 + Math.max(0, capBonus)),
+        );
+        for (let step = 0; step < 9; step++) {
+          threshold = Math.floor((threshold * cap) / 100);
+          if (threshold <= 0) break;
+          probability *= Math.min(threshold, 100) / 100;
+          chain += probability * (1 + growth / 100) ** step;
+        }
+      }
+      return 1 - p + p * c * chain;
+    };
+    for (const input of [...inputs, ...inputs.reverse()]) {
+      expect(calculateExpectedCritMultiplier(...input)).toBe(reference(input));
+      expect(calculateExpectedCritMultiplier(...input)).toBe(reference(input));
+    }
+  });
 });
 
 describe('0.7.20 crit transition and trigger boundaries', () => {
@@ -106,6 +150,125 @@ describe('0.7.20 crit transition and trigger boundaries', () => {
   });
   const transition = (state: CraftingState, skill = multi) =>
     applySkill(state, skill, retargetConfig(skill), [], 100, undefined, 100)!;
+
+  it.each([
+    'stacks',
+    'creation',
+    'removal',
+    'internal state',
+    'pool',
+    'stability',
+  ] as const)(
+    'refreshes cached buff crit frames after changes to %s',
+    (change) => {
+      const mutator: BuffDefinition = {
+        name: 'Mutator',
+        canStack: true,
+        effects: [],
+      };
+      const provider: BuffDefinition = {
+        name: 'Provider',
+        canStack: false,
+        effects: [],
+      };
+      const literal: BuffDefinition = {
+        name: 'Added crit',
+        canStack: false,
+        effects: [],
+        stats: { critmultiplier: { value: 50 } },
+      };
+      let expected = 0;
+      switch (change) {
+        case 'stacks':
+          mutator.stats = {
+            critmultiplier: {
+              value: 50,
+              scaling: 'stacks',
+              max: { value: 100 },
+            },
+          };
+          mutator.effects = [{ kind: 'addStack', stacks: { value: 1 } }];
+          expected = 300;
+          break;
+        case 'creation':
+          mutator.effects = [
+            { kind: 'createBuff', buff: literal, stacks: { value: 1 } },
+          ];
+          expected = 250;
+          break;
+        case 'removal':
+          mutator.stats = literal.stats;
+          mutator.effects = [{ kind: 'negate' }];
+          expected = 200;
+          break;
+        case 'internal state':
+          mutator.stats = { critmultiplier: { value: 50, scaling: 'charge' } };
+          mutator.effects = [
+            { kind: 'setState', key: 'charge', value: { value: 2 } },
+          ];
+          expected = 300;
+          break;
+        case 'pool':
+          provider.stats = { critmultiplier: { value: 1, scaling: 'pool' } };
+          mutator.effects = [{ kind: 'pool', amount: { value: -50 } }];
+          expected = 250;
+          break;
+        case 'stability':
+          provider.stats = {
+            critmultiplier: { value: 1, scaling: 'stability' },
+          };
+          mutator.effects = [{ kind: 'stability', amount: { value: 10 } }];
+          expected = 260;
+          break;
+      }
+      const prime: BuffDefinition = {
+        name: 'Prime',
+        canStack: false,
+        effects: [{ kind: 'completion', amount: { value: 10 } }],
+      };
+      const consumer: BuffDefinition = {
+        name: 'Consumer',
+        canStack: false,
+        effects: [{ kind: 'perfection', amount: { value: 100 } }],
+      };
+      const state = critState({
+        critChance: 100,
+        buffs: new Map([
+          ['prime', held(prime)],
+          ['mutator', held(mutator, { charge: 1 })],
+          ['provider', held(provider)],
+          ['consumer', held(consumer)],
+        ]),
+      });
+      expect(
+        transition(
+          state,
+          retargetSkill({ qiCost: 0, stabilityCost: 0, effects: [] }),
+        ).perfection,
+      ).toBe(expected);
+    },
+  );
+
+  it('starts dispatching a listener created during an initially listener-free action', () => {
+    const listener: BuffDefinition = {
+      name: 'New listener',
+      canStack: false,
+      effects: [],
+      triggeredEffects: [
+        {
+          trigger: 'actionResolved',
+          effects: [{ kind: 'setState', key: 'seen', value: { value: 1 } }],
+        },
+      ],
+    };
+    const result = transition(
+      critState(),
+      retargetSkill({
+        effects: [{ kind: 'createBuff', buff: listener, stacks: { value: 1 } }],
+      }),
+    );
+    expect(result.buffs.get('new_listener')?.internalState?.seen).toBe(1);
+  });
 
   it('folds base/buff crit stats and positive-held chain growth', () => {
     const buff: BuffDefinition = {

@@ -540,6 +540,9 @@ export {
   getBonusAndChance,
 } from './outcome';
 
+const critExpectationCache = new Map<string, number>();
+const MAX_CRIT_EXPECTATION_CACHE_SIZE = 128;
+
 /**
  * Exact expectation of the 0.7.20 crit roll, without calling its random native
  * helper. Each chain contribution is weighted by the probability of reaching
@@ -552,6 +555,17 @@ export function calculateExpectedCritMultiplier(
   overcritCapBonus = 0,
   chainGrowth = 0,
 ): number {
+  // Most search frames have no overcrit. Keep the original arithmetic and avoid
+  // both chain work and memo-key allocation on that path.
+  if (overcrit === 0) {
+    const chance = Math.min(critChance, 100) / 100;
+    const multiplier =
+      (critMultiplier + Math.max(0, critChance - 100) * 3) / 100;
+    return 1 - chance + chance * multiplier;
+  }
+  const cacheKey = `${critChance},${critMultiplier},${overcrit},${overcritCapBonus},${chainGrowth}`;
+  const cached = critExpectationCache.get(cacheKey);
+  if (cached !== undefined) return cached;
   // Excess crit chance (>100%) converts to bonus multiplier at 1:3 ratio
   const excessCritChance = Math.max(0, critChance - 100);
   const bonusCritMultiplier = excessCritChance * 3;
@@ -577,11 +591,14 @@ export function calculateExpectedCritMultiplier(
       expectedChain += reachProbability * (1 + chainGrowth / 100) ** step;
     }
   }
-  return (
+  const expectation =
     1 -
     actualCritChance +
-    actualCritChance * critMultiplierAsRatio * expectedChain
-  );
+    actualCritChance * critMultiplierAsRatio * expectedChain;
+  if (critExpectationCache.size >= MAX_CRIT_EXPECTATION_CACHE_SIZE)
+    critExpectationCache.clear();
+  critExpectationCache.set(cacheKey, expectation);
+  return expectation;
 }
 
 /**

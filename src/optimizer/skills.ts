@@ -945,9 +945,67 @@ function appliedStabilityAmount(
 function hasTriggeredEffectBuffs(
   buffs: ReadonlyMap<string, { definition?: BuffDefinition }>,
 ): boolean {
-  return Array.from(buffs.values()).some(
-    (buff) => (buff.definition?.triggeredEffects?.length ?? 0) > 0,
+  const entries = buffs.values();
+  for (let entry = entries.next(); !entry.done; entry = entries.next()) {
+    if (entry.value.definition?.triggeredEffects?.length) return true;
+  }
+  return false;
+}
+
+const CRIT_STAT_KEYS = [
+  'critchance',
+  'critmultiplier',
+  'overcrit',
+  'overcritCapBonus',
+  'refinementCritChance',
+] as const;
+type CritStatKey = (typeof CRIT_STAT_KEYS)[number];
+const critStatKeys: ReadonlySet<string> = new Set(CRIT_STAT_KEYS);
+const localCritStats = new WeakMap<
+  BuffDefinition,
+  Array<[CritStatKey, Scaling]> | null
+>();
+
+/** Constants and stack-only scalings need no entity frame. Unknown fields or
+ * expressions retain the full fold, including all of its live dependencies. */
+function isStackOnlyCritScaling(scaling: Scaling): boolean {
+  return Object.keys(scaling).every(
+    (key) =>
+      key === 'value' ||
+      key === 'upgradeKey' ||
+      (key === 'scaling' && scaling.scaling === 'stacks') ||
+      (key === 'max' && !!scaling.max && isStackOnlyCritScaling(scaling.max)) ||
+      (key === 'scalingMax' &&
+        !!scaling.scalingMax &&
+        isStackOnlyCritScaling(scaling.scalingMax)),
   );
+}
+
+function getLocalCritStats(
+  definition: BuffDefinition,
+): Array<[CritStatKey, Scaling]> | null {
+  const cached = localCritStats.get(definition);
+  if (cached !== undefined) return cached;
+  const entries: Array<[CritStatKey, Scaling]> = [];
+  const name = normalizeBuffName(definition.name);
+  if (
+    name !== COMPLETION_BONUS_BUFF_KEY &&
+    name !== 'inscription' &&
+    name !== 'captivating_cadence' &&
+    name !== 'captivating_cadence_chain'
+  ) {
+    for (const key of CRIT_STAT_KEYS) {
+      const scaling = definition.stats?.[key];
+      if (!scaling) continue;
+      if (!definition.name || !isStackOnlyCritScaling(scaling)) {
+        localCritStats.set(definition, null);
+        return null;
+      }
+      entries.push([key, scaling]);
+    }
+  }
+  localCritStats.set(definition, entries);
+  return entries;
 }
 
 /**
@@ -1510,32 +1568,64 @@ function getTechniqueScalingBase(
   return base;
 }
 
-/** The runtime serial deduplicates N4i across every applier of one technique. */
-function nextCritActionId(buffs: ActiveBuffMap): number {
+interface ImmutableCritBuffSummary {
+  nextActionId: number;
+  hasCycle: boolean;
+  needsOrderedBars: boolean;
+  growth: number;
+  hasMechanics: boolean;
+}
+const immutableCritBuffSummaries = new WeakMap<
+  ActiveBuffMap,
+  ImmutableCritBuffSummary
+>();
+
+/** Only state/resolved maps belong here, never a transition's mutable newBuffs.
+ * Like the scaling caches, this relies on CraftingState immutability. */
+function getImmutableCritBuffSummary(
+  buffs: ActiveBuffMap,
+): ImmutableCritBuffSummary {
+  const cached = immutableCritBuffSummaries.get(buffs);
+  if (cached) return cached;
   let id = 0;
-  buffs.forEach((buff) => {
+  let hasCycle = false;
+  let needsOrderedBars = false;
+  let growth = 0;
+  let hasMechanics = false;
+  const entries = buffs.values();
+  for (let entry = entries.next(); !entry.done; entry = entries.next()) {
+    const buff = entry.value;
     id = Math.max(id, buff.internalState?.critActionId ?? 0);
-  });
-  return id + 1;
+    if (buff.definition?.critCycle || buff.definition?.overcritChainGrowth)
+      hasMechanics = true;
+    if (buff.stacks <= 0) continue;
+    growth += buff.definition?.overcritChainGrowth ?? 0;
+    if (buff.definition?.critCycle) hasCycle = true;
+    if (
+      buff.definition?.triggeredEffects?.some(
+        (block) => block.trigger === 'crit',
+      )
+    )
+      needsOrderedBars = true;
+  }
+  const summary = {
+    nextActionId: id + 1,
+    hasCycle,
+    needsOrderedBars: hasCycle || needsOrderedBars,
+    growth,
+    hasMechanics,
+  };
+  immutableCritBuffSummaries.set(buffs, summary);
+  return summary;
 }
 
-function hasCritCycle(buffs: ActiveBuffMap): boolean {
-  return Array.from(buffs.values()).some(
-    (buff) => buff.stacks > 0 && buff.definition?.critCycle,
-  );
+/** The runtime serial deduplicates N4i across every applier of one technique. */
+function nextCritActionId(buffs: ActiveBuffMap): number {
+  return getImmutableCritBuffSummary(buffs).nextActionId;
 }
 
 function needsOrderedCritBars(buffs: ActiveBuffMap): boolean {
-  return (
-    hasCritCycle(buffs) ||
-    Array.from(buffs.values()).some(
-      (buff) =>
-        buff.stacks > 0 &&
-        buff.definition?.triggeredEffects?.some(
-          (block) => block.trigger === 'crit',
-        ),
-    )
-  );
+  return getImmutableCritBuffSummary(buffs).needsOrderedBars;
 }
 
 /** Call only for a positive bar application. Replaces entries, never mutates a
@@ -1548,11 +1638,13 @@ function barCritInputs(
   let chance = variables.critchance;
   let overcrit = variables.overcrit;
   let growth = 0;
-  buffs.forEach((buff, key) => {
-    if (buff.stacks <= 0) return;
+  const entries = buffs.entries();
+  for (let entry = entries.next(); !entry.done; entry = entries.next()) {
+    const [key, buff] = entry.value;
+    if (buff.stacks <= 0) continue;
     growth += buff.definition?.overcritChainGrowth ?? 0;
     const cycle = buff.definition?.critCycle;
-    if (!cycle || actionId === undefined) return;
+    if (!cycle || actionId === undefined) continue;
     let internal = buff.internalState ?? {};
     if (internal.critActionId !== actionId) {
       const remaining = (internal.actionsRemaining ?? cycle.interval) - 1;
@@ -1568,7 +1660,7 @@ function barCritInputs(
       chance += cycle.critchance;
       overcrit += cycle.overcrit;
     }
-  });
+  }
   return { chance, overcrit, growth };
 }
 
@@ -1585,6 +1677,24 @@ function expectedBarCrit(
     variables.overcritCapBonus,
     input.growth,
   );
+}
+
+/** Previews only need a private map when a cycle can actually write to it. */
+function previewBarCrit(
+  variables: Readonly<ScalingVariables>,
+  buffs: ActiveBuffMap,
+  actionId?: number,
+): number {
+  const summary = getImmutableCritBuffSummary(buffs);
+  return summary.hasCycle
+    ? expectedBarCrit(variables, new Map(buffs), actionId)
+    : calculateExpectedCritMultiplier(
+        variables.critchance,
+        variables.critmultiplier,
+        variables.overcrit,
+        variables.overcritCapBonus,
+        summary.growth,
+      );
 }
 
 function buildTechniqueScalingVariables(
@@ -2678,9 +2788,9 @@ function calculateDisciplinedTouchGainsWithFrame(
   // Apply crit (only to positive gains)
   const includeExpectedValue = options.includeExpectedValue ?? true;
   const critMultiplier = includeExpectedValue
-    ? expectedBarCrit(
+    ? previewBarCrit(
         effectiveVars,
-        new Map(state.buffs),
+        state.buffs,
         skill.actionKind === 'item' ||
           (completionGain <= 0 && perfectionGain <= 0)
           ? undefined
@@ -2914,13 +3024,10 @@ function calculateUninterceptedSkillGains(
   const masteryUpgrades = evaluation.mastery.upgrades;
   const scalingVars = evaluation.variables;
 
-  const previewBuffs = hasCritCycle(state.buffs)
-    ? new Map(state.buffs)
-    : state.buffs;
   const critFactor = includeExpectedValue
-    ? expectedBarCrit(
+    ? previewBarCrit(
         scalingVars,
-        previewBuffs,
+        state.buffs,
         skill.actionKind === 'item'
           ? undefined
           : (critActionId ?? nextCritActionId(state.buffs)),
@@ -4167,6 +4274,23 @@ function applySkillTransition(
     (orderedNumeric || needsOrderedCritBars(resolvedActiveBuffs)) &&
     !!skill.effects?.length;
   const newBuffs = new Map(resolvedActiveBuffs);
+  let buffRevision = 0;
+  const initialCritBuffs = getImmutableCritBuffSummary(resolvedActiveBuffs);
+  let mayHaveCritCycles = initialCritBuffs.hasCycle;
+  let mayHaveCritMechanics = initialCritBuffs.hasMechanics;
+  const readBarCritInputs = (
+    variables: Readonly<ScalingVariables>,
+    actionId?: number,
+  ) => {
+    if (!mayHaveCritMechanics)
+      return {
+        chance: variables.critchance,
+        overcrit: variables.overcrit,
+        growth: 0,
+      };
+    if (mayHaveCritCycles && actionId !== undefined) buffRevision++;
+    return barCritInputs(variables, newBuffs, actionId);
+  };
   let certainApplication = true;
   const evaluation = buildActionEvaluationFrame(
     state,
@@ -4205,11 +4329,10 @@ function applySkillTransition(
   const actionMasteryUpgrades = evaluation.mastery.upgrades;
   const actionVars = {
     ...evaluation.variables,
-    ...(orderedNumeric ? { step: state.step } : {}),
-    ...(phase.critActionId === undefined
-      ? {}
-      : { critActionId: phase.critActionId }),
   };
+  if (orderedNumeric) actionVars.step = state.step;
+  if (phase.critActionId !== undefined)
+    actionVars.critActionId = phase.critActionId;
 
   const actionSuccessChance =
     phase.successChance ??
@@ -4441,6 +4564,13 @@ function applySkillTransition(
       stacksDelta,
       seedVariables,
     );
+    buffRevision++;
+    if (definition?.critCycle) mayHaveCritCycles = true;
+    if (definition?.critCycle || definition?.overcritChainGrowth)
+      mayHaveCritMechanics = true;
+    // Listeners created during the action must participate in later dispatches.
+    // Removal can conservatively leave this true; the live-map loop checks it.
+    if (definition?.triggeredEffects?.length) canDispatchBuffTriggers = true;
     if (gained !== undefined && definition)
       dispatchBuffTriggers(`stackGained.${definition.name}`, gained);
   };
@@ -4459,6 +4589,7 @@ function applySkillTransition(
     const removal = Math.floor(-stacksDelta);
     const lost = Math.min(existing.stacks, removal);
     const nextStacks = existing.stacks - removal;
+    buffRevision++;
     if (nextStacks > 0) {
       newBuffs.set(buffKey, { ...existing, stacks: Math.floor(nextStacks) });
     } else {
@@ -4509,33 +4640,84 @@ function applySkillTransition(
   // applications, then per-turn buff effects - so dispatches below run after
   // the technique effects and the buff fold re-reads the mutated state.
   const triggerBuffsPresent = hasTriggeredEffectBuffs(newBuffs);
-  const activeTriggers = new Set<string>();
+  let canDispatchBuffTriggers = triggerBuffsPresent;
+  let activeTriggers: Set<string> | undefined;
   let runningCompletion = state.completion;
   let runningPerfection = state.perfection;
+  let buffHarmonyMods: ReturnType<typeof getHarmonyStatModifiers> | undefined;
+  let buffActionFrame:
+    | {
+        revision: number;
+        qi: number;
+        stability: number;
+        variables: ScalingVariables;
+      }
+    | undefined;
 
   // D4i/SC build a fresh wp entity frame, not the technique's mastery/refine
   // frame. Refresh crit stats after earlier effects mutate buffs/internal state.
   // Other buff scaling retains the established intra-turn approximation.
   const buildBuffActionVariables = (): ScalingVariables => {
-    const plain = buildPreMasteryActionVariables(
-      state.copy({
-        buffs: newBuffs,
-        qi: newQi,
-        stability: newStability + buffStabilityDelta,
-      }),
-      config,
-      conditionEffects,
-      getHarmonyStatModifiers(state.harmonyData, config.craftingType),
-    );
-    const variables = {
-      ...actionVars,
-      critchance: plain.critchance,
-      critmultiplier: plain.critmultiplier,
-      overcrit: plain.overcrit,
-      overcritCapBonus: plain.overcritCapBonus,
-      refinementCritChance: plain.refinementCritChance,
+    const stability = newStability + buffStabilityDelta;
+    if (
+      buffActionFrame?.revision === buffRevision &&
+      buffActionFrame.qi === newQi &&
+      buffActionFrame.stability === stability
+    )
+      return buffActionFrame.variables;
+    const variables: ScalingVariables = {
+      ...evaluation.variables,
+      critchance: state.critChance,
+      critmultiplier: state.critMultiplier,
+      overcrit: state.overcrit,
+      overcritCapBonus: state.overcritCapBonus,
+      refinementCritChance: state.refinementCritChance,
     };
-    delete variables.critActionId;
+    // Avoid copying the technique id only to strip it before later wide-frame
+    // spreads. Raw buff aliases still need stripping.
+    if ('critActionId' in variables) delete variables.critActionId;
+    if (orderedNumeric) variables.step = state.step;
+    // Every caller copies this snapshot before adding owner/payload variables.
+    buffActionFrame = {
+      revision: buffRevision,
+      qi: newQi,
+      stability,
+      variables,
+    };
+    buffHarmonyMods ??= getHarmonyStatModifiers(
+      state.harmonyData,
+      config.craftingType,
+    );
+    const buffs = newBuffs.entries();
+    for (let entry = buffs.next(); !entry.done; entry = buffs.next()) {
+      const [key, buff] = entry.value;
+      if (isDerivedForgeHeatBuff(state, config, key, buff)) continue;
+      const stats = buff.definition ? getLocalCritStats(buff.definition) : [];
+      // Raw buff aliases may overwrite a base channel before the generic fold.
+      if (stats === null || (buff.stacks > 0 && critStatKeys.has(key))) {
+        const plain = buildPreMasteryActionVariables(
+          state.copy({
+            buffs: newBuffs,
+            qi: newQi,
+            stability: newStability + buffStabilityDelta,
+          }),
+          config,
+          conditionEffects,
+          buffHarmonyMods,
+        );
+        for (const stat of CRIT_STAT_KEYS) variables[stat] = plain[stat];
+        return variables;
+      }
+      if (!stats.length) continue;
+      const stacks = variables.stacks;
+      variables.stacks = buff.stacks;
+      for (const [stat, scaling] of stats) {
+        if (Number.isFinite(variables[stat]))
+          variables[stat] += evaluateScaling(scaling, variables, 0);
+      }
+      variables.stacks = stacks;
+    }
+    variables.critchance += buffHarmonyMods.critChanceBonus;
     return variables;
   };
 
@@ -4545,6 +4727,7 @@ function applySkillTransition(
     percentGained: number = 0,
     payload: Record<string, number> = {},
   ): void => {
+    if (!canDispatchBuffTriggers) return;
     if (
       !Number.isFinite(amount) ||
       (amount <= 0 &&
@@ -4569,6 +4752,7 @@ function applySkillTransition(
         continue;
       }
       const guardKey = `${trigger}:${buffKey}`;
+      activeTriggers ??= new Set<string>();
       if (activeTriggers.has(guardKey)) continue;
       activeTriggers.add(guardKey);
       buffActionVars ??= buildBuffActionVariables();
@@ -4616,7 +4800,16 @@ function applySkillTransition(
     stability: state.stability - effectiveStabilityCost,
   };
   // The nonordered path has no cycles; do not tick one merely by building a frame.
-  const techniqueCritFactor = expectedBarCrit(actionVars, new Map(newBuffs));
+  const techniqueCritFactor = orderedNumeric
+    ? 1
+    : mayHaveCritMechanics
+      ? expectedBarCrit(actionVars, newBuffs)
+      : calculateExpectedCritMultiplier(
+          actionVars.critchance,
+          actionVars.critmultiplier,
+          actionVars.overcrit,
+          actionVars.overcritCapBonus,
+        );
   const canNormalizeInertBars = !Array.from(newBuffs.values()).some((owner) =>
     getCraftingEffectInterceptors(owner.definition).some((interceptor) => {
       if (interceptor.legacyPreventionLimit !== undefined)
@@ -4701,7 +4894,7 @@ function applySkillTransition(
     const isBar = effect.kind === 'completion' || effect.kind === 'perfection';
     const critInputs =
       raw > 0 && isBar
-        ? barCritInputs(actionVars, newBuffs, phase.critActionId)
+        ? readBarCritInputs(actionVars, phase.critActionId)
         : undefined;
     const crit =
       phase.includeExpectedValue === false
@@ -5105,7 +5298,7 @@ function applySkillTransition(
     const bar = effect.kind === 'completion' || effect.kind === 'perfection';
     const critInputs =
       bar && raw > 0
-        ? barCritInputs(scalingVars, newBuffs, scalingVars.critActionId)
+        ? readBarCritInputs(scalingVars, scalingVars.critActionId)
         : undefined;
     if (bar && raw > 0 && phase.includeExpectedValue !== false)
       raw *= calculateExpectedCritMultiplier(
@@ -5212,6 +5405,7 @@ function applySkillTransition(
         buffToxicityDelta -= amount;
         break;
       case 'negate':
+        buffRevision++;
         newBuffs.delete(ownerBuffKey);
         dispatchBuffTriggers(
           `stackLost.${liveOwner.definition?.name ?? liveOwner.name}`,
@@ -5290,6 +5484,7 @@ function applySkillTransition(
         for (const index of Object.keys(effect.keys ?? [])) {
           scalingVars[index] = nextInternalState[index] ?? 0;
         }
+        buffRevision++;
         newBuffs.set(ownerBuffKey, {
           ...owner,
           internalState: nextInternalState,
@@ -5311,8 +5506,12 @@ function applySkillTransition(
     };
     return state;
   }
-  if (!orderedEffects && (gains.completion > 0 || gains.perfection > 0))
-    barCritInputs(actionVars, newBuffs, phase.critActionId);
+  if (
+    mayHaveCritCycles &&
+    !orderedEffects &&
+    (gains.completion > 0 || gains.perfection > 0)
+  )
+    readBarCritInputs(actionVars, phase.critActionId);
   if (triggerBuffsPresent) {
     if (!orderedNumeric) {
       if (qiSpentByCost > 0) {
@@ -5387,6 +5586,18 @@ function applySkillTransition(
       if (!phase.existingBuffNames.has(buffKey)) continue;
       const liveBuff = newBuffs.get(buffKey);
       if (!liveBuff?.definition) continue;
+      const actionEffects: BuffEffect[] | undefined =
+        skill.type === 'fusion'
+          ? liveBuff.definition.onFusion
+          : skill.type === 'refine'
+            ? liveBuff.definition.onRefine
+            : skill.type === 'stabilize'
+              ? liveBuff.definition.onStabilize
+              : skill.type === 'support'
+                ? liveBuff.definition.onSupport
+                : undefined;
+      if (!actionEffects?.length && !liveBuff.definition.effects?.length)
+        continue;
       const scalingVars: ScalingVariables = {
         ...buildBuffActionVariables(),
         roomEffectiveness: 0,
@@ -5414,16 +5625,6 @@ function applySkillTransition(
         }
       }
       // Execute action-type-specific effects
-      const actionEffects: BuffEffect[] | undefined =
-        skill.type === 'fusion'
-          ? liveBuff.definition.onFusion
-          : skill.type === 'refine'
-            ? liveBuff.definition.onRefine
-            : skill.type === 'stabilize'
-              ? liveBuff.definition.onStabilize
-              : skill.type === 'support'
-                ? liveBuff.definition.onSupport
-                : undefined;
       if (actionEffects) {
         for (const effect of actionEffects) {
           executeBuffEffect(effect, buffKey, scalingVars);
