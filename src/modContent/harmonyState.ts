@@ -137,6 +137,36 @@ function getForgeHeatFromBuffs(
   return recoveredHeat;
 }
 
+const FORGE_BAND_BUFF_HEAT: Record<string, number> = {
+  'heat_(frozen)': 0,
+  'heat_(low)': 2,
+  'heat_(perfect)': 5,
+  'heat_(high)': 8,
+  'heat_(burning)': 10,
+};
+
+/**
+ * At heat 1 the runtime skips its band refresh, so the live `Heat (*)` buff
+ * still reflects the previous band. Return a heat inside that band.
+ */
+function getForgeBandHeatFromBuffs(
+  buffs: Map<string, TrackedBuff> | undefined,
+): number | undefined {
+  if (!buffs) {
+    return undefined;
+  }
+  for (const [key, buff] of Array.from(buffs.entries())) {
+    if (buff.stacks <= 0) {
+      continue;
+    }
+    const bandHeat = FORGE_BAND_BUFF_HEAT[normalizeBuffKey(buff.name || key)];
+    if (bandHeat !== undefined) {
+      return bandHeat;
+    }
+  }
+  return undefined;
+}
+
 function canonicalizeForgeHarmonyData(
   harmonyData: HarmonyData,
   nativeVariables: Record<string, number> | undefined,
@@ -149,7 +179,13 @@ function canonicalizeForgeHarmonyData(
     getForgeHeatFromBuffs(buffs);
 
   if (recoveredHeat !== undefined) {
-    clone.forgeWorks = { heat: clampForgeHeat(recoveredHeat) };
+    const heat = clampForgeHeat(recoveredHeat);
+    const bandHeat =
+      heat === 1
+        ? (clone.forgeWorks?.lastBuffedHeat ?? getForgeBandHeatFromBuffs(buffs))
+        : undefined;
+    clone.forgeWorks =
+      bandHeat === undefined ? { heat } : { heat, lastBuffedHeat: bandHeat };
     clone.recommendedTechniqueTypes = getForgeRecommendedTechniqueTypes(
       clone.forgeWorks.heat,
     );

@@ -1803,6 +1803,50 @@ describe('craft simulation — sublime crafts', () => {
     }
   });
 
+  it('opens a frozen Forge Works craft with a fusion (user report)', () => {
+    // 0.7.20 capture at heat 0. The runtime's `Heat (Frozen)` buff (control
+    // -10 x control) used to survive alongside the modelled heat multiplier,
+    // squaring the penalty into a huge positive control. Refines then looked
+    // like they filled perfection and Auto Craft spammed Forceful Stabilize.
+    const snapshot = loadOptimizerReplaySnapshot(
+      'user-report-forge-frozen-opening.snapshot.json',
+    );
+    const input = getReplaySearchInput(snapshot);
+    expect(input.state.harmonyData?.forgeWorks?.heat).toBe(0);
+    expect(input.state.getBuffStacks('heat_(frozen)')).toBe(1);
+    expect(snapshot.output?.recommendation?.skill?.key).toBe(
+      'forceful_stabilize',
+    );
+
+    for (const key of ['grand_refinement', 'simple_refine']) {
+      const refine = input.config.skills.find((skill) => skill.key === key);
+      expect(refine).toBeDefined();
+      const next = applySkill(
+        input.state,
+        refine!,
+        input.config,
+        getConditionEffectsForConfig(input.config, input.currentCondition),
+        input.targetCompletion,
+        input.currentCondition,
+        input.targetPerfection,
+      );
+      expect(next?.perfection).toBe(0);
+    }
+
+    const result = findBestSkill(
+      input.state,
+      input.config,
+      input.targetCompletion,
+      input.targetPerfection,
+      false,
+      input.lookaheadDepth,
+      input.currentCondition,
+      input.forecastConditions as CraftingConditionType[],
+      withFixedWork(input.searchConfig, 2000),
+    );
+    expect(result.recommendation?.skill.type).toBe('fusion');
+  });
+
   it('should stabilize across the low-stability replay regression sequence', () => {
     const stepBeforeSnapshot = loadOptimizerReplaySnapshot(
       'low-stability-step-before.snapshot.json',

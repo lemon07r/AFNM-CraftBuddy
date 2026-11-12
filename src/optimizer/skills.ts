@@ -880,12 +880,20 @@ function isDerivedForgeHeatBuff(
     return false;
   }
 
-  const normalizedKey = normalizeBuffName(buffKey);
-  if (normalizedKey === 'heat') {
-    return true;
-  }
+  return (
+    isForgeHeatBuffName(normalizeBuffName(buffKey)) ||
+    isForgeHeatBuffName(normalizeBuffName(tracked.name || buffKey))
+  );
+}
 
-  return normalizeBuffName(tracked.name || buffKey) === 'heat';
+/**
+ * Runtime Forge Works writes one band buff (`Heat (Frozen)`, `Heat (Low)`,
+ * `Heat (Perfect)`, `Heat (High)`, `Heat (Burning)`; older builds used `Heat`).
+ * Its stats are modelled from `forgeWorks.heat` by `getForgeWorksStatModifiers`,
+ * so the live buff must not also contribute.
+ */
+function isForgeHeatBuffName(normalizedName: string): boolean {
+  return normalizedName === 'heat' || normalizedName.startsWith('heat_(');
 }
 
 function stripDerivedForgeHeatBuff(

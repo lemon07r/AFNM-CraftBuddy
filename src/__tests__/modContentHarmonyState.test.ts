@@ -232,6 +232,27 @@ describe('modContent harmony hydration', () => {
     expect(result.harmonyData?.recommendedTechniqueTypes).toEqual(['fusion']);
   });
 
+  it('keeps the previous heat band at heat 1, where the runtime skips its refresh', () => {
+    const buffs = new Map<string, { name: string; stacks: number }>([
+      ['heat_(low)', { name: 'Heat (Low)', stacks: 1 }],
+    ]);
+
+    const result = hydrateHarmonyData({
+      isSublimeCraft: true,
+      craftingType: 'forge',
+      progressHarmonyData: {
+        forgeWorks: { heat: 1 },
+        recommendedTechniqueTypes: ['fusion'],
+      },
+      buffs: buffs as any,
+    });
+
+    expect(result.harmonyData?.forgeWorks).toEqual({
+      heat: 1,
+      lastBuffedHeat: 2,
+    });
+  });
+
   it('preserves authoritative non-forge harmony data from progressState', () => {
     const progressHarmonyData = {
       alchemicalArts: {

@@ -67,7 +67,7 @@ Harmony is **player-selected**, not derived from recipe/item kind; a recipe over
 
 | Harmony | Important behavior |
 | --- | --- |
-| Forge Works | Heat **4–6** gives ×1.5 control/intensity; 2–3 is a control penalty, 7–9 an intensity penalty. At heat 1 the runtime does not refresh the Heat buff; `lastBuffedHeat` preserves the prior modifier. |
+| Forge Works | Heat **4–6** gives ×1.5 control/intensity; 2–3 is a control penalty, 7–9 an intensity penalty. Heat 0 and 10 collapse control or intensity (buff value −10). At heat 1 the runtime does not refresh the Heat buff; `lastBuffedHeat` preserves the prior modifier, and live hydration reads it from the surviving band buff. The runtime band buffs (`Heat (Frozen)`, `Heat (Low)`, `Heat (Perfect)`, `Heat (High)`, `Heat (Burning)`; legacy `Heat`) are stripped as derived so the heat modifier applies once. |
 | Alchemical Arts | Charge/reaction sequencing through the harmony state. |
 | Inscribed Patterns | Stack/block progression and invalid-colour stack-halving penalty. |
 | Spiritual Resonance | Mismatch costs **9 harmony / 3 stability**, with pending-switch exemption; the old log text saying 15 is not the formula. |
