@@ -170,5 +170,106 @@ export function overcritScenarios() {
   add('resolved-weighted', listeners, { ...multi, successChance: 0.5 });
   add('failed-certain', listeners, { ...multi, successChance: 0 });
   add('resolved-nonrefine', listeners, { ...multi, type: 'fusion' });
+  const listener: BuffDefinition = {
+    name: 'Bar listener',
+    canStack: false,
+    effects: [],
+    triggeredEffects: [
+      {
+        trigger: 'completionGained',
+        effects: [
+          {
+            kind: 'setState',
+            key: 'received',
+            mode: 'add',
+            value: { value: 1, eqn: 'amount' },
+          },
+        ],
+      },
+    ],
+  };
+  const mastery = {
+    kind: 'effect' as const,
+    effects: [{ kind: 'completion' as const, amount: { value: 100 } }],
+  };
+  for (const kind of ['refinement', 'cycle']) {
+    add(
+      `mastery-listener-${kind}`,
+      critState({
+        refinementCritChance: kind === 'refinement' ? 100 : 0,
+        buffs: new Map([
+          ['bar_listener', held(listener)],
+          ['crit_watcher', held(critWatcher)],
+          ...(kind === 'cycle'
+            ? [
+                [
+                  'crit_cycle',
+                  held(
+                    {
+                      ...critCycle,
+                      critCycle: { interval: 3, critchance: 100, overcrit: 0 },
+                    },
+                    { actionsRemaining: 1 },
+                  ),
+                ] as const,
+              ]
+            : []),
+        ]),
+      }),
+      retargetSkill({ masteryEntries: [mastery, mastery], effects: [] }),
+    );
+  }
+  for (const kind of ['ordinary', 'triggered', 'interceptor']) {
+    const bar = { kind: 'perfection' as const, amount: { value: 100 } };
+    const owner: BuffDefinition = {
+      ...critCycle,
+      critCycle: { interval: 5, critchance: 100, overcrit: 0 },
+      effects: kind === 'ordinary' ? [bar] : [],
+      triggeredEffects:
+        kind === 'triggered'
+          ? [{ trigger: 'actionResolved', effects: [bar] }]
+          : [],
+      craftingEffectInterceptors:
+        kind === 'interceptor'
+          ? [
+              {
+                scope: 'resource',
+                appliesTo: ['stability'],
+                modifier: { kind: 'multiply', value: 1 },
+                effects: [
+                  {
+                    kind: 'setState',
+                    key: 'critActionId',
+                    value: { value: 9 },
+                  },
+                  bar,
+                ],
+              },
+            ]
+          : [],
+    };
+    add(
+      `owner-id-${kind}`,
+      critState({
+        buffs: new Map([
+          [
+            'owner',
+            held(owner, {
+              actionsRemaining: 5,
+              critActionId: 7,
+              critCycleReady: 1,
+            }),
+          ],
+        ]),
+      }),
+      retargetSkill({
+        stabilityCost: 0,
+        effects:
+          kind === 'interceptor'
+            ? [{ kind: 'stability', amount: { value: 1 } }]
+            : [],
+      }),
+    );
+  }
   return scenarios;
 }

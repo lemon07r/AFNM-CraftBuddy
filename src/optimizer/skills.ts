@@ -2662,6 +2662,7 @@ function calculateDisciplinedTouchGainsWithFrame(
   conditionEffects: ConditionEffect[],
   options: SkillGainOptions,
   frame = buildActionEvaluationFrame(state, skill, config, conditionEffects),
+  critActionId?: number,
 ): SkillGains {
   const effectiveVars = frame.variables;
 
@@ -2683,7 +2684,7 @@ function calculateDisciplinedTouchGainsWithFrame(
         skill.actionKind === 'item' ||
           (completionGain <= 0 && perfectionGain <= 0)
           ? undefined
-          : nextCritActionId(state.buffs),
+          : (critActionId ?? nextCritActionId(state.buffs)),
       )
     : 1;
 
@@ -2835,6 +2836,7 @@ function calculateUninterceptedSkillGains(
   conditionEffects: ConditionEffect[],
   options: SkillGainOptions,
   frame?: ActionEvaluationFrame,
+  critActionId?: number,
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
   const clampPredictedProgressGain = (
@@ -2886,6 +2888,7 @@ function calculateUninterceptedSkillGains(
       conditionEffects,
       options,
       frame,
+      critActionId,
     );
     return {
       ...disciplined,
@@ -2918,7 +2921,9 @@ function calculateUninterceptedSkillGains(
     ? expectedBarCrit(
         scalingVars,
         previewBuffs,
-        skill.actionKind === 'item' ? undefined : nextCritActionId(state.buffs),
+        skill.actionKind === 'item'
+          ? undefined
+          : (critActionId ?? nextCritActionId(state.buffs)),
       )
     : 1;
 
@@ -4747,6 +4752,8 @@ function applySkillTransition(
               successChance: actionSuccessChance,
               stabilityCost: effectiveStabilityCost,
             },
+            evaluation,
+            phase.critActionId,
           );
           const totals = { completion: 0, perfection: 0 };
           for (const contribution of reference.barContributions ?? [])
@@ -5050,9 +5057,8 @@ function applySkillTransition(
   ): void {
     const liveOwner = newBuffs.get(ownerBuffKey);
     if (!liveOwner) return;
-    // Internal critCycle bookkeeping is not an action frame: only an inherited
-    // caller id (interceptor effects) may make this application tick/use a cycle.
-    const callerCritActionId = scalingVars.critActionId;
+    // E4i (Game.js:6510900) overlays owner state before EVERY effect. A stored
+    // critActionId intentionally overrides even an interceptor caller's id.
     Object.assign(
       scalingVars,
       { roomEffectiveness: 0 },
@@ -5060,8 +5066,6 @@ function applySkillTransition(
       liveOwner.internalState,
       { stacks: liveOwner.stacks },
     );
-    if (callerCritActionId === undefined) delete scalingVars.critActionId;
-    else scalingVars.critActionId = callerCritActionId;
     const conditionResult = evaluateEffectCondition(
       effect.condition,
       state,
@@ -5103,7 +5107,7 @@ function applySkillTransition(
       bar && raw > 0
         ? barCritInputs(scalingVars, newBuffs, scalingVars.critActionId)
         : undefined;
-    if (bar && raw > 0)
+    if (bar && raw > 0 && phase.includeExpectedValue !== false)
       raw *= calculateExpectedCritMultiplier(
         critInputs!.chance,
         scalingVars.critmultiplier,

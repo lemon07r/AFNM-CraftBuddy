@@ -78,6 +78,12 @@ function readNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+/** Shared by Redux/poll invalidation and the processed auto-craft revision. */
+export function readEntityCritStatSignature(entity: unknown): string {
+  const stats = readRecord(readRecord(entity)?.stats);
+  return `${readNumber(stats?.overcrit)},${readNumber(stats?.overcritCapBonus)},${readNumber(stats?.refinementCritChance)}`;
+}
+
 function readArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }

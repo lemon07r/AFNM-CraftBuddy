@@ -74,6 +74,7 @@ import { createDomAutoCraftExecutor } from './autoCraftExecutor';
 import {
   diffCraftStateSignatures,
   readLiveCraftStateSignature,
+  readEntityCritStatSignature,
   serializeHarmonyData,
   serializeTechniqueRoster,
 } from './craftStateSignature';
@@ -405,6 +406,7 @@ function buildAutoCraftStateFingerprint(): string {
     `step:${currentStep}`,
     `pool:${pool}`,
     `droplets:${readDropletSignature(lastEntity)}`,
+    `critStats:${readEntityCritStatSignature(lastEntity)}`,
     `comp:${currentCompletion}`,
     `perf:${currentPerfection}`,
     `stab:${currentStability}`,
@@ -2950,6 +2952,8 @@ function pollCraftingState(): void {
       normalizedCondition !== currentCondition ||
       queueChanged ||
       newPool !== previousPool ||
+      readEntityCritStatSignature(entity) !==
+        readEntityCritStatSignature(lastEntity) ||
       newToxicity !== currentToxicity ||
       observedMaxStability !== currentMaxStability ||
       currentCooldownSignature !== previousCooldownSignature ||
@@ -4330,6 +4334,8 @@ function processCraftingState(craftingState: any): void {
     queueChanged ||
     progressPool !== previousPool ||
     readDropletSignature(entity) !== readDropletSignature(lastEntity) ||
+    readEntityCritStatSignature(entity) !==
+      readEntityCritStatSignature(lastEntity) ||
     observedMaxStability !== currentMaxStability ||
     currentCooldownSignature !== previousCooldownSignature ||
     currentBuffSignature !== previousBuffSignature ||

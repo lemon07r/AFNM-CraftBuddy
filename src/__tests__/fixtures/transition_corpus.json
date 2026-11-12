@@ -159112,6 +159112,1035 @@
       ]
     },
     {
+      "name": "0720-crit-mastery-listener-refinement",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 200,
+          "overcrit": 0,
+          "overcritCapBonus": 0,
+          "refinementCritChance": 100,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {},
+          "buffs": {
+            "bar_listener": {
+              "name": "Bar listener",
+              "stacks": 1,
+              "definition": {
+                "name": "Bar listener",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "completionGained",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "received",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "crit_watcher": {
+              "name": "Crit watcher",
+              "stacks": 1,
+              "definition": {
+                "name": "Crit watcher",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "crit",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "crits",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "amount",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "percent",
+                        "value": {
+                          "value": 1,
+                          "eqn": "percentGained"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 10,
+              "stabilityCost": 3,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "masteryEntries": [
+                {
+                  "kind": "effect",
+                  "effects": [
+                    {
+                      "kind": "completion",
+                      "amount": {
+                        "value": 100
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "effect",
+                  "effects": [
+                    {
+                      "kind": "completion",
+                      "amount": {
+                        "value": 100
+                      }
+                    }
+                  ]
+                }
+              ],
+              "effects": []
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 90,
+            "stability": 47,
+            "stabilityPenalty": 1,
+            "completion": 200,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "bar_listener",
+                "stacks": 1,
+                "internalState": {
+                  "received": 200
+                }
+              },
+              {
+                "key": "crit_watcher",
+                "stacks": 1,
+                "internalState": {}
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0720-crit-mastery-listener-cycle",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 200,
+          "overcrit": 0,
+          "overcritCapBonus": 0,
+          "refinementCritChance": 0,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {},
+          "buffs": {
+            "bar_listener": {
+              "name": "Bar listener",
+              "stacks": 1,
+              "definition": {
+                "name": "Bar listener",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "completionGained",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "received",
+                        "mode": "add",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "crit_watcher": {
+              "name": "Crit watcher",
+              "stacks": 1,
+              "definition": {
+                "name": "Crit watcher",
+                "canStack": false,
+                "effects": [],
+                "triggeredEffects": [
+                  {
+                    "trigger": "crit",
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "crits",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "amount",
+                        "value": {
+                          "value": 1,
+                          "eqn": "amount"
+                        }
+                      },
+                      {
+                        "kind": "setState",
+                        "key": "percent",
+                        "value": {
+                          "value": 1,
+                          "eqn": "percentGained"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "crit_cycle": {
+              "name": "Crit cycle",
+              "stacks": 1,
+              "definition": {
+                "name": "Crit cycle",
+                "canStack": false,
+                "effects": [],
+                "critCycle": {
+                  "interval": 3,
+                  "critchance": 100,
+                  "overcrit": 0
+                }
+              },
+              "internalState": {
+                "actionsRemaining": 1
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 10,
+              "stabilityCost": 3,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "masteryEntries": [
+                {
+                  "kind": "effect",
+                  "effects": [
+                    {
+                      "kind": "completion",
+                      "amount": {
+                        "value": 100
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "effect",
+                  "effects": [
+                    {
+                      "kind": "completion",
+                      "amount": {
+                        "value": 100
+                      }
+                    }
+                  ]
+                }
+              ],
+              "effects": []
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 90,
+            "stability": 47,
+            "stabilityPenalty": 1,
+            "completion": 400,
+            "perfection": 0,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 2,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "bar_listener",
+                "stacks": 1,
+                "internalState": {
+                  "received": 400
+                }
+              },
+              {
+                "key": "crit_watcher",
+                "stacks": 1,
+                "internalState": {
+                  "amount": 200,
+                  "crits": 2,
+                  "percent": 123
+                }
+              },
+              {
+                "key": "crit_cycle",
+                "stacks": 1,
+                "internalState": {
+                  "actionsRemaining": 3,
+                  "critActionId": 1,
+                  "critCycleReady": 1
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0720-crit-owner-id-ordinary",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 200,
+          "overcrit": 0,
+          "overcritCapBonus": 0,
+          "refinementCritChance": 0,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {},
+          "buffs": {
+            "owner": {
+              "name": "Crit cycle",
+              "stacks": 1,
+              "definition": {
+                "name": "Crit cycle",
+                "canStack": false,
+                "effects": [
+                  {
+                    "kind": "perfection",
+                    "amount": {
+                      "value": 100
+                    }
+                  }
+                ],
+                "critCycle": {
+                  "interval": 5,
+                  "critchance": 100,
+                  "overcrit": 0
+                },
+                "triggeredEffects": [],
+                "craftingEffectInterceptors": []
+              },
+              "internalState": {
+                "actionsRemaining": 5,
+                "critActionId": 7,
+                "critCycleReady": 1
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 10,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "effects": []
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 90,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 200,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "owner",
+                "stacks": 1,
+                "internalState": {
+                  "actionsRemaining": 5,
+                  "critActionId": 7,
+                  "critCycleReady": 1
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0720-crit-owner-id-triggered",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 200,
+          "overcrit": 0,
+          "overcritCapBonus": 0,
+          "refinementCritChance": 0,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {},
+          "buffs": {
+            "owner": {
+              "name": "Crit cycle",
+              "stacks": 1,
+              "definition": {
+                "name": "Crit cycle",
+                "canStack": false,
+                "effects": [],
+                "critCycle": {
+                  "interval": 5,
+                  "critchance": 100,
+                  "overcrit": 0
+                },
+                "triggeredEffects": [
+                  {
+                    "trigger": "actionResolved",
+                    "effects": [
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 100
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "craftingEffectInterceptors": []
+              },
+              "internalState": {
+                "actionsRemaining": 5,
+                "critActionId": 7,
+                "critCycleReady": 1
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 10,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "effects": []
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 90,
+            "stability": 50,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 200,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "owner",
+                "stacks": 1,
+                "internalState": {
+                  "actionsRemaining": 5,
+                  "critActionId": 7,
+                  "critCycleReady": 1
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0720-crit-owner-id-interceptor",
+      "input": {
+        "state": {
+          "qi": 100,
+          "qiDroplets": 0,
+          "maxQiDroplets": 0,
+          "qiCostReduction": 0,
+          "qiCostPenalty": 0,
+          "stabilityCostReduction": 0,
+          "stabilityCostPenalty": 0,
+          "itemEffectiveness": 0,
+          "stability": 50,
+          "initialMaxStability": 60,
+          "stabilityPenalty": 0,
+          "completion": 0,
+          "perfection": 0,
+          "critChance": 0,
+          "critMultiplier": 200,
+          "overcrit": 0,
+          "overcritCapBonus": 0,
+          "refinementCritChance": 0,
+          "successChanceBonus": 0,
+          "poolCostFlat": 0,
+          "poolCostPercentage": 100,
+          "stabilityCostPercentage": 100,
+          "controlBuffTurns": 0,
+          "intensityBuffTurns": 0,
+          "controlBuffMultiplier": 1.4,
+          "intensityBuffMultiplier": 1.4,
+          "toxicity": 0,
+          "maxToxicity": 100,
+          "harmony": 0,
+          "conditionGenerationHarmony": null,
+          "harmonyData": null,
+          "step": 0,
+          "completionBonus": 0,
+          "consumedPillsThisTurn": 0,
+          "cooldowns": {},
+          "items": {},
+          "buffs": {
+            "owner": {
+              "name": "Crit cycle",
+              "stacks": 1,
+              "definition": {
+                "name": "Crit cycle",
+                "canStack": false,
+                "effects": [],
+                "critCycle": {
+                  "interval": 5,
+                  "critchance": 100,
+                  "overcrit": 0
+                },
+                "triggeredEffects": [],
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 1
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "critActionId",
+                        "value": {
+                          "value": 9
+                        }
+                      },
+                      {
+                        "kind": "perfection",
+                        "amount": {
+                          "value": 100
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "internalState": {
+                "actionsRemaining": 5,
+                "critActionId": 7,
+                "critCycleReady": 1
+              }
+            }
+          },
+          "nativeVariables": null,
+          "history": []
+        },
+        "config": {
+          "maxQi": 200,
+          "maxStability": 60,
+          "baseControl": 10,
+          "baseIntensity": 10,
+          "minStability": 0,
+          "skills": [
+            {
+              "name": "Retarget probe",
+              "key": "retarget_probe",
+              "type": "refine",
+              "qiCost": 10,
+              "stabilityCost": 0,
+              "baseCompletionGain": 0,
+              "basePerfectionGain": 0,
+              "stabilityGain": 0,
+              "maxStabilityChange": 0,
+              "buffType": 0,
+              "buffDuration": 0,
+              "buffMultiplier": 1,
+              "effects": [
+                {
+                  "kind": "stability",
+                  "amount": {
+                    "value": 1
+                  }
+                }
+              ]
+            }
+          ],
+          "maxToxicity": 100,
+          "defaultBuffMultiplier": 1.4,
+          "targetCompletion": 100,
+          "targetPerfection": 100
+        },
+        "targetCompletion": 100,
+        "targetPerfection": 100,
+        "lookaheadDepth": 1,
+        "currentCondition": "neutral",
+        "forecast": [],
+        "searchConfig": {}
+      },
+      "cases": [
+        {
+          "skillIndex": 0,
+          "skillKey": "retarget_probe",
+          "expected": {
+            "itemEffectiveness": 0,
+            "qiDroplets": 0,
+            "maxQiDroplets": 0,
+            "qi": 90,
+            "stability": 51,
+            "stabilityPenalty": 1,
+            "completion": 0,
+            "perfection": 200,
+            "toxicity": 0,
+            "harmony": 0,
+            "step": 1,
+            "completionBonus": 0,
+            "controlBuffTurns": 0,
+            "intensityBuffTurns": 0,
+            "cooldowns": [
+              0
+            ],
+            "buffs": [
+              {
+                "key": "owner",
+                "stacks": 1,
+                "internalState": {
+                  "actionsRemaining": 5,
+                  "critActionId": 9,
+                  "critCycleReady": 1
+                }
+              }
+            ],
+            "items": [],
+            "consumedPillsThisTurn": 0,
+            "harmonyData": {
+              "forgeHeat": null,
+              "forgeLastBuffedHeat": null,
+              "alchemicalCharges": null,
+              "alchemicalLastCombo": null,
+              "inscriptionCurrentBlock": null,
+              "inscriptionCompletedBlocks": null,
+              "inscriptionStacks": null,
+              "resonanceType": null,
+              "resonanceStrength": null,
+              "resonancePending": null,
+              "resonancePendingCount": null,
+              "echoAttunedType": null,
+              "echoLastOutcome": null,
+              "decreeFocusedBar": null,
+              "decreeLastCompletion": null,
+              "decreeLastPerfection": null,
+              "cadenceLastAction": null,
+              "cadenceChain": null,
+              "cadenceLastOutcome": null
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "0719-empty-expression",
       "input": {
         "state": {

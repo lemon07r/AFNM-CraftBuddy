@@ -21,6 +21,7 @@ import {
   reviveStateSnapshot,
 } from '../modContent/replaySnapshot';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
+import { readEntityCritStatSignature } from '../modContent/craftStateSignature';
 import {
   critCycle,
   critState,
@@ -60,6 +61,10 @@ describe('0.7.20 exact crit expectation', () => {
   });
 
   it('adds five multiplier points above 90 overcrit and respects cap bonus / nine-roll limit', () => {
+    expect(calculateExpectedCritMultiplier(150, 150, 95, 0, 10)).toBeCloseTo(
+      14.12904024199,
+      12,
+    );
     const expectation = (thresholds: number[]) => {
       let product = 1;
       return (
@@ -321,6 +326,162 @@ describe('0.7.20 crit transition and trigger boundaries', () => {
     expect(result.perfection).toBe(200);
   });
 
+  it.each(['refinement', 'cycle'] as const)(
+    'normalizes mastery listeners using the current %s frame and action id',
+    (kind) => {
+      const listener: BuffDefinition = {
+        name: 'Listener',
+        canStack: false,
+        effects: [],
+        triggeredEffects: [
+          {
+            trigger: 'completionGained',
+            effects: [
+              {
+                kind: 'setState',
+                key: 'received',
+                mode: 'add',
+                value: { value: 1, eqn: 'amount' },
+              },
+            ],
+          },
+        ],
+      };
+      const cycle: BuffDefinition = {
+        ...critCycle,
+        critCycle: { interval: 3, critchance: 100, overcrit: 0 },
+      };
+      const state = critState({
+        refinementCritChance: kind === 'refinement' ? 100 : 0,
+        buffs: new Map([
+          ['listener', held(listener)],
+          ['watcher', held(critWatcher)],
+          ...(kind === 'cycle'
+            ? [['cycle', held(cycle, { actionsRemaining: 1 })] as const]
+            : []),
+        ]),
+      });
+      const mastery = {
+        kind: 'effect' as const,
+        effects: [{ kind: 'completion' as const, amount: { value: 100 } }],
+      };
+      const skill = retargetSkill({
+        masteryEntries: [mastery, mastery],
+        effects: [],
+      });
+      const result = transition(state, skill);
+      expect(result.completion).toBe(kind === 'cycle' ? 400 : 200);
+      expect(result.buffs.get('listener')?.internalState?.received).toBe(
+        result.completion,
+      );
+    },
+  );
+
+  it.each(['ordinary', 'triggered', 'interceptor'] as const)(
+    'overlays a cycle owner stored action id in %s effects, as E4i does',
+    (kind) => {
+      const bar = { kind: 'perfection' as const, amount: { value: 100 } };
+      const owner: BuffDefinition = {
+        ...critCycle,
+        critCycle: { interval: 5, critchance: 100, overcrit: 0 },
+        effects: kind === 'ordinary' ? [bar] : [],
+        triggeredEffects:
+          kind === 'triggered'
+            ? [{ trigger: 'actionResolved', effects: [bar] }]
+            : [],
+        craftingEffectInterceptors:
+          kind === 'interceptor'
+            ? [
+                {
+                  scope: 'resource',
+                  appliesTo: ['stability'],
+                  modifier: { kind: 'multiply', value: 1 },
+                  effects: [
+                    {
+                      kind: 'setState',
+                      key: 'critActionId',
+                      value: { value: 9 },
+                    },
+                    bar,
+                  ],
+                },
+              ]
+            : [],
+      };
+      const state = critState({
+        buffs: new Map([
+          [
+            'owner',
+            held(owner, {
+              actionsRemaining: 5,
+              critActionId: 7,
+              critCycleReady: 1,
+            }),
+          ],
+        ]),
+      });
+      const skill = retargetSkill({
+        stabilityCost: 0,
+        effects:
+          kind === 'interceptor'
+            ? [{ kind: 'stability', amount: { value: 1 } }]
+            : [],
+      });
+      const result = transition(state, skill);
+      expect(result.perfection).toBe(200);
+      expect(result.buffs.get('owner')?.internalState).toMatchObject({
+        actionsRemaining: 5,
+        critActionId: kind === 'interceptor' ? 9 : 7,
+        critCycleReady: 1,
+      });
+    },
+  );
+
+  it.each(['triggered', 'interceptor'] as const)(
+    'omits buff/interceptor crit in non-EV %s previews',
+    (kind) => {
+      const bar = { kind: 'perfection' as const, amount: { value: 100 } };
+      const owner: BuffDefinition = {
+        name: 'Owner',
+        canStack: false,
+        effects: [],
+        triggeredEffects:
+          kind === 'triggered'
+            ? [{ trigger: 'completionGained', effects: [bar] }]
+            : [],
+        craftingEffectInterceptors: [
+          {
+            scope: 'resource',
+            appliesTo: ['stability'],
+            modifier: { kind: 'multiply', value: 1 },
+            effects: kind === 'interceptor' ? [bar] : [],
+          },
+        ],
+      };
+      const state = critState({
+        critChance: 100,
+        buffs: new Map([['owner', held(owner)]]),
+      });
+      const skill = retargetSkill({
+        stabilityCost: 0,
+        effects: [
+          {
+            kind: kind === 'triggered' ? 'completion' : 'stability',
+            amount: { value: 1 },
+          },
+        ],
+      });
+      expect(
+        calculateSkillGains(state, skill, retargetConfig(skill)).perfection,
+      ).toBe(200);
+      expect(
+        calculateSkillGains(state, skill, retargetConfig(skill), [], {
+          includeExpectedValue: false,
+        }).perfection,
+      ).toBe(100);
+    },
+  );
+
   it('ticks a cycle once on first positive application and reuses the ready bonus on every bar', () => {
     const state = critState({
       critChance: 70,
@@ -559,6 +720,23 @@ describe('0.7.20 crit transition and trigger boundaries', () => {
 });
 
 describe('crit state extraction, replay, worker and cache boundaries', () => {
+  it('detects each stat-only live update with the signature shared by Redux, polling and processed revisions', () => {
+    const before = {
+      stats: { overcrit: 0, overcritCapBonus: 0, refinementCritChance: 0 },
+    };
+    expect(readEntityCritStatSignature(before)).toBe(
+      readEntityCritStatSignature(undefined),
+    );
+    for (const field of [
+      'overcrit',
+      'overcritCapBonus',
+      'refinementCritChance',
+    ]) {
+      expect(
+        readEntityCritStatSignature({ stats: { ...before.stats, [field]: 1 } }),
+      ).not.toBe(readEntityCritStatSignature(before));
+    }
+  });
   it('extracts base stats, preserving full buff definitions and numeric cycle state', () => {
     expect(extractOvercritStats(undefined)).toEqual({
       overcrit: 0,
