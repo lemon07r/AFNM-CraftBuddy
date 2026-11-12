@@ -1,3 +1,12 @@
+/**
+ * Undo division roundoff in conditional means (0.7*3/0.7 is 2.9999999999999996)
+ * so later floor/ceil cleanup cannot drop or add a whole point.
+ */
+function snapRoundoff(value: number): number {
+  const rounded = Math.round(value);
+  return Math.abs(value - rounded) < 1e-9 ? rounded : value;
+}
+
 export interface ActionSurvivabilityFloor {
   stability: number;
   maxStability: number;
@@ -248,8 +257,10 @@ export class StabilityProjection {
         ? survival.survivalConditioned
         : survivalProbability > 0
           ? {
-              stability: survivingStability / survivalProbability,
-              stabilityPenalty: survivingPenalty / survivalProbability,
+              stability: snapRoundoff(survivingStability / survivalProbability),
+              stabilityPenalty: snapRoundoff(
+                survivingPenalty / survivalProbability,
+              ),
             }
           : undefined,
     };

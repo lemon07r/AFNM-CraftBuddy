@@ -340,7 +340,7 @@ describe('survival-weighted continuation', () => {
     // The EV state (21) runs out after two Spends; the surviving line (30)
     // plays all three, so the projection must not stop early.
     expect(afterGamble.stability).toBe(21);
-    expect(surviving.stability).toBeCloseTo(30, 9);
+    expect(surviving.stability).toBe(30);
     expect(result.optimalRotation).toEqual([
       'Gamble',
       'Spend',
@@ -409,6 +409,20 @@ describe('survival-weighted continuation', () => {
     );
     expect(display.nativeVariables).toEqual(displayNativeVariables);
     expect(display.stability).toBe(3);
+  });
+
+  it('keeps exact surviving integers through conditional-mean roundoff', () => {
+    const projection = new StabilityProjection(0, 0);
+    projection.change(3, 0, 0.7);
+    const finished = projection.finish(60, false, true);
+    expect((0.7 * 3) / 0.7).not.toBe(3);
+    expect(finished.survivalConditioned?.stability).toBe(3);
+    const next = new StabilityProjection(
+      finished.survivalConditioned!.stability,
+      0,
+    );
+    next.pay(2);
+    expect(next.finish(60, false, true).stability).toBe(1);
   });
 
   it('conditions stability and penalty on the same cleaned surviving outcomes', () => {
