@@ -5957,12 +5957,15 @@ describe('scoreState (isolated)', () => {
     expect(result.searchMetrics!.earlyExit).toBeUndefined();
   });
 
-  it('replays the forge heat runway snapshot at heat two and prioritizes heat recovery over support setup', () => {
+  it('prefers a guaranteed-safe line over a 75%-survival fusion at stability two', () => {
     const snapshot = loadOptimizerReplaySnapshot(
       'forge-heat-runway-step-2.snapshot.json',
     );
     const input = getReplaySearchInput(snapshot);
 
+    // Delayed Fusion's 25% death branch banks ~21,950. At depth 6 its weighted
+    // score is 64,185 vs Focus's 85,160; depth 5 hides Focus's payoff (58,228
+    // vs fusion 63,576). Bind to 6,000 nodes, accepting temporary heat zero.
     const result = lookaheadSearch(
       input.state,
       input.config,
@@ -5970,8 +5973,8 @@ describe('scoreState (isolated)', () => {
       input.targetPerfection,
       input.lookaheadDepth,
       input.currentCondition,
-      input.forecastConditions as any,
-      withFixedWork(input.searchConfig, 1000),
+      input.forecastConditions as CraftingConditionType[],
+      withFixedWork(input.searchConfig, 6000),
     );
 
     const allRecommendations = [
@@ -5983,16 +5986,23 @@ describe('scoreState (isolated)', () => {
       ): recommendation is NonNullable<typeof result.recommendation> =>
         Boolean(recommendation),
     );
-    const focus = allRecommendations.find(
-      (recommendation) => recommendation.skill.key === 'focus',
+    const delayedFusion = allRecommendations.find(
+      (recommendation) => recommendation.skill.key === 'delayed_fusion',
     );
 
     expect(snapshot.output?.recommendation?.skill?.key).toBe('focus');
     expect(result.recommendation).not.toBeNull();
-    expect(result.recommendation!.skill.type).toBe('fusion');
-    expect(result.recommendation!.skill.key).not.toBe('focus');
-    expect(focus).toBeDefined();
-    expect(result.recommendation!.score).toBeGreaterThan(focus!.score);
+    expect(result.recommendation!.skill.key).toBe('focus');
+    const floor = calculateActionSurvivabilityFloor(
+      input.state,
+      result.recommendation!.skill,
+      input.config,
+    );
+    expect(floor).not.toBeNull();
+    expect(floor!.stability).toBeGreaterThan(0);
+    expect(floor!.survivalProbability).toBe(1);
+    expect(delayedFusion).toBeDefined();
+    expect(result.recommendation!.score).toBeGreaterThan(delayedFusion!.score);
   });
 
   it('replays the forge heat runway snapshot at heat one and no longer walks forge heat to zero', () => {
@@ -6000,9 +6010,9 @@ describe('scoreState (isolated)', () => {
       'forge-heat-runway-step-3.snapshot.json',
     );
     const input = getReplaySearchInput(snapshot);
-    // The 0.7.17 phase model contests this line at depth 5, then completes
-    // the fusion recovery pass at depth 6 (~6,000 nodes). The captured 4.5s
-    // deadline can stop on either pass under Jest; bind on work, not speed.
+    // Retain the 6,000-node recovery budget rather than a machine-speed limit.
+    // Survival weighting now satisfies the stable-recommendation exit at
+    // depth 5; deeper fusion ordering is not the safety contract.
     const stableSearchConfig = {
       ...input.searchConfig,
       timeBudgetMs: 120000,
@@ -6058,11 +6068,13 @@ describe('scoreState (isolated)', () => {
         input.config,
       ),
     ).toMatchObject({ stability: 3, survivalProbability: 1 });
-    expect(result.optimalRotation?.slice(0, 4)).toEqual([
+    // Verified at corrected depths 5 and 6: support then stabilize. This also
+    // matches the old depth-6 opening; its third move was Delayed Fusion,
+    // while the corrected line uses Explosive Fusion. Pin the safe prefix,
+    // as in the overcraft regression, not the horizon-dependent remainder.
+    expect(result.optimalRotation?.slice(0, 2)).toEqual([
       'Unstable Re-energisation',
       'Harmonious Stabilize',
-      'Delayed Fusion',
-      'Explosive Fusion',
     ]);
   });
 });

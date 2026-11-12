@@ -45,6 +45,7 @@ import { normalizeIdentifier } from './nameNormalization';
 import {
   StabilityProjection,
   type ActionSurvivabilityFloor,
+  type SurvivalConditionedStability,
 } from './stability';
 export type { ActionSurvivabilityFloor } from './stability';
 import {
@@ -466,6 +467,10 @@ export interface SkillGains {
 const appliedSurvivabilityFloors = new WeakMap<
   CraftingState,
   ActionSurvivabilityFloor
+>();
+const appliedSurvivalConditionedStability = new WeakMap<
+  CraftingState,
+  SurvivalConditionedStability
 >();
 const masteryStabilityProjections = new WeakMap<
   CraftingState,
@@ -3090,6 +3095,30 @@ export function calculateActionSurvivabilityFloor(
   return next ? { ...appliedSurvivabilityFloors.get(next)! } : null;
 }
 
+/** Survival-only resource means from this exact transition; bars remain EV. */
+export function getSurvivalConditionedState(
+  appliedState: CraftingState,
+): CraftingState {
+  const conditioned = appliedSurvivalConditionedStability.get(appliedState);
+  if (
+    !conditioned ||
+    (conditioned.stability === appliedState.stability &&
+      conditioned.stabilityPenalty === appliedState.stabilityPenalty)
+  ) {
+    return appliedState;
+  }
+  const nativeVariables = appliedState.nativeVariables
+    ? {
+        ...appliedState.nativeVariables,
+        stability: conditioned.stability,
+        stabilitypenalty: conditioned.stabilityPenalty,
+        maxstability:
+          appliedState.initialMaxStability - conditioned.stabilityPenalty,
+      }
+    : appliedState.nativeVariables;
+  return appliedState.copy({ ...conditioned, nativeVariables });
+}
+
 /**
  * Check if a condition requirement is met by the current condition.
  * Skills require EXACT condition match - e.g., Harmonious skills only work during Harmonious (positive),
@@ -5406,6 +5435,12 @@ function applySkillTransition(
       : [...phase.barStart.history, skill.name],
   });
   appliedSurvivabilityFloors.set(next, cleanedStability.floor);
+  if (cleanedStability.survivalConditioned) {
+    appliedSurvivalConditionedStability.set(
+      next,
+      cleanedStability.survivalConditioned,
+    );
+  }
   if (phase.masteryPhase)
     masteryStabilityProjections.set(next, stabilityProjection);
   return next;

@@ -48,6 +48,8 @@ import {
   shouldDeprioritizeAgainstGuaranteedSafeStabilize,
   shouldUseSurvivabilityFloorForContinuation,
   applySurvivabilityFloorToState,
+  weightContinuationBySurvival,
+  conditionContinuationOnSurvival,
   classifyTerminalState,
 } from './safety';
 
@@ -125,6 +127,21 @@ function runGreedySearch(
     normalizeConditionType(currentConditionType);
   const stateWillAutoFinish = (candidate: CraftingState): boolean =>
     willAutoFinish(candidate, outcomeBands);
+  const scoreFinishedState = (candidate: CraftingState): number =>
+    scoreFinishedOutcome(
+      candidate,
+      targetCompletion,
+      targetPerfection,
+      isSublime,
+      targetMult,
+      config.maxCompletion,
+      config.maxPerfection,
+      scoringCtx,
+      cfg.goalPriorityBias,
+      cfg.overcraftAmbition,
+      cfg.perfectionBandGoal,
+      cfg.completionBandCeiling,
+    );
   if (stateWillAutoFinish(state)) {
     return {
       status: 'autoResolved',
@@ -263,7 +280,12 @@ function runGreedySearch(
       });
     const newState = requiresProbabilisticSurvival
       ? applySurvivabilityFloorToState(displayState, survivabilityFloor)
-      : displayState;
+      : conditionContinuationOnSurvival(
+          displayState,
+          survivabilityFloor,
+          requiresProbabilisticSurvival,
+          stateWillAutoFinish(displayState),
+        );
 
     const { expectedGains, immediateGains, effectiveCosts } =
       calculateRecommendationGains(
@@ -281,22 +303,9 @@ function runGreedySearch(
     const endsByAutoFinish = stateWillAutoFinish(newState);
     // Auto-resolved and blocked successors have final bars. A playable
     // goal-met state keeps the live scorer for resonance/overcraft continuation.
-    const score =
+    const continuationScore =
       endsByAutoFinish || terminalState.isTerminal
-        ? scoreFinishedOutcome(
-            newState,
-            targetCompletion,
-            targetPerfection,
-            isSublime,
-            targetMult,
-            config.maxCompletion,
-            config.maxPerfection,
-            scoringCtx,
-            cfg.goalPriorityBias,
-            cfg.overcraftAmbition,
-            cfg.perfectionBandGoal,
-            cfg.completionBandCeiling,
-          )
+        ? scoreFinishedState(newState)
         : scoreState(
             newState,
             targetCompletion,
@@ -312,6 +321,14 @@ function runGreedySearch(
             cfg.perfectionBandGoal,
             cfg.completionBandCeiling,
           );
+    const score = weightContinuationBySurvival(
+      continuationScore,
+      displayState,
+      survivabilityFloor,
+      requiresProbabilisticSurvival,
+      stateWillAutoFinish(displayState),
+      scoreFinishedState,
+    );
     const reasoning = generateReasoning(
       skill,
       state,

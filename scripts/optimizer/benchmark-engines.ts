@@ -225,9 +225,15 @@ const FIXTURE_CONTRACTS: FixtureContract[] = [
   },
   {
     fixture: 'forge-heat-runway-step-2',
-    preferredTypes: ['fusion'],
-    mustNotRecommend: ['focus'],
-    notes: 'Heat=2: prioritize heat recovery (fusion) over support setup.',
+    // At stability 2, Delayed Fusion has floor 0/p=.75; death banks ~21,950.
+    // Survival-weighted/conditioned at depth 6: fusion 64,185 vs Focus 85,160.
+    // Depth 5 hides Focus's payoff (fusion 63,576 vs Focus 58,228), so bind
+    // this contract to 6,000 nodes, like step-3, rather than machine speed.
+    // Temporary heat zero is accepted and recovered through later fusion.
+    searchBudget: { maxNodes: 6000, timeBudgetMs: 120000 },
+    mustRecommendOneOf: ['focus'],
+    notes:
+      "docs/RUNTIME_EVIDENCE.md §19: at stability 2, Delayed Fusion survives only 75% (floor 0) and its losing branch ends the craft at ~21,950. Survival-weighted and conditioned at depth 6, it scores 64,185 vs Focus's guaranteed-safe opening line at 85,160. Depth 5 misses Focus's payoff (Delayed Fusion 63,576 vs Focus 58,228), so bind to 6,000 nodes. Accept temporary heat zero and recover it through fusion, as in step-3.",
   },
   {
     fixture: 'forge-heat-runway-step-3',
