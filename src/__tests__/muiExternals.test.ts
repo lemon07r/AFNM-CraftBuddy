@@ -25,7 +25,9 @@ describe('MUI externals', () => {
     const offenders: string[] = [];
     for (const file of sourceFiles(SRC)) {
       const text = readFileSync(file, 'utf8');
-      const pattern = /from\s+['"](@mui\/[^'"]+|@emotion\/[^'"]+)['"]/g;
+      // Any quoted specifier: static/side-effect/dynamic imports, re-exports
+      // and require() all bundle the subpath the same way.
+      const pattern = /['"`](@mui\/[^'"`\s]+|@emotion\/[^'"`\s]+)['"`]/g;
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(text))) {
         if (
