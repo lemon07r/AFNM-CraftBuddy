@@ -643,6 +643,34 @@ export function companionIntegrationScenarios() {
 
 export const HAN_KEY = "han_weiguang's_assistance";
 
+export function hanBuff(): BuffDefinition {
+  return {
+    name: "Han Weiguang's Assistance",
+    canStack: false,
+    effects: [],
+    additionalVariables: { preventedStabilityLosses: 0, preventionLimit: 2 },
+    craftingEffectInterceptors: [
+      {
+        scope: 'resource',
+        appliesTo: ['stability'],
+        trigger: {
+          kind: 'condition',
+          condition: 'amount < 0 && preventedStabilityLosses < preventionLimit',
+        },
+        modifier: { kind: 'multiply', value: 0 },
+        effects: [
+          {
+            kind: 'setState',
+            key: 'preventedStabilityLosses',
+            mode: 'add',
+            value: { value: 1 },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export function hanScenarios() {
   return [
     'payment',
@@ -661,12 +689,7 @@ export function hanScenarios() {
     'zero-stacks',
     'chance-mastery',
   ].map((edge) => {
-    const han: BuffDefinition = {
-      name: "Han Weiguang's Assistance",
-      canStack: false,
-      effects: [],
-      stabilityLossPrevention: { uses: 2 },
-    };
+    const han = hanBuff();
     const observer: BuffDefinition = {
       name: 'Loss observer',
       canStack: false,
@@ -858,7 +881,7 @@ export function suScenarios() {
       const second = { ...suBuff(), name: 'Second interceptor' };
       buffs.set('second_interceptor', {
         name: second.name,
-        stacks: 0,
+        stacks: 1,
         definition: second,
       });
     }

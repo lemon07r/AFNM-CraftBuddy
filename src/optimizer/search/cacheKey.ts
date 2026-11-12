@@ -78,6 +78,7 @@ function getNormalizedCacheKey(
 
   const key = `${state.getCacheKey()}:${compKey}:${perfKey}:${remainingDepth}:${conditionType || 'n'}:${queueKey}`;
   // Generic interceptor expressions can read the full step, not just Su's phase.
+  // Native-only: synthesized legacy prevention never reads step; preserve legacy replay cache keys.
   const intercepted = Array.from(state.buffs.values()).some(
     (buff) => buff.definition?.craftingEffectInterceptors?.length,
   );
