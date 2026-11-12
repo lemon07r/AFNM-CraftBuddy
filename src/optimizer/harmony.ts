@@ -259,6 +259,10 @@ function processForgeWorks(
   const fw: ForgeWorksData = harmonyData.forgeWorks
     ? { ...harmonyData.forgeWorks }
     : { heat: 0 };
+  // Hydrated roots carry only `heat`; the band it shows is the one heat 1 keeps.
+  if (fw.lastBuffedHeat === undefined && forgeHeatUpdatesBuff(fw.heat)) {
+    fw.lastBuffedHeat = clampForgeHeat(fw.heat);
+  }
 
   if (techniqueType === 'fusion') {
     fw.heat += 2;

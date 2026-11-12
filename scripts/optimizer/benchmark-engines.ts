@@ -218,6 +218,12 @@ const FIXTURE_CONTRACTS: FixtureContract[] = [
       'Heat=6 regression: optimizer should not return to fusion when forge heat is already in the sweet spot.',
   },
   {
+    fixture: 'user-report-forge-frozen-opening',
+    preferredTypes: ['fusion'],
+    notes:
+      'Heat=0 opening (0.7.20 `Heat (Frozen)` buff): refines gain nothing, so heat must be raised with a fusion rather than stabilizing.',
+  },
+  {
     fixture: 'forge-heat-runway-step-2',
     preferredTypes: ['fusion'],
     mustNotRecommend: ['focus'],

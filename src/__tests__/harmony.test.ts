@@ -88,6 +88,17 @@ describe('Forge Works', () => {
     expect(result.statModifiers.controlMultiplier).toBe(0.5);
   });
 
+  it('keeps the heat-2 band at heat 1 when the root carries no band history', () => {
+    const hd: HarmonyData = {
+      forgeWorks: { heat: 2 },
+      recommendedTechniqueTypes: [],
+    };
+    const result = processHarmonyEffect(hd, 'forge', 'refine');
+    expect(result.harmonyData.forgeWorks?.heat).toBe(1);
+    expect(result.harmonyData.forgeWorks?.lastBuffedHeat).toBe(2);
+    expect(result.statModifiers.controlMultiplier).toBe(0.5);
+  });
+
   it('should clamp heat to [0, 10]', () => {
     const hdLow: HarmonyData = { forgeWorks: { heat: 0 }, recommendedTechniqueTypes: [] };
     const result = processHarmonyEffect(hdLow, 'forge', 'refine');
