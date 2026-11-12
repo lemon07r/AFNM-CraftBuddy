@@ -2392,11 +2392,40 @@ function buildPostCostStabilityFrame(
   // 0.7.8 Illume Crucible seal, mirrored from `applySkill`.
   const maxStabilitySealed = hasSealedMaxStabilityBuff(state.buffs);
 
+  // 0.7.20 resource interceptors can scale or prevent max-stability changes,
+  // including the per-turn decay. Preview-only: side effects are not executed.
+  const activeBuffs = config
+    ? getResolvedActiveBuffs(state, config)
+    : undefined;
+  let interceptVars: ScalingVariables | undefined;
+  const interceptMaxStability = (amount: number): number => {
+    if (!config || !activeBuffs || !hasEffectInterceptors(activeBuffs)) {
+      return amount;
+    }
+    interceptVars ??= {
+      ...buildActionEvaluationFrame(state, skill, config, conditionEffects)
+        .variables,
+      step: state.step,
+    };
+    return interceptCraftingAmount(
+      activeBuffs,
+      'maxStability',
+      amount,
+      'resource',
+      state,
+      interceptVars,
+      true,
+      isItemAction ? undefined : skill.type,
+      () => undefined,
+      new Set<string>(),
+    );
+  };
+
   if (
     consumesTurn &&
     (!skill.preventsMaxStabilityDecay || maxStabilitySealed)
   ) {
-    stabilityPenaltyAfterSetup++;
+    stabilityPenaltyAfterSetup -= interceptMaxStability(-1);
   }
   stabilityPenaltyAfterSetup = Math.min(
     stabilityPenaltyAfterSetup,
@@ -2406,10 +2435,9 @@ function buildPostCostStabilityFrame(
   let maxStabilityAfterSetup =
     state.initialMaxStability - stabilityPenaltyAfterSetup;
   if (skill.maxStabilityChange) {
+    const interceptedChange = interceptMaxStability(skill.maxStabilityChange);
     const effectiveMaxStabilityChange =
-      maxStabilitySealed && skill.maxStabilityChange > 0
-        ? 0
-        : skill.maxStabilityChange;
+      maxStabilitySealed && interceptedChange > 0 ? 0 : interceptedChange;
     stabilityPenaltyAfterSetup = Math.min(
       state.initialMaxStability,
       Math.max(0, stabilityPenaltyAfterSetup - effectiveMaxStabilityChange),

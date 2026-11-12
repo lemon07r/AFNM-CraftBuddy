@@ -6,6 +6,7 @@ import type {
 import {
   applySkill,
   calculateActionSurvivabilityFloor,
+  calculateDisplayedSkillGains,
   calculateSkillGains,
 } from '../optimizer/skills';
 import { hanBuff, hanScenarios, suBuff } from './fixtures/companions';
@@ -121,6 +122,30 @@ describe('0.7.20 resource-scope crafting interceptors', () => {
     expect(
       state.buffs.get('perk')?.internalState?.preventedMaxStabilityLosses,
     ).toBe(2);
+  });
+
+  it('previews restoration against the intercepted max-stability decay', () => {
+    const definition = owner([
+      {
+        scope: 'resource',
+        appliesTo: ['maxStability'],
+        trigger: { kind: 'condition', condition: 'amount < 0' },
+        modifier: { kind: 'multiply', value: 0 },
+      },
+    ]);
+    const skill = retargetSkill({
+      qiCost: 0,
+      stabilityCost: 0,
+      effects: [{ kind: 'stability', amount: { value: 5 } }],
+    });
+    const config = retargetConfig(skill);
+    const state = held(definition).copy({ stability: 59 });
+    const next = applySkill(state, skill, config)!;
+    expect(next.stabilityPenalty).toBe(0);
+    expect(next.stability).toBe(60);
+    expect(calculateDisplayedSkillGains(state, skill, config).stability).toBe(
+      1,
+    );
   });
 
   it.each([true, false])(
