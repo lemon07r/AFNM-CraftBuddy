@@ -205,9 +205,11 @@ describe('survival-weighted continuation', () => {
               ? Array.from({ length: depth }, () => 'Safe')
               : ['Gamble', ...Array.from({ length: depth - 1 }, () => 'Safe')],
           );
-          // Projection remains EV, not the conditioned search resource state.
+          // The planned end state replays the chosen (surviving) line.
           expect(result.expectedFinalState?.stability).toBe(
-            probability === 0.5 ? s.state.stability : s.afterGamble.stability,
+            probability === 0.5
+              ? s.state.stability
+              : s.survivingGamble.stability,
           );
         }
       }
@@ -303,6 +305,56 @@ describe('survival-weighted continuation', () => {
         testCase.endsCraft,
       ),
     ).toBe(s.afterGamble);
+  });
+
+  it('projects every planned step the surviving line can still play', () => {
+    const s = createScenario(0.7);
+    const gamble = { ...s.gamble, stabilityGain: 30 };
+    const spend: SkillDefinition = {
+      ...s.safe,
+      name: 'Spend',
+      key: 'spend',
+      stabilityCost: 11,
+      baseCompletionGain: 80,
+      basePerfectionGain: 80,
+    };
+    const config = { ...s.config, skills: [gamble, s.safe, spend] };
+    const result = lookaheadSearch(
+      s.state,
+      config,
+      100,
+      100,
+      4,
+      'neutral',
+      [],
+      {
+        timeBudgetMs: 1e9,
+        maxNodes: 10000,
+        useIterativeDeepening: false,
+        useAdaptiveBeamWidth: false,
+        beamWidth: 3,
+      },
+    );
+    const afterGamble = s.apply(s.state, gamble);
+    const surviving = getSurvivalConditionedState(afterGamble);
+    // The EV state (21) runs out after two Spends; the surviving line (30)
+    // plays all three, so the projection must not stop early.
+    expect(afterGamble.stability).toBe(21);
+    expect(surviving.stability).toBeCloseTo(30, 9);
+    expect(result.optimalRotation).toEqual([
+      'Gamble',
+      'Spend',
+      'Spend',
+      'Spend',
+    ]);
+    let replay = surviving;
+    for (let step = 0; step < 3; step++) {
+      expect(replay.stability).toBeGreaterThan(0);
+      replay = s.apply(replay, spend);
+    }
+    expect(result.expectedFinalState?.completion).toBe(replay.completion);
+    expect(result.expectedFinalState?.perfection).toBe(replay.perfection);
+    expect(result.expectedFinalState?.stability).toBe(replay.stability);
   });
 
   it('continues the forge gamble at surviving stability 4, not display EV 3', () => {

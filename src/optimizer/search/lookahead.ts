@@ -2023,10 +2023,11 @@ function runLookaheadSearch(
       }
     }
 
-    // Policy selection above follows surviving resource means. Replay the
-    // chosen path separately for display, keeping EV resources (and the old
-    // guard collapse) rather than exposing a conditioned or weighted state.
-    let finalState = stateAfterFirstMoveForDisplay;
+    // The path was chosen from survival-conditioned resources, so replay it
+    // from the same states: the planned end state describes the line in which
+    // the plan survives, and every listed step stays playable. The first
+    // move's own preview above keeps its EV resources.
+    let finalState = stateAfterFirstMove;
     let displayCondition = firstMoveConditionState.nextCondition;
     let displayQueue = firstMoveConditionState.nextQueue;
     for (const name of path) {
@@ -2068,7 +2069,7 @@ function runLookaheadSearch(
         displayCondition,
         safeContext.hasGuaranteedSafeStabilize,
         safeContext.minimumGuaranteedContinuationStability,
-      ).presentationState;
+      ).searchState;
       const nextCondition = getMostLikelyConditionStateAfterSkill(
         finalState,
         displayCondition,
