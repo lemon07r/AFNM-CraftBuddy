@@ -41,6 +41,7 @@ Harness query params (see `scripts/ui/agent-browser-harness.tsx`): `?state=` pic
 - Labels go through `techniqueDisplayName()`, so internal “False Fusion” displays as “Strive for Completion”. Auto-finish wording avoids suggesting a nonexistent manual finish control.
 - Decree's readout is an end-state snapshot, not a once-per-turn harmony award. Recheck short-window scroll/height after adding sections.
 - Keep React/ReactDOM aligned and respect webpack externals; the standalone harness may catch dependency problems the game bundle does not.
+- Import MUI only from the root `@mui/material` / `@mui/icons-material` packages, which webpack maps to the game's `window.MaterialUI` / `window.MaterialUIIcons`. A subpath such as `@mui/material/styles` is bundled as a second MUI copy whose `ThemeProvider` the game's components never see, so in game they fall back to MUI's default light theme (dark text on the dark panel, white dialogs, blue controls). The harness bundles a single copy and cannot show this; `muiExternals.test.ts` guards it, and only icons the game ships are usable (e.g. `HelpOutlineOutlined`, not `HelpOutline`).
 - For native options/injection, inspect the runtime APIs and upstream components before building a duplicate host. CraftBuddy's present palette/font choices are not proof of matching the game's theme.
 
 If the harness cannot answer a live integration question, use the runtime skill's escalation path. A successful static audit is not a live UI smoke test.

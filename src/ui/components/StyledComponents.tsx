@@ -8,7 +8,7 @@ import {
   Typography,
 } from '@mui/material';
 import type { ButtonProps } from '@mui/material';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import { HelpOutlineOutlined as HelpOutlineIcon } from '@mui/icons-material';
 import { colors, fonts, reducedMotionSx } from '../theme';
 import { OVERLAY_EDGE_MARGIN_PX } from '../../utils/overlayLayout';
 

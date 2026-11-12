@@ -18,8 +18,10 @@ import {
   Switch,
   Typography,
 } from '@mui/material';
-import SettingsIcon from '@mui/icons-material/Settings';
-import CloseIcon from '@mui/icons-material/Close';
+import {
+  Close as CloseIcon,
+  Settings as SettingsIcon,
+} from '@mui/icons-material';
 import {
   AMBITION_BAND_MAX,
   SEARCH_PRESET_BUDGETS,

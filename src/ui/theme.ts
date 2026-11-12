@@ -1,4 +1,4 @@
-import { createTheme } from '@mui/material/styles';
+import { createTheme } from '@mui/material';
 
 // Read-only AFNM 0.7.19 theme tokens. This provider scopes them to CraftBuddy;
 // never register a game-wide theme override.
