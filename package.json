@@ -35,7 +35,7 @@
     "@electron/asar": "^4.3.0",
     "@types/jest": "^30.0.0",
     "@types/react-dom": "^19.2.3",
-    "afnm-types": "0.7.19",
+    "afnm-types": "0.7.20",
     "jest": "^30.2.0",
     "prettier": "^3.8.1",
     "ts-jest": "^29.4.6",

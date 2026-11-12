@@ -231,7 +231,10 @@ describe('inert companion corpus differential', () => {
                 ...hanScenarios()[0].state.buffs.get(HAN_KEY)!,
                 definition: {
                   ...hanScenarios()[0].state.buffs.get(HAN_KEY)!.definition!,
-                  stabilityLossPrevention: { uses: 0 },
+                  additionalVariables: {
+                    preventedStabilityLosses: 0,
+                    preventionLimit: 0,
+                  },
                 },
               },
             ] as const);
@@ -1008,7 +1011,7 @@ describe('Han Weiguang certainty-only prevention', () => {
     // r7c dispatches a zero reduced loss, but Han spends no prevention use.
     ['zero-loss', 50, 0, 0, 1],
     ['held-order', 50, 2, 0, 0],
-    ['zero-stacks', 50, 1, 0, 0],
+    ['zero-stacks', 40, 0, 10, 1],
     // The existing final cleanup floors the intermediate mastery mean (48.5).
     ['chance-mastery', 48, 0, 1.5, 1],
   ])(

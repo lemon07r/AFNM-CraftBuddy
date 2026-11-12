@@ -110,7 +110,7 @@ function extractSummary(extractDir, gameDir, asarPath) {
     runtimeText,
   );
   const forgeRecommendFusionThrough4 =
-    /forgeWorks\.heat<=4\?[te]\.recommendedTechniqueTypes/.test(runtimeText);
+    /recommendedTechniqueTypes=[te]\.forgeWorks\.heat<=4\?/.test(runtimeText);
 
   return {
     gameDir,

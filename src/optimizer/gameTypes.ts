@@ -192,9 +192,10 @@ export interface BuffStats {
  * Complete buff definition matching game structure.
  */
 export interface CraftingEffectInterceptor {
+  scope?: 'technique' | 'resource';
   techniqueTypes?: TechniqueType[];
   trigger?: CraftingTechniqueCondition;
-  modifier: { kind: 'multiply'; value: number };
+  modifier: { kind: 'multiply'; value: number | Scaling };
   appliesTo: Array<
     | 'completion'
     | 'perfection'
@@ -208,6 +209,7 @@ export interface CraftingEffectInterceptor {
 
 export interface BuffDefinition {
   craftingEffectInterceptors?: CraftingEffectInterceptor[];
+  /** @deprecated Compatibility with pre-0.7.20 replay snapshots only. */
   stabilityLossPrevention?: { uses: number };
   additionalVariables?: Record<string, number>;
   name: string;
@@ -824,6 +826,7 @@ export function evaluateScaling(
   variables: ScalingVariables,
   defaultValue: number = 0,
   preMaxTransform?: (value: number) => number,
+  skipRounding = false,
 ): number {
   if (!scaling) return defaultValue;
 
@@ -878,7 +881,9 @@ export function evaluateScaling(
     result *= 1 + (variables.roomEffectiveness ?? 0) / 100;
   }
 
-  if (result > 10) {
+  if (skipRounding) {
+    // Interceptor multipliers retain their fractional precision.
+  } else if (result > 10) {
     result = Math.floor(result);
   } else if (result < -10) {
     result = Math.ceil(result);

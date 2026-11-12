@@ -39,7 +39,34 @@ describe('companion live extraction and replay', () => {
       stacks: 0,
       effects: [],
       displayLocation: 'none',
-      stabilityLossPrevention: { uses: 2 },
+      additionalVariables: { preventedStabilityLosses: 0, preventionLimit: 2 },
+      craftingEffectInterceptors: [
+        {
+          scope: 'resource',
+          appliesTo: ['stability'],
+          trigger: {
+            kind: 'condition',
+            condition:
+              'amount < 0 && preventedStabilityLosses < preventionLimit',
+          },
+          modifier: {
+            kind: 'multiply',
+            value: {
+              value: 0,
+              stat: undefined,
+              additiveEqn: '0 * unique_Pill',
+            },
+          },
+          effects: [
+            {
+              kind: 'setState',
+              key: 'preventedStabilityLosses',
+              mode: 'add',
+              value: { value: 1, stat: undefined },
+            },
+          ],
+        },
+      ],
       internalState: { preventedStabilityLosses: 1, invalid: Infinity },
     };
     const buffs = extractTrackedBuffs([su, han]);
@@ -74,8 +101,12 @@ describe('companion live extraction and replay', () => {
     ]);
     expect(
       revived.buffs.get("han_weiguang's_assistance")?.definition
-        ?.stabilityLossPrevention,
-    ).toEqual({ uses: 2 });
+        ?.craftingEffectInterceptors,
+    ).toEqual(han.craftingEffectInterceptors);
+    expect(
+      revived.buffs.get("han_weiguang's_assistance")?.definition
+        ?.additionalVariables,
+    ).toEqual(han.additionalVariables);
   });
 
   it('defaults missing stacks to zero but still rejects nonfinite stacks', () => {

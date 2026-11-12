@@ -163553,7 +163553,7 @@
             },
             "second_interceptor": {
               "name": "Second interceptor",
-              "stacks": 0,
+              "stacks": 1,
               "definition": {
                 "name": "Second interceptor",
                 "canStack": false,
@@ -163658,7 +163658,7 @@
               },
               {
                 "key": "second_interceptor",
-                "stacks": 0,
+                "stacks": 1,
                 "internalState": {}
               }
             ],
@@ -164697,9 +164697,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -164885,9 +164912,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -165086,9 +165140,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 2
@@ -165284,9 +165365,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -165486,9 +165594,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -165685,9 +165820,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -165880,9 +166042,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -166082,9 +166271,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -166293,9 +166509,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -166502,9 +166745,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -166712,9 +166982,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -166925,9 +167222,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -167123,9 +167447,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 1
@@ -167171,9 +167522,36 @@
                 "name": "Second prevention",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -167340,9 +167718,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -167429,7 +167834,7 @@
             "qiDroplets": 0,
             "maxQiDroplets": 0,
             "qi": 100,
-            "stability": 50,
+            "stability": 40,
             "stabilityPenalty": 1,
             "completion": 0,
             "perfection": 0,
@@ -167447,13 +167852,16 @@
                 "key": "han_weiguang's_assistance",
                 "stacks": 0,
                 "internalState": {
-                  "preventedStabilityLosses": 1
+                  "preventedStabilityLosses": 0
                 }
               },
               {
                 "key": "loss_observer",
                 "stacks": 1,
-                "internalState": {}
+                "internalState": {
+                  "calls": 1,
+                  "spent": 10
+                }
               }
             ],
             "items": [],
@@ -167528,9 +167936,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -168650,9 +169085,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -168855,9 +169317,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -169055,9 +169544,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -169426,9 +169942,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -169779,9 +170322,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -170144,9 +170714,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -170339,9 +170936,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -170762,9 +171386,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -171231,9 +171882,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -171700,9 +172378,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -172135,9 +172840,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -172351,9 +173083,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -172622,9 +173381,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 2
@@ -172893,9 +173679,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -173164,9 +173977,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 2
@@ -174224,9 +175064,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -174510,9 +175377,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -174796,9 +175690,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -175910,9 +176831,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -176209,9 +177157,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -176508,9 +177483,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -177677,9 +178679,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -177990,9 +179019,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -178303,9 +179359,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -179873,9 +180956,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 2
@@ -180114,9 +181224,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 2
@@ -180361,9 +181498,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 2
@@ -180602,9 +181766,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 2
@@ -180849,9 +182040,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0
@@ -181071,9 +182289,36 @@
                 "name": "Han Weiguang's Assistance",
                 "canStack": false,
                 "effects": [],
-                "stabilityLossPrevention": {
-                  "uses": 2
-                }
+                "additionalVariables": {
+                  "preventedStabilityLosses": 0,
+                  "preventionLimit": 2
+                },
+                "craftingEffectInterceptors": [
+                  {
+                    "scope": "resource",
+                    "appliesTo": [
+                      "stability"
+                    ],
+                    "trigger": {
+                      "kind": "condition",
+                      "condition": "amount < 0 && preventedStabilityLosses < preventionLimit"
+                    },
+                    "modifier": {
+                      "kind": "multiply",
+                      "value": 0
+                    },
+                    "effects": [
+                      {
+                        "kind": "setState",
+                        "key": "preventedStabilityLosses",
+                        "mode": "add",
+                        "value": {
+                          "value": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "internalState": {
                 "preventedStabilityLosses": 0

@@ -27,6 +27,7 @@ import {
   evaluateScaling,
   evalExpression,
   CraftingBuffTrigger,
+  CraftingEffectInterceptor,
 } from './gameTypes';
 import {
   processHarmonyEffect,
@@ -756,50 +757,170 @@ function hasSealedMaxStabilityBuff(
   );
 }
 
-/** Whether any held buff intercepts technique/mastery numeric applications. */
+type NormalizedInterceptor = CraftingEffectInterceptor & {
+  legacyPreventionLimit?: number;
+};
+
+/** Normalize old replay-only prevention into the 0.7.20 resource pipeline. */
+function getCraftingEffectInterceptors(
+  definition: BuffDefinition | undefined,
+): readonly NormalizedInterceptor[] {
+  const native = definition?.craftingEffectInterceptors ?? [];
+  const legacy = definition?.stabilityLossPrevention;
+  if (!legacy) return native;
+  return [
+    ...native,
+    {
+      legacyPreventionLimit: legacy.uses,
+      scope: 'resource',
+      appliesTo: ['stability'],
+      trigger: {
+        kind: 'condition',
+        condition: 'amount < 0 && preventedStabilityLosses < preventionLimit',
+      },
+      modifier: { kind: 'multiply', value: 0 },
+      effects: [
+        {
+          kind: 'setState',
+          key: 'preventedStabilityLosses',
+          mode: 'add',
+          value: { value: 1 },
+        },
+      ],
+    },
+  ];
+}
+
+/** Whether any held buff intercepts numeric applications in either scope. */
 function hasEffectInterceptors(buffs: ActiveBuffMap): boolean {
   return Array.from(buffs.values()).some(
-    (buff) => buff.definition?.craftingEffectInterceptors?.length,
+    (buff) => getCraftingEffectInterceptors(buff.definition).length,
   );
 }
 
-function hasStabilityPrevention(buffs: ActiveBuffMap): boolean {
-  return Array.from(buffs.values()).some(
-    (buff) => buff.definition?.stabilityLossPrevention,
-  );
-}
-
-/** n7c: held order, no stack check. Never spend an integer use on an EV loss. */
-function preventCertainStabilityLoss(
+/** Runtime OC: snapshot order, live owners, first matching interceptor per buff. */
+function interceptCraftingAmount(
   buffs: ActiveBuffMap,
+  kind: string,
   amount: number,
+  callScope: 'technique' | 'resource',
+  state: CraftingState,
+  variables: ScalingVariables,
   certain: boolean,
-): boolean {
-  if (!certain || amount >= 0) return false;
-  for (const [key, owner] of Array.from(buffs.entries())) {
-    const prevention = owner.definition?.stabilityLossPrevention;
-    const used = Math.max(
-      0,
-      Math.floor(owner.internalState?.preventedStabilityLosses ?? 0),
-    );
-    if (!prevention || used >= prevention.uses) continue;
-    buffs.set(key, {
-      ...owner,
-      internalState: {
+  techniqueType: TechniqueType | undefined,
+  execute: (effect: BuffEffect, key: string, scope: ScalingVariables) => void,
+  guards: Set<string>,
+  progress?: LiveProgress,
+): number {
+  if (amount === 0) return amount;
+  for (const [key] of Array.from(buffs.entries())) {
+    if (amount === 0) break;
+    const owner = buffs.get(key);
+    if (!owner) continue;
+    const interceptors = getCraftingEffectInterceptors(owner.definition);
+    for (let i = 0; i < interceptors.length; i++) {
+      const interceptor = interceptors[i];
+      const guard = `${owner.name}:${i}`;
+      if (
+        (owner.stacks <= 0 &&
+          interceptor.legacyPreventionLimit === undefined) ||
+        guards.has(guard) ||
+        (interceptor.scope ?? 'technique') !== callScope ||
+        !interceptor.appliesTo.some((value) => value === kind) ||
+        (interceptor.techniqueTypes &&
+          (!techniqueType ||
+            !interceptor.techniqueTypes.includes(techniqueType)))
+      )
+        continue;
+      const scope: ScalingVariables = {
+        ...variables,
+        ...owner.definition?.additionalVariables,
         ...owner.internalState,
-        preventedStabilityLosses: used + 1,
-      },
-    });
-    return true;
+        amount,
+        stacks: owner.stacks,
+        ...(interceptor.legacyPreventionLimit === undefined
+          ? {}
+          : {
+              preventionLimit: interceptor.legacyPreventionLimit,
+              preventedStabilityLosses:
+                owner.internalState?.preventedStabilityLosses ?? 0,
+            }),
+      };
+      const trigger = progress
+        ? evaluateLiveProgressCondition(
+            interceptor.trigger,
+            state,
+            scope,
+            owner.stacks,
+            progress,
+          )
+        : evaluateEffectCondition(
+            interceptor.trigger,
+            state,
+            scope,
+            owner.stacks,
+          );
+      // Never spend an integer use on an EV application: skip the entire
+      // stateful interceptor unless both application and trigger are certain.
+      if (
+        !trigger.met ||
+        trigger.probability !== 1 ||
+        (!certain && interceptor.effects?.length)
+      )
+        continue;
+      const originalAmount = amount;
+      const multiplier = interceptor.modifier.value;
+      amount = Math.floor(
+        amount *
+          (typeof multiplier === 'number'
+            ? multiplier
+            : evaluateScaling(multiplier, scope, 0, undefined, true)),
+      );
+      guards.add(guard);
+      try {
+        for (const effect of interceptor.effects ?? []) {
+          // Runtime E4i re-reads the owner's state and stacks before each
+          // effect, so later conditions see earlier setState/stack changes.
+          const live = buffs.get(key) ?? owner;
+          const reactionScope: ScalingVariables = {
+            ...scope,
+            ...live.definition?.additionalVariables,
+            ...live.internalState,
+            stacks: live.stacks,
+            amount,
+            originalAmount,
+          };
+          const condition = progress
+            ? evaluateLiveProgressCondition(
+                effect.condition,
+                state,
+                reactionScope,
+                live.stacks,
+                progress,
+              )
+            : evaluateEffectCondition(
+                effect.condition,
+                state,
+                reactionScope,
+                live.stacks,
+              );
+          if (condition.met && condition.probability === 1)
+            execute({ ...effect, condition: undefined }, key, reactionScope);
+        }
+      } finally {
+        guards.delete(guard);
+      }
+      break;
+    }
   }
-  return false;
+  return amount;
 }
 
 function appliedStabilityAmount(
   amount: number,
   variables: ScalingVariables,
 ): number {
-  // r7c reduces/floors every loss before the optional Han prevention check.
+  // Price each loss before resource-scope interception.
   return amount < 0
     ? -floorCost(
         -amount *
@@ -2281,11 +2402,40 @@ function buildPostCostStabilityFrame(
   // 0.7.8 Illume Crucible seal, mirrored from `applySkill`.
   const maxStabilitySealed = hasSealedMaxStabilityBuff(state.buffs);
 
+  // 0.7.20 resource interceptors can scale or prevent max-stability changes,
+  // including the per-turn decay. Preview-only: side effects are not executed.
+  const activeBuffs = config
+    ? getResolvedActiveBuffs(state, config)
+    : undefined;
+  let interceptVars: ScalingVariables | undefined;
+  const interceptMaxStability = (amount: number): number => {
+    if (!config || !activeBuffs || !hasEffectInterceptors(activeBuffs)) {
+      return amount;
+    }
+    interceptVars ??= {
+      ...buildActionEvaluationFrame(state, skill, config, conditionEffects)
+        .variables,
+      step: state.step,
+    };
+    return interceptCraftingAmount(
+      activeBuffs,
+      'maxStability',
+      amount,
+      'resource',
+      state,
+      interceptVars,
+      true,
+      isItemAction ? undefined : skill.type,
+      () => undefined,
+      new Set<string>(),
+    );
+  };
+
   if (
     consumesTurn &&
     (!skill.preventsMaxStabilityDecay || maxStabilitySealed)
   ) {
-    stabilityPenaltyAfterSetup++;
+    stabilityPenaltyAfterSetup -= interceptMaxStability(-1);
   }
   stabilityPenaltyAfterSetup = Math.min(
     stabilityPenaltyAfterSetup,
@@ -2295,10 +2445,9 @@ function buildPostCostStabilityFrame(
   let maxStabilityAfterSetup =
     state.initialMaxStability - stabilityPenaltyAfterSetup;
   if (skill.maxStabilityChange) {
+    const interceptedChange = interceptMaxStability(skill.maxStabilityChange);
     const effectiveMaxStabilityChange =
-      maxStabilitySealed && skill.maxStabilityChange > 0
-        ? 0
-        : skill.maxStabilityChange;
+      maxStabilitySealed && interceptedChange > 0 ? 0 : interceptedChange;
     stabilityPenaltyAfterSetup = Math.min(
       state.initialMaxStability,
       Math.max(0, stabilityPenaltyAfterSetup - effectiveMaxStabilityChange),
@@ -2462,11 +2611,7 @@ function calculateSkillGainsWithFrame(
   frame?: ActionEvaluationFrame,
 ): SkillGains {
   const includeExpectedValue = options.includeExpectedValue ?? true;
-  if (
-    skill.effects?.length &&
-    ((skill.actionKind !== 'item' && hasEffectInterceptors(state.buffs)) ||
-      hasStabilityPrevention(state.buffs))
-  ) {
+  if (skill.effects?.length && hasEffectInterceptors(state.buffs)) {
     const prepared = prepareActionPhases(
       state,
       skill,
@@ -3296,7 +3441,7 @@ function literalMasteryPayment(
   // replays those.
   if (
     Array.from(active.values()).some(
-      (buff) => buff.definition?.craftingEffectInterceptors !== undefined,
+      (buff) => getCraftingEffectInterceptors(buff.definition).length > 0,
     )
   )
     return undefined;
@@ -3309,7 +3454,7 @@ function literalMasteryPayment(
     for (const effect of entry.effects) {
       if (effect.kind === 'createBuff') {
         if (
-          effect.buff?.craftingEffectInterceptors !== undefined ||
+          getCraftingEffectInterceptors(effect.buff).length > 0 ||
           !hasLiteralPaymentStats(effect.buff) ||
           !isLiteralScaling(effect.stacks) ||
           (effect.condition && effect.condition.kind !== 'chance')
@@ -3843,9 +3988,7 @@ function applySkillTransition(
     );
 
   // Calculate gains BEFORE applying buffs from this skill
-  const orderedNumeric =
-    (!isItemAction && hasEffectInterceptors(resolvedActiveBuffs)) ||
-    hasStabilityPrevention(resolvedActiveBuffs);
+  const orderedNumeric = hasEffectInterceptors(resolvedActiveBuffs);
   const orderedEffects = orderedNumeric && !!skill.effects?.length;
   const newBuffs = new Map(resolvedActiveBuffs);
   let certainApplication = true;
@@ -3913,7 +4056,7 @@ function applySkillTransition(
     );
 
   // Calculate new resource values
-  let newQi = clampQi(state.qi - effectiveQiCost);
+  let newQi = orderedNumeric ? state.qi : clampQi(state.qi - effectiveQiCost);
   // 0.7.7+ trigger amounts: the runtime fires `poolSpent` when the cost is
   // paid and `poolRestored` when a restore lands, each with the actual delta.
   const qiSpentByCost = Math.max(0, state.qi - newQi);
@@ -3922,6 +4065,7 @@ function applySkillTransition(
     Array.isArray(skill.effects) &&
     skill.effects.some((effect) => effect?.kind === 'pool');
   if (
+    !orderedNumeric &&
     !hasExplicitPoolEffect &&
     skill.restoresQi &&
     skill.qiRestore &&
@@ -3954,7 +4098,7 @@ function applySkillTransition(
   );
 
   // Apply max stability changes from skill
-  if (skill.maxStabilityChange) {
+  if (skill.maxStabilityChange && !orderedNumeric) {
     // Negative changes to max stability increase the penalty
     // Positive changes decrease the penalty (restore max stability)
     // A sealed max stability drops positive (restoring) changes entirely.
@@ -4262,19 +4406,45 @@ function applySkillTransition(
     actionVars.critchance,
     actionVars.critmultiplier,
   );
-  const canNormalizeInertBars = !Array.from(newBuffs.values()).some((owner) => {
-    const uses = owner.definition?.stabilityLossPrevention?.uses ?? 0;
-    const used = Math.max(
-      0,
-      Math.floor(owner.internalState?.preventedStabilityLosses ?? 0),
-    );
-    return (
-      used < uses ||
-      owner.definition?.craftingEffectInterceptors?.some(
-        (interceptor) => interceptor.effects?.length,
+  const canNormalizeInertBars = !Array.from(newBuffs.values()).some((owner) =>
+    getCraftingEffectInterceptors(owner.definition).some((interceptor) => {
+      if (interceptor.legacyPreventionLimit !== undefined)
+        return (
+          (owner.internalState?.preventedStabilityLosses ?? 0) <
+          interceptor.legacyPreventionLimit
+        );
+      // Exhausted Han is inert, just as the legacy replay representation was.
+      if (
+        owner.definition?.additionalVariables?.preventionLimit !== undefined &&
+        (owner.internalState?.preventedStabilityLosses ?? 0) >=
+          owner.definition.additionalVariables.preventionLimit
       )
-    );
-  });
+        return false;
+      return interceptor.effects?.length;
+    }),
+  );
+  const interceptorGuards = new Set<string>();
+  const interceptResource = (
+    kind: string,
+    amount: number,
+    certain = certainApplication,
+    variables = actionVars,
+  ): number =>
+    !orderedNumeric
+      ? amount
+      : interceptCraftingAmount(
+          newBuffs,
+          kind,
+          amount,
+          'resource',
+          state,
+          variables,
+          certain,
+          isItemAction ? undefined : skill.type,
+          executeBuffEffect,
+          interceptorGuards,
+          techniqueProgress,
+        );
   let inertBarScales: { completion: number; perfection: number } | undefined;
   const applyTechniqueNumeric = (
     effect: TechniqueEffect,
@@ -4294,62 +4464,29 @@ function applySkillTransition(
       (effect.amount?.value ?? 0) > 0
     )
       raw = 0;
-    // y7c: held order, first matching interceptor PER owner, floor each step.
-    for (const [key] of isItemAction ? [] : Array.from(newBuffs.entries())) {
-      const owner = newBuffs.get(key);
-      if (!owner) continue;
-      for (const interceptor of owner.definition?.craftingEffectInterceptors ??
-        []) {
-        if (
-          !interceptor.appliesTo.some((kind) => kind === effect.kind) ||
-          (interceptor.techniqueTypes &&
-            !interceptor.techniqueTypes.includes(skill.type))
-        )
-          continue;
-        const scope: ScalingVariables = {
-          ...actionVars,
-          step: state.step,
-          ...owner.definition?.additionalVariables,
-          ...owner.internalState,
-          stacks: owner.stacks,
-          amount: raw,
-        };
-        const trigger = evaluateLiveProgressCondition(
-          interceptor.trigger,
-          state,
-          scope,
-          owner.stacks,
-          techniqueProgress,
-        );
-        if (!trigger.met || trigger.probability !== 1) continue;
-        raw = Math.floor(raw * interceptor.modifier.value);
-        // Optional stochastic side effects are intentionally not approximated.
-        if (factor === 1)
-          for (const sideEffect of interceptor.effects ?? []) {
-            const sideScope = { ...actionVars, amount: raw };
-            Object.assign(
-              sideScope,
-              owner.definition?.additionalVariables,
-              newBuffs.get(key)?.internalState,
-              { stacks: newBuffs.get(key)?.stacks ?? 0 },
-            );
-            const condition = evaluateLiveProgressCondition(
-              sideEffect.condition,
-              state,
-              sideScope,
-              owner.stacks,
-              techniqueProgress,
-            );
-            if (condition.met && condition.probability === 1)
-              executeBuffEffect(
-                { ...sideEffect, condition: undefined },
-                key,
-                sideScope,
-              );
-          }
-        break;
-      }
-    }
+    if (!isItemAction)
+      raw = interceptCraftingAmount(
+        newBuffs,
+        effect.kind,
+        raw,
+        'technique',
+        state,
+        actionVars,
+        certainApplication && factor === 1,
+        skill.type,
+        executeBuffEffect,
+        interceptorGuards,
+        techniqueProgress,
+      );
+    if (effect.kind === 'stability' && raw < 0)
+      raw = appliedStabilityAmount(raw, actionVars);
+    const pricedRaw = raw;
+    raw = interceptResource(
+      effect.kind,
+      raw,
+      certainApplication && factor === 1,
+    );
+    if (effect.kind === 'stability' && pricedRaw < 0 && raw === 0) return;
     const crit =
       phase.includeExpectedValue === false
         ? 1
@@ -4372,21 +4509,6 @@ function applySkillTransition(
           : actionVars.perfectionBoost;
       if (Number.isFinite(boost))
         application.amount = application.realizedAmount *= 1 + boost / 100;
-    }
-    if (effect.kind === 'stability' && application.realizedAmount < 0) {
-      application.realizedAmount = appliedStabilityAmount(
-        application.realizedAmount,
-        actionVars,
-      );
-      application.amount = application.realizedAmount;
-      if (
-        preventCertainStabilityLoss(
-          newBuffs,
-          application.amount,
-          certainApplication && factor === 1,
-        )
-      )
-        return;
     }
     const amount = application.amount * factor;
     if (isBar) {
@@ -4470,7 +4592,7 @@ function applySkillTransition(
       newStability += amount;
       gains.stability += amount;
       dispatchBuffTriggers(
-        raw < 0 ? 'stabilitySpent' : 'stabilityRestored',
+        uninterceptedRaw < 0 ? 'stabilitySpent' : 'stabilityRestored',
         Math.abs(amount),
       );
     } else if (effect.kind === 'pool') {
@@ -4485,29 +4607,53 @@ function applySkillTransition(
     }
   };
   if (orderedNumeric) {
-    if (qiSpentByCost > 0) dispatchBuffTriggers('poolSpent', qiSpentByCost);
+    if (effectiveQiCost !== 0)
+      applyPoolChange(interceptResource('pool', -effectiveQiCost, true));
     const paymentCertain =
       effectiveCosts.stabilityOutcomes?.every((outcome) => outcome.cost > 0) ??
       true;
-    if (
-      preventCertainStabilityLoss(
-        newBuffs,
-        -effectiveStabilityCost,
-        paymentCertain,
-      )
-    )
-      effectiveStabilityCost = 0;
-    else
-      stabilityProjection.pay(
-        effectiveStabilityCost,
-        effectiveCosts.stabilityOutcomes,
-      );
+    const originalStabilityCost = effectiveStabilityCost;
+    effectiveStabilityCost = -interceptResource(
+      'stability',
+      -effectiveStabilityCost,
+      paymentCertain,
+    );
+    stabilityProjection.pay(
+      effectiveStabilityCost,
+      effectiveStabilityCost === originalStabilityCost
+        ? effectiveCosts.stabilityOutcomes
+        : undefined,
+    );
     newStability -= effectiveStabilityCost;
     if (effectiveStabilityCost > 0)
       dispatchBuffTriggers('stabilitySpent', effectiveStabilityCost);
-    if (qiRestoredBySkill !== undefined)
-      dispatchBuffTriggers('poolRestored', qiRestoredBySkill);
+    if (
+      !hasExplicitPoolEffect &&
+      skill.restoresQi &&
+      skill.qiRestore &&
+      skill.qiRestore > 0
+    )
+      applyPoolChange(
+        applyGainBoost(
+          interceptResource('pool', skill.qiRestore),
+          actionVars.qiBoost,
+        ),
+      );
     techniqueProgress.stability = stabilityProjection.meanStability();
+    if (skill.maxStabilityChange) {
+      const intercepted = interceptResource(
+        'maxStability',
+        skill.maxStabilityChange,
+      );
+      const applied = maxStabilitySealed
+        ? Math.min(0, intercepted)
+        : intercepted;
+      stabilityProjection.change(0, -applied);
+      newStabilityPenalty = Math.min(
+        state.initialMaxStability,
+        Math.max(0, newStabilityPenalty - applied),
+      );
+    }
   }
   stabilityProjection.beginTechnique(actionSuccessChance);
   if (skill.effects && skill.effects.length > 0) {
@@ -4689,12 +4835,23 @@ function applySkillTransition(
     // 0.7.10: the runtime pipes every bar/resource application through
     // appliers that scale positive amounts by the matching boost stat
     // (completionBoost / perfectionBoost / stabilityBoost / qiBoost).
-    const raw = evaluateScalingWithMasteryUpgrades(
+    let raw = evaluateScalingWithMasteryUpgrades(
       effect.amount,
       actionMasteryUpgrades,
       scalingVars,
       0,
     );
+    const uninterceptedRaw = raw;
+    if (effect.kind === 'stability' && raw < 0)
+      raw = appliedStabilityAmount(raw, scalingVars);
+    const pricedRaw = raw;
+    raw = interceptResource(
+      effect.kind === 'changeToxicity' ? 'cleanseToxicity' : effect.kind,
+      raw,
+      certainApplication && conditionFactor === 1,
+      scalingVars,
+    );
+    if (effect.kind === 'stability' && pricedRaw < 0 && raw === 0) return;
     const application = prepareNumericApplication(
       effect.kind,
       raw,
@@ -4702,21 +4859,6 @@ function applySkillTransition(
       conditionFactor,
     );
     const rawAmount = raw * conditionFactor;
-    if (effect.kind === 'stability' && application.realizedAmount < 0) {
-      application.realizedAmount = appliedStabilityAmount(
-        application.realizedAmount,
-        scalingVars,
-      );
-      application.amount = application.realizedAmount * conditionFactor;
-      if (
-        preventCertainStabilityLoss(
-          newBuffs,
-          application.realizedAmount,
-          certainApplication && conditionFactor === 1,
-        )
-      )
-        return;
-    }
     const amount = application.amount;
     const previousCertainty: boolean = certainApplication;
     certainApplication = previousCertainty && conditionFactor === 1;
@@ -4763,7 +4905,7 @@ function applySkillTransition(
         buffStabilityDelta += amount;
         if (triggerBuffsPresent) {
           dispatchBuffTriggers(
-            raw < 0 ? 'stabilitySpent' : 'stabilityRestored',
+            uninterceptedRaw < 0 ? 'stabilitySpent' : 'stabilityRestored',
             Math.abs(amount),
           );
         }
@@ -5155,8 +5297,13 @@ function applySkillTransition(
       }
     }
     if (harmonyResult.stabilityPenaltyDelta !== 0) {
-      stabilityProjection.change(0, harmonyResult.stabilityPenaltyDelta);
-      newStabilityPenalty += harmonyResult.stabilityPenaltyDelta;
+      const penalty = -interceptResource(
+        'maxStability',
+        -harmonyResult.stabilityPenaltyDelta,
+        true,
+      );
+      stabilityProjection.change(0, penalty);
+      newStabilityPenalty += penalty;
       newStabilityPenalty = Math.min(
         newStabilityPenalty,
         state.initialMaxStability,
@@ -5164,9 +5311,13 @@ function applySkillTransition(
     }
   }
 
+  const shouldDecay =
+    !skill.preventsMaxStabilityDecay || hasSealedMaxStabilityBuff(newBuffs);
+  if (orderedNumeric && consumesTurn && shouldDecay)
+    stabilityProjection.change(0, -interceptResource('maxStability', -1, true));
   const cleanedStability = stabilityProjection.finish(
     state.initialMaxStability,
-    !skill.preventsMaxStabilityDecay || hasSealedMaxStabilityBuff(newBuffs),
+    !orderedNumeric && shouldDecay,
     consumesTurn,
   );
   newStability = cleanedStability.stability;

@@ -1776,8 +1776,8 @@ expression variables. Optional effects execute synchronously via `g7c`
 before the intercepted numeric application. Interception is enabled for
 technique/mastery effects, not payment, items or buff effects.
 
-Han Weiguang's stock definition has `stabilityLossPrevention: { uses: 2 }`
-(`G:13038068`). Helper `n7c` (`G:14929654`) selects the first held eligible
+Han Weiguang's stock definition (0.7.19; superseded in 0.7.20, see §20) has
+`stabilityLossPrevention: { uses: 2 }` (`G:13038068`). Helper `n7c` (`G:14929654`) selects the first held eligible
 buff, without checking positive stacks, and increments
 `internalState.preventedStabilityLosses`. Applier `r7c`
 (`G:14930153–14930317`) checks genuinely negative reduced/floored loss
@@ -1833,3 +1833,11 @@ modAPI.ui is misleading. CraftBuddy currently uses its own overlay mount;
 adopting these APIs is separate work.
 
 <!-- prettier-ignore-end -->
+
+## 20. AFNM 0.7.20 retarget audit (CraftBuddy 7.1.0)
+
+Read-only inspection of the installed Steam build `0.7.20-101cd1d` (extractor cache key `3305125755-1794284399962`) and the `afnm-types` 0.7.20 diff. Offsets are zero-based character positions in the extracted `dist-electron/Game.js` (`G`); re-resolve them after a game update.
+
+### Resource-scope interceptors replace stability-loss prevention
+
+`OC` (`G:6521852`) gained a `scope` (`technique` | `resource`) and accepts a `Scaling` modifier evaluated without rounding. Each multiplication is floored, the first matching interceptor per buff applies, owners need stacks > 0, zero amounts skip, and a guard stops re-entry. Resource appliers intercept bar progress before crit and boost (`B4i`/`z4i`), stability (`F4i`: gains before the boost, losses after pricing, including the technique's stability cost), max stability (`L4i`, including the per-turn decay and the Inscription/Cadence −1), pool (`H4i`, including qi cost, before the qi boost) and toxicity (`U4i`). `stabilityLossPrevention` is gone. Han Weiguang's Assistance (`G:13472851`) is now `craftingEffectInterceptors: [{scope: 'resource', appliesTo: ['stability'], trigger: 'amount < 0 && preventedStabilityLosses < preventionLimit', modifier: multiply 0, effects: [setState preventedStabilityLosses += 1]}]` with `preventionLimit: 2`; the new Immortal Flesh crafting perk (`G:530102`) uses the same shape with the limit set by tier. Because Han is now resource scope, item and buff stability losses are prevented too, and an owner with 0 stacks no longer prevents (the old `n7c` helper did not check stacks). CraftBuddy 7.1.0 models both scopes through one accessor and keeps a legacy mapping for old replays (PR #24).
