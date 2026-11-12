@@ -3,6 +3,7 @@ import {
   getForgeRecommendedTechniqueTypes,
   HarmonyData,
   HarmonyType,
+  HarmonyStatModifiers,
   TechniqueType,
   TrackedBuff,
   resolveReturningCycleData,
@@ -253,6 +254,67 @@ function seedCaptivatingCadenceData(harmonyData: HarmonyData): HarmonyData {
   };
 }
 
+/** Recognize only the runtime's seven literal Reaction stat payloads. */
+function getReactionModifiers(
+  buffs: Map<string, TrackedBuff> | undefined,
+): Partial<HarmonyStatModifiers> | undefined {
+  for (const [key, buff] of Array.from(buffs?.entries() ?? [])) {
+    if (normalizeBuffKey(buff.name || key) !== 'reaction') continue;
+    const stats = Object.entries(buff.definition?.stats ?? {}).filter(
+      ([, value]) => value !== undefined,
+    );
+    if (stats.length !== 1) return undefined;
+    const [stat, scaling] = stats[0];
+    if (
+      !scaling ||
+      Object.entries(scaling).some(
+        ([key, value]) =>
+          value !== undefined && key !== 'value' && key !== 'stat',
+      )
+    )
+      return undefined;
+    if (stat === 'control' && scaling.stat === 'control') {
+      if (scaling.value === 0.25) return { controlMultiplier: 1.25 };
+      if (scaling.value === -0.25) return { controlMultiplier: 0.75 };
+    }
+    if (
+      stat === 'intensity' &&
+      scaling.stat === 'intensity' &&
+      scaling.value === 0.25
+    )
+      return { intensityMultiplier: 1.25 };
+    if (scaling.stat !== undefined) return undefined;
+    if (scaling.value === 25) {
+      if (stat === 'stabilityCostReduction')
+        return { stabilityCostPercentage: 75 };
+      if (stat === 'qiCostReduction') return { poolCostPercentage: 75 };
+      if (stat === 'critchance') return { critChanceBonus: 25 };
+    }
+    if (stat === 'successChanceBonus' && scaling.value === 0.25)
+      return { successChanceBonus: 0.25 };
+    return undefined;
+  }
+  return undefined;
+}
+
+function hydrateAlchemicalReaction(
+  data: HarmonyData,
+  buffs: Map<string, TrackedBuff> | undefined,
+): HarmonyData {
+  if (data.additionalData?.alchemicalReactionModifiers !== undefined)
+    return data;
+  const modifiers = getReactionModifiers(buffs);
+  return modifiers
+    ? {
+        ...data,
+        additionalData: {
+          ...data.additionalData,
+          alchemicalReactionModifiers: modifiers,
+        },
+      }
+    : data;
+}
+
 export function hydrateHarmonyData(params: {
   isSublimeCraft: boolean;
   craftingType?: HarmonyType | null;
@@ -311,11 +373,23 @@ export function hydrateHarmonyData(params: {
       seeded = seedEccentricDecreeData(cloned, completion, perfection);
     } else if (craftingType === 'captivatingCadence') {
       seeded = seedCaptivatingCadenceData(cloned);
+    } else if (craftingType === 'alchemical') {
+      seeded = hydrateAlchemicalReaction(cloned, buffs);
     }
     return {
       harmonyData: seeded,
       source: 'progressState',
     };
+  }
+
+  if (craftingType === 'alchemical') {
+    const harmonyData = hydrateAlchemicalReaction(
+      { recommendedTechniqueTypes: [] },
+      buffs,
+    );
+    return harmonyData.additionalData?.alchemicalReactionModifiers !== undefined
+      ? { harmonyData, source: 'buffs' }
+      : { harmonyData: undefined, source: 'missing' };
   }
 
   if (craftingType !== 'forge') {

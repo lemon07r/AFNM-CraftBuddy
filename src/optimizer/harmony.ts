@@ -133,7 +133,8 @@ const NEUTRAL_COST_MULTIPLIERS: HarmonyCostMultipliers = {
 
 /**
  * Stat modifiers from harmony buffs.
- * These are multiplicative modifiers applied to base stats.
+ * Control/intensity encode 1 + an additive fraction of the pre-buff base stat,
+ * applied alongside other buffs before condition multipliers (runtime i9r).
  */
 export interface HarmonyStatModifiers {
   controlMultiplier: number;

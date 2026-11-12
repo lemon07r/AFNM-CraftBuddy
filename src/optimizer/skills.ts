@@ -996,44 +996,60 @@ function computeTriggerPercentGained(
   );
 }
 
-function isDerivedForgeHeatBuff(
+const DERIVED_HARMONY_BUFF_NAMES: Partial<
+  Record<HarmonyType, readonly string[]>
+> = {
+  forge: ['heat'],
+  resonance: ['resonance'],
+  eccentricDecree: ['decree_focus'],
+  alchemical: ['reaction'],
+};
+
+/** Strip live harmony buffs only while their replacing model is available. */
+function isDerivedHarmonyBuff(
   state: CraftingState,
   config: OptimizerConfig | undefined,
   buffKey: string,
   tracked: { name: string; stacks: number; definition?: BuffDefinition },
 ): boolean {
-  if (config?.craftingType !== 'forge' || !state.harmonyData?.forgeWorks) {
-    return false;
-  }
-
-  return (
-    isForgeHeatBuffName(normalizeBuffName(buffKey)) ||
-    isForgeHeatBuffName(normalizeBuffName(tracked.name || buffKey))
-  );
+  const type = config?.craftingType;
+  const data = state.harmonyData;
+  if (!type || !data) return false;
+  const active =
+    (type === 'forge' && data.forgeWorks) ||
+    (type === 'resonance' && data.resonance) ||
+    (type === 'eccentricDecree' && data.eccentricDecree) ||
+    (type === 'alchemical' &&
+      data.additionalData?.alchemicalReactionModifiers !== undefined);
+  if (!active) return false;
+  const names = DERIVED_HARMONY_BUFF_NAMES[type] ?? [];
+  return [buffKey, tracked.name || buffKey].some((name) => {
+    const normalized = normalizeBuffName(name);
+    // Preserve the existing Heat (*) prefix match, including old plain Heat.
+    return (
+      names.includes(normalized) ||
+      (type === 'forge' && normalized.startsWith('heat_('))
+    );
+  });
 }
 
-/**
- * Runtime Forge Works writes one band buff (`Heat (Frozen)`, `Heat (Low)`,
- * `Heat (Perfect)`, `Heat (High)`, `Heat (Burning)`; older builds used `Heat`).
- * Its stats are modelled from `forgeWorks.heat` by `getForgeWorksStatModifiers`,
- * so the live buff must not also contribute.
- */
-function isForgeHeatBuffName(normalizedName: string): boolean {
-  return normalizedName === 'heat' || normalizedName.startsWith('heat_(');
-}
-
-function stripDerivedForgeHeatBuff(
+/** Keep both stats and buff-count reads free of replaced live harmony buffs. */
+function stripDerivedHarmonyBuffs(
   state: CraftingState,
   config: OptimizerConfig | undefined,
   buffs: ActiveBuffMap,
 ): ActiveBuffMap {
-  if (config?.craftingType !== 'forge' || !state.harmonyData?.forgeWorks) {
+  if (
+    !config?.craftingType ||
+    !DERIVED_HARMONY_BUFF_NAMES[config.craftingType] ||
+    !state.harmonyData
+  ) {
     return buffs;
   }
 
   let stripped: ActiveBuffMap | undefined;
   buffs.forEach((tracked, buffKey) => {
-    if (!isDerivedForgeHeatBuff(state, config, buffKey, tracked)) {
+    if (!isDerivedHarmonyBuff(state, config, buffKey, tracked)) {
       return;
     }
 
@@ -1190,12 +1206,12 @@ function resolveActiveBuffs(
     }
   });
   if (!hasMissingDefinition) {
-    return stripDerivedForgeHeatBuff(state, config, state.buffs);
+    return stripDerivedHarmonyBuffs(state, config, state.buffs);
   }
 
   const lookup = getBuffDefinitionLookup(config);
   if (lookup.size === 0) {
-    return state.buffs;
+    return stripDerivedHarmonyBuffs(state, config, state.buffs);
   }
 
   let resolved: ActiveBuffMap | undefined;
@@ -1213,7 +1229,7 @@ function resolveActiveBuffs(
     });
   });
 
-  return stripDerivedForgeHeatBuff(state, config, resolved ?? state.buffs);
+  return stripDerivedHarmonyBuffs(state, config, resolved ?? state.buffs);
 }
 
 interface ProgressBonusInfo {
@@ -2122,15 +2138,26 @@ function buildPreMasteryActionVariables(
     activeBuffs,
     masteryUpgrades,
   );
+  // i9r adds harmony against the same pre-buff base, then applies conditions.
+  // Keep the memoized buffed frame immutable.
+  const withHarmony =
+    harmonyMods.controlMultiplier === 1 && harmonyMods.intensityMultiplier === 1
+      ? withBuffs
+      : {
+          ...withBuffs,
+          control:
+            withBuffs.control +
+            (harmonyMods.controlMultiplier - 1) * config.baseControl,
+          intensity:
+            withBuffs.intensity +
+            (harmonyMods.intensityMultiplier - 1) * config.baseIntensity,
+        };
   const withConditions = applyConditionEffectsToVariables(
-    withBuffs,
+    withHarmony,
     conditionEffects,
   );
 
-  // applyConditionEffectsToVariables owns this copy; do not clone the same
-  // frame again for the harmony overlay. The cached buffed frame stays untouched.
-  withConditions.control *= harmonyMods.controlMultiplier;
-  withConditions.intensity *= harmonyMods.intensityMultiplier;
+  // Crit/success remain additive; cost percentages retain their floor contract.
   withConditions.critchance += harmonyMods.critChanceBonus;
   withConditions.successChanceBonus += harmonyMods.successChanceBonus;
   withConditions.poolCostPercentage = Math.floor(
