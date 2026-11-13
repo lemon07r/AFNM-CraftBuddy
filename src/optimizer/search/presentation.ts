@@ -114,6 +114,7 @@ function calculateRecommendationGains(
   skill: SkillDefinition,
   config: OptimizerConfig,
   conditionEffects: ReturnType<typeof getConditionEffectsForConfig>,
+  currentCondition: string | undefined,
   simulatedState?: CraftingState | null,
 ): {
   expectedGains: GainPreview;
@@ -125,13 +126,14 @@ function calculateRecommendationGains(
     skill,
     config,
     conditionEffects,
+    { currentCondition },
   );
   const immediate = calculateDisplayedSkillGains(
     state,
     skill,
     config,
     conditionEffects,
-    { includeExpectedValue: false },
+    { includeExpectedValue: false, currentCondition },
   );
   const costs = calculateEffectiveActionCosts(
     state,

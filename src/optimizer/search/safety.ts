@@ -206,7 +206,9 @@ function hasFatalTechniqueFailure(
   // Expected stability can stay positive when success restores stability, so
   // the failure transition is the only reliable test.
   if (skill.actionKind === 'item') return false;
-  const expected = calculateSkillGains(state, skill, config, conditionEffects);
+  const expected = calculateSkillGains(state, skill, config, conditionEffects, {
+    currentCondition,
+  });
   const onSuccess = calculateSkillGains(
     state,
     skill,
@@ -214,6 +216,7 @@ function hasFatalTechniqueFailure(
     conditionEffects,
     {
       successChance: 1,
+      currentCondition,
     },
   );
   if (

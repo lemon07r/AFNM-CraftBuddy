@@ -40,6 +40,7 @@ import {
   collectDerivedNativeVariableAliases,
   applyDerivedNativeVariableAliases,
   buildCanonicalNativeVariables,
+  buildCraftContextVariables,
 } from './nativeVariables';
 import { normalizeIdentifier } from './nameNormalization';
 import {
@@ -498,6 +499,11 @@ export interface SkillGainOptions {
    * Disable for tooltip-parity "immediate" gain previews.
    */
   includeExpectedValue?: boolean;
+  /**
+   * Condition in force while the action resolves. It selects the runtime
+   * `Condition__<label>` flag (Balanced when omitted, as in `applySkill`).
+   */
+  currentCondition?: string;
 }
 
 export interface OptimizerConfig {
@@ -2406,31 +2412,55 @@ interface ActionEvaluationFrame {
   readonly mastery: Readonly<ResolvedMasteryBonuses>;
 }
 
+function gainContextVariables(
+  options: Pick<SkillGainOptions, 'currentCondition'>,
+  config: OptimizerConfig,
+): Readonly<Record<string, number>> {
+  return buildCraftContextVariables(
+    normalizeCondition(options.currentCondition),
+    config.craftingType,
+  );
+}
+
+function withContextVariables(
+  variables: ScalingVariables,
+  contextVariables: Readonly<Record<string, number>> | undefined,
+): ScalingVariables {
+  return contextVariables ? { ...variables, ...contextVariables } : variables;
+}
+
 function buildActionEvaluationFrame(
   state: CraftingState,
   skill: SkillDefinition,
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   includeRefinement = true,
+  contextVariables?: Readonly<Record<string, number>>,
 ): ActionEvaluationFrame {
   const harmonyMods = getHarmonyStatModifiers(
     state.harmonyData,
     config.craftingType,
   );
-  let preMasteryVariables = buildPreMasteryActionVariables(
-    state,
-    config,
-    conditionEffects,
-    harmonyMods,
-  );
-  let mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
-  if (hasMasteryUpgrades(mastery.upgrades)) {
-    preMasteryVariables = buildPreMasteryActionVariables(
+  let preMasteryVariables = withContextVariables(
+    buildPreMasteryActionVariables(
       state,
       config,
       conditionEffects,
       harmonyMods,
-      mastery.upgrades,
+    ),
+    contextVariables,
+  );
+  let mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
+  if (hasMasteryUpgrades(mastery.upgrades)) {
+    preMasteryVariables = withContextVariables(
+      buildPreMasteryActionVariables(
+        state,
+        config,
+        conditionEffects,
+        harmonyMods,
+        mastery.upgrades,
+      ),
+      contextVariables,
     );
     mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
   }
@@ -2654,6 +2684,7 @@ function buildPostCostStabilityFrame(
   minStability: number,
   conditionEffects: ConditionEffect[] = [],
   config?: OptimizerConfig,
+  contextVariables?: Readonly<Record<string, number>>,
 ): PostCostStabilityFrame {
   const isItemAction = skill.actionKind === 'item';
   const consumesTurn = skill.consumesTurn ?? !isItemAction;
@@ -2681,8 +2712,14 @@ function buildPostCostStabilityFrame(
       return amount;
     }
     interceptVars ??= {
-      ...buildActionEvaluationFrame(state, skill, config, conditionEffects)
-        .variables,
+      ...buildActionEvaluationFrame(
+        state,
+        skill,
+        config,
+        conditionEffects,
+        true,
+        contextVariables,
+      ).variables,
       step: state.step,
     };
     return interceptCraftingAmount(
@@ -2791,7 +2828,14 @@ function calculateDisciplinedTouchGainsWithFrame(
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   options: SkillGainOptions,
-  frame = buildActionEvaluationFrame(state, skill, config, conditionEffects),
+  frame = buildActionEvaluationFrame(
+    state,
+    skill,
+    config,
+    conditionEffects,
+    true,
+    gainContextVariables(options, config),
+  ),
   critActionId?: number,
 ): SkillGains {
   const effectiveVars = frame.variables;
@@ -3042,7 +3086,15 @@ function calculateUninterceptedSkillGains(
   }
 
   const evaluation =
-    frame ?? buildActionEvaluationFrame(state, skill, config, conditionEffects);
+    frame ??
+    buildActionEvaluationFrame(
+      state,
+      skill,
+      config,
+      conditionEffects,
+      true,
+      gainContextVariables(options, config),
+    );
   const masteryUpgrades = evaluation.mastery.upgrades;
   const scalingVars = evaluation.variables;
 
@@ -3318,6 +3370,7 @@ export function calculateDisplayedSkillGains(
     config.minStability,
     conditionEffects,
     config,
+    gainContextVariables(options, config),
   );
 
   return {
@@ -3580,6 +3633,10 @@ interface ActionPhaseContext {
   paymentCosts?: EffectiveActionCosts;
   nativeSource?: CraftingState;
   stabilityProjection?: StabilityProjection;
+  /** Condition in force while the action resolves (`SkillGainOptions`). */
+  currentCondition?: string;
+  /** Runtime condition/harmony flag variables for this action. */
+  contextVariables?: Readonly<Record<string, number>>;
 }
 
 const masteryPhaseSkills = new WeakMap<
@@ -3899,6 +3956,7 @@ function evaluateMasteryPhaseCondition(
   state: CraftingState,
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
+  contextVariables?: Readonly<Record<string, number>>,
 ): ConditionEvaluation {
   // These gates do not read any variables. In particular, unconditional and
   // chance-gated mastery blocks need no extra full action-scope construction.
@@ -3910,11 +3968,14 @@ function evaluateMasteryPhaseCondition(
   return evaluateEffectCondition(
     condition,
     state,
-    buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      getHarmonyStatModifiers(state.harmonyData, config.craftingType),
+    withContextVariables(
+      buildPreMasteryActionVariables(
+        state,
+        config,
+        conditionEffects,
+        getHarmonyStatModifiers(state.harmonyData, config.craftingType),
+      ),
+      contextVariables,
     ),
     0,
   );
@@ -3997,6 +4058,7 @@ function expectedMasteryPayment(
         outcome.state,
         config,
         conditionEffects,
+        phase.contextVariables,
       );
       if (!condition.met || condition.probability < 1) {
         next.push({
@@ -4109,7 +4171,7 @@ export function applySkill(
     conditionEffects,
     targetCompletion,
     targetPerfection,
-    options,
+    { ...options, currentCondition },
   );
   const next = applySkillTransition(
     prepared.state,
@@ -4144,6 +4206,7 @@ function prepareActionPhases(
   targetPerfection: number,
   options: SkillGainOptions,
 ): { state: CraftingState; context: ActionPhaseContext } {
+  const contextVariables = gainContextVariables(options, config);
   const existingBuffNames = getResolvedActiveBuffs(state, config);
   const hasMasteryEffects =
     skill.masteryEntries?.some((entry) => entry.kind === 'effect') ?? false;
@@ -4168,6 +4231,8 @@ function prepareActionPhases(
     barStart: state,
     barContributions: [],
     nativeSource: working,
+    currentCondition: options.currentCondition,
+    contextVariables,
   };
   if (skill.buffCost) {
     const owner = existingBuffNames.get(skill.buffCost.buffName);
@@ -4236,6 +4301,7 @@ function prepareActionPhases(
       working,
       config,
       conditionEffects,
+      contextVariables,
     );
     if (!condition.met || condition.probability <= 0) continue;
     const phaseSkill = masteryPhaseSkill(
@@ -4322,6 +4388,7 @@ function applySkillTransition(
     config,
     conditionEffects,
     !phase.masteryPhase,
+    phase.contextVariables,
   );
   const gains: SkillGains =
     orderedEffects ||
@@ -4340,6 +4407,7 @@ function applySkillTransition(
             includeExpectedValue: phase.includeExpectedValue,
             successChance: phase.successChance,
             stabilityCost: effectiveCosts.stabilityCost,
+            currentCondition: phase.currentCondition,
           },
           evaluation,
         );
@@ -4458,7 +4526,7 @@ function applySkillTransition(
         skill,
         config,
         conditionEffects,
-        { successChance: 1 },
+        { successChance: 1, currentCondition: phase.currentCondition },
         evaluation,
       ).stability;
       stabilityProjection.changeExpectedTechnique(
@@ -4968,6 +5036,7 @@ function applySkillTransition(
               includeExpectedValue: phase.includeExpectedValue,
               successChance: actionSuccessChance,
               stabilityCost: effectiveStabilityCost,
+              currentCondition: phase.currentCondition,
             },
             evaluation,
             phase.critActionId,

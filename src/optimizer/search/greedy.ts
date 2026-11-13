@@ -293,6 +293,7 @@ function runGreedySearch(
         skill,
         config,
         conditionEffects,
+        normalizedCurrentCondition,
         displayState,
       );
     const terminalState = classifyTerminalState(

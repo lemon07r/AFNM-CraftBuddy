@@ -227,7 +227,7 @@ function buildScoringContext(
           skill,
           config,
           conditionEffects,
-          { includeExpectedValue: false },
+          { includeExpectedValue: false, currentCondition },
         );
         const completionGain = Math.max(0, gains.completion);
         const perfectionGain = Math.max(0, gains.perfection);
