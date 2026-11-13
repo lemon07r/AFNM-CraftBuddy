@@ -1398,6 +1398,7 @@ function runLookaheadSearch(
             cachedSkill,
             config,
             followUpConditionEffects,
+            conditionAtDepth,
             applySkill(
               displayState,
               cachedSkill,
@@ -1440,6 +1441,7 @@ function runLookaheadSearch(
         followUpSkill,
         config,
         followUpConditionEffects,
+        conditionAtDepth,
         applySkill(
           displayState,
           followUpSkill,
@@ -1540,6 +1542,7 @@ function runLookaheadSearch(
           skill,
           config,
           currentConditionEffects,
+          normalizedCurrentCondition,
           candidate.nextState,
         );
       const reasoning = generateReasoning(
@@ -2000,6 +2003,7 @@ function runLookaheadSearch(
               secondSkill,
               config,
               secondConditionEffects,
+              firstMoveConditionState.nextCondition,
               applySkill(
                 stateAfterFirstMoveForDisplay,
                 secondSkill,

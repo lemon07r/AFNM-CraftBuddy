@@ -1,4 +1,5 @@
-import type { HarmonyData } from './gameTypes';
+import type { HarmonyData, HarmonyType } from './gameTypes';
+import { getHarmonyDefinition } from './harmonyRegistry';
 import type { TrackedBuff } from './state';
 import { normalizeIdentifier } from './nameNormalization';
 
@@ -51,7 +52,8 @@ function sanitizeRuntimeVariableName(name: string): string {
 /**
  * Flag variables the runtime adds to every crafting variable frame
  * (getVariablesFromCraftingEntity): `Condition: Harmonious` becomes
- * `Condition__Harmonious = 1` and `Harmony: forge` becomes `Harmony__forge = 1`.
+ * `Condition__Harmonious = 1` and harmony `forge` (display name Forge Works)
+ * becomes `Harmony__Forge_Works = 1`.
  * Game data reads them in condition expressions, e.g. Lanternheart Flame's
  * refine gate on `Condition__Harmonious` (0.7.21). The condition is the one in
  * force while the action resolves, so it is supplied per transition rather
@@ -59,7 +61,7 @@ function sanitizeRuntimeVariableName(name: string): string {
  */
 export function buildCraftContextVariables(
   condition: string | undefined,
-  harmonyType: string | undefined,
+  harmonyType: HarmonyType | undefined,
 ): Readonly<Record<string, number>> {
   const label = CONDITION_LABELS[condition ?? 'neutral'] ?? 'Balanced';
   const cacheKey = `${label}|${harmonyType ?? ''}`;
@@ -69,7 +71,8 @@ export function buildCraftContextVariables(
     [sanitizeRuntimeVariableName(`Condition: ${label}`)]: 1,
   };
   if (harmonyType) {
-    variables[sanitizeRuntimeVariableName(`Harmony: ${harmonyType}`)] = 1;
+    const harmonyName = getHarmonyDefinition(harmonyType)?.name ?? harmonyType;
+    variables[sanitizeRuntimeVariableName(`Harmony: ${harmonyName}`)] = 1;
   }
   const frozen = Object.freeze(variables);
   craftContextVariablesCache.set(cacheKey, frozen);

@@ -1,5 +1,5 @@
 import { CraftingState } from '../optimizer';
-import { applySkill } from '../optimizer/skills';
+import { applySkill, calculateSkillGains } from '../optimizer/skills';
 import type { BuffDefinition } from '../optimizer/gameTypes';
 import { buildCraftContextVariables } from '../optimizer/nativeVariables';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
@@ -72,10 +72,14 @@ describe('AFNM 0.7.21 runtime condition variables', () => {
   it('names the flags exactly as the runtime zu() sanitizer does', () => {
     expect(buildCraftContextVariables('positive', 'forge')).toEqual({
       Condition__Harmonious: 1,
-      Harmony__forge: 1,
+      Harmony__Forge_Works: 1,
     });
     expect(buildCraftContextVariables(undefined, undefined)).toEqual({
       Condition__Balanced: 1,
+    });
+    expect(buildCraftContextVariables('neutral', 'alchemical')).toEqual({
+      Condition__Balanced: 1,
+      Harmony__Alchemical_Arts: 1,
     });
     expect(buildCraftContextVariables('veryNegative', undefined)).toEqual({
       Condition__Corrupted: 1,
@@ -101,5 +105,72 @@ describe('AFNM 0.7.21 runtime condition variables', () => {
 
   it('ignores non-refine actions', () => {
     expect(refineUnder('veryPositive', 'fusion')).toBe(0);
+  });
+
+  it('previews condition-gated technique gains like the transition', () => {
+    const skill = retargetSkill({
+      effects: [
+        {
+          kind: 'completion',
+          amount: { value: 20 },
+          condition: { kind: 'condition', condition: 'Condition__Harmonious' },
+        },
+      ],
+    });
+    const config = retargetConfig(skill);
+    const state = new CraftingState({ qi: 100, stability: 50 });
+    for (const [condition, expected] of [
+      ['positive', 20],
+      ['neutral', 0],
+    ] as const) {
+      const preview = calculateSkillGains(state, skill, config, [], {
+        currentCondition: condition,
+      });
+      const next = applySkill(state, skill, config, [], 100, condition, 100)!;
+      expect(preview.completion).toBe(expected);
+      expect(next.completion - state.completion).toBe(expected);
+    }
+  });
+
+  it('prices condition-gated chance masteries with the action condition', () => {
+    const discount: BuffDefinition = {
+      name: 'Harmonious discount',
+      canStack: false,
+      effects: [],
+      stats: { poolCostPercentage: { value: 50 } },
+    };
+    const skill = retargetSkill({
+      qiCost: 40,
+      stabilityCost: 0,
+      effects: [],
+      masteryEntries: [
+        {
+          kind: 'effect',
+          condition: { kind: 'condition', condition: 'Condition__Harmonious' },
+          effects: [
+            {
+              kind: 'createBuff',
+              buff: discount,
+              stacks: { value: 1 },
+              condition: { kind: 'chance', percentage: 50 },
+            },
+          ],
+        },
+      ],
+    });
+    const config = retargetConfig(skill);
+    const qiAfter = (condition: string): number =>
+      applySkill(
+        new CraftingState({ qi: 100, stability: 50 }),
+        skill,
+        config,
+        [],
+        100,
+        condition,
+        100,
+      )!.qi;
+    // Realized branches pay 20 (discount) or 40, so the expected payment is 30.
+    expect(qiAfter('positive')).toBe(70);
+    expect(qiAfter('neutral')).toBe(60);
   });
 });
