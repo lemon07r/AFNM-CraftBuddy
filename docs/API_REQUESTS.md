@@ -1,6 +1,6 @@
 # API requests
 
-Unresolved requests after the AFNM 0.7.20 audit. Runtime facts live in [Runtime evidence](RUNTIME_EVIDENCE.md); local adoption and fallbacks live in [Development](DEVELOPMENT.md#native-helpers-availability-is-not-adoption).
+Unresolved requests after the AFNM 0.7.21 audit. Runtime facts live in [Runtime evidence](RUNTIME_EVIDENCE.md); local adoption and fallbacks live in [Development](DEVELOPMENT.md#native-helpers-availability-is-not-adoption).
 
 ## Still useful upstream
 
