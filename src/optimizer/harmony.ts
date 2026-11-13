@@ -133,15 +133,16 @@ const NEUTRAL_COST_MULTIPLIERS: HarmonyCostMultipliers = {
 
 /**
  * Stat modifiers from harmony buffs.
- * These are multiplicative modifiers applied to base stats.
+ * Control/intensity encode 1 + an additive fraction of the pre-buff base stat,
+ * applied alongside other buffs before condition multipliers (runtime i9r).
  */
 export interface HarmonyStatModifiers {
   controlMultiplier: number;
   intensityMultiplier: number;
   critChanceBonus: number;
   successChanceBonus: number;
-  poolCostPercentage: number;
-  stabilityCostPercentage: number;
+  qiCostReduction: number;
+  stabilityCostReduction: number;
 }
 
 const DEFAULT_MODIFIERS: HarmonyStatModifiers = {
@@ -149,8 +150,8 @@ const DEFAULT_MODIFIERS: HarmonyStatModifiers = {
   intensityMultiplier: 1,
   critChanceBonus: 0,
   successChanceBonus: 0,
-  poolCostPercentage: 100,
-  stabilityCostPercentage: 100,
+  qiCostReduction: 0,
+  stabilityCostReduction: 0,
 };
 
 // ============================================================
@@ -319,7 +320,7 @@ interface AlchemicalCombo {
 const ALCHEMICAL_COMBOS: AlchemicalCombo[] = [
   {
     charges: ['fusion', 'refine', 'support'],
-    modifiers: { stabilityCostPercentage: 75 },
+    modifiers: { stabilityCostReduction: 25 },
   },
   {
     charges: ['fusion', 'refine', 'refine'],
@@ -335,13 +336,36 @@ const ALCHEMICAL_COMBOS: AlchemicalCombo[] = [
   },
   {
     charges: ['refine', 'refine', 'support'],
-    modifiers: { poolCostPercentage: 75 },
+    modifiers: { qiCostReduction: 25 },
   },
   {
     charges: ['refine', 'stabilize', 'support'],
     modifiers: { successChanceBonus: 0.25 },
   },
 ];
+
+/** Convert saved Reaction percentages without retaining legacy keys in outputs. */
+function normalizeReactionModifiers(
+  value: unknown,
+): Partial<HarmonyStatModifiers> | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const { poolCostPercentage, stabilityCostPercentage, ...modifiers } =
+    value as Partial<HarmonyStatModifiers> & {
+      poolCostPercentage?: number;
+      stabilityCostPercentage?: number;
+    };
+  if (
+    modifiers.qiCostReduction === undefined &&
+    typeof poolCostPercentage === 'number'
+  )
+    modifiers.qiCostReduction = 100 - poolCostPercentage;
+  if (
+    modifiers.stabilityCostReduction === undefined &&
+    typeof stabilityCostPercentage === 'number'
+  )
+    modifiers.stabilityCostReduction = 100 - stabilityCostPercentage;
+  return modifiers;
+}
 
 function getNextValidChargeTypes(charges: TechniqueType[]): TechniqueType[] {
   if (charges.length >= 3 || charges.length === 0) return [];
@@ -378,9 +402,11 @@ function processAlchemicalArts(
   const additionalData: Record<string, unknown> = harmonyData.additionalData
     ? { ...harmonyData.additionalData }
     : {};
-  const existingReaction = additionalData.alchemicalReactionModifiers as
-    | Partial<HarmonyStatModifiers>
-    | undefined;
+  const existingReaction = normalizeReactionModifiers(
+    additionalData.alchemicalReactionModifiers,
+  );
+  if (existingReaction !== undefined)
+    additionalData.alchemicalReactionModifiers = existingReaction;
 
   aa.charges.push(techniqueType);
   aa.charges.sort();
@@ -1108,9 +1134,9 @@ export function getHarmonyStatModifiers(
         getEffectiveForgeHeat(harmonyData.forgeWorks),
       );
     case 'alchemical': {
-      const mods = harmonyData.additionalData?.alchemicalReactionModifiers as
-        | Partial<HarmonyStatModifiers>
-        | undefined;
+      const mods = normalizeReactionModifiers(
+        harmonyData.additionalData?.alchemicalReactionModifiers,
+      );
       return { ...DEFAULT_MODIFIERS, ...(mods ?? {}) };
     }
     case 'inscription': {

@@ -996,44 +996,60 @@ function computeTriggerPercentGained(
   );
 }
 
-function isDerivedForgeHeatBuff(
+const DERIVED_HARMONY_BUFF_NAMES: Partial<
+  Record<HarmonyType, readonly string[]>
+> = {
+  forge: ['heat'],
+  resonance: ['resonance'],
+  eccentricDecree: ['decree_focus'],
+  alchemical: ['reaction'],
+};
+
+/** Strip live harmony buffs only while their replacing model is available. */
+function isDerivedHarmonyBuff(
   state: CraftingState,
   config: OptimizerConfig | undefined,
   buffKey: string,
   tracked: { name: string; stacks: number; definition?: BuffDefinition },
 ): boolean {
-  if (config?.craftingType !== 'forge' || !state.harmonyData?.forgeWorks) {
-    return false;
-  }
-
-  return (
-    isForgeHeatBuffName(normalizeBuffName(buffKey)) ||
-    isForgeHeatBuffName(normalizeBuffName(tracked.name || buffKey))
-  );
+  const type = config?.craftingType;
+  const data = state.harmonyData;
+  if (!type || !data) return false;
+  const active =
+    (type === 'forge' && data.forgeWorks) ||
+    (type === 'resonance' && data.resonance) ||
+    (type === 'eccentricDecree' && data.eccentricDecree) ||
+    (type === 'alchemical' &&
+      data.additionalData?.alchemicalReactionModifiers !== undefined);
+  if (!active) return false;
+  const names = DERIVED_HARMONY_BUFF_NAMES[type] ?? [];
+  return [buffKey, tracked.name || buffKey].some((name) => {
+    const normalized = normalizeBuffName(name);
+    // Preserve the existing Heat (*) prefix match, including old plain Heat.
+    return (
+      names.includes(normalized) ||
+      (type === 'forge' && normalized.startsWith('heat_('))
+    );
+  });
 }
 
-/**
- * Runtime Forge Works writes one band buff (`Heat (Frozen)`, `Heat (Low)`,
- * `Heat (Perfect)`, `Heat (High)`, `Heat (Burning)`; older builds used `Heat`).
- * Its stats are modelled from `forgeWorks.heat` by `getForgeWorksStatModifiers`,
- * so the live buff must not also contribute.
- */
-function isForgeHeatBuffName(normalizedName: string): boolean {
-  return normalizedName === 'heat' || normalizedName.startsWith('heat_(');
-}
-
-function stripDerivedForgeHeatBuff(
+/** Keep both stats and buff-count reads free of replaced live harmony buffs. */
+function stripDerivedHarmonyBuffs(
   state: CraftingState,
   config: OptimizerConfig | undefined,
   buffs: ActiveBuffMap,
 ): ActiveBuffMap {
-  if (config?.craftingType !== 'forge' || !state.harmonyData?.forgeWorks) {
+  if (
+    !config?.craftingType ||
+    !DERIVED_HARMONY_BUFF_NAMES[config.craftingType] ||
+    !state.harmonyData
+  ) {
     return buffs;
   }
 
   let stripped: ActiveBuffMap | undefined;
   buffs.forEach((tracked, buffKey) => {
-    if (!isDerivedForgeHeatBuff(state, config, buffKey, tracked)) {
+    if (!isDerivedHarmonyBuff(state, config, buffKey, tracked)) {
       return;
     }
 
@@ -1190,12 +1206,12 @@ function resolveActiveBuffs(
     }
   });
   if (!hasMissingDefinition) {
-    return stripDerivedForgeHeatBuff(state, config, state.buffs);
+    return stripDerivedHarmonyBuffs(state, config, state.buffs);
   }
 
   const lookup = getBuffDefinitionLookup(config);
   if (lookup.size === 0) {
-    return state.buffs;
+    return stripDerivedHarmonyBuffs(state, config, state.buffs);
   }
 
   let resolved: ActiveBuffMap | undefined;
@@ -1213,7 +1229,7 @@ function resolveActiveBuffs(
     });
   });
 
-  return stripDerivedForgeHeatBuff(state, config, resolved ?? state.buffs);
+  return stripDerivedHarmonyBuffs(state, config, resolved ?? state.buffs);
 }
 
 interface ProgressBonusInfo {
@@ -2122,27 +2138,48 @@ function buildPreMasteryActionVariables(
     activeBuffs,
     masteryUpgrades,
   );
+  // i9r adds harmony against the same pre-buff base and folds cost reductions
+  // through p7r before applying conditions.
+  // Keep the memoized buffed frame immutable.
+  const withHarmony =
+    harmonyMods.controlMultiplier === 1 &&
+    harmonyMods.intensityMultiplier === 1 &&
+    harmonyMods.qiCostReduction === 0 &&
+    harmonyMods.stabilityCostReduction === 0
+      ? withBuffs
+      : {
+          ...withBuffs,
+          control:
+            withBuffs.control +
+            (harmonyMods.controlMultiplier - 1) * config.baseControl,
+          intensity:
+            withBuffs.intensity +
+            (harmonyMods.intensityMultiplier - 1) * config.baseIntensity,
+          qiCostReduction:
+            harmonyMods.qiCostReduction !== 0
+              ? combineCostStat(
+                  true,
+                  withBuffs.qiCostReduction,
+                  harmonyMods.qiCostReduction,
+                )
+              : withBuffs.qiCostReduction,
+          stabilityCostReduction:
+            harmonyMods.stabilityCostReduction !== 0
+              ? combineCostStat(
+                  true,
+                  withBuffs.stabilityCostReduction,
+                  harmonyMods.stabilityCostReduction,
+                )
+              : withBuffs.stabilityCostReduction,
+        };
   const withConditions = applyConditionEffectsToVariables(
-    withBuffs,
+    withHarmony,
     conditionEffects,
   );
 
-  // applyConditionEffectsToVariables owns this copy; do not clone the same
-  // frame again for the harmony overlay. The cached buffed frame stays untouched.
-  withConditions.control *= harmonyMods.controlMultiplier;
-  withConditions.intensity *= harmonyMods.intensityMultiplier;
+  // Crit/success remain additive.
   withConditions.critchance += harmonyMods.critChanceBonus;
   withConditions.successChanceBonus += harmonyMods.successChanceBonus;
-  withConditions.poolCostPercentage = Math.floor(
-    (withConditions.poolCostPercentage / 100) *
-      (harmonyMods.poolCostPercentage / 100) *
-      100,
-  );
-  withConditions.stabilityCostPercentage = Math.floor(
-    (withConditions.stabilityCostPercentage / 100) *
-      (harmonyMods.stabilityCostPercentage / 100) *
-      100,
-  );
   return withConditions;
 }
 
@@ -2209,16 +2246,14 @@ interface PostCostStabilityFrame {
  * Calculate actual action costs after all modifiers using game order/rounding.
  *
  * Runtime order (getPoolCost / getStabilityCost):
- * - Condition `pool`/`stability` multipliers scale poolCostPercentage /
- *   stabilityCostPercentage, unrounded.
- * - Pool: add poolCostFlat (clamped at 0), then a single
- *   `Math.floor(cost * poolCostPercentage / 100)`.
- * - Stability: a single `Math.ceil(negativeDelta * stabilityCostPercentage / 100)`.
- * - The harmony cost multiplier is then applied as a *separate outer* floor,
- *   not folded into the percentage:
+ * - Ordinary and Reaction reductions share the p7r cost-stat fold, followed by
+ *   condition reductions/penalties, before the single cost floor.
+ * - Pool: add poolCostFlat (clamped at 0), then floor the scaled cost.
+ * - Stability: floor the scaled spending (ceil its negative delta).
+ * - Only Enhancing Echo applies a *separate outer* floor:
  *     pool      = Math.floor(getPoolCost(...) * harmonyPoolMultiplier)
  *     stability = Math.floor(getStabilityCost(...) * harmonyStabilityMultiplier)
- *   Folding it into the percentage instead would drift by 1 on fractional cases.
+ *   Folding Echo into the reductions would drift by 1 on fractional cases.
  */
 export function calculateEffectiveActionCosts(
   state: CraftingState,
@@ -2264,12 +2299,9 @@ export function calculateEffectiveActionCosts(
       config.craftingType,
       skill.type,
     );
-    harmonyPoolMultiplier =
-      (baseHarmonyMods.poolCostPercentage / 100) *
-      (harmonyCostMultipliers.poolCostPercentage / 100);
+    harmonyPoolMultiplier = harmonyCostMultipliers.poolCostPercentage / 100;
     harmonyStabilityMultiplier =
-      (baseHarmonyMods.stabilityCostPercentage / 100) *
-      (harmonyCostMultipliers.stabilityCostPercentage / 100);
+      harmonyCostMultipliers.stabilityCostPercentage / 100;
 
     if (hasCostAffectingBuff) {
       // Read only the buffed cost channels. The full action frame's condition
@@ -2320,6 +2352,18 @@ export function calculateEffectiveActionCosts(
           ) / Math.max(1e-10, state.stabilityCostPercentage);
       }
     }
+    if (baseHarmonyMods.qiCostReduction !== 0)
+      qiReduction = combineCostStat(
+        true,
+        qiReduction,
+        baseHarmonyMods.qiCostReduction,
+      );
+    if (baseHarmonyMods.stabilityCostReduction !== 0)
+      stabilityReduction = combineCostStat(
+        true,
+        stabilityReduction,
+        baseHarmonyMods.stabilityCostReduction,
+      );
   }
   // Condition effects multiply the cost *percentages* rather than the raw
   // costs, and are folded in before any rounding:
