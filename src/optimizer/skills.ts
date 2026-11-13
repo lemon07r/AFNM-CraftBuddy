@@ -40,6 +40,7 @@ import {
   collectDerivedNativeVariableAliases,
   applyDerivedNativeVariableAliases,
   buildCanonicalNativeVariables,
+  buildCraftContextVariables,
 } from './nativeVariables';
 import { normalizeIdentifier } from './nameNormalization';
 import {
@@ -2406,31 +2407,45 @@ interface ActionEvaluationFrame {
   readonly mastery: Readonly<ResolvedMasteryBonuses>;
 }
 
+function withContextVariables(
+  variables: ScalingVariables,
+  contextVariables: Readonly<Record<string, number>> | undefined,
+): ScalingVariables {
+  return contextVariables ? { ...variables, ...contextVariables } : variables;
+}
+
 function buildActionEvaluationFrame(
   state: CraftingState,
   skill: SkillDefinition,
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
   includeRefinement = true,
+  contextVariables?: Readonly<Record<string, number>>,
 ): ActionEvaluationFrame {
   const harmonyMods = getHarmonyStatModifiers(
     state.harmonyData,
     config.craftingType,
   );
-  let preMasteryVariables = buildPreMasteryActionVariables(
-    state,
-    config,
-    conditionEffects,
-    harmonyMods,
-  );
-  let mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
-  if (hasMasteryUpgrades(mastery.upgrades)) {
-    preMasteryVariables = buildPreMasteryActionVariables(
+  let preMasteryVariables = withContextVariables(
+    buildPreMasteryActionVariables(
       state,
       config,
       conditionEffects,
       harmonyMods,
-      mastery.upgrades,
+    ),
+    contextVariables,
+  );
+  let mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
+  if (hasMasteryUpgrades(mastery.upgrades)) {
+    preMasteryVariables = withContextVariables(
+      buildPreMasteryActionVariables(
+        state,
+        config,
+        conditionEffects,
+        harmonyMods,
+        mastery.upgrades,
+      ),
+      contextVariables,
     );
     mastery = resolveMasteryBonuses(state, skill, preMasteryVariables);
   }
@@ -3580,6 +3595,8 @@ interface ActionPhaseContext {
   paymentCosts?: EffectiveActionCosts;
   nativeSource?: CraftingState;
   stabilityProjection?: StabilityProjection;
+  /** Runtime condition/harmony flag variables for this action. */
+  contextVariables?: Readonly<Record<string, number>>;
 }
 
 const masteryPhaseSkills = new WeakMap<
@@ -3899,6 +3916,7 @@ function evaluateMasteryPhaseCondition(
   state: CraftingState,
   config: OptimizerConfig,
   conditionEffects: ConditionEffect[],
+  contextVariables?: Readonly<Record<string, number>>,
 ): ConditionEvaluation {
   // These gates do not read any variables. In particular, unconditional and
   // chance-gated mastery blocks need no extra full action-scope construction.
@@ -3910,11 +3928,14 @@ function evaluateMasteryPhaseCondition(
   return evaluateEffectCondition(
     condition,
     state,
-    buildPreMasteryActionVariables(
-      state,
-      config,
-      conditionEffects,
-      getHarmonyStatModifiers(state.harmonyData, config.craftingType),
+    withContextVariables(
+      buildPreMasteryActionVariables(
+        state,
+        config,
+        conditionEffects,
+        getHarmonyStatModifiers(state.harmonyData, config.craftingType),
+      ),
+      contextVariables,
     ),
     0,
   );
@@ -4110,6 +4131,10 @@ export function applySkill(
     targetCompletion,
     targetPerfection,
     options,
+    buildCraftContextVariables(
+      normalizeCondition(currentCondition),
+      config.craftingType,
+    ),
   );
   const next = applySkillTransition(
     prepared.state,
@@ -4143,6 +4168,7 @@ function prepareActionPhases(
   targetCompletion: number,
   targetPerfection: number,
   options: SkillGainOptions,
+  contextVariables?: Readonly<Record<string, number>>,
 ): { state: CraftingState; context: ActionPhaseContext } {
   const existingBuffNames = getResolvedActiveBuffs(state, config);
   const hasMasteryEffects =
@@ -4168,6 +4194,7 @@ function prepareActionPhases(
     barStart: state,
     barContributions: [],
     nativeSource: working,
+    contextVariables,
   };
   if (skill.buffCost) {
     const owner = existingBuffNames.get(skill.buffCost.buffName);
@@ -4236,6 +4263,7 @@ function prepareActionPhases(
       working,
       config,
       conditionEffects,
+      contextVariables,
     );
     if (!condition.met || condition.probability <= 0) continue;
     const phaseSkill = masteryPhaseSkill(
@@ -4322,6 +4350,7 @@ function applySkillTransition(
     config,
     conditionEffects,
     !phase.masteryPhase,
+    phase.contextVariables,
   );
   const gains: SkillGains =
     orderedEffects ||
