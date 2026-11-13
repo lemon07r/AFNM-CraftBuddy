@@ -177,6 +177,25 @@ describe('0.7.20 crit transition and trigger boundaries', () => {
     });
   });
 
+  it('previews a cycle created earlier in the technique like the transition', () => {
+    const cycle: BuffDefinition = {
+      ...critCycle,
+      initialState: { actionsRemaining: '1' },
+    };
+    const skill = retargetSkill({
+      effects: [
+        { kind: 'createBuff', buff: cycle, stacks: { value: 1 } },
+        { kind: 'completion', amount: { value: 100 } },
+      ],
+    });
+    const gains = calculateSkillGains(
+      critState({ critChance: 70 }),
+      skill,
+      retargetConfig(skill),
+    );
+    expect(gains.completion).toBe(220);
+  });
+
   it('does not tick a new cycle for a bar applied before its creation', () => {
     const cycle: BuffDefinition = {
       ...critCycle,

@@ -2877,7 +2877,9 @@ function calculateSkillGainsWithFrame(
   const includeExpectedValue = options.includeExpectedValue ?? true;
   if (
     skill.effects?.length &&
-    (hasEffectInterceptors(state.buffs) || needsOrderedCritBars(state.buffs))
+    (hasEffectInterceptors(state.buffs) ||
+      needsOrderedCritBars(state.buffs) ||
+      skillCreatesOrderedBuff(skill))
   ) {
     const prepared = prepareActionPhases(
       state,
@@ -5349,8 +5351,9 @@ function applySkillTransition(
         // Buff bar applications fire the same runtime triggers as technique
         // applications (e.g. Illume Crucible's onStabilize completion feeds
         // True Bifang Flame's blaze).
+        const completionBarAfter = runningCompletion + amount;
         if (canDispatchBuffTriggers && amount > 0) {
-          const barAfter = runningCompletion + amount;
+          const barAfter = completionBarAfter;
           runningCompletion = barAfter;
           dispatchBuffTriggers(
             'completionGained',
@@ -5364,7 +5367,7 @@ function applySkillTransition(
             amount,
             computeTriggerPercentGained(
               amount,
-              runningCompletion,
+              completionBarAfter,
               targetCompletion,
             ),
           );
@@ -5374,8 +5377,9 @@ function applySkillTransition(
         if (recordBarChanges && amount !== 0) {
           buffBarContributions.push({ bar: 'perfection', amount });
         }
+        const perfectionBarAfter = runningPerfection + amount;
         if (canDispatchBuffTriggers && amount > 0) {
-          const barAfter = runningPerfection + amount;
+          const barAfter = perfectionBarAfter;
           runningPerfection = barAfter;
           dispatchBuffTriggers(
             'perfectionGained',
@@ -5389,7 +5393,7 @@ function applySkillTransition(
             amount,
             computeTriggerPercentGained(
               amount,
-              runningPerfection,
+              perfectionBarAfter,
               targetPerfection,
             ),
           );
