@@ -9,6 +9,7 @@
 
 ## Current state
 
+- **§21** is the 0.7.21-6b1d439 retarget audit: crafting engine unchanged; balance changes are game data read live; condition/harmony flag variables (first used by Lanternheart Flame) are now supplied.
 - **§20** is the 0.7.20-101cd1d retarget audit: resource-scope interceptors, Forge heat band buffs, additive harmony buffs, exact crit/overcrit and buff bar crits, and new stats/triggers.
 - **§18** is the 0.7.19-ac29603 retarget re-audit; **§19** records the focused 2026-11-02 follow-up on stability, discordance, stack/group effects, companions, auto-use and UI APIs. Both are static bundle evidence, not live-client test claims.
 - **§17** is the 0.7.17 phase/cost/droplet/Returning Cycle audit, checked again in §18. **§14–§16** retain the earlier stateful-buff/seal/boost/cap evidence confirmed there.
@@ -19,7 +20,7 @@
 - **7.0 retirement:** references below to Rust or two engines describe historical audits only. The experimental prior and mirror are removed; there is no ongoing cross-engine maintenance duty. The transition golden now protects TypeScript behavior (see `docs/ENGINE_DECISIONS.md`).
 
 Findings extracted from the **installed** AFNM runtime, most recently
-**0.7.20-101cd1d** (section 20). Earlier sections retain their historical build
+**0.7.21-6b1d439** (section 21). Earlier sections retain their historical build
 citations. The runtime is the sole authority here: where a tooltip, a
 patch note, or an earlier CraftBuddy note disagrees with the code below, the code
 below wins.
@@ -1873,3 +1874,23 @@ All harmony types write a live buff with `displayLocation:'none'`: Resonance (`A
 ### Buff and item bar effects crit (pre-existing gap, closed in 7.1.0)
 
 Ordinary buff effects execute through `E4i` (`G:6510900`) with a frame built by `wp(entity, ...)` (`G:6513951` turn/technique-type hooks, `G:6514640` onCraftingStart) and call the same completion/perfection appliers `B4i`/`z4i` (`G:6526998`/`G:6525655`). Positive bar amounts therefore roll crit from the entity's folded `critchance`/`critmultiplier`/`overcrit`/`overcritCapBonus`, without technique mastery or `refinementCritChance`. `wp` frames start without a `critActionId`, so `N4i` normally adds no crit-cycle bonus and does not tick its countdown. The exception: before each effect `E4i` overlays the owner's `additionalVariables` and `internalState`, so a buff whose stored state holds a `critActionId` (a crit-cycle buff that has its own effects) supplies that id, and `N4i` then reuses or ticks cycles against it. The only shipped crit-cycle buff (Heavenjudging Eyes) has no effects of its own; CraftBuddy's buff effect executor applies the same overlay. 0.7.19 behaved the same (`g7c` → `c7c` with `XS`, 0.7.19 `G:14940458`); CraftBuddy previously applied crit only to technique effects. Interceptor effects inherit the caller's frame (`G:6522844`).
+
+## 21. AFNM 0.7.21 retarget audit (CraftBuddy 7.2.0)
+
+Read-only inspection of the installed Steam build `0.7.21-6b1d439` (extractor cache key `2008807644-1794580311541`) against 0.7.20 (`3305125755-1794284399962`). `afnm-types` has no 0.7.21 release, so the package stays on 0.7.20. Offsets are zero-based character positions in the extracted `dist-electron/Game.js` (`G`). The comparison normalized minified identifiers and diffed the bundle as a set of statement fragments, then read every changed fragment that touches crafting state or variables.
+
+### Crafting engine unchanged
+
+The oracle's ModAPI flags, Forge probes (`lowControlPenaltyHeat` [2,3], fusion through heat 4) and crafting helpers are all as in §20. No changed fragment touches the technique reducer, cost/stat folds, crit roll, interceptors or harmony processing. The only engine-adjacent changes are combat (`spawnCondition` max-health buffs), item tooltips and vault chamber gating. The turn reducer `lgl` (`G:15590934`) still executes held buffs' action effects (`q6i`) before the condition shift (`t.condition=l,t.nextConditions.shift()`, `G:15591662`). The sealed-max-stability helper (`n8i`, `G:6571234`) and the forced −1 decay are unchanged; 0.7.21 only adds two vault buffs that use them (Cooling Brake Metal, Brittle Boneglass) plus Vessel Pressure (`G:9280537`, `additionalVariables` and `pool`/`maxpool` stat eqns).
+
+### Balance changes are game data
+
+- Singularity Dantian's crafting stats (the Qi Pool boost per major tier) halved: `completionBoost`/`perfectionBoost` eqn `maxpool > 0 ? max(0, pool / maxpool) * 30 : 0` (`G:503219`; 0.7.20 had `* 60`).
+- Consolidated Control/Intensity buffs are `value: .05` (`G:7888670`; was `.03`).
+- Numinous Muscles, Stellar Infusion/Refinement and Heavenjudging Eyes values live in their definitions. Rushed Insight Reagent already scaled with `stabilitypenalty / maxstability` in the 0.7.20 build.
+
+CraftBuddy reads all of these from the live definitions and hardcodes none of them, so they need no code change.
+
+### Condition and harmony flag variables (fixed by PR #31 for 7.2.0)
+
+The crafting variable builder `Ip` (`G:5403125`; `Cp` in 0.7.20) sets `r[zu(E7r(condition ?? 'neutral'))] = 1`, plus `Harmony: <display name>` (`w7r = e => 'Harmony: ' + _6r[e]`, where `_6r` maps `forge` to `Forge Works` and so on) and `Recipe Condition: <name>` flags. Here `E7r = e => 'Condition: ' + zf[e]` (`G:5397897`), `zf` maps neutral/positive/negative/veryPositive/veryNegative to Balanced/Harmonious/Resistant/Brilliant/Corrupted, and `zu` replaces every non-word character with `_`. The variables are therefore `Condition__Harmonious`, `Harmony__Forge_Works`, and so on, matching the recorded native frames in the replay snapshots. The builder already did this in 0.7.20, but no stock data read the flags. 0.7.21's Lanternheart Flame (`G:6521893`) is the first: `onRefine: [createBuff Kindled Brilliance ×1 if Condition__Harmonious, ×3 if Condition__Brilliant]`. CraftBuddy's action frames lacked the flags, so the gate evaluated to 0. PR #31 (merged before the 7.2.0 release) supplies the condition and harmony flags, for the condition in force while the action resolves, to transitions, gain previews and mastery payment projection.

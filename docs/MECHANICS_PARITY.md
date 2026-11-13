@@ -1,6 +1,6 @@
 # Mechanics parity
 
-Current contracts for AFNM **0.7.20**, plus explicit model gaps. Installed-runtime evidence wins over local tests or prose. [Runtime evidence](RUNTIME_EVIDENCE.md#current-state) indexes the audits; [Development](DEVELOPMENT.md#validation-matrix) explains validation.
+Current contracts for AFNM **0.7.21**, plus explicit model gaps. Installed-runtime evidence wins over local tests or prose. [Runtime evidence](RUNTIME_EVIDENCE.md#current-state) indexes the audits; [Development](DEVELOPMENT.md#validation-matrix) explains validation.
 
 ## Evidence and scope
 
@@ -10,7 +10,7 @@ The transition golden pins TypeScript states, legal/illegal actions, buffs/inter
 
 ## Execution contract
 
-The 0.7.17 order, re-audited in 0.7.19 and checked again against 0.7.20 (Runtime evidence §20), is:
+The 0.7.17 order, re-audited in 0.7.19 and checked again against 0.7.20 and 0.7.21 (Runtime evidence §20, §21), is:
 
 1. Pay toxicity, droplets and buff costs.
 2. Capture success chance.
