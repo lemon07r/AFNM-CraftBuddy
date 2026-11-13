@@ -3,23 +3,23 @@
 
 CraftBuddy reads your live craft, simulates possible continuations, and recommends the next action — and [i]why[/i].
 
-[b]CraftBuddy 7.0.0 — for game version 0.7.19.[/b]
+[b]CraftBuddy 7.1.0 — for game version 0.7.20.[/b]
 
 [hr][/hr]
 
 [h1]What's New in v7[/h1]
-Latest in 7.0.0:
+Latest in 7.1.0 (for game version 0.7.20):
 
 [list]
-[*] [b]New look[/b] — the panel and settings now use the game's own style. The panel shows one clear next action and the outcome you are working towards, with the plan, other actions and automatic crafting in collapsible sections. Settings use plain names, work with the keyboard and screen readers, and also appear in the game's mod options screen.
-[*] [b]Companions[/b] — Su Lianhua's effect interception and Han Weiguang's stability-loss protection are now simulated when you hold them.
-[*] [b]More accurate Qi and stability[/b] — every Qi and stability effect is applied one at a time, the way the game does it, and stability losses are reduced by your cost reductions whether or not you hold a companion.
-[*] [b]Safety checks match the real action[/b] — the survival check now uses the same simulation as the action itself, so buffs used up when you pay, mastery effects and max-stability repairs are counted correctly.
-[*] [b]Faster search[/b] — the same recommendations in less time, so each preset can look further ahead, which helps most on slower machines.
-[*] [b]Fresher recommendations[/b] — a change in Qi droplets alone now refreshes the recommendation, and automatic crafting no longer waits on an outdated one.
-[*] [b]Clearer results[/b] — a craft that ends below the lowest tier now shows "Craft failed".
-[*] [b]Simpler install[/b] — the experimental Rust/WASM engine option is gone. The regular search was always the default and is unchanged, and your saved settings carry over.
+[*] [b]Readable panels again[/b] — since 7.0 the panel and settings fell back to a plain light theme in game (dark text on a dark panel). They now use the game's own style as intended.
+[*] [b]Forge heat fix[/b] — heat is no longer counted twice, which at heat 0 made automatic crafting spam Forceful Stabilize.
+[*] [b]Harmony accuracy[/b] — harmony bonuses are applied once and on your base stats, the way the game does it, and Alchemical Reaction discounts combine with your other cost reductions.
+[*] [b]Smarter risk[/b] — risky actions are judged by what you keep if they go wrong and what you can still do if they go right, and the plan shows the line that survives.
+[*] [b]Crits and overcrits[/b] — the new 0.7.20 overcrit chains, crit cycles and refinement crit chance are simulated exactly, and buff and item effects now crit like in the game. Live recommendations no longer jitter from a random crit roll.
+[*] [b]New companion rules[/b] — 0.7.20 interception, including Han Weiguang's Assistance, which now also blocks stability losses from items and buffs.
 [/list]
+
+Also in v7: the game-styled panel with one clear next action, keyboard and screen-reader friendly settings (also in the game's mod options), companion simulation, more accurate Qi and stability, faster search, "Craft failed" results, and no more Rust/WASM option.
 
 [hr][/hr]
 

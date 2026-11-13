@@ -1,5 +1,16 @@
 # Changelog
 
+## 7.1.0 — AFNM 0.7.20
+
+- Retarget to 0.7.20-101cd1d and afnm-types 0.7.20.
+- Fix unreadable in-game panels: since 7.0 the theme was imported through a bundled second copy of MUI, so the game's components fell back to MUI's default light theme (dark text on the dark panel, white dialogs, blue controls). The panel and settings now use the game's own MUI, and `mod.js` is about 200 KB smaller.
+- Strip the live Forge Works heat band buffs, so heat applies once. At heat 0 the band was counted twice, which showed a "−100000% control" readout and made auto-craft spam Forceful Stabilize (bug report replay).
+- Model 0.7.20 resource-scope interceptors (Han Weiguang's Assistance now also prevents item and buff stability losses) through one accessor with a legacy mapping for old replays.
+- Apply harmony stat effects once and additively against base stats, matching the game's stat fold. Resonance and Decree Focus are no longer counted twice, and a live Alchemical Reaction is replaced rather than stacked by the next simulated one. Reaction Qi and stability discounts now combine with other cost reductions before rounding, and the stability discount also softens stability losses from effects.
+- Survival-weight risky actions: a line whose stability floor can end the craft is scored as `p × surviving continuation + (1 − p) × craft end`, continuing from the surviving stability rather than discounting death twice. The planned end state replays the line that survives, so it never stops before a listed step.
+- Compute crit expectation exactly, including 0.7.20 overcrit chains, cap bonus, chain growth, crit cycles and refinement crit chance, instead of sampling the game's random crit roll (which made live search scores noisy). Buff and item bar effects now crit the way the game does.
+- Fire the new `actionResolved` trigger and certain `crit` triggers; extract the new crit stats (overcrit, overcrit cap bonus, refinement crit chance) and keep old replays loading with them as zero.
+
 ## 7.0.0 — AFNM 0.7.19
 
 - Derive survival floors and projected survival odds from the actual action transition, fixing buff-consumption/mastery ordering and signed maximum-stability cleanup without a duplicate simulator.

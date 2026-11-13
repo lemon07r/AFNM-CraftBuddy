@@ -2,7 +2,7 @@
 
 A crafting assistant for **Ascend From Nine Mountains**. It reads your live craft, searches ahead and recommends the next technique, with optional auto-crafting.
 
-CraftBuddy **7.0.0**, built for AFNM **0.7.19-ac29603**. [What's changed](CHANGELOG.md).
+CraftBuddy **7.1.0**, built for AFNM **0.7.20-101cd1d**. [What's changed](CHANGELOG.md).
 
 ![CraftBuddy Workshop preview](pictures/workshop_preview.png)
 
