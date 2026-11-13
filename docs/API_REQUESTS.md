@@ -1,6 +1,6 @@
 # API requests
 
-Unresolved requests after the AFNM 0.7.19 audit. Runtime facts live in [Runtime evidence](RUNTIME_EVIDENCE.md); local adoption and fallbacks live in [Development](DEVELOPMENT.md#native-helpers-availability-is-not-adoption).
+Unresolved requests after the AFNM 0.7.20 audit. Runtime facts live in [Runtime evidence](RUNTIME_EVIDENCE.md); local adoption and fallbacks live in [Development](DEVELOPMENT.md#native-helpers-availability-is-not-adoption).
 
 ## Still useful upstream
 
@@ -19,7 +19,7 @@ Unresolved requests after the AFNM 0.7.19 audit. Runtime facts live in [Runtime 
 
 ## Fulfilled / obsolete
 
-- Root-state `subscribe` / `getGameStateSnapshot`, native overcrit/precheck, completion/perfection cap getters, `getNextCondition`, `craftingTechniqueFromKnown`, completion-bonus identifier and max-toxicity getter are available, with guarded adopted paths.
+- Root-state `subscribe` / `getGameStateSnapshot`, native precheck, completion/perfection cap getters, `getNextCondition`, `craftingTechniqueFromKnown`, completion-bonus identifier and max-toxicity getter are available, with guarded adopted paths. `calculateCraftingOvercrit` is available but no longer adopted: it samples the crit roll, so CraftBuddy computes its exact expectation instead (Runtime evidence §20).
 - `getActionCost`, `evaluateCraftingCondition`, `getActualCraftingStat` and scaling utilities are exposed. Availability alone does not establish production use or hypothetical-state safety.
 - Canonical non-localized `CraftingTechnique.name` matching known-technique/registry keys was documented upstream in `AfnmExampleMod`; that documentation request is **fulfilled**.
 - Buff definitions, harmony state/config and condition payloads are available. `gameData.buffs` exists but is not needed for the current live-payload hydration path.

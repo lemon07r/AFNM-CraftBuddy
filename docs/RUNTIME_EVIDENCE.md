@@ -9,6 +9,7 @@
 
 ## Current state
 
+- **§20** is the 0.7.20-101cd1d retarget audit: resource-scope interceptors, Forge heat band buffs, additive harmony buffs, exact crit/overcrit and buff bar crits, and new stats/triggers.
 - **§18** is the 0.7.19-ac29603 retarget re-audit; **§19** records the focused 2026-11-02 follow-up on stability, discordance, stack/group effects, companions, auto-use and UI APIs. Both are static bundle evidence, not live-client test claims.
 - **§17** is the 0.7.17 phase/cost/droplet/Returning Cycle audit, checked again in §18. **§14–§16** retain the earlier stateful-buff/seal/boost/cap evidence confirmed there.
 - **§1–§11** are historical 0.7.5/0.7.6 findings, not a fresh whole-bundle equivalence claim. Decree's original −5 stray penalty is superseded by **§14.6** (−15); harmony count grew from seven to nine by §17.
@@ -18,7 +19,7 @@
 - **7.0 retirement:** references below to Rust or two engines describe historical audits only. The experimental prior and mirror are removed; there is no ongoing cross-engine maintenance duty. The transition golden now protects TypeScript behavior (see `docs/ENGINE_DECISIONS.md`).
 
 Findings extracted from the **installed** AFNM runtime, most recently
-**0.7.19-ac29603** (sections 18–19). Earlier sections retain their historical build
+**0.7.20-101cd1d** (section 20). Earlier sections retain their historical build
 citations. The runtime is the sole authority here: where a tooltip, a
 patch note, or an earlier CraftBuddy note disagrees with the code below, the code
 below wins.
@@ -1845,8 +1846,30 @@ adopting these APIs is separate work.
 
 ## 20. AFNM 0.7.20 retarget audit (CraftBuddy 7.1.0)
 
-Read-only inspection of the installed Steam build `0.7.20-101cd1d` (extractor cache key `3305125755-1794284399962`) and the `afnm-types` 0.7.20 diff. Offsets are zero-based character positions in the extracted `dist-electron/Game.js` (`G`); re-resolve them after a game update.
+Read-only inspection of the installed Steam build `0.7.20-101cd1d` (extractor cache key `3305125755-1794284399962`) and the `afnm-types` 0.7.20 diff, plus a user replay. Offsets are zero-based character positions in the extracted `dist-electron/Game.js` (`G`); re-resolve them after a game update.
 
 ### Resource-scope interceptors replace stability-loss prevention
 
 `OC` (`G:6521852`) gained a `scope` (`technique` | `resource`) and accepts a `Scaling` modifier evaluated without rounding. Each multiplication is floored, the first matching interceptor per buff applies, owners need stacks > 0, zero amounts skip, and a guard stops re-entry. Resource appliers intercept bar progress before crit and boost (`B4i`/`z4i`), stability (`F4i`: gains before the boost, losses after pricing, including the technique's stability cost), max stability (`L4i`, including the per-turn decay and the Inscription/Cadence −1), pool (`H4i`, including qi cost, before the qi boost) and toxicity (`U4i`). `stabilityLossPrevention` is gone. Han Weiguang's Assistance (`G:13472851`) is now `craftingEffectInterceptors: [{scope: 'resource', appliesTo: ['stability'], trigger: 'amount < 0 && preventedStabilityLosses < preventionLimit', modifier: multiply 0, effects: [setState preventedStabilityLosses += 1]}]` with `preventionLimit: 2`; the new Immortal Flesh crafting perk (`G:530102`) uses the same shape with the limit set by tier. Because Han is now resource scope, item and buff stability losses are prevented too, and an owner with 0 stacks no longer prevents (the old `n7c` helper did not check stacks). CraftBuddy 7.1.0 models both scopes through one accessor and keeps a legacy mapping for old replays (PR #24).
+
+### Forge Works heat buffs are derived state
+
+The Forge Works band writer `R2i` (`G:6494337`) prepends one band buff on every heat change except heat 1, after removing every buff whose name starts with `Heat (`: `Heat (Perfect)` (+0.5 control and intensity, heat 4–6), `Heat (Low)` (−0.5 control, 2–3), `Heat (High)` (−0.5 intensity, 7–9), `Heat (Frozen)` (−10 control, 0) and `Heat (Burning)` (−10 intensity, 10). The buff stats are the same modifiers CraftBuddy derives from `forgeWorks.heat`. A user replay at heat 0 showed the live `Heat (Frozen)` buff folded on top of the modelled −10× control, which gave the "−100000% control" readout and made auto-craft spam Forceful Stabilize. The live band buffs are now stripped as derived, and the band that survives at heat 1 is recovered from the live buff or from the previous heat (7.1.0, PR #23).
+
+### Harmony buffs are base-stat additions
+
+All harmony types write a live buff with `displayLocation:'none'`: Resonance (`A3i`, `critchance 3×stacks`, `successChanceBonus 0.03×stacks`), Decree Focus (`Y3i`, +0.5 intensity or control by focused bar), Reaction (`t4i`/`$2i`, one of the six combo stats or −0.25 control on failure, kept until replaced), Inscription (0.02×stacks control and intensity) and Captivating Cadence Chain (`d6i`, the same). The stat fold `i9r` (`G:5400290`) starts from the entity's base stat, adds every buff's `Iu(stat, base)` contribution (cost reductions and penalties combine through `p7r` instead), and only then applies condition multipliers. A `{value: 0.5, stat: 'control'}` harmony buff therefore adds half of base control; it does not multiply the buffed total. Reaction's cost variants are plain `qiCostReduction`/`stabilityCostReduction: 25` stats, so they fold through `p7r` with every other reduction before the single cost floor, and the stability variant also reduces negative stability effects. CraftBuddy models simulated and live Reactions through those same channels (7.1.0, PR #27).
+
+### Crit rolls and overcrit
+
+`d4i` (`G:6508912`) is the crafting and combat crit roll and is what `modAPI.utils.calculateCraftingOvercrit` returns. It samples `Math.random()` (0.7.19's `I1i` did too), so it cannot serve as an expected-value helper. Arguments are critchance, critmultiplier, overcrit, overcritCapBonus and chain growth. The bar appliers pass the action frame's `overcrit` and `overcritCapBonus` stats, plus the `N4i` crit-cycle bonus (a per-technique `critActionId` countdown on buffs with `critCycle`) and `f4i`, the sum of `overcritChainGrowth` over held buffs. After masteries, refine techniques add `refinementCritChance` to critchance (`G:6520041`). New forging meridian perks use all of these. Because the native helper rolls, CraftBuddy 7.1.0 no longer uses it and instead computes the roll's exact expectation, weighting each floored chain threshold by the probability of every earlier roll succeeding (PR #28).
+
+### Other surface changes
+
+- New crafting stats default to 0: `production`, `cauldronBoost`, `flameBoost`, `overcrit`, `overcritCapBonus`, `refinementCritChance`.
+- New trigger `actionResolved` (`{isRefinement, succeeded}`), fired after every technique resolves.
+- The oracle's Forge recommendation probe now matches the assignment form `recommendedTechniqueTypes=e.forgeWorks.heat<=4?` (`G:6496402`); the old pattern never matched 0.7.19 either.
+
+### Buff and item bar effects crit (pre-existing gap, closed in 7.1.0)
+
+Ordinary buff effects execute through `E4i` (`G:6510900`) with a frame built by `wp(entity, ...)` (`G:6513951` turn/technique-type hooks, `G:6514640` onCraftingStart) and call the same completion/perfection appliers `B4i`/`z4i` (`G:6526998`/`G:6525655`). Positive bar amounts therefore roll crit from the entity's folded `critchance`/`critmultiplier`/`overcrit`/`overcritCapBonus`, without technique mastery or `refinementCritChance`. `wp` frames start without a `critActionId`, so `N4i` normally adds no crit-cycle bonus and does not tick its countdown. The exception: before each effect `E4i` overlays the owner's `additionalVariables` and `internalState`, so a buff whose stored state holds a `critActionId` (a crit-cycle buff that has its own effects) supplies that id, and `N4i` then reuses or ticks cycles against it. The only shipped crit-cycle buff (Heavenjudging Eyes) has no effects of its own; CraftBuddy's buff effect executor applies the same overlay. 0.7.19 behaved the same (`g7c` → `c7c` with `XS`, 0.7.19 `G:14940458`); CraftBuddy previously applied crit only to technique effects. Interceptor effects inherit the caller's frame (`G:6522844`).

@@ -10,7 +10,7 @@ The transition golden pins TypeScript states, legal/illegal actions, buffs/inter
 
 ## Execution contract
 
-The 0.7.17 order, re-audited in 0.7.19, is:
+The 0.7.17 order, re-audited in 0.7.19 and checked again against 0.7.20 (Runtime evidence §20), is:
 
 1. Pay toxicity, droplets and buff costs.
 2. Capture success chance.

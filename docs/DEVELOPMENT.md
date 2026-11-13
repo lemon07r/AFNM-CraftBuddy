@@ -47,7 +47,7 @@ Harmony is **player-selected**, with `recipe.harmonyTypeOverride` as the forced 
 
 ### Native helpers: availability is not adoption
 
-Condition transitions, known-technique resolution, completion-bonus naming, overcrit, action prechecks, cap getters and max toxicity have guarded native paths. `getMaxCompletion` / `getMaxPerfection` receive the live `bonusMaximumQuality` sum as their fourth argument (`src/modContent/qualityCap.ts`); a three-argument call silently loses raised caps.
+Condition transitions, known-technique resolution, completion-bonus naming, action prechecks, cap getters and max toxicity have guarded native paths. `getMaxCompletion` / `getMaxPerfection` receive the live `bonusMaximumQuality` sum as their fourth argument (`src/modContent/qualityCap.ts`); a three-argument call silently loses raised caps.
 
 CraftBuddy has no native action-cost wrapper; costs are locally simulated. Native `getActionCost` is an individual preview, not the finalized mastery-aware payment oracle requested in [API requests](API_REQUESTS.md). Likewise, declaration/probe presence for condition/stat helpers is not proof that a production path calls them. Native scaling is deliberately not used inside search because a live provider can disagree on hypothetical future-state variables.
 
