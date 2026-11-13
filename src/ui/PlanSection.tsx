@@ -7,8 +7,8 @@ import {
   planDisplayContent,
 } from '../utils/recommendationPresentation';
 import { formatLargeNumber } from '../utils/largeNumbers';
-import { Disclosure } from './components';
-import { colors } from './theme';
+import { smallBadgeSx, Disclosure } from './components';
+import { colors, tokens } from './theme';
 
 export function PlanSection({
   result,
@@ -41,22 +41,57 @@ export function PlanSection({
   )
     return null;
   return (
-    <Disclosure title="Plan">
-      <Typography variant="body2" sx={{ color: colors.textSecondary }}>
+    <Disclosure
+      title="Plan"
+      meta={rotation.length ? `${rotation.length} steps` : undefined}
+    >
+      <Typography
+        component="p"
+        variant="caption"
+        sx={{ color: colors.textMuted }}
+      >
         Planned, not secured. CraftBuddy checks again after each action; random
         effects and future conditions can change this path.
       </Typography>
       {rotation.length > 0 ? (
-        <Box component="ol" sx={{ pl: 2.5, my: 1 }}>
+        <Box
+          component="ol"
+          sx={{ listStyle: 'none', p: 0, my: 1.5, counterReset: 'plan-step' }}
+        >
           {rotation.map((name, index) => (
             <Typography
               component="li"
-              variant="body2"
+              variant="body1"
               key={`${name}-${index}`}
-              sx={{ mt: 0.5 }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                py: 0.5,
+                counterIncrement: 'plan-step',
+                '&::before': {
+                  content: 'counter(plan-step)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  width: 22,
+                  height: 22,
+                  flexShrink: 0,
+                  borderRadius: '50%',
+                  backgroundColor: tokens.surface.sunken,
+                  color: colors.gold,
+                  fontSize: tokens.type.label,
+                },
+              }}
             >
               {name}
-              {index === 0 ? ' (next)' : ''}
+              {index === 0 && (
+                <Box
+                  component="span"
+                  sx={{ ...smallBadgeSx, color: colors.gold }}
+                >
+                  next
+                </Box>
+              )}
             </Typography>
           ))}
         </Box>
@@ -72,14 +107,45 @@ export function PlanSection({
           <Typography component="h4" variant="subtitle2">
             Planned end state
           </Typography>
-          <Typography variant="body2">
-            {formatLargeNumber(final.completion, 1)} completion ·{' '}
-            {formatLargeNumber(final.perfection, 1)} perfection
-          </Typography>
-          <Typography variant="body2" sx={{ color: colors.textSecondary }}>
-            {formatLargeNumber(final.stability, 1)} stability ·{' '}
-            {formatLargeNumber(final.qi, 1)} Qi
-          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: 0.75,
+              mt: 0.75,
+            }}
+          >
+            {(['completion', 'perfection', 'stability', 'qi'] as const).map(
+              (key) => (
+                <Box
+                  key={key}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    flexWrap: 'wrap',
+                    gap: 0.75,
+                    backgroundColor: tokens.surface.sunken,
+                    borderRadius: `${tokens.radius.sm}px`,
+                    px: 1,
+                    py: 0.625,
+                  }}
+                >
+                  <Typography
+                    variant="body1"
+                    sx={{ color: tokens.resource[key] }}
+                  >
+                    {formatLargeNumber(final[key], 1)}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: colors.textSecondary }}
+                  >
+                    {key === 'qi' ? 'Qi' : key}
+                  </Typography>
+                </Box>
+              ),
+            )}
+          </Box>
         </Box>
       )}
       {reasoning && (

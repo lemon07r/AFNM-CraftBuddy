@@ -14,6 +14,7 @@ import {
 import { type AutoCraftUiState } from '../../src/settings/autoCraft';
 import {
   computeOverlayLayout,
+  OVERLAY_EDGE_MARGIN_PX,
   isRectInOverlayHudCluster,
   unionOverlayRects,
   type OverlayRectLike,
@@ -711,7 +712,9 @@ function Harness() {
         <div
           style={{
             minHeight: '100vh',
-            padding: '24px',
+            // This scene already represents the full simulated viewport. Outer
+            // padding would crop its right/bottom edges at a matching browser size.
+            padding: 0,
             background:
               'radial-gradient(circle at 20% 18%, rgba(233, 191, 117, 0.18), transparent 24%), linear-gradient(135deg, #221a18 0%, #3a2d22 35%, #121520 100%)',
             boxSizing: 'border-box',
@@ -924,7 +927,9 @@ function Harness() {
         id="craftbuddy-overlay"
         style={{
           minHeight: '100vh',
-          padding: '24px',
+          // Match the runtime's vertical inset so the panel's height clamp is
+          // visible in this scene too, including when every disclosure is open.
+          padding: `${OVERLAY_EDGE_MARGIN_PX}px 24px`,
           background:
             'radial-gradient(circle at 20% 20%, rgba(213, 153, 64, 0.22), transparent 30%), linear-gradient(135deg, #271f1c 0%, #3d2f26 35%, #181827 100%)',
           boxSizing: 'border-box',

@@ -12,7 +12,6 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   IconButton,
   Slider,
   Switch,
@@ -32,9 +31,28 @@ import {
   type SearchPresetId,
 } from '../settings';
 import { formatAmbitionBands } from './ambitionBands';
-import { SEARCH_GOAL_PRIORITY_BIAS_STEP } from '../utils/searchGoalPriority';
-import { ActionButton, Disclosure, Help, PanelHeading } from './components';
-import { colors, uiLayers, reducedMotionSx } from './theme';
+import {
+  formatSearchGoalPriorityBias,
+  SEARCH_GOAL_PRIORITY_BIAS_STEP,
+} from '../utils/searchGoalPriority';
+import {
+  ActionButton,
+  badgeSx,
+  Disclosure,
+  DisclosureGroup,
+  Help,
+  HELP_DISMISS_EVENT,
+  PanelHeading,
+  SectionCard,
+} from './components';
+import {
+  colors,
+  fonts,
+  tokens,
+  uiLayers,
+  reducedMotionSx,
+  focusRing,
+} from './theme';
 import { ChoiceGroup } from './components/ChoiceGroup';
 
 interface SettingsPanelProps {
@@ -89,6 +107,8 @@ const SliderSetting = memo(function SliderSetting({
   step = 1,
   format = String,
   onCommit,
+  marks = false,
+  directional = false,
 }: {
   label: string;
   tooltip: string;
@@ -98,6 +118,8 @@ const SliderSetting = memo(function SliderSetting({
   step?: number;
   format?: (value: number) => string;
   onCommit: (value: number) => void;
+  marks?: boolean;
+  directional?: boolean;
 }) {
   // Dragging updates this control only. Persist/render the root once on commit;
   // CSS owns sizing, so there are no synchronous layout probes on each tick.
@@ -105,16 +127,22 @@ const SliderSetting = memo(function SliderSetting({
   useEffect(() => setDraft(draftValue), [draftValue]);
   const id = useId();
   return (
-    <Box sx={{ mt: 1.25, px: 0.5 }}>
+    <Box sx={{ mt: 1.5, px: 0.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        <Typography id={id} component="span" variant="body2">
+        <Typography id={id} component="span" variant="body1">
           {label}
         </Typography>
         <Help title={label}>{tooltip}</Help>
         <Typography
           component="output"
           variant="caption"
-          sx={{ ml: 'auto', color: colors.textSecondary }}
+          sx={{
+            ...badgeSx,
+            ml: 'auto',
+            backgroundColor: tokens.surface.sunken,
+            color: colors.goldLight,
+            flexShrink: 0,
+          }}
         >
           {format(draft)}
         </Typography>
@@ -126,9 +154,26 @@ const SliderSetting = memo(function SliderSetting({
         max={max}
         step={step}
         value={draft}
+        marks={directional ? [{ value: 0 }] : marks}
+        track={directional ? false : 'normal'}
         onChange={(_, value) => setDraft(Number(value))}
         onChangeCommitted={(_, value) => onCommit(Number(value))}
+        onBlur={() => onCommit(draft)}
       />
+      {directional && (
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            color: colors.textMuted,
+            mt: -0.5,
+          }}
+        >
+          <Typography variant="caption">Perfection</Typography>
+          <Typography variant="caption">Balanced</Typography>
+          <Typography variant="caption">Completion</Typography>
+        </Box>
+      )}
     </Box>
   );
 });
@@ -144,23 +189,34 @@ function ToggleSetting({
   onChange: (value: boolean) => void;
   help?: string;
 }) {
+  const id = useId();
   return (
     <Box
       sx={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        minHeight: 38,
+        minHeight: 42,
+        borderBottom: `1px solid ${tokens.border.hairline}`,
+        borderRadius: `${tokens.radius.xs}px`,
+        px: 0.5,
+        '&:hover': { backgroundColor: tokens.surface.hover },
       }}
     >
-      <FormControlLabel
-        sx={{ m: 0, flex: 1 }}
-        control={
-          <Switch checked={checked} onChange={(_, value) => onChange(value)} />
-        }
-        label={<Typography variant="body2">{label}</Typography>}
-      />
+      <Typography
+        component="label"
+        htmlFor={id}
+        variant="body1"
+        sx={{ cursor: 'pointer', flex: 1, py: 1 }}
+      >
+        {label}
+      </Typography>
       {help && <Help title={label}>{help}</Help>}
+      <Switch
+        id={id}
+        checked={checked}
+        onChange={(_, value) => onChange(value)}
+      />
     </Box>
   );
 }
@@ -242,33 +298,39 @@ export function SettingsBody({
       sx={{
         containerType: 'inline-size',
         color: colors.textPrimary,
+        fontFamily: fonts.body,
+        fontSize: tokens.type.body,
+        lineHeight: tokens.lineHeight.body,
+        fontVariantNumeric: 'tabular-nums',
+        '& :focus-visible': focusRing,
         ...reducedMotionSx,
       }}
     >
-      <Typography variant="subtitle2" component="h3" sx={{ mt: 0 }}>
-        Search effort
-      </Typography>
-      <Typography variant="body2" sx={{ color: colors.textSecondary, mb: 1 }}>
-        More effort may find a better plan, but takes longer.
-      </Typography>
-      <ChoiceGroup
-        label="Search effort"
-        hideLabel
-        value={activePreset}
-        options={PRESETS.map(({ id, label }) => ({
-          id,
-          label,
-          detail: `Up to ${(budgets[id].searchTimeBudgetMs / 1000).toFixed(1)} seconds per turn`,
-        }))}
-        onChange={(id) => commit(budgets[id as SearchPresetId])}
-      />
-
-      <Box
-        sx={{ borderTop: `1px solid ${colors.borderSubtle}`, mt: 2, pt: 1.5 }}
+      <SectionCard
+        title="Search effort"
+        subtitle="Maximum search time per turn. More effort may find a better plan, but takes longer."
       >
-        <Typography variant="subtitle2" component="h3">
-          Craft goals
-        </Typography>
+        <ChoiceGroup
+          variant="segmented"
+          label="Search effort"
+          hideLabel
+          value={activePreset}
+          options={PRESETS.map(({ id, label }) => ({
+            id,
+            label,
+            detail: `up to ${(budgets[id].searchTimeBudgetMs / 1000).toFixed(1)} s`,
+          }))}
+          onChange={(id) => commit(budgets[id as SearchPresetId])}
+        />
+        {!activePreset && (
+          <Typography variant="body2" sx={{ color: colors.textMuted, mt: 1 }}>
+            Custom search budget. Choose a preset to replace your advanced
+            values.
+          </Typography>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Craft goals">
         <ToggleSetting
           label="Aim for extra bands"
           checked={settings.overcraftAmbition}
@@ -281,6 +343,7 @@ export function SettingsBody({
           draftValue={draftSettings.perfectionBandGoal}
           min={0}
           max={AMBITION_BAND_MAX}
+          marks
           format={formatAmbitionBands}
           onCommit={(value) => handleSliderCommit('perfectionBandGoal', value)}
         />
@@ -290,6 +353,7 @@ export function SettingsBody({
           draftValue={draftSettings.completionBandCeiling}
           min={0}
           max={AMBITION_BAND_MAX}
+          marks
           format={formatAmbitionBands}
           onCommit={(value) =>
             handleSliderCommit('completionBandCeiling', value)
@@ -302,23 +366,15 @@ export function SettingsBody({
           min={-100}
           max={100}
           step={SEARCH_GOAL_PRIORITY_BIAS_STEP}
-          format={(value) =>
-            value === 0
-              ? 'Balanced'
-              : `${Math.abs(value)} toward ${value < 0 ? 'perfection' : 'completion'}`
-          }
+          directional
+          format={formatSearchGoalPriorityBias}
           onCommit={(value) =>
             handleSliderCommit('searchGoalPriorityBias', value)
           }
         />
-      </Box>
+      </SectionCard>
 
-      <Box
-        sx={{ borderTop: `1px solid ${colors.borderSubtle}`, mt: 1, pt: 1.5 }}
-      >
-        <Typography variant="subtitle2" component="h3">
-          Display
-        </Typography>
+      <SectionCard title="Display">
         <ToggleSetting
           label="Show crafting panel"
           checked={settings.panelVisible}
@@ -350,6 +406,7 @@ export function SettingsBody({
           }
         />
         <ChoiceGroup
+          variant="pills"
           label="Other actions to list"
           value={String(settings.maxAlternatives)}
           options={[0, 1, 2, 3, 4, 5].map((value) => ({
@@ -358,118 +415,129 @@ export function SettingsBody({
           }))}
           onChange={(value) => commit({ maxAlternatives: Number(value) })}
         />
-      </Box>
+      </SectionCard>
 
-      <Disclosure title="Advanced search">
-        <Typography variant="body2" sx={{ color: colors.textSecondary, mb: 1 }}>
-          Presets are recommended. Depth, time, states and branches share one
-          budget; raising one alone may not improve the result.
-        </Typography>
-        <ChoiceGroup
-          label="Background workers"
-          value={String(settings.searchThreads)}
-          options={[
-            { id: '1', label: '1' },
-            { id: '2', label: '2' },
-            { id: '4', label: '4' },
-            { id: 'auto', label: 'Auto' },
-          ]}
-          onChange={(value) =>
-            commit({
-              searchThreads:
-                value === 'auto'
-                  ? 'auto'
-                  : value === '4'
-                    ? 4
-                    : value === '2'
-                      ? 2
-                      : 1,
-            })
-          }
-        />
-        <SliderSetting
-          label="Turns to look ahead"
-          tooltip="Maximum turns in a plan. The other limits may stop the search earlier."
-          draftValue={settings.lookaheadDepth}
-          min={1}
-          max={96}
-          onCommit={(value) => handleSliderCommit('lookaheadDepth', value)}
-        />
-        <SliderSetting
-          label="Time per turn"
-          tooltip="Maximum search wait on this computer."
-          draftValue={settings.searchTimeBudgetMs}
-          min={100}
-          max={10000}
-          step={100}
-          format={(value) => `${(value / 1000).toFixed(1)} s`}
-          onCommit={(value) => handleSliderCommit('searchTimeBudgetMs', value)}
-        />
-        <SliderSetting
-          label="States to explore"
-          tooltip="Maximum craft states the search can examine."
-          draftValue={settings.searchMaxNodes}
-          min={1000}
-          max={5000000}
-          step={1000}
-          format={(value) => value.toLocaleString()}
-          onCommit={(value) => handleSliderCommit('searchMaxNodes', value)}
-        />
-        <SliderSetting
-          label="Branches to keep"
-          tooltip="How many promising paths survive each search layer."
-          draftValue={settings.searchBeamWidth}
-          min={3}
-          max={20}
-          onCommit={(value) => handleSliderCommit('searchBeamWidth', value)}
-        />
-      </Disclosure>
+      <DisclosureGroup>
+        <Disclosure title="Advanced search">
+          <Typography
+            variant="body2"
+            sx={{ color: colors.textSecondary, mb: 1 }}
+          >
+            Presets are recommended. Depth, time, states and branches share one
+            budget; raising one alone may not improve the result.
+          </Typography>
+          <ChoiceGroup
+            variant="pills"
+            label="Background workers"
+            value={String(settings.searchThreads)}
+            options={[
+              { id: '1', label: '1' },
+              { id: '2', label: '2' },
+              { id: '4', label: '4' },
+              { id: 'auto', label: 'Auto' },
+            ]}
+            onChange={(value) =>
+              commit({
+                searchThreads:
+                  value === 'auto'
+                    ? 'auto'
+                    : value === '4'
+                      ? 4
+                      : value === '2'
+                        ? 2
+                        : 1,
+              })
+            }
+          />
+          <SliderSetting
+            label="Turns to look ahead"
+            tooltip="Maximum turns in a plan. The other limits may stop the search earlier."
+            draftValue={settings.lookaheadDepth}
+            min={1}
+            max={96}
+            onCommit={(value) => handleSliderCommit('lookaheadDepth', value)}
+          />
+          <SliderSetting
+            label="Time per turn"
+            tooltip="Maximum search wait on this computer."
+            draftValue={settings.searchTimeBudgetMs}
+            min={100}
+            max={10000}
+            step={100}
+            format={(value) => `${(value / 1000).toFixed(1)} s`}
+            onCommit={(value) =>
+              handleSliderCommit('searchTimeBudgetMs', value)
+            }
+          />
+          <SliderSetting
+            label="States to explore"
+            tooltip="Maximum craft states the search can examine."
+            draftValue={settings.searchMaxNodes}
+            min={1000}
+            max={5000000}
+            step={1000}
+            format={(value) => value.toLocaleString()}
+            onCommit={(value) => handleSliderCommit('searchMaxNodes', value)}
+          />
+          <SliderSetting
+            label="Branches to keep"
+            tooltip="How many promising paths survive each search layer."
+            draftValue={settings.searchBeamWidth}
+            min={3}
+            max={20}
+            onCommit={(value) => handleSliderCommit('searchBeamWidth', value)}
+          />
+        </Disclosure>
 
-      <Disclosure title="About & help">
-        <Typography variant="body2">
-          CraftBuddy {version ? `v${version.replace(/^v/, '')}` : ''}
-        </Typography>
-        <Typography variant="body2" sx={{ color: colors.textSecondary, my: 1 }}>
-          Ctrl+Shift+C: show or hide · Ctrl+Shift+M: compact spacing ·
-          Ctrl+Shift+Y: export snapshot
-        </Typography>
-        <Box
-          sx={{
-            display: 'flex',
-            gap: 1.5,
-            flexWrap: 'wrap',
-            '& a': { color: colors.gold, fontSize: '0.8rem' },
-          }}
-        >
-          <a
-            href="https://discord.gg/gnyjqwxzC7"
-            target="_blank"
-            rel="noopener noreferrer"
+        <Disclosure title="About & help">
+          <Typography variant="body2">
+            CraftBuddy {version ? `v${version.replace(/^v/, '')}` : ''}
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{ color: colors.textSecondary, my: 1 }}
           >
-            Discord
-          </a>
-          <a
-            href="https://github.com/lemon07r/AFNM-CraftBuddy"
-            target="_blank"
-            rel="noopener noreferrer"
+            Ctrl+Shift+C: show or hide · Ctrl+Shift+M: compact spacing ·
+            Ctrl+Shift+Y: export snapshot
+          </Typography>
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 1.5,
+              flexWrap: 'wrap',
+              '& a': { color: colors.gold, fontSize: tokens.type.bodySm },
+            }}
           >
-            GitHub
-          </a>
-          <a
-            href="https://steamcommunity.com/sharedfiles/filedetails/?id=3661729323"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Steam Workshop
-          </a>
-        </Box>
-        <ActionButton sx={{ mt: 1.5 }} onClick={() => void exportSnapshot()}>
-          Export craft snapshot
-        </ActionButton>
-        <Typography role="status" variant="body2" sx={{ mt: 0.5 }}>
-          {exportStatus}
-        </Typography>
-      </Disclosure>
+            <a
+              href="https://discord.gg/gnyjqwxzC7"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Discord
+            </a>
+            <a
+              href="https://github.com/lemon07r/AFNM-CraftBuddy"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              GitHub
+            </a>
+            <a
+              href="https://steamcommunity.com/sharedfiles/filedetails/?id=3661729323"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Steam Workshop
+            </a>
+          </Box>
+          <ActionButton sx={{ mt: 1.5 }} onClick={() => void exportSnapshot()}>
+            Export craft snapshot
+          </ActionButton>
+          <Typography role="status" variant="body2" sx={{ mt: 0.5 }}>
+            {exportStatus}
+          </Typography>
+        </Disclosure>
+      </DisclosureGroup>
     </Box>
   );
 }
@@ -498,10 +566,23 @@ export function SettingsPanel(props: SettingsPanelProps) {
         open={open}
         onClose={() => setOpen(false)}
         aria-labelledby={titleId}
-        maxWidth="sm"
+        maxWidth={false}
         fullWidth
         onKeyDownCapture={(event) => {
           if (event.key === 'Escape') {
+            // Close help first, including a hovered tooltip whose button is not
+            // focused. The existing capture still isolates Escape from the game.
+            const openHelp = event.currentTarget.querySelectorAll(
+              '[data-craftbuddy-help-open]',
+            );
+            if (openHelp.length) {
+              event.preventDefault();
+              event.stopPropagation();
+              openHelp.forEach((help) =>
+                help.dispatchEvent(new Event(HELP_DISMISS_EVENT)),
+              );
+              return;
+            }
             event.preventDefault();
             event.stopPropagation();
             setOpen(false);
@@ -513,9 +594,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
           pointerEvents: 'auto',
           ...reducedMotionSx,
           '& .MuiDialog-paper': {
-            m: 1.5,
-            maxHeight: 'calc(100dvh - 24px)',
-            width: 'calc(100% - 24px)',
+            m: 2,
+            maxHeight: 'calc(100dvh - 48px)',
+            width: 'min(720px, calc(100vw - 32px))',
           },
         }}
       >
@@ -525,13 +606,32 @@ export function SettingsPanel(props: SettingsPanelProps) {
             display: 'flex',
             gap: 1,
             alignItems: 'center',
+            flexWrap: 'wrap',
             py: 1.25,
-            borderBottom: `1px solid ${colors.borderSubtle}`,
+            px: 2.5,
+            position: 'sticky',
+            top: 0,
+            zIndex: 1,
+            backgroundColor: tokens.surface.panel,
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '1px',
+              background: tokens.border.rule,
+            },
           }}
         >
-          <Box id={titleId} sx={{ flex: 1 }}>
+          <Box id={titleId} sx={{ flex: 1, minWidth: 120 }}>
             <PanelHeading>CraftBuddy settings</PanelHeading>
           </Box>
+          {props.version && (
+            <Box component="span" sx={{ ...badgeSx, color: colors.textMuted }}>
+              v{props.version.replace(/^v/, '')}
+            </Box>
+          )}
           {props.safetyControl}
           <IconButton
             autoFocus
@@ -541,7 +641,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: '16px !important' }}>
+        <DialogContent
+          sx={{
+            pt: '20px !important',
+            px: 2.5,
+            pb: 2.5,
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${tokens.border.strong} transparent`,
+          }}
+        >
           <SettingsBody {...props} />
         </DialogContent>
       </Dialog>

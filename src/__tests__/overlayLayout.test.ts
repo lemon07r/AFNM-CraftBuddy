@@ -27,6 +27,7 @@ describe('overlayLayout', () => {
       compact: false,
     });
 
+    expect(getOverlayPanelMaxWidth(false)).toBe(560);
     expect(layout.width).toBe(getOverlayPanelMaxWidth(false));
     expect(layout.safeLaneLeft).toBe(520 + OVERLAY_SAFE_GUTTER_PX);
     expect(layout.maxHeight).toBe(900 - OVERLAY_EDGE_MARGIN_PX * 2);
@@ -76,6 +77,25 @@ describe('overlayLayout', () => {
     });
 
     expect(layout.width).toBe(getOverlayPanelMaxWidth(true));
+  });
+
+  it('preserves the 408px panel in the 975x768 crafting HUD lane', () => {
+    const layout = computeOverlayLayout({
+      viewportWidth: 975,
+      viewportHeight: 768,
+      occupiedRect: {
+        top: 20,
+        left: 16,
+        right: 513,
+        bottom: 750,
+        width: 497,
+        height: 730,
+      },
+      compact: false,
+    });
+
+    expect(layout.width).toBe(408);
+    expect(layout.availableWidth).toBe(424);
   });
 
   it('clamps suspicious occupied widths so the panel cannot collapse off-screen', () => {

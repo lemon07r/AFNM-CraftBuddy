@@ -1,14 +1,7 @@
 import { useId } from 'react';
-import {
-  Box,
-  FormControl,
-  FormControlLabel,
-  FormLabel,
-  Radio,
-  RadioGroup,
-  Typography,
-} from '@mui/material';
-import { colors } from '../theme';
+import { Box, Typography } from '@mui/material';
+import { Check } from '@mui/icons-material';
+import { colors, focusRing, tokens } from '../theme';
 
 const visuallyHidden = {
   border: 0,
@@ -22,79 +15,155 @@ const visuallyHidden = {
   width: '1px',
 } as const;
 
+/** Native radio inputs retain browser arrow-key, focus and form semantics. */
 export function ChoiceGroup({
   label,
   value,
   options,
   onChange,
   hideLabel = false,
+  variant = 'segmented',
 }: {
   label: string;
-  /** Keep the legend for assistive tech when a visible heading names the group. */
   hideLabel?: boolean;
   value: string;
   options: ReadonlyArray<{ id: string; label: string; detail?: string }>;
   onChange: (value: string) => void;
+  variant?: 'segmented' | 'cards' | 'pills';
 }) {
   const id = useId();
   return (
-    <FormControl
+    <Box
       component="fieldset"
-      sx={{ width: '100%', minWidth: 0, my: 0.5 }}
+      sx={{ border: 0, m: 0, p: 0, minWidth: 0, width: '100%', my: 0.5 }}
     >
-      <FormLabel
+      <Box
         component="legend"
-        id={id}
         sx={
           hideLabel
             ? visuallyHidden
             : {
-                fontSize: '0.8rem',
-                color: `${colors.textSecondary} !important`,
+                fontFamily: 'inherit',
+                fontSize: tokens.type.bodySm,
+                color: colors.textSecondary,
+                mb: 0.75,
               }
         }
       >
         {label}
-      </FormLabel>
-      <RadioGroup
-        aria-labelledby={id}
-        value={value}
-        onChange={(_, next) => onChange(next)}
+      </Box>
+      <Box
         sx={{
           display: 'grid',
+          gap: 0.5,
           gridTemplateColumns:
-            'repeat(auto-fit, minmax(min(100%, 140px), 1fr))',
+            variant === 'cards'
+              ? '1fr'
+              : `repeat(${options.length}, minmax(0, 1fr))`,
+          ...(variant === 'segmented'
+            ? {
+                p: 0.5,
+                backgroundColor: tokens.surface.sunken,
+                borderRadius: `${tokens.radius.md}px`,
+                '@container (max-width: 580px)': {
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                },
+                '@container (max-width: 300px)': {
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                },
+              }
+            : {}),
         }}
       >
         {options.map((option) => (
-          <FormControlLabel
+          <Box
+            component="label"
             key={option.id}
-            value={option.id}
-            sx={{ m: 0, minWidth: 0, alignItems: 'flex-start', py: 0.25 }}
-            control={<Radio />}
-            label={
-              <Box component="span" sx={{ pt: 0.7, display: 'block' }}>
+            sx={{
+              position: 'relative',
+              display: 'flex',
+              cursor: 'pointer',
+              minWidth: 0,
+              '& input:focus-visible + .choice-face': focusRing,
+              '&:hover .choice-face': {
+                backgroundColor: tokens.surface.hover,
+                borderColor: tokens.border.strong,
+              },
+            }}
+          >
+            <Box
+              component="input"
+              type="radio"
+              name={id}
+              value={option.id}
+              checked={value === option.id}
+              onChange={() => onChange(option.id)}
+              sx={visuallyHidden}
+            />
+            <Box
+              className="choice-face"
+              sx={{
+                width: '100%',
+                minWidth: 0,
+                boxSizing: 'border-box',
+                border: `1px solid ${value === option.id ? tokens.border.strong : tokens.border.hairline}`,
+                borderRadius: `${tokens.radius.sm}px`,
+                px: variant === 'pills' ? 0.5 : 1,
+                py: variant === 'pills' ? 0.375 : 0.875,
+                minHeight: tokens.control.sm,
+                backgroundColor:
+                  value === option.id ? tokens.surface.selected : 'transparent',
+                transition: 'border-color 120ms, background-color 120ms',
+                textAlign: variant === 'pills' ? 'center' : 'left',
+              }}
+            >
+              <Box
+                component="span"
+                sx={{
+                  display: 'flex',
+                  gap: 0.5,
+                  alignItems: 'center',
+                  justifyContent:
+                    variant === 'pills' ? 'center' : 'space-between',
+                }}
+              >
                 <Typography
                   component="span"
-                  variant="body2"
-                  sx={{ display: 'block' }}
+                  sx={{
+                    fontSize: tokens.type.body,
+                    lineHeight: 1.3,
+                    color:
+                      value === option.id
+                        ? colors.goldLight
+                        : colors.textPrimary,
+                  }}
                 >
                   {option.label}
                 </Typography>
-                {option.detail && (
-                  <Typography
-                    component="span"
-                    variant="caption"
-                    sx={{ color: colors.textSecondary, display: 'block' }}
-                  >
-                    {option.detail}
-                  </Typography>
+                {value === option.id && variant !== 'pills' && (
+                  <Check
+                    aria-hidden
+                    sx={{ fontSize: 15, color: colors.gold, flexShrink: 0 }}
+                  />
                 )}
               </Box>
-            }
-          />
+              {option.detail && (
+                <Typography
+                  component="span"
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    mt: 0.375,
+                    color: colors.textSecondary,
+                  }}
+                >
+                  {option.detail}
+                </Typography>
+              )}
+            </Box>
+          </Box>
         ))}
-      </RadioGroup>
-    </FormControl>
+      </Box>
+    </Box>
   );
 }
