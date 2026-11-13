@@ -4691,7 +4691,7 @@ function applySkillTransition(
     const buffs = newBuffs.entries();
     for (let entry = buffs.next(); !entry.done; entry = buffs.next()) {
       const [key, buff] = entry.value;
-      if (isDerivedForgeHeatBuff(state, config, key, buff)) continue;
+      if (isDerivedHarmonyBuff(state, config, key, buff)) continue;
       const stats = buff.definition ? getLocalCritStats(buff.definition) : [];
       // Raw buff aliases may overwrite a base channel before the generic fold.
       if (stats === null || (buff.stacks > 0 && critStatKeys.has(key))) {
