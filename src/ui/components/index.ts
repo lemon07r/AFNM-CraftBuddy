@@ -4,6 +4,7 @@ export {
   ActionButton,
   Eyebrow,
   Help,
+  HELP_DISMISS_EVENT,
   Disclosure,
   DisclosureGroup,
   SectionCard,

@@ -1,4 +1,4 @@
-import React, { memo, useId, useState } from 'react';
+import React, { memo, useEffect, useId, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -94,6 +94,9 @@ export function Eyebrow({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Dispatched on an open Help button to close it without toggling. */
+export const HELP_DISMISS_EVENT = 'craftbuddy-help-dismiss';
+
 export function Help({
   title,
   children,
@@ -106,6 +109,14 @@ export function Help({
     setState((previous) => nextHelpTooltipState(previous, event));
   const open = state !== 'closed';
   const id = useId();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const button = buttonRef.current;
+    if (!button) return undefined;
+    const dismiss = () => setState('closed');
+    button.addEventListener(HELP_DISMISS_EVENT, dismiss);
+    return () => button.removeEventListener(HELP_DISMISS_EVENT, dismiss);
+  }, []);
   return (
     <ClickAwayListener onClickAway={() => send({ type: 'dismiss' })}>
       <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0 }}>
@@ -119,6 +130,7 @@ export function Help({
           disableTouchListener
         >
           <IconButton
+            ref={buttonRef}
             aria-label={`Help: ${title}`}
             aria-describedby={open ? id : undefined}
             data-craftbuddy-help-open={open || undefined}

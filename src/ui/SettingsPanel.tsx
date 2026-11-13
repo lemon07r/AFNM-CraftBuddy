@@ -41,6 +41,7 @@ import {
   Disclosure,
   DisclosureGroup,
   Help,
+  HELP_DISMISS_EVENT,
   PanelHeading,
   SectionCard,
 } from './components';
@@ -571,13 +572,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
           if (event.key === 'Escape') {
             // Close help first, including a hovered tooltip whose button is not
             // focused. The existing capture still isolates Escape from the game.
-            const help = event.currentTarget.querySelector<HTMLButtonElement>(
+            const openHelp = event.currentTarget.querySelectorAll(
               '[data-craftbuddy-help-open]',
             );
-            if (help) {
+            if (openHelp.length) {
               event.preventDefault();
               event.stopPropagation();
-              help.click();
+              openHelp.forEach((help) =>
+                help.dispatchEvent(new Event(HELP_DISMISS_EVENT)),
+              );
               return;
             }
             event.preventDefault();
