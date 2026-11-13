@@ -91,7 +91,14 @@ module.exports = {
         },
       },
       {
+        // UI fonts ship inside mod.js: the mod runs as an inline script, so
+        // the overlay cannot rely on URL-loaded font files.
+        test: /[\\/]src[\\/]ui[\\/]fonts[\\/].*\.woff2$/i,
+        type: 'asset/inline',
+      },
+      {
         test: /\.(otf|ttf|woff|woff2|eot)$/i,
+        exclude: /[\\/]src[\\/]ui[\\/]fonts[\\/]/,
         type: 'asset/resource',
         generator: {
           filename: 'assets/[name][ext]',

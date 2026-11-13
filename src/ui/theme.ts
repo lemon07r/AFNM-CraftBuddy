@@ -1,70 +1,97 @@
 import { createTheme } from '@mui/material';
 import type { OutcomeSummaryTone } from '../utils/outcomeSummary';
 
-// Scoped to CraftBuddy. The game's roots and native controls are never themed.
+/**
+ * CraftBuddy's own design language: graphite surfaces, one warm brass accent,
+ * and a bundled modern sans for everything functional. The game's roots and
+ * native controls are never themed.
+ */
+
+/** Text sizes follow the user's text-size preference via one CSS variable. */
+export const TEXT_SCALE_VAR = '--craftbuddy-text-scale';
+export function fs(px: number): string {
+  return `calc(${px}px * var(${TEXT_SCALE_VAR}, 1))`;
+}
+
 export const tokens = {
   surface: {
-    panel: '#1b150f',
-    gradient: 'linear-gradient(180deg, #221a13 0%, #18130e 100%)',
-    raised: '#2a2119',
-    sunken: 'rgba(0,0,0,.32)',
-    hover: 'rgba(227,194,122,.07)',
-    selected: 'rgba(227,194,122,.14)',
+    panel: '#131418',
+    panelGlass: 'rgba(19, 20, 24, 0.97)',
+    gradient:
+      'linear-gradient(180deg, rgba(30,31,37,.985) 0%, rgba(19,20,24,.985) 220px)',
+    card: '#1b1c21',
+    raised: '#22232a',
+    control: '#26272e',
+    sunken: '#0e0f12',
+    hover: 'rgba(255,255,255,.05)',
+    pressed: 'rgba(255,255,255,.08)',
+    selected: 'rgba(232,186,96,.13)',
   },
   border: {
-    hairline: 'rgba(227,194,122,.14)',
-    default: 'rgba(227,194,122,.26)',
-    strong: 'rgba(227,194,122,.55)',
-    rule: 'linear-gradient(90deg, transparent, rgba(227,194,122,.45), transparent)',
+    hairline: 'rgba(255,255,255,.06)',
+    default: 'rgba(255,255,255,.1)',
+    strong: 'rgba(255,255,255,.17)',
+    accent: 'rgba(232,186,96,.55)',
+    rule: 'linear-gradient(90deg, rgba(232,186,96,0) 0%, rgba(232,186,96,.5) 50%, rgba(232,186,96,0) 100%)',
   },
   text: {
-    primary: '#f0e4c6',
-    secondary: '#cdb88f',
-    muted: '#b5a07a',
-    disabled: '#8f7e62',
-    gold: '#e3c27a',
-    goldBright: '#f3dca0',
+    primary: '#f3f1ec',
+    secondary: '#c9c5bd',
+    muted: '#a29e96',
+    disabled: '#6f6c67',
+    gold: '#e8ba60',
+    goldBright: '#f5d48c',
+    onAccent: '#1d1507',
   },
   semantic: {
-    positive: '#5fd9a0',
-    warning: '#ffa565',
-    danger: '#ff6b78',
-    info: '#7cc4e8',
+    positive: '#5fd6a4',
+    warning: '#f5a85f',
+    danger: '#ff7a7f',
+    info: '#7cc4ef',
   },
   resource: {
-    completion: '#9ad08f',
-    perfection: '#7cc4e8',
-    stability: '#e8b467',
-    qi: '#c9b6ff',
+    completion: '#8bd98f',
+    perfection: '#79c3f2',
+    stability: '#f2b65a',
+    qi: '#b9a6ff',
   },
   condition: {
-    veryPositive: '#85e6c2',
-    positive: '#82d7e6',
-    neutral: '#dfd4ba',
-    negative: '#efd17e',
-    veryNegative: '#ff987c',
+    veryPositive: '#7fe6c0',
+    positive: '#8cd8ee',
+    neutral: '#d9d5cc',
+    negative: '#f0cf7a',
+    veryNegative: '#ff9a7e',
   },
-  radius: { xs: 3, sm: 5, md: 8, lg: 12 },
+  radius: { xs: 4, sm: 6, md: 9, lg: 12, xl: 14 },
+  /** Scaled CSS sizes; every functional text size goes through these. */
   type: {
-    display: 22,
-    title: 19,
-    heading: 16,
-    body: 15,
-    bodySm: 13.5,
-    label: 12.5,
+    display: fs(22),
+    title: fs(19),
+    heading: fs(17),
+    lead: fs(16),
+    body: fs(15),
+    bodySm: fs(14),
+    label: fs(13),
   },
-  lineHeight: { body: 1.4 },
-  control: { sm: 28, md: 34, lg: 40, icon: 32 },
+  lineHeight: { body: 1.45, tight: 1.25 },
+  control: { sm: 32, md: 38, lg: 42, icon: 34 },
+  shadow: {
+    panel:
+      '0 24px 60px -12px rgba(0,0,0,.65), 0 4px 14px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05)',
+    card: 'inset 0 1px 0 rgba(255,255,255,.04), 0 1px 2px rgba(0,0,0,.35)',
+    button:
+      '0 1px 0 rgba(255,255,255,.25) inset, 0 6px 16px -6px rgba(232,186,96,.55)',
+  },
 } as const;
 
 // Compatibility names for consumers; all values come from the shared system.
 export const colors = {
   gold: tokens.text.gold,
   goldLight: tokens.text.goldBright,
-  goldDark: tokens.border.strong,
+  goldDark: tokens.border.accent,
   panelBg: tokens.surface.panel,
   panelBgLight: tokens.surface.panel,
-  cardBg: tokens.surface.raised,
+  cardBg: tokens.surface.card,
   cardBgHover: tokens.surface.hover,
   borderSubtle: tokens.border.hairline,
   borderMedium: tokens.border.default,
@@ -82,10 +109,15 @@ export const colors = {
   ...tokens.condition,
 } as const;
 
+const SANS_FALLBACK =
+  '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", Arial, sans-serif';
 export const fonts = {
-  body: 'normalFont, langGlyphs, "PT Serif", Georgia, serif',
-  heading: 'fancyFont, normalFont, langGlyphs, "PT Serif", Georgia, serif',
+  body: `"CraftBuddy Inter", ${SANS_FALLBACK}`,
+  display: `"CraftBuddy Display", "CraftBuddy Inter", ${SANS_FALLBACK}`,
+  /** Kept for callers; functional headings use the sans face. */
+  heading: `"CraftBuddy Inter", ${SANS_FALLBACK}`,
 };
+
 export const toneColors: Record<OutcomeSummaryTone, string> = {
   neutral: tokens.text.secondary,
   positive: tokens.semantic.positive,
@@ -108,13 +140,29 @@ export const reducedMotionSx = {
   },
 } as const;
 
+/** Small uppercase label used for section eyebrows. */
+export const eyebrowSx = {
+  fontFamily: fonts.body,
+  fontSize: fs(12.5),
+  fontWeight: 650,
+  letterSpacing: '.085em',
+  textTransform: 'uppercase',
+  lineHeight: 1.3,
+  color: tokens.text.muted,
+} as const;
+
+export const scrollbarSx = {
+  scrollbarWidth: 'thin',
+  scrollbarColor: `${tokens.border.strong} transparent`,
+} as const;
+
 export const craftBuddyTheme = createTheme({
   spacing: 8,
   palette: {
     mode: 'dark',
-    primary: { main: tokens.text.gold, contrastText: '#22180c' },
-    secondary: { main: tokens.text.gold, contrastText: '#22180c' },
-    background: { default: tokens.surface.panel, paper: tokens.surface.raised },
+    primary: { main: tokens.text.gold, contrastText: tokens.text.onAccent },
+    secondary: { main: tokens.text.gold, contrastText: tokens.text.onAccent },
+    background: { default: tokens.surface.panel, paper: tokens.surface.card },
     text: { primary: tokens.text.primary, secondary: tokens.text.secondary },
     divider: tokens.border.hairline,
     success: { main: tokens.semantic.positive },
@@ -124,13 +172,23 @@ export const craftBuddyTheme = createTheme({
   },
   typography: {
     fontFamily: fonts.body,
-    h6: { fontFamily: fonts.heading, fontSize: 22, fontWeight: 400 },
-    subtitle1: { fontFamily: fonts.heading, fontSize: 19, lineHeight: 1.35 },
-    subtitle2: { fontSize: 15, fontWeight: 600, lineHeight: 1.4 },
-    body1: { fontSize: 15, lineHeight: tokens.lineHeight.body },
-    body2: { fontSize: 13.5, lineHeight: tokens.lineHeight.body },
-    caption: { fontSize: 12.5, lineHeight: tokens.lineHeight.body },
-    button: { textTransform: 'none', fontSize: 15, fontWeight: 600 },
+    h6: { fontFamily: fonts.body, fontSize: fs(19), fontWeight: 650 },
+    subtitle1: {
+      fontFamily: fonts.body,
+      fontSize: fs(17),
+      fontWeight: 650,
+      lineHeight: 1.35,
+    },
+    subtitle2: { fontSize: fs(15), fontWeight: 600, lineHeight: 1.4 },
+    body1: { fontSize: fs(15), lineHeight: tokens.lineHeight.body },
+    body2: { fontSize: fs(14), lineHeight: tokens.lineHeight.body },
+    caption: { fontSize: fs(13), lineHeight: 1.4 },
+    button: {
+      textTransform: 'none',
+      fontSize: fs(15),
+      fontWeight: 650,
+      letterSpacing: '.005em',
+    },
   },
   shape: { borderRadius: tokens.radius.sm },
   zIndex: { modal: uiLayers.dialog, tooltip: uiLayers.tooltip },
@@ -147,25 +205,45 @@ export const craftBuddyTheme = createTheme({
       styleOverrides: {
         root: {
           minHeight: tokens.control.md,
-          fontSize: tokens.type.body,
-          borderRadius: tokens.radius.sm,
+          fontSize: fs(15),
+          borderRadius: tokens.radius.md,
           lineHeight: 1.2,
-          transition: 'color 120ms, border-color 120ms, background-color 120ms',
+          paddingInline: 14,
+          transition:
+            'color 120ms, border-color 120ms, background-color 120ms, box-shadow 120ms, transform 80ms',
+          '&:active:not(.Mui-disabled)': { transform: 'translateY(1px)' },
           '&:focus-visible, &.Mui-focusVisible': focusRing,
         },
         contained: {
-          backgroundColor: tokens.text.gold,
-          color: '#22180c',
-          '&:hover': { backgroundColor: tokens.text.goldBright },
+          background: `linear-gradient(180deg, ${tokens.text.goldBright} 0%, ${tokens.text.gold} 100%)`,
+          color: tokens.text.onAccent,
+          boxShadow: tokens.shadow.button,
+          '&:hover': {
+            background: `linear-gradient(180deg, #fbe0a6 0%, #f0c672 100%)`,
+            boxShadow: tokens.shadow.button,
+          },
+          '&.Mui-disabled': {
+            background: tokens.surface.control,
+            color: tokens.text.disabled,
+            boxShadow: 'none',
+          },
         },
         outlined: {
+          color: tokens.text.primary,
+          backgroundColor: tokens.surface.control,
           borderColor: tokens.border.default,
           '&:hover': {
             borderColor: tokens.border.strong,
-            backgroundColor: tokens.surface.hover,
+            backgroundColor: '#2d2e36',
           },
         },
-        text: { '&:hover': { backgroundColor: tokens.surface.hover } },
+        text: {
+          color: tokens.text.secondary,
+          '&:hover': {
+            backgroundColor: tokens.surface.hover,
+            color: tokens.text.primary,
+          },
+        },
       },
     },
     MuiIconButton: {
@@ -173,67 +251,94 @@ export const craftBuddyTheme = createTheme({
       styleOverrides: {
         root: {
           color: tokens.text.secondary,
-          minWidth: tokens.control.icon,
-          minHeight: tokens.control.icon,
-          borderRadius: tokens.radius.sm,
+          width: tokens.control.icon,
+          height: tokens.control.icon,
+          borderRadius: tokens.radius.md,
           transition: 'color 120ms, background-color 120ms',
           '&:hover': {
-            color: tokens.text.goldBright,
-            backgroundColor: tokens.surface.hover,
+            color: tokens.text.primary,
+            backgroundColor: tokens.surface.pressed,
           },
           '&:focus-visible, &.Mui-focusVisible': focusRing,
         },
       },
     },
     MuiSlider: {
-      defaultProps: { color: 'primary', size: 'small' },
+      defaultProps: { color: 'primary' },
       styleOverrides: {
-        root: { height: 3, padding: '14px 0' },
-        rail: { backgroundColor: tokens.text.secondary, opacity: 0.22 },
-        track: { border: 0 },
-        thumb: {
-          width: 13,
-          height: 13,
-          transition: 'color 120ms, border-color 120ms, transform 120ms',
-          '&:hover, &.Mui-active': {
-            boxShadow: '0 0 0 5px rgba(227,194,122,.12)',
-          },
-          '&.Mui-focusVisible': { ...focusRing, boxShadow: 'none' },
+        root: { height: 6, padding: '15px 0', borderRadius: 6 },
+        rail: { backgroundColor: tokens.surface.sunken, opacity: 1 },
+        track: {
+          border: 0,
+          background: `linear-gradient(90deg, rgba(232,186,96,.55), ${tokens.text.gold})`,
         },
-        mark: { width: 3, height: 5, backgroundColor: tokens.text.muted },
+        thumb: {
+          width: 18,
+          height: 18,
+          backgroundColor: tokens.text.goldBright,
+          border: `3px solid ${tokens.surface.panel}`,
+          boxShadow: `0 0 0 1px ${tokens.border.accent}, 0 2px 6px rgba(0,0,0,.5)`,
+          transition: 'box-shadow 120ms, transform 120ms',
+          '&::before': { display: 'none' },
+          '&:hover, &.Mui-active': {
+            boxShadow: `0 0 0 1px ${tokens.border.accent}, 0 0 0 7px rgba(232,186,96,.14)`,
+          },
+          '&.Mui-focusVisible': {
+            ...focusRing,
+            boxShadow: `0 0 0 1px ${tokens.border.accent}`,
+          },
+        },
+        mark: {
+          width: 2,
+          height: 6,
+          borderRadius: 1,
+          backgroundColor: 'rgba(255,255,255,.16)',
+        },
+        markActive: { backgroundColor: 'rgba(29,21,7,.45)' },
         markLabel: {
-          fontSize: tokens.type.label,
-          color: tokens.text.secondary,
+          fontSize: fs(13),
+          color: tokens.text.muted,
+          top: 34,
+          '&.MuiSlider-markLabelActive': { color: tokens.text.secondary },
         },
         valueLabel: {
           backgroundColor: tokens.surface.raised,
-          fontSize: tokens.type.bodySm,
+          fontSize: fs(13),
         },
       },
     },
     MuiSwitch: {
-      defaultProps: { color: 'primary', size: 'small' },
+      defaultProps: { color: 'primary' },
       styleOverrides: {
-        root: { width: 40, height: 28, padding: 5 },
+        root: { width: 46, height: 28, padding: 0, overflow: 'visible' },
         switchBase: {
-          padding: 7,
-          transition: 'color 120ms, transform 120ms',
-          color: tokens.text.secondary,
+          padding: 3,
+          transition: 'transform 140ms',
+          color: '#d7d3cb',
           '&.Mui-checked': {
-            color: tokens.semantic.positive,
-            transform: 'translateX(12px)',
+            color: tokens.text.onAccent,
+            transform: 'translateX(18px)',
           },
           '&.Mui-checked + .MuiSwitch-track': {
-            backgroundColor: tokens.semantic.positive,
-            opacity: 0.3,
+            backgroundColor: tokens.text.gold,
+            borderColor: tokens.text.gold,
+            opacity: 1,
           },
-          '&.Mui-focusVisible': focusRing,
+          '&.Mui-focusVisible + .MuiSwitch-track': focusRing,
+          '&:hover': { backgroundColor: 'transparent' },
         },
-        thumb: { width: 14, height: 14, boxShadow: 'none' },
+        thumb: {
+          width: 22,
+          height: 22,
+          boxShadow: '0 1px 3px rgba(0,0,0,.45)',
+        },
         track: {
-          borderRadius: 10,
-          backgroundColor: tokens.text.muted,
-          opacity: 0.28,
+          borderRadius: 14,
+          boxSizing: 'border-box',
+          border: `1px solid ${tokens.border.strong}`,
+          backgroundColor: tokens.surface.sunken,
+          opacity: 1,
+          transition: 'background-color 140ms, border-color 140ms',
         },
       },
     },
@@ -246,15 +351,20 @@ export const craftBuddyTheme = createTheme({
       styleOverrides: {
         tooltip: {
           fontFamily: fonts.body,
-          fontSize: tokens.type.bodySm,
-          lineHeight: tokens.lineHeight.body,
-          maxWidth: 300,
-          padding: '8px 12px',
-          backgroundColor: tokens.surface.raised,
+          fontSize: fs(14),
+          lineHeight: 1.5,
+          maxWidth: 320,
+          padding: '10px 14px',
+          backgroundColor: '#2a2b33',
           border: `1px solid ${tokens.border.strong}`,
+          borderRadius: tokens.radius.md,
+          boxShadow: '0 12px 32px rgba(0,0,0,.5)',
           color: tokens.text.primary,
         },
-        arrow: { color: tokens.surface.raised },
+        arrow: {
+          color: '#2a2b33',
+          '&::before': { border: `1px solid ${tokens.border.strong}` },
+        },
       },
     },
     MuiDialog: {
@@ -263,9 +373,17 @@ export const craftBuddyTheme = createTheme({
         paper: {
           background: tokens.surface.gradient,
           backgroundColor: tokens.surface.panel,
-          border: `1px solid ${tokens.border.strong}`,
-          borderRadius: tokens.radius.lg,
-          boxShadow: '0 12px 32px #0006',
+          border: `1px solid ${tokens.border.default}`,
+          borderRadius: tokens.radius.xl,
+          boxShadow: tokens.shadow.panel,
+        },
+      },
+    },
+    MuiBackdrop: {
+      styleOverrides: {
+        root: {
+          backgroundColor: 'rgba(6,7,9,.62)',
+          backdropFilter: 'blur(3px)',
         },
       },
     },

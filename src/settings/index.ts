@@ -73,6 +73,18 @@ export interface CraftBuddySettings {
   searchThreads: SearchThreadCount;
   /** Preferred policy for per-craft automatic execution mode. */
   preferredAutoModePolicy: AutoCraftPolicy;
+  /** Text size multiplier for CraftBuddy's own UI (1 = default). */
+  uiTextScale: UiTextScale;
+}
+
+export const UI_TEXT_SCALES = [0.9, 1, 1.1, 1.2, 1.35] as const;
+export type UiTextScale = (typeof UI_TEXT_SCALES)[number];
+
+function normalizeUiTextScale(value: unknown): UiTextScale {
+  return (
+    UI_TEXT_SCALES.find((scale) => scale === value) ??
+    DEFAULT_SETTINGS.uiTextScale
+  );
 }
 
 export type SearchThreadCount = 1 | 2 | 4 | 'auto';
@@ -230,6 +242,7 @@ const DEFAULT_SETTINGS: CraftBuddySettings = {
   showOptimalRotation: true,
   searchThreads: 1,
   preferredAutoModePolicy: DEFAULT_AUTO_CRAFT_POLICY,
+  uiTextScale: 1,
 };
 
 let currentSettings: CraftBuddySettings = { ...DEFAULT_SETTINGS };
@@ -411,6 +424,7 @@ function normalizeSettings(
       5,
       DEFAULT_SETTINGS.maxAlternatives,
     ),
+    uiTextScale: normalizeUiTextScale(settings.uiTextScale),
   };
 }
 

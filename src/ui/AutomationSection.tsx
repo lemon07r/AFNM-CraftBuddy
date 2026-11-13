@@ -16,7 +16,7 @@ export function AutomationSection({
 }) {
   return (
     <Disclosure title="Automatic crafting" meta={autoMode.statusTitle}>
-      <Typography variant="body2" sx={{ color: colors.textSecondary, mb: 1 }}>
+      <Typography variant="body2" sx={{ color: colors.textSecondary, mb: 1.5 }}>
         {autoMode.statusDetail}
       </Typography>
       <ChoiceGroup
@@ -35,8 +35,8 @@ export function AutomationSection({
         }}
       />
       <Typography
-        variant="caption"
-        sx={{ color: colors.textSecondary, display: 'block', mb: 1 }}
+        variant="body2"
+        sx={{ color: colors.textMuted, display: 'block', mt: 1, mb: 1.5 }}
       >
         Uses real game controls. Stop remains available at the top of the panel.
       </Typography>

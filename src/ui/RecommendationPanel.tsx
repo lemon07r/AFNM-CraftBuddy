@@ -3,6 +3,7 @@ import { Box, Typography } from '@mui/material';
 import {
   Bolt,
   Check,
+  DragIndicator,
   StopRounded,
   WarningAmberRounded,
 } from '@mui/icons-material';
@@ -40,19 +41,35 @@ import {
 } from './OutcomeSection';
 import { PlanSection } from './PlanSection';
 import { colors, tokens } from './theme';
+import type { OverlayLayoutHandlers } from './overlayInteraction';
 
 const statusCardSx = {
-  p: 1.5,
-  backgroundColor: tokens.surface.raised,
-  border: `1px solid ${tokens.border.default}`,
-  borderRadius: `${tokens.radius.md}px`,
+  p: 2,
+  backgroundColor: tokens.surface.card,
+  border: `1px solid ${tokens.border.hairline}`,
+  borderRadius: `${tokens.radius.lg}px`,
+  boxShadow: tokens.shadow.card,
   '& > .MuiTypography-subtitle1': {
     display: 'flex',
     alignItems: 'center',
-    gap: 0.75,
+    gap: 1,
     mb: 0.75,
   },
 };
+
+function noticeSx(tone: string) {
+  return {
+    display: 'flex',
+    gap: 1,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    px: 1.5,
+    py: 1.125,
+    border: `1px solid ${tone}40`,
+    backgroundColor: `${tone}14`,
+    borderRadius: `${tokens.radius.md}px`,
+  } as const;
+}
 
 interface RecommendationPanelProps {
   result: SearchResult | null;
@@ -82,6 +99,8 @@ interface RecommendationPanelProps {
   onAutoModeStop?: (reason?: string) => void;
   onAutoModePolicyChange?: (policy: AutoCraftPolicy) => void;
   version?: string;
+  /** Drag/resize hooks from the overlay layout controller. */
+  layoutHandlers?: OverlayLayoutHandlers;
 }
 
 /** One reading order and one feature set, regardless of density or automation. */
@@ -106,6 +125,7 @@ export const RecommendationPanel = memo(function RecommendationPanel({
   onAutoModeStop,
   onAutoModePolicyChange,
   version,
+  layoutHandlers,
   maxCompletionCap,
   maxPerfectionCap,
 }: RecommendationPanelProps) {
@@ -137,9 +157,9 @@ export const RecommendationPanel = memo(function RecommendationPanel({
     autoMode && (autoMode.armed || autoMode.canStop || autoMode.isRunning) ? (
       <ActionButton
         color="error"
-        startIcon={<StopRounded sx={{ fontSize: 16 }} />}
+        startIcon={<StopRounded sx={{ fontSize: 18 }} />}
         sx={{
-          minHeight: 28,
+          minHeight: 30,
           fontSize: tokens.type.bodySm,
           px: 1,
           color: tokens.semantic.danger,
@@ -153,100 +173,141 @@ export const RecommendationPanel = memo(function RecommendationPanel({
       </ActionButton>
     ) : undefined;
 
-  return (
-    <PanelContainer compact={settings?.compactMode}>
+  const compact = settings?.compactMode;
+  const statusTone =
+    autoMode?.phase === 'stop_requested' || autoMode?.phase === 'error'
+      ? tokens.semantic.warning
+      : autoMode?.armed
+        ? tokens.semantic.positive
+        : colors.textSecondary;
+  const header = (
+    <Box
+      component="header"
+      data-craftbuddy-drag-handle={layoutHandlers ? true : undefined}
+      title={
+        layoutHandlers
+          ? 'Drag to move. Double-click to restore the automatic position.'
+          : undefined
+      }
+      onPointerDown={layoutHandlers?.onHeaderPointerDown}
+      onDoubleClick={layoutHandlers?.onHeaderDoubleClick}
+      sx={{
+        position: 'relative',
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.75,
+        flexWrap: 'wrap',
+        px: compact ? 1.25 : 1.75,
+        py: compact ? 1 : 1.25,
+        minHeight: compact ? 50 : 58,
+        boxSizing: 'border-box',
+        background:
+          'linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0))',
+        ...(layoutHandlers
+          ? {
+              cursor: 'grab',
+              touchAction: 'none',
+              userSelect: 'none',
+              '[data-craftbuddy-gesture="drag"] &': { cursor: 'grabbing' },
+              '&:hover .craftbuddy-grip': { opacity: 0.9 },
+            }
+          : {}),
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          height: '1px',
+          left: 12,
+          right: 12,
+          bottom: 0,
+          background: tokens.border.rule,
+          opacity: 0.7,
+        },
+      }}
+    >
       <Box
         sx={{
+          flex: 1,
+          minWidth: 120,
           display: 'flex',
-          position: 'sticky',
-          top: 0,
-          zIndex: 2,
-          backgroundColor: colors.panelBgLight,
           alignItems: 'center',
           gap: 0.5,
-          flexWrap: 'wrap',
-          pb: 1,
-          mb: 1.5,
-          mx: settings?.compactMode ? -1.25 : -2,
-          mt: settings?.compactMode ? -1.25 : -2,
-          px: settings?.compactMode ? 1.25 : 2,
-          pt: settings?.compactMode ? 1.25 : 2,
-          '&::after': {
-            content: '""',
-            position: 'absolute',
-            height: '1px',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: tokens.border.rule,
-          },
         }}
       >
-        <Box sx={{ flex: 1, minWidth: 90 }}>
-          <PanelHeading>CraftBuddy</PanelHeading>
-        </Box>
-        <Typography
-          variant="caption"
-          role="status"
-          sx={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 0.625,
-            px: 0.75,
-            py: 0.25,
-            borderRadius: '20px',
-            backgroundColor: tokens.surface.hover,
-            color:
-              autoMode?.phase === 'stop_requested' ||
-              autoMode?.phase === 'error'
-                ? tokens.semantic.warning
-                : autoMode?.armed
-                  ? tokens.semantic.positive
-                  : colors.textSecondary,
-            maxWidth: '100%',
-          }}
-        >
-          <Box
-            component="span"
+        {layoutHandlers && (
+          <DragIndicator
             aria-hidden
+            className="craftbuddy-grip"
             sx={{
-              width: 5,
-              height: 5,
-              backgroundColor: 'currentColor',
-              borderRadius: '50%',
-              flexShrink: 0,
+              fontSize: 18,
+              color: colors.textMuted,
+              opacity: 0.45,
+              ml: -0.5,
+              transition: 'opacity 120ms',
             }}
           />
-          {autoMode && autoMode.phase !== 'off'
-            ? autoMode.statusTitle
-            : 'Manual'}
-        </Typography>
-        {stop}
-        <SettingsPanel
-          onSettingsChange={onSettingsChange}
-          onSearchSettingsChange={onSearchSettingsChange}
-          version={version}
-          safetyControl={stop}
-        />
+        )}
+        <PanelHeading>CraftBuddy</PanelHeading>
       </Box>
+      <Typography
+        component="span"
+        role="status"
+        data-craftbuddy-no-drag
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 0.75,
+          px: 1.125,
+          minHeight: 28,
+          borderRadius: '999px',
+          border: `1px solid ${tokens.border.hairline}`,
+          backgroundColor: 'rgba(0,0,0,.25)',
+          color: statusTone,
+          fontSize: tokens.type.bodySm,
+          fontWeight: 600,
+          maxWidth: '100%',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <Box
+          component="span"
+          aria-hidden
+          sx={{
+            width: 7,
+            height: 7,
+            backgroundColor: 'currentColor',
+            borderRadius: '50%',
+            flexShrink: 0,
+            boxShadow: autoMode?.armed
+              ? '0 0 0 3px rgba(95,214,164,.18)'
+              : 'none',
+          }}
+        />
+        {autoMode && autoMode.phase !== 'off' ? autoMode.statusTitle : 'Manual'}
+      </Typography>
+      {stop}
+      <SettingsPanel
+        onSettingsChange={onSettingsChange}
+        onSearchSettingsChange={onSearchSettingsChange}
+        version={version}
+        safetyControl={stop}
+      />
+    </Box>
+  );
 
+  return (
+    <PanelContainer
+      compact={compact}
+      header={header}
+      onResizePointerDown={layoutHandlers?.onResizePointerDown}
+    >
       {settingsStale && (
         <Box
           role="status"
-          sx={{
-            mb: 1.25,
-            p: 1,
-            borderLeft: `2px solid ${tokens.semantic.warning}`,
-            backgroundColor: tokens.surface.hover,
-            borderRadius: `${tokens.radius.xs}px`,
-            display: 'flex',
-            gap: 1,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
+          sx={{ ...noticeSx(tokens.semantic.warning), mb: 1.5 }}
         >
           <WarningAmberRounded
-            sx={{ color: tokens.semantic.warning, fontSize: 18 }}
+            sx={{ color: tokens.semantic.warning, fontSize: 20 }}
           />
           <Typography
             variant="body2"
@@ -317,9 +378,12 @@ export const RecommendationPanel = memo(function RecommendationPanel({
             {setup && (
               <Typography
                 variant="body2"
-                sx={{ color: colors.textSecondary, mt: 0.75 }}
+                sx={{ color: colors.textSecondary, mt: 1, px: 0.25 }}
               >
-                <Box component="span" sx={{ color: colors.gold, mr: 0.75 }}>
+                <Box
+                  component="span"
+                  sx={{ color: colors.gold, fontWeight: 650, mr: 0.75 }}
+                >
                   Why
                 </Box>
                 {setup.detail}
@@ -358,12 +422,10 @@ export const RecommendationPanel = memo(function RecommendationPanel({
         <Typography
           variant="body2"
           sx={{
-            color: tokens.semantic.info,
-            mt: 1,
-            p: 1,
-            borderLeft: `2px solid ${tokens.semantic.info}`,
-            backgroundColor: tokens.surface.hover,
-            borderRadius: `${tokens.radius.xs}px`,
+            ...noticeSx(tokens.semantic.info),
+            display: 'block',
+            color: '#bfe1f6',
+            mt: 1.5,
           }}
         >
           {autoUse.detail}

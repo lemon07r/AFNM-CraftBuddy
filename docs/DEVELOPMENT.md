@@ -29,8 +29,8 @@ bun install
 | `src/modContent/autoCraftController.ts`, `autoCraftExecutor.ts`, `autoCraftErrors.ts` | Policy/state machine, verified dispatch, typed refusal/recovery |
 | `src/modContent/replaySnapshot.ts`, `debugHooks.ts` | Replay serializer and debug export |
 | `src/modContent/overlayMount.ts` | React mounting, paint scheduling, HUD geometry |
-| `src/ui/`, `src/utils/outcomeSummary.ts`, `src/utils/overlayLayout.ts` | Panels/theme and pure presentation/geometry helpers |
-| `src/settings/index.ts`, `src/settings/autoCraft.ts` | Persisted settings, presets/config mapping, auto policy/UI state |
+| `src/ui/`, `src/utils/outcomeSummary.ts`, `src/utils/overlayLayout.ts`, `src/utils/overlayGeometry.ts` | Panels/theme, DOM gesture controller (`src/ui/overlayLayoutController.ts`) and pure presentation/geometry helpers |
+| `src/settings/index.ts`, `src/settings/autoCraft.ts`, `src/settings/overlayGeometry.ts` | Persisted settings, presets/config mapping, auto policy/UI state and manual overlay geometry |
 | `src/worker/searchWorker.ts` | Background search and its own cache/engine instance |
 
 Dependency direction: integration → optimizer facade/settings/UI/utils; UI → optimizer facade/settings/utils; optimizer → pure utils. `src/utils/outcomeSummary.ts` is the exception that reads the optimizer facade, because it formats `outcomeProjection`. Settings **does** depend on `src/utils/searchGoalPriority.ts` and its own auto-craft policy module. It is not dependency-free.
@@ -56,6 +56,18 @@ CraftBuddy has no native action-cost wrapper; costs are locally simulated. Nativ
 The settings dialog portals into CraftBuddy's overlay, not the document body: MUI's sibling hiding must not mark the game controls `aria-hidden` or inert while native auto-use automation is running. MUI retains focus trapping/restoration and Escape-to-close; the dialog explicitly accepts pointer events despite the overlay's pass-through host.
 
 Every host hide (including panel visibility changes, polling transitions and craft end) synchronously unmounts the overlay root, releasing the settings dialog and its focus trap even when the host lacks `flushSync`. Any remaining overlay focus is blurred after modal cleanup; focus already on the game is preserved. Reshow creates a fresh root, so settings is closed and disclosures reset.
+
+### Overlay layout
+
+Automatic layout retains HUD avoidance. Drag the panel header to position it, or use the bottom-left grip to resize around its top-right anchor. Manual layout survives polling, hide/show and reload; moving alone leaves height content-sized. Double-click a non-interactive part of the header or use the settings reset control to return to automatic layout. Escape cancels an active gesture.
+
+The separate localStorage key `craftbuddy_overlay_geometry` stores versioned user intent, not viewport-clamped output: reducing the resolution keeps the panel in bounds, and returning to a larger resolution restores the saved geometry. `src/utils/overlayGeometry.ts` owns pure bounds/drag/resize math; `src/ui/overlayLayoutController.ts` owns pointer capture, frame-coalesced style updates and viewport changes. The harness `?scene=game` uses that same controller with the real window size and optional `tmp/game-assets/crafting-fusion.webp` background (dark gradient fallback).
+
+The panel header is fixed and the body scrolls, so the drag handle and resize grip stay reachable at any height. Controls inside the header (status, Stop, settings) never start a drag (`OVERLAY_NO_DRAG_SELECTOR` in `src/ui/overlayInteraction.ts`).
+
+### Typography and text size
+
+The UI bundles its own fonts (`src/ui/fonts/`, inlined into `mod.js` as data URLs) under CraftBuddy-specific family names, so the game's fonts are never overridden: Inter for all functional text, Marcellus only for the brand title. Text sizes go through `tokens.type.*` / `fs(px)` in `src/ui/theme.ts`, which multiply by the `--craftbuddy-text-scale` CSS variable that `ThemeProvider` sets on the document root from the `uiTextScale` setting; that way portalled tooltips and the dialog scale with the panel.
 
 ### Automation
 

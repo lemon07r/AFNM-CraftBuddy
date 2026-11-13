@@ -8,16 +8,15 @@ CraftBuddy reads your live craft, simulates possible continuations, and recommen
 [hr][/hr]
 
 [h1]What's New in v7[/h1]
-Latest in 7.2.0 (for game version 0.7.21):
+Latest in 7.3.0 (for game version 0.7.21):
 
 [list]
-[*] [b]Ready for 0.7.21[/b] — checked against the new game version. The balance changes (Qi Pool boost, Consolidated gems and others) are read straight from the game.
-[*] [b]Lanternheart Flame[/b] — refining while Harmonious or Brilliant now grants Kindled Brilliance in CraftBuddy's simulation, just as it does in game.
-[*] [b]New-look panel[/b] — the next action is one clear card with a gold Use button, labelled gains and a separate cost row, plus a warning when an action is risky or ends the craft. Outcome tiers, band markers and a readable condition forecast follow, with Plan, other actions and automatic crafting folded underneath. Compact mode is denser still.
-[*] [b]Tidier settings[/b] — grouped cards, a search-effort selector that shows each preset's time budget, value badges on sliders, and help that opens on hover or tap.
+[*] [b]Move and resize the panel[/b] — drag the header to place CraftBuddy anywhere, and drag the bottom-left corner to resize it. Your layout is remembered between sessions and always kept on screen. Double-click the header (or use Settings › Appearance) to return to the automatic position beside the game HUD.
+[*] [b]Easier to read[/b] — a clean, modern typeface with larger text throughout, plus a Text size setting from 90% to 135%.
+[*] [b]Refreshed look[/b] — a darker, calmer panel and settings dialog with clearer cards, segmented controls, labelled slider ranges and toggles with short descriptions.
 [/list]
 
-Also in v7: readable game-styled panels, Forge heat and harmony accuracy fixes, smarter risk handling, exact crit and overcrit simulation, companion simulation, keyboard and screen-reader friendly settings (also in the game's mod options), more accurate Qi and stability, faster search, "Craft failed" results, and no more Rust/WASM option.
+Also in v7: 0.7.21 support, Lanternheart Flame simulation, readable panels, Forge heat and harmony accuracy fixes, smarter risk handling, exact crit and overcrit simulation, companion simulation, keyboard and screen-reader friendly settings (also in the game's mod options), more accurate Qi and stability, faster search, "Craft failed" results, and no more Rust/WASM option.
 
 [hr][/hr]
 

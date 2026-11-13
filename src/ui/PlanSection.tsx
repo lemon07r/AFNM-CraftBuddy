@@ -47,8 +47,8 @@ export function PlanSection({
     >
       <Typography
         component="p"
-        variant="caption"
-        sx={{ color: colors.textMuted }}
+        variant="body2"
+        sx={{ color: colors.textMuted, m: 0 }}
       >
         Planned, not secured. CraftBuddy checks again after each action; random
         effects and future conditions can change this path.
@@ -66,20 +66,28 @@ export function PlanSection({
               sx={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 1,
-                py: 0.5,
+                gap: 1.25,
+                py: 0.625,
+                fontWeight: index === 0 ? 600 : 400,
+                color: index === 0 ? colors.textPrimary : colors.textSecondary,
+                '& + &': { borderTop: `1px solid ${tokens.border.hairline}` },
                 counterIncrement: 'plan-step',
                 '&::before': {
                   content: 'counter(plan-step)',
                   display: 'grid',
                   placeItems: 'center',
-                  width: 22,
-                  height: 22,
+                  width: 26,
+                  height: 26,
                   flexShrink: 0,
                   borderRadius: '50%',
-                  backgroundColor: tokens.surface.sunken,
-                  color: colors.gold,
+                  backgroundColor:
+                    index === 0
+                      ? tokens.surface.selected
+                      : tokens.surface.sunken,
+                  border: `1px solid ${index === 0 ? tokens.border.accent : tokens.border.hairline}`,
+                  color: index === 0 ? colors.goldLight : colors.textMuted,
                   fontSize: tokens.type.label,
+                  fontWeight: 650,
                 },
               }}
             >
@@ -103,8 +111,12 @@ export function PlanSection({
         )
       )}
       {final && (
-        <Box sx={{ my: 1 }}>
-          <Typography component="h4" variant="subtitle2">
+        <Box sx={{ my: 1.5 }}>
+          <Typography
+            component="h4"
+            variant="subtitle2"
+            sx={{ color: colors.textSecondary }}
+          >
             Planned end state
           </Typography>
           <Box
@@ -112,7 +124,7 @@ export function PlanSection({
               display: 'grid',
               gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
               gap: 0.75,
-              mt: 0.75,
+              mt: 1,
             }}
           >
             {(['completion', 'perfection', 'stability', 'qi'] as const).map(
@@ -125,21 +137,23 @@ export function PlanSection({
                     flexWrap: 'wrap',
                     gap: 0.75,
                     backgroundColor: tokens.surface.sunken,
-                    borderRadius: `${tokens.radius.sm}px`,
-                    px: 1,
-                    py: 0.625,
+                    border: `1px solid ${tokens.border.hairline}`,
+                    borderRadius: `${tokens.radius.md}px`,
+                    px: 1.25,
+                    py: 0.875,
                   }}
                 >
                   <Typography
                     variant="body1"
-                    sx={{ color: tokens.resource[key] }}
+                    sx={{
+                      color: tokens.resource[key],
+                      fontSize: tokens.type.lead,
+                      fontWeight: 650,
+                    }}
                   >
                     {formatLargeNumber(final[key], 1)}
                   </Typography>
-                  <Typography
-                    variant="caption"
-                    sx={{ color: colors.textSecondary }}
-                  >
+                  <Typography variant="body2" sx={{ color: colors.textMuted }}>
                     {key === 'qi' ? 'Qi' : key}
                   </Typography>
                 </Box>
@@ -160,16 +174,16 @@ export function PlanSection({
       )}
       {summary?.harmony && (
         <Typography
-          variant="caption"
-          sx={{ display: 'block', mt: 1, color: colors.textSecondary }}
+          variant="body2"
+          sx={{ display: 'block', mt: 1, color: colors.textMuted }}
         >
           {summary.harmony.label} · {summary.harmony.detail}
         </Typography>
       )}
       {hasCaps && (
         <Typography
-          variant="caption"
-          sx={{ display: 'block', mt: 1, color: colors.textSecondary }}
+          variant="body2"
+          sx={{ display: 'block', mt: 1, color: colors.textMuted }}
         >
           Bar caps: completion{' '}
           {maxCompletionCap === undefined

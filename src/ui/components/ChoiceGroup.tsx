@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { Box, Typography } from '@mui/material';
 import { Check } from '@mui/icons-material';
-import { colors, focusRing, tokens } from '../theme';
+import { colors, focusRing, fs, tokens } from '../theme';
 
 const visuallyHidden = {
   border: 0,
@@ -32,6 +32,10 @@ export function ChoiceGroup({
   variant?: 'segmented' | 'cards' | 'pills';
 }) {
   const id = useId();
+  // Short labels (percentages, counts) fit on one row even in narrow hosts.
+  const shortLabels = options.every(
+    (option) => !option.detail && option.label.length <= 5,
+  );
   return (
     <Box
       component="fieldset"
@@ -45,8 +49,10 @@ export function ChoiceGroup({
             : {
                 fontFamily: 'inherit',
                 fontSize: tokens.type.bodySm,
+                fontWeight: 600,
                 color: colors.textSecondary,
-                mb: 0.75,
+                p: 0,
+                mb: 0.875,
               }
         }
       >
@@ -55,7 +61,7 @@ export function ChoiceGroup({
       <Box
         sx={{
           display: 'grid',
-          gap: 0.5,
+          gap: variant === 'cards' ? 0.75 : 0.5,
           gridTemplateColumns:
             variant === 'cards'
               ? '1fr'
@@ -64,13 +70,18 @@ export function ChoiceGroup({
             ? {
                 p: 0.5,
                 backgroundColor: tokens.surface.sunken,
-                borderRadius: `${tokens.radius.md}px`,
-                '@container (max-width: 580px)': {
-                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                },
-                '@container (max-width: 300px)': {
-                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                },
+                border: `1px solid ${tokens.border.hairline}`,
+                borderRadius: `${tokens.radius.md + 2}px`,
+                ...(shortLabels
+                  ? {}
+                  : {
+                      '@container (max-width: 580px)': {
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                      },
+                      '@container (max-width: 300px)': {
+                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                      },
+                    }),
               }
             : {}),
         }}
@@ -85,9 +96,9 @@ export function ChoiceGroup({
               cursor: 'pointer',
               minWidth: 0,
               '& input:focus-visible + .choice-face': focusRing,
-              '&:hover .choice-face': {
+              '&:hover .choice-face:not([data-selected])': {
                 backgroundColor: tokens.surface.hover,
-                borderColor: tokens.border.strong,
+                borderColor: tokens.border.default,
               },
             }}
           >
@@ -102,19 +113,38 @@ export function ChoiceGroup({
             />
             <Box
               className="choice-face"
+              data-selected={value === option.id || undefined}
               sx={{
                 width: '100%',
                 minWidth: 0,
                 boxSizing: 'border-box',
-                border: `1px solid ${value === option.id ? tokens.border.strong : tokens.border.hairline}`,
-                borderRadius: `${tokens.radius.sm}px`,
-                px: variant === 'pills' ? 0.5 : 1,
-                py: variant === 'pills' ? 0.375 : 0.875,
-                minHeight: tokens.control.sm,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                border: '1px solid',
+                borderColor:
+                  value === option.id
+                    ? tokens.border.accent
+                    : variant === 'segmented'
+                      ? 'transparent'
+                      : tokens.border.hairline,
+                borderRadius: `${tokens.radius.sm + 1}px`,
+                px: variant === 'pills' ? 0.75 : 1.25,
+                py: variant === 'cards' ? 1.125 : 0.625,
+                minHeight: variant === 'cards' ? 52 : tokens.control.md - 2,
                 backgroundColor:
-                  value === option.id ? tokens.surface.selected : 'transparent',
-                transition: 'border-color 120ms, background-color 120ms',
-                textAlign: variant === 'pills' ? 'center' : 'left',
+                  value === option.id
+                    ? tokens.surface.selected
+                    : variant === 'segmented'
+                      ? 'transparent'
+                      : tokens.surface.control,
+                boxShadow:
+                  value === option.id
+                    ? 'inset 0 1px 0 rgba(255,255,255,.06), 0 1px 2px rgba(0,0,0,.4)'
+                    : 'none',
+                transition:
+                  'border-color 120ms, background-color 120ms, color 120ms',
+                textAlign: variant === 'cards' ? 'left' : 'center',
               }}
             >
               <Box
@@ -124,13 +154,14 @@ export function ChoiceGroup({
                   gap: 0.5,
                   alignItems: 'center',
                   justifyContent:
-                    variant === 'pills' ? 'center' : 'space-between',
+                    variant === 'cards' ? 'space-between' : 'center',
                 }}
               >
                 <Typography
                   component="span"
                   sx={{
                     fontSize: tokens.type.body,
+                    fontWeight: value === option.id ? 650 : 500,
                     lineHeight: 1.3,
                     color:
                       value === option.id
@@ -140,21 +171,22 @@ export function ChoiceGroup({
                 >
                   {option.label}
                 </Typography>
-                {value === option.id && variant !== 'pills' && (
+                {value === option.id && variant === 'cards' && (
                   <Check
                     aria-hidden
-                    sx={{ fontSize: 15, color: colors.gold, flexShrink: 0 }}
+                    sx={{ fontSize: fs(17), color: colors.gold, flexShrink: 0 }}
                   />
                 )}
               </Box>
               {option.detail && (
                 <Typography
                   component="span"
-                  variant="caption"
                   sx={{
                     display: 'block',
                     mt: 0.375,
-                    color: colors.textSecondary,
+                    fontSize: tokens.type.bodySm,
+                    lineHeight: 1.4,
+                    color: colors.textMuted,
                   }}
                 >
                   {option.detail}

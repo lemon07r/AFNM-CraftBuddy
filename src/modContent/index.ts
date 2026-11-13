@@ -42,6 +42,7 @@ import {
   type HarmonyData,
 } from '../optimizer';
 import { RecommendationPanel } from '../ui/RecommendationPanel';
+import { createOverlayLayoutController } from '../ui/overlayLayoutController';
 import { CraftBuddyThemeProvider } from '../ui/ThemeProvider';
 import { SettingsBody } from '../ui/SettingsPanel';
 import { uiLayers } from '../ui/theme';
@@ -321,6 +322,9 @@ let lastKnownCraftingTechniques: KnownCraftingTechnique[] | undefined =
 
 // DOM overlay elements
 let overlayContainer: HTMLDivElement | null = null;
+let overlayLayoutController: ReturnType<
+  typeof createOverlayLayoutController
+> | null = null;
 let reactRoot: ReactDOM.Root | null = null;
 let isOverlayVisible = false;
 let wasCraftingActive = false;
@@ -1987,14 +1991,37 @@ function createOverlayContainer(): void {
     maxHeight: 'calc(100vh - 20px)',
     zIndex: String(uiLayers.overlay),
     display: 'flex',
-    justifyContent: 'flex-end',
-    alignItems: 'flex-start',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     boxSizing: 'border-box',
     overflow: 'visible',
     pointerEvents: 'none',
   });
 
   document.body.appendChild(overlayContainer);
+  overlayLayoutController = createOverlayLayoutController({
+    container: overlayContainer,
+    getViewport: () => ({
+      width: window.innerWidth || document.documentElement.clientWidth || 0,
+      height: window.innerHeight || document.documentElement.clientHeight || 0,
+    }),
+    isCompact: () => currentSettings.compactMode,
+    getAutoLayout: () => {
+      const layout = computeOverlayLayout({
+        viewportWidth:
+          window.innerWidth || document.documentElement.clientWidth || 0,
+        viewportHeight:
+          window.innerHeight || document.documentElement.clientHeight || 0,
+        occupiedRect: getVisibleCraftingUiOccupiedRect(),
+        compact: currentSettings.compactMode,
+      });
+      return {
+        ...layout,
+        width: Math.max(0, Math.round(layout.width)),
+        maxHeight: Math.max(0, Math.round(layout.maxHeight)),
+      };
+    },
+  });
   reactRoot = ReactDOM.createRoot(overlayContainer);
   debugLog('[CraftBuddy] Overlay container created');
 }
@@ -2071,7 +2098,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
     createOverlayContainer();
   }
 
-  overlayContainer!.style.display = 'block';
+  overlayContainer!.style.display = 'flex';
   isOverlayVisible = true;
   applyOverlayContainerLayout();
 
@@ -2093,6 +2120,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
   })();
 
   const panel = React.createElement(RecommendationPanel, {
+    layoutHandlers: overlayLayoutController?.handlers,
     result: currentRecommendation,
     currentCompletion,
     currentPerfection,
@@ -2136,6 +2164,7 @@ function renderOverlay({ sync = false }: { sync?: boolean } = {}): void {
  * Hide the overlay.
  */
 function hideOverlay(): void {
+  overlayLayoutController?.cancelGesture();
   unmountOverlayRoot(reactRoot, overlayContainer);
   reactRoot = null;
   isOverlayVisible = false;
@@ -2455,27 +2484,7 @@ function refreshReduxStoreConnection(force: boolean = false): void {
 }
 
 function applyOverlayContainerLayout(): void {
-  if (!overlayContainer) {
-    return;
-  }
-
-  const viewportWidth =
-    window.innerWidth || document.documentElement.clientWidth || 0;
-  const viewportHeight =
-    window.innerHeight || document.documentElement.clientHeight || 0;
-  const layout = computeOverlayLayout({
-    viewportWidth,
-    viewportHeight,
-    occupiedRect: getVisibleCraftingUiOccupiedRect(),
-    compact: currentSettings.compactMode,
-  });
-
-  Object.assign(overlayContainer.style, {
-    top: `${layout.top}px`,
-    right: `${layout.right}px`,
-    width: `${Math.max(0, Math.round(layout.width))}px`,
-    maxHeight: `${Math.max(0, Math.round(layout.maxHeight))}px`,
-  });
+  overlayLayoutController?.apply();
 }
 
 function detectCraftResultUi(): boolean {

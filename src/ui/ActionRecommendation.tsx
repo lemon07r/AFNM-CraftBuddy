@@ -8,7 +8,7 @@ import {
   relativeChoiceLabel,
 } from '../utils/recommendationPresentation';
 import { ActionButton, badgeSx, Eyebrow } from './components';
-import { colors, fonts, getSkillTypeColor, tokens } from './theme';
+import { colors, fonts, fs, getSkillTypeColor, tokens } from './theme';
 
 export const ActionRecommendation = memo(function ActionRecommendation({
   rec,
@@ -35,18 +35,37 @@ export const ActionRecommendation = memo(function ActionRecommendation({
   return (
     <Box
       sx={{
-        backgroundColor: hero ? tokens.surface.raised : 'transparent',
+        position: 'relative',
+        backgroundColor: hero ? tokens.surface.card : 'transparent',
+        backgroundImage: hero
+          ? `radial-gradient(120% 90% at 0% 0%, ${skillColor}1f 0%, transparent 55%)`
+          : 'none',
         border: hero ? `1px solid ${tokens.border.default}` : 0,
-        borderTop: hero ? `2px solid ${skillColor}` : undefined,
-        borderRadius: hero ? `${tokens.radius.md}px` : 0,
+        borderRadius: hero ? `${tokens.radius.lg}px` : 0,
+        boxShadow: hero ? tokens.shadow.card : 'none',
         overflow: 'hidden',
+        '&::before': hero
+          ? {
+              content: '""',
+              position: 'absolute',
+              left: 0,
+              top: 14,
+              bottom: 14,
+              width: 3,
+              borderRadius: '0 3px 3px 0',
+              backgroundColor: skillColor,
+              opacity: 0.85,
+            }
+          : undefined,
         '@container (max-width: 380px)': {
           '& .technique-icon': {
-            width: hero ? 40 : 36,
-            height: hero ? 40 : 36,
+            width: hero ? 44 : 38,
+            height: hero ? 44 : 38,
           },
-          '& .technique-name': { fontSize: hero ? 17 : 15 },
-          '& .technique-use': { minWidth: 56 },
+          '& .technique-name': {
+            fontSize: hero ? tokens.type.heading : tokens.type.body,
+          },
+          '& .technique-use': { minWidth: 60 },
         },
         '& + &': {
           mt: 1.5,
@@ -55,7 +74,7 @@ export const ActionRecommendation = memo(function ActionRecommendation({
         },
       }}
     >
-      <Box sx={{ p: hero ? (compact ? 1.25 : 1.5) : 0 }}>
+      <Box sx={{ p: hero ? (compact ? 1.5 : 2) : 0 }}>
         <Eyebrow>
           {hero ? 'Next action' : relativeChoiceLabel(rec.qualityRating)}
         </Eyebrow>
@@ -64,19 +83,19 @@ export const ActionRecommendation = memo(function ActionRecommendation({
             display: 'grid',
             gridTemplateColumns: 'auto minmax(0, 1fr) auto',
             alignItems: 'center',
-            gap: compact ? 1 : 1.25,
+            gap: compact ? 1.25 : 1.5,
           }}
         >
           <Box
             className="technique-icon"
             sx={{
-              width: hero ? (compact ? 40 : 52) : 36,
-              height: hero ? (compact ? 40 : 52) : 36,
+              width: hero ? (compact ? 46 : 58) : 40,
+              height: hero ? (compact ? 46 : 58) : 40,
               flexShrink: 0,
               backgroundColor: tokens.surface.sunken,
-              border: `1px solid ${skillColor}`,
-              borderRadius: `${tokens.radius.sm}px`,
-              boxShadow: 'inset 0 1px 8px #0005',
+              border: `1px solid ${skillColor}80`,
+              borderRadius: `${tokens.radius.md}px`,
+              boxShadow: `inset 0 1px 8px #0006, 0 0 0 3px ${skillColor}14`,
               display: 'grid',
               placeItems: 'center',
               overflow: 'hidden',
@@ -90,7 +109,10 @@ export const ActionRecommendation = memo(function ActionRecommendation({
                 sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
             ) : (
-              <Typography aria-hidden sx={{ fontSize: 22, color: skillColor }}>
+              <Typography
+                aria-hidden
+                sx={{ fontSize: fs(22), fontWeight: 650, color: skillColor }}
+              >
                 {name.charAt(0)}
               </Typography>
             )}
@@ -101,10 +123,16 @@ export const ActionRecommendation = memo(function ActionRecommendation({
             sx={{
               m: 0,
               overflowWrap: 'anywhere',
-              fontFamily: hero ? fonts.heading : fonts.body,
-              fontSize: hero ? (compact ? 17 : 20) : 15,
-              fontWeight: hero ? 400 : 600,
-              lineHeight: 1.35,
+              fontFamily: fonts.body,
+              fontSize: hero
+                ? compact
+                  ? tokens.type.heading
+                  : fs(21)
+                : tokens.type.lead,
+              fontWeight: hero ? 700 : 600,
+              letterSpacing: hero ? '-.012em' : '-.004em',
+              lineHeight: 1.25,
+              color: colors.textPrimary,
             }}
           >
             {name}
@@ -114,9 +142,10 @@ export const ActionRecommendation = memo(function ActionRecommendation({
               className="technique-use"
               variant={hero ? 'contained' : 'outlined'}
               sx={{
-                minWidth: compact ? 56 : hero ? 72 : 56,
-                minHeight: hero ? 36 : 32,
-                px: 1.25,
+                minWidth: compact ? 64 : hero ? 84 : 64,
+                minHeight: hero ? 42 : 36,
+                px: hero ? 2 : 1.5,
+                fontSize: hero ? tokens.type.lead : tokens.type.body,
               }}
               aria-label={`Use ${name}`}
               onClick={() => onUse(rec)}
@@ -130,8 +159,8 @@ export const ActionRecommendation = memo(function ActionRecommendation({
             display: 'flex',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: 0.625,
-            mt: 1.25,
+            gap: 0.75,
+            mt: 1.5,
           }}
         >
           {gains.primary.split(' · ').map((gain, index) => {
@@ -148,8 +177,13 @@ export const ActionRecommendation = memo(function ActionRecommendation({
                 sx={{
                   ...badgeSx,
                   color,
-                  backgroundColor: tokens.surface.sunken,
-                  borderColor: tokens.border.hairline,
+                  fontSize: tokens.type.bodySm,
+                  fontWeight: 600,
+                  py: 0.375,
+                  backgroundColor: resource
+                    ? `${color}12`
+                    : tokens.surface.sunken,
+                  borderColor: resource ? `${color}38` : tokens.border.hairline,
                 }}
               >
                 {resource && (
@@ -157,8 +191,8 @@ export const ActionRecommendation = memo(function ActionRecommendation({
                     component="span"
                     aria-hidden
                     sx={{
-                      width: 4,
-                      height: 4,
+                      width: 6,
+                      height: 6,
                       borderRadius: '50%',
                       backgroundColor: color,
                     }}
@@ -171,7 +205,7 @@ export const ActionRecommendation = memo(function ActionRecommendation({
           {compact && (
             <Typography
               component="span"
-              variant="caption"
+              variant="body2"
               sx={{ color: colors.textSecondary }}
             >
               <Box component="span" sx={{ color: colors.textMuted, mr: 0.75 }}>
@@ -185,7 +219,7 @@ export const ActionRecommendation = memo(function ActionRecommendation({
         {gains.secondary && (
           <Typography
             variant="body2"
-            sx={{ color: colors.textSecondary, mt: 0.5 }}
+            sx={{ color: colors.textSecondary, mt: 0.75 }}
           >
             {gains.secondary}
           </Typography>
@@ -196,12 +230,15 @@ export const ActionRecommendation = memo(function ActionRecommendation({
             sx={{
               color: colors.textSecondary,
               display: 'block',
-              mt: 1,
-              pt: 0.75,
+              mt: 1.5,
+              pt: 1.25,
               borderTop: `1px solid ${tokens.border.hairline}`,
             }}
           >
-            <Box component="span" sx={{ color: colors.textMuted, mr: 0.75 }}>
+            <Box
+              component="span"
+              sx={{ color: colors.textMuted, fontWeight: 600, mr: 0.75 }}
+            >
               Cost
             </Box>
             {formatLargeNumber(rec.effectiveCosts.qi, 1)} Qi ·{' '}
@@ -216,16 +253,16 @@ export const ActionRecommendation = memo(function ActionRecommendation({
           sx={{
             display: 'flex',
             alignItems: 'flex-start',
-            gap: 0.75,
-            px: hero ? 1.5 : 0,
-            py: 1,
-            backgroundColor: hero ? tokens.surface.sunken : 'transparent',
+            gap: 1,
+            px: hero ? 2 : 0,
+            py: 1.25,
+            backgroundColor: hero ? 'rgba(0,0,0,.22)' : 'transparent',
             borderTop: `1px solid ${tokens.border.hairline}`,
             color: warningColor,
           }}
         >
           <WarningAmberRounded
-            sx={{ fontSize: 17, mt: 0.125, flexShrink: 0 }}
+            sx={{ fontSize: fs(18), mt: 0.125, flexShrink: 0 }}
           />
           <Typography variant="body2">
             {rec.endsCraftBelowTarget

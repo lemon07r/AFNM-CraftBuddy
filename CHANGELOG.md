@@ -1,5 +1,11 @@
 # Changelog
 
+## 7.3.0 — AFNM 0.7.21
+
+- Move and resize the overlay: drag the header to place it, drag the bottom-left grip to resize it. The layout persists across sessions under its own storage key, is clamped back on screen when the resolution shrinks (and restored when it grows again), and Escape cancels a gesture. Double-click the header or use Settings › Appearance › Reset layout to return to the automatic, HUD-aware position, which stays the default.
+- Readable typography: CraftBuddy now bundles Inter for all functional text (larger sizes throughout, tabular numbers) and uses a decorative face only for the brand title. A new Text size setting (90–135%) scales the panel, settings dialog and tooltips together.
+- Restyle the panel and settings as a dark companion overlay: fixed header with a scrolling body, clearer cards and chips, segmented controls, sliders with labelled ranges, toggles with descriptions, and a blurred backdrop behind the settings dialog. Recommendations, automation and settings behave exactly as before.
+
 ## 7.2.0 — AFNM 0.7.21
 
 - Retarget to 0.7.21-6b1d439. The crafting engine is unchanged; the 0.7.21 balance changes (Qi Pool boost, Consolidated Skill Gem, Numinous Muscles, Stellar Infusion/Refinement, Heavenjudging Eyes) are read live from the game. `afnm-types` stays at 0.7.20 because no 0.7.21 package exists.

@@ -31,9 +31,11 @@ agent-browser set viewport 975 768
 agent-browser screenshot
 ```
 
-Harness query params (see `scripts/ui/agent-browser-harness.tsx`): `?state=` picks a fixture (for example `outcome-setup`, `outcome-autofinish`, `outcome-legacy`, `auto-ready`, `auto-stopping`, `auto-native-autouse`, `loading`), `?harmony=` selects the harmony type, `?compact=`, `?scene=gamehud` and `?viewport=WxH` set layout. Capture the changed panel states (settings, auto, loading/stop) as well as normal recommendations.
+Harness query params (see `scripts/ui/agent-browser-harness.tsx`): `?state=` picks a fixture (for example `outcome-setup`, `outcome-autofinish`, `outcome-legacy`, `auto-ready`, `auto-stopping`, `auto-native-autouse`, `loading`), `?harmony=` selects the harmony type, `?compact=`, `?scene=game`, `?scene=gamehud`, `?scene=options` and `?viewport=WxH` set layout. Capture the changed panel states (settings, auto, loading/stop) as well as normal recommendations.
 
-For the real game typography, run `bunx --bun @electron/asar extract-file "<game>/resources/app.asar" dist-electron/AfnmNormalFont.ttf` from `tmp/game-fonts/`, and repeat for `dist-electron/AfnmFancyFont.otf`. The harness build copies these optional, gitignored fonts into its `fonts/` directory; without them it uses the theme's serif fallbacks. Body/data use `normalFont`; `fancyFont` is reserved for display headings and the primary technique name.
+`?scene=game` renders the panel full-window with the real overlay layout controller, so drag, bottom-left resize, double-click reset and viewport clamping behave as in game; `agent-browser set viewport` the common resolutions (1280x720, 1600x900, 1920x1080, 2560x1440). Copy game art into gitignored `tmp/game-assets/` (for example `crafting-fusion.webp`) for a realistic backdrop; without it the scene uses a dark gradient.
+
+CraftBuddy ships its own typography inside `mod.js` (`src/ui/fonts/`, inlined as data URLs because the mod runs as an inline script): Inter for all functional text and Marcellus (`fonts.display`) only for the brand title. Size text with `tokens.type.*` or `fs(px)` so the Appearance › Text size setting (`uiTextScale`, a CSS variable on the document root) scales the panel, dialog and portalled tooltips together. The game's `normalFont`/`fancyFont` are only used by the harness's fake game HUD; extract them with `bunx --bun @electron/asar extract-file "<game>/resources/app.asar" dist-electron/AfnmNormalFont.ttf` into `tmp/game-fonts/` if needed.
 
 ## Integration clues
 

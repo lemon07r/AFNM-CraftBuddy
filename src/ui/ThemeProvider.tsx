@@ -1,25 +1,38 @@
 /**
  * CraftBuddy - Theme Provider
  *
- * Wraps the application with MUI theme.
- * Lightweight wrapper that doesn't add unnecessary re-renders.
+ * Wraps CraftBuddy UI with its MUI theme, registers the bundled fonts and
+ * publishes the text-size preference as a CSS variable.
  */
 
-import React, { memo } from 'react';
+import React, { memo, useEffect, useSyncExternalStore } from 'react';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material';
-import { craftBuddyTheme } from './theme';
+import { getSettings, subscribeSettings } from '../settings';
+import { ensureCraftBuddyFonts } from './fonts';
+import { craftBuddyTheme, TEXT_SCALE_VAR } from './theme';
 
 interface CraftBuddyThemeProviderProps {
   children: React.ReactNode;
 }
 
-/**
- * Theme provider for CraftBuddy UI components.
- * Memoized to prevent unnecessary re-renders.
- */
+const getTextScale = () => getSettings().uiTextScale;
+
 export const CraftBuddyThemeProvider = memo(function CraftBuddyThemeProvider({
   children,
 }: CraftBuddyThemeProviderProps) {
+  const textScale = useSyncExternalStore(
+    subscribeSettings,
+    getTextScale,
+    getTextScale,
+  );
+  if (typeof document !== 'undefined') ensureCraftBuddyFonts();
+  useEffect(() => {
+    // Root-level so portalled tooltips and dialogs scale with the panel.
+    document.documentElement.style.setProperty(
+      TEXT_SCALE_VAR,
+      String(textScale),
+    );
+  }, [textScale]);
   return (
     <MuiThemeProvider theme={craftBuddyTheme}>{children}</MuiThemeProvider>
   );

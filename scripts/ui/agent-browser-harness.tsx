@@ -27,6 +27,8 @@ import {
   type SkillDefinition,
 } from '../../src/optimizer';
 import { SettingsBody } from '../../src/ui/SettingsPanel';
+import { createOverlayLayoutController } from '../../src/ui/overlayLayoutController';
+import type { OverlayLayoutHandlers } from '../../src/ui/overlayInteraction';
 
 resetSettings();
 
@@ -580,6 +582,118 @@ function buildAutoModePhaseFixture(state: string): AutoModePhaseFixture {
   }
 }
 
+/** Real CSS viewport and production controller, unlike the boxed gamehud scene. */
+function GameScene({
+  panel,
+  compact,
+}: {
+  panel: React.ReactElement<React.ComponentProps<typeof RecommendationPanel>>;
+  compact: boolean;
+}) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const controllerRef = React.useRef<ReturnType<
+    typeof createOverlayLayoutController
+  > | null>(null);
+  const compactRef = React.useRef(compact);
+  compactRef.current = compact;
+  const [handlers, setHandlers] = React.useState<OverlayLayoutHandlers>();
+  const [viewport, setViewport] = React.useState(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }));
+
+  React.useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const getViewport = () => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+    const controller = createOverlayLayoutController({
+      container,
+      getViewport,
+      isCompact: () => compactRef.current,
+      getAutoLayout: () => {
+        const size = getViewport();
+        const { progressRects, supplementalRects } = buildGameHudRects(size);
+        const progressRect = unionOverlayRects(progressRects);
+        return computeOverlayLayout({
+          viewportWidth: size.width,
+          viewportHeight: size.height,
+          compact: compactRef.current,
+          occupiedRect: unionOverlayRects([
+            ...progressRects,
+            ...supplementalRects.filter((rect) =>
+              isRectInOverlayHudCluster({
+                rect,
+                progressRect,
+                viewportWidth: size.width,
+              }),
+            ),
+          ]),
+        });
+      },
+    });
+    controllerRef.current = controller;
+    setHandlers(controller.handlers);
+    const onResize = () => setViewport(getViewport());
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      controller.dispose();
+      controllerRef.current = null;
+    };
+  }, []);
+  React.useLayoutEffect(() => {
+    controllerRef.current?.apply();
+  }, [compact]);
+
+  const { progressRects, supplementalRects } = buildGameHudRects(viewport);
+  return (
+    <CraftBuddyThemeProvider>
+      <div
+        data-testid="game-scene"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          overflow: 'hidden',
+          backgroundImage:
+            'url("./assets/crafting-fusion.webp"), linear-gradient(135deg, #221a18, #121520)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        {[...progressRects, ...supplementalRects].map((rect, index) => (
+          <FakeHudBlock key={index} {...rect}>
+            <div style={{ padding: 18, color: '#f3e9d7', fontFamily: 'serif' }}>
+              {
+                [
+                  'Craft Status — Completion / Perfection / Stability',
+                  'Buffs and Forecast',
+                  'Techniques',
+                  'Menu',
+                ][index]
+              }
+            </div>
+          </FakeHudBlock>
+        ))}
+        <div
+          id="craftbuddy-overlay"
+          ref={containerRef}
+          style={{
+            position: 'fixed',
+            pointerEvents: 'none',
+            boxSizing: 'border-box',
+            zIndex: 10,
+          }}
+        >
+          {React.cloneElement(panel, { layoutHandlers: handlers })}
+        </div>
+      </div>
+    </CraftBuddyThemeProvider>
+  );
+}
+
 function Harness() {
   const [fixtureState, setFixtureState] = React.useState(harnessState);
   const [autoMode, setAutoMode] = React.useState(() =>
@@ -675,6 +789,10 @@ function Harness() {
       version={version}
     />
   );
+
+  if (harnessScene === 'game') {
+    return <GameScene panel={panel} compact={settings.compactMode} />;
+  }
 
   if (harnessScene === 'options') {
     return (

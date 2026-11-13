@@ -19,17 +19,25 @@ import {
 } from '@mui/material';
 import {
   Close as CloseIcon,
+  RestartAlt,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import {
   AMBITION_BAND_MAX,
   SEARCH_PRESET_BUDGETS,
+  UI_TEXT_SCALES,
   getSettings,
   saveSettings,
   subscribeSettings,
   type CraftBuddySettings,
   type SearchPresetId,
+  type UiTextScale,
 } from '../settings';
+import {
+  getManualOverlayGeometry,
+  resetOverlayGeometry,
+  subscribeOverlayGeometry,
+} from '../settings/overlayGeometry';
 import { formatAmbitionBands } from './ambitionBands';
 import {
   formatSearchGoalPriorityBias,
@@ -48,6 +56,7 @@ import {
 import {
   colors,
   fonts,
+  scrollbarSx,
   tokens,
   uiLayers,
   reducedMotionSx,
@@ -109,6 +118,7 @@ const SliderSetting = memo(function SliderSetting({
   onCommit,
   marks = false,
   directional = false,
+  endLabels,
 }: {
   label: string;
   tooltip: string;
@@ -120,6 +130,8 @@ const SliderSetting = memo(function SliderSetting({
   onCommit: (value: number) => void;
   marks?: boolean;
   directional?: boolean;
+  /** Overrides the formatted min/max shown under the track. */
+  endLabels?: readonly [string, string];
 }) {
   // Dragging updates this control only. Persist/render the root once on commit;
   // CSS owns sizing, so there are no synchronous layout probes on each tick.
@@ -127,20 +139,36 @@ const SliderSetting = memo(function SliderSetting({
   useEffect(() => setDraft(draftValue), [draftValue]);
   const id = useId();
   return (
-    <Box sx={{ mt: 1.5, px: 0.5 }}>
+    <Box
+      sx={{
+        pt: 1.5,
+        pb: 0.5,
+        '& + &': { borderTop: `1px solid ${tokens.border.hairline}` },
+      }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        <Typography id={id} component="span" variant="body1">
+        <Typography
+          id={id}
+          component="span"
+          variant="body1"
+          sx={{ fontWeight: 550 }}
+        >
           {label}
         </Typography>
         <Help title={label}>{tooltip}</Help>
         <Typography
           component="output"
-          variant="caption"
           sx={{
             ...badgeSx,
             ml: 'auto',
-            backgroundColor: tokens.surface.sunken,
+            minWidth: 56,
+            justifyContent: 'center',
+            borderRadius: `${tokens.radius.sm}px`,
+            borderColor: tokens.border.accent,
+            backgroundColor: tokens.surface.selected,
             color: colors.goldLight,
+            fontSize: tokens.type.body,
+            fontWeight: 650,
             flexShrink: 0,
           }}
         >
@@ -160,57 +188,85 @@ const SliderSetting = memo(function SliderSetting({
         onChangeCommitted={(_, value) => onCommit(Number(value))}
         onBlur={() => onCommit(draft)}
       />
-      {directional && (
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            color: colors.textMuted,
-            mt: -0.5,
-          }}
-        >
-          <Typography variant="caption">Perfection</Typography>
-          <Typography variant="caption">Balanced</Typography>
-          <Typography variant="caption">Completion</Typography>
-        </Box>
-      )}
+      <Box
+        aria-hidden
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 1,
+          color: colors.textMuted,
+          mt: -0.75,
+          '& > *': { fontSize: tokens.type.label },
+        }}
+      >
+        {directional ? (
+          <>
+            <Typography component="span">← Perfection</Typography>
+            <Typography component="span">Balanced</Typography>
+            <Typography component="span">Completion →</Typography>
+          </>
+        ) : (
+          <>
+            <Typography component="span">
+              {endLabels?.[0] ?? format(min)}
+            </Typography>
+            <Typography component="span">
+              {endLabels?.[1] ?? format(max)}
+            </Typography>
+          </>
+        )}
+      </Box>
     </Box>
   );
 });
 
+const settingRowSx = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 1,
+  minHeight: 52,
+  py: 0.75,
+  '& + .cb-setting-row': { borderTop: `1px solid ${tokens.border.hairline}` },
+} as const;
+
 function ToggleSetting({
   label,
+  description,
   checked,
   onChange,
   help,
 }: {
   label: string;
+  description?: string;
   checked: boolean;
   onChange: (value: boolean) => void;
   help?: string;
 }) {
   const id = useId();
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        minHeight: 42,
-        borderBottom: `1px solid ${tokens.border.hairline}`,
-        borderRadius: `${tokens.radius.xs}px`,
-        px: 0.5,
-        '&:hover': { backgroundColor: tokens.surface.hover },
-      }}
-    >
-      <Typography
+    <Box className="cb-setting-row" sx={settingRowSx}>
+      <Box
         component="label"
         htmlFor={id}
-        variant="body1"
-        sx={{ cursor: 'pointer', flex: 1, py: 1 }}
+        sx={{ cursor: 'pointer', flex: 1, minWidth: 0 }}
       >
-        {label}
-      </Typography>
+        <Typography
+          component="span"
+          variant="body1"
+          sx={{ display: 'block', fontWeight: 550 }}
+        >
+          {label}
+        </Typography>
+        {description && (
+          <Typography
+            component="span"
+            variant="body2"
+            sx={{ display: 'block', color: colors.textMuted, mt: 0.125 }}
+          >
+            {description}
+          </Typography>
+        )}
+      </Box>
       {help && <Help title={label}>{help}</Help>}
       <Switch
         id={id}
@@ -220,6 +276,52 @@ function ToggleSetting({
     </Box>
   );
 }
+
+const hasManualGeometry = () => getManualOverlayGeometry() !== null;
+
+function PanelLayoutSetting() {
+  const manual = useSyncExternalStore(
+    subscribeOverlayGeometry,
+    hasManualGeometry,
+    hasManualGeometry,
+  );
+  return (
+    <Box className="cb-setting-row" sx={{ ...settingRowSx, flexWrap: 'wrap' }}>
+      <Box sx={{ flex: '1 1 260px', minWidth: 0 }}>
+        <Typography
+          component="span"
+          variant="body1"
+          sx={{ display: 'block', fontWeight: 550 }}
+        >
+          Panel position &amp; size
+        </Typography>
+        <Typography
+          component="span"
+          variant="body2"
+          sx={{ display: 'block', color: colors.textMuted, mt: 0.125 }}
+        >
+          {manual
+            ? 'Custom. Drag the header to move, the bottom-left corner to resize.'
+            : 'Automatic: fits beside the game HUD. Drag the header or the bottom-left corner to customise.'}
+        </Typography>
+      </Box>
+      <ActionButton
+        startIcon={<RestartAlt sx={{ fontSize: 18 }} />}
+        disabled={!manual}
+        onClick={resetOverlayGeometry}
+      >
+        Reset layout
+      </ActionButton>
+    </Box>
+  );
+}
+
+const BAND_END_LABELS = ['Auto', `${AMBITION_BAND_MAX} bands`] as const;
+
+const TEXT_SCALE_OPTIONS = UI_TEXT_SCALES.map((scale) => ({
+  id: String(scale),
+  label: `${Math.round(scale * 100)}%`,
+}));
 
 /** Reused unchanged in the overlay dialog and the game's native mod options. */
 export function SettingsBody({
@@ -345,6 +447,7 @@ export function SettingsBody({
           max={AMBITION_BAND_MAX}
           marks
           format={formatAmbitionBands}
+          endLabels={BAND_END_LABELS}
           onCommit={(value) => handleSliderCommit('perfectionBandGoal', value)}
         />
         <SliderSetting
@@ -355,6 +458,7 @@ export function SettingsBody({
           max={AMBITION_BAND_MAX}
           marks
           format={formatAmbitionBands}
+          endLabels={BAND_END_LABELS}
           onCommit={(value) =>
             handleSliderCommit('completionBandCeiling', value)
           }
@@ -374,17 +478,37 @@ export function SettingsBody({
         />
       </SectionCard>
 
-      <SectionCard title="Display">
+      <SectionCard
+        title="Appearance"
+        subtitle="Text size applies to the panel, this dialog and tooltips."
+      >
+        <ChoiceGroup
+          variant="segmented"
+          label="Text size"
+          value={String(settings.uiTextScale)}
+          options={TEXT_SCALE_OPTIONS}
+          onChange={(value) =>
+            commit({ uiTextScale: Number(value) as UiTextScale })
+          }
+        />
+        <Box sx={{ mt: 1 }}>
+          <ToggleSetting
+            label="Compact spacing"
+            description="Denser layout with every action still available."
+            checked={settings.compactMode}
+            onChange={(compactMode) => commit({ compactMode })}
+            help="Ctrl+Shift+M also toggles this."
+          />
+          <PanelLayoutSetting />
+        </Box>
+      </SectionCard>
+
+      <SectionCard title="Panel content">
         <ToggleSetting
           label="Show crafting panel"
+          description="Ctrl+Shift+C also shows or hides it."
           checked={settings.panelVisible}
           onChange={(panelVisible) => commit({ panelVisible })}
-        />
-        <ToggleSetting
-          label="Compact spacing"
-          checked={settings.compactMode}
-          onChange={(compactMode) => commit({ compactMode })}
-          help="Denser spacing; all actions and details remain available. Ctrl+Shift+M also toggles this."
         />
         <ToggleSetting
           label="Show planned steps"
@@ -405,24 +529,23 @@ export function SettingsBody({
             commit({ showForecastedConditions })
           }
         />
-        <ChoiceGroup
-          variant="pills"
-          label="Other actions to list"
-          value={String(settings.maxAlternatives)}
-          options={[0, 1, 2, 3, 4, 5].map((value) => ({
-            id: String(value),
-            label: String(value),
-          }))}
-          onChange={(value) => commit({ maxAlternatives: Number(value) })}
-        />
+        <Box sx={{ mt: 1.5 }}>
+          <ChoiceGroup
+            variant="pills"
+            label="Other actions to list"
+            value={String(settings.maxAlternatives)}
+            options={[0, 1, 2, 3, 4, 5].map((value) => ({
+              id: String(value),
+              label: String(value),
+            }))}
+            onChange={(value) => commit({ maxAlternatives: Number(value) })}
+          />
+        </Box>
       </SectionCard>
 
       <DisclosureGroup>
         <Disclosure title="Advanced search">
-          <Typography
-            variant="body2"
-            sx={{ color: colors.textSecondary, mb: 1 }}
-          >
+          <Typography variant="body2" sx={{ color: colors.textMuted, mb: 1.5 }}>
             Presets are recommended. Depth, time, states and branches share one
             budget; raising one alone may not improve the result.
           </Typography>
@@ -449,6 +572,7 @@ export function SettingsBody({
               })
             }
           />
+          <Box sx={{ mt: 1 }} />
           <SliderSetting
             label="Turns to look ahead"
             tooltip="Maximum turns in a plan. The other limits may stop the search earlier."
@@ -505,7 +629,12 @@ export function SettingsBody({
               display: 'flex',
               gap: 1.5,
               flexWrap: 'wrap',
-              '& a': { color: colors.gold, fontSize: tokens.type.bodySm },
+              '& a': {
+                color: colors.gold,
+                fontSize: tokens.type.body,
+                fontWeight: 600,
+                textUnderlineOffset: '3px',
+              },
             }}
           >
             <a
@@ -553,7 +682,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         aria-label="Open CraftBuddy settings"
         onClick={() => setOpen(true)}
       >
-        <SettingsIcon sx={{ fontSize: 20 }} />
+        <SettingsIcon sx={{ fontSize: 21 }} />
       </IconButton>
       <Dialog
         // MUI must hide only overlay siblings, never the game controls that
@@ -596,7 +725,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
           '& .MuiDialog-paper': {
             m: 2,
             maxHeight: 'calc(100dvh - 48px)',
-            width: 'min(720px, calc(100vw - 32px))',
+            width: 'min(760px, calc(100vw - 32px))',
+            fontFamily: fonts.body,
+            overflow: 'hidden',
           },
         }}
       >
@@ -607,12 +738,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
             gap: 1,
             alignItems: 'center',
             flexWrap: 'wrap',
-            py: 1.25,
-            px: 2.5,
-            position: 'sticky',
-            top: 0,
-            zIndex: 1,
-            backgroundColor: tokens.surface.panel,
+            py: 1.75,
+            px: 3,
+            position: 'relative',
+            flexShrink: 0,
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0))',
             '&::after': {
               content: '""',
               position: 'absolute',
@@ -624,8 +755,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
             },
           }}
         >
-          <Box id={titleId} sx={{ flex: 1, minWidth: 120 }}>
-            <PanelHeading>CraftBuddy settings</PanelHeading>
+          <Box id={titleId} sx={{ flex: 1, minWidth: 160 }}>
+            <PanelHeading>CraftBuddy</PanelHeading>
+            <Typography
+              component="span"
+              sx={{
+                display: 'block',
+                mt: 0.25,
+                color: colors.textMuted,
+                fontSize: tokens.type.bodySm,
+                fontWeight: 500,
+              }}
+            >
+              Settings
+            </Typography>
           </Box>
           {props.version && (
             <Box component="span" sx={{ ...badgeSx, color: colors.textMuted }}>
@@ -644,10 +787,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
         <DialogContent
           sx={{
             pt: '20px !important',
-            px: 2.5,
-            pb: 2.5,
-            scrollbarWidth: 'thin',
-            scrollbarColor: `${tokens.border.strong} transparent`,
+            px: 3,
+            pb: 3,
+            ...scrollbarSx,
           }}
         >
           <SettingsBody {...props} />

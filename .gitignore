@@ -98,6 +98,7 @@ coverage/
 
 old-nonMinifiedCode/
 0.7.3-nonMinifiedCode/
+non-minified-code-*/
 CraftingCode/
 
 # Captured stdout/stderr from agent-run background processes
