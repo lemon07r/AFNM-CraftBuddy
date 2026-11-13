@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.2.0 — AFNM 0.7.21
+
+- Retarget to 0.7.21-6b1d439. The crafting engine is unchanged; the 0.7.21 balance changes (Qi Pool boost, Consolidated Skill Gem, Numinous Muscles, Stellar Infusion/Refinement, Heavenjudging Eyes) are read live from the game. `afnm-types` stays at 0.7.20 because no 0.7.21 package exists.
+- Simulate Lanternheart Flame: actions now see the game's condition and harmony flag variables (`Condition__Harmonious`, `Harmony__forge`, …), so refining while Harmonious or Brilliant grants Kindled Brilliance as it does in game. Before this the gate always read 0.
+- Redesign the overlay and settings. The next action is a focal card with a gold Use button, gains as labelled chips, costs on their own row and an in-card warning for risky or craft-ending actions. The outcome shows secured and target tier chips with band pips per bar. Conditions read as a labelled sequence with glyphs, so they don't rely on colour. Plan, other actions and automation are one collapsible stack. Compact mode has its own denser layout, and the regular panel caps at 560px.
+- Settings are grouped into cards with a sticky header: a segmented search-effort control showing each preset's time budget, value badges on the goal sliders, aligned toggles and number buttons for alternatives. Help opens on hover or focus, a click or tap pins it, and Escape closes it before the dialog.
+
 ## 7.1.0 — AFNM 0.7.20
 
 - Retarget to 0.7.20-101cd1d and afnm-types 0.7.20.
