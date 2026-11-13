@@ -1,3 +1,12 @@
+/**
+ * Undo division roundoff in conditional means (0.7*3/0.7 is 2.9999999999999996)
+ * so later floor/ceil cleanup cannot drop or add a whole point.
+ */
+function snapRoundoff(value: number): number {
+  const rounded = Math.round(value);
+  return Math.abs(value - rounded) < 1e-9 ? rounded : value;
+}
+
 export interface ActionSurvivabilityFloor {
   stability: number;
   maxStability: number;
@@ -8,6 +17,11 @@ export interface StabilityOutcome {
   stability: number;
   maxStability: number;
   probability: number;
+}
+
+export interface SurvivalConditionedStability {
+  stability: number;
+  stabilityPenalty: number;
 }
 
 /** Turn-local quadrature: cleanup rounds each realized outcome, not its mean. */
@@ -184,12 +198,15 @@ export class StabilityProjection {
     stability: number;
     penalty: number;
     floor: ActionSurvivabilityFloor;
+    survivalConditioned?: SurvivalConditionedStability;
   } {
     let stability = 0;
     let penalty = 0;
     let minimumStability = Infinity;
     let minimumMaximum = Infinity;
     let survivalProbability = 0;
+    let survivingStability = 0;
+    let survivingPenalty = 0;
     for (const outcome of this.outcomes) {
       const p = cleanup
         ? Math.max(
@@ -210,7 +227,11 @@ export class StabilityProjection {
       minimumStability = Math.min(minimumStability, s);
       const maximum = Math.max(0, initialMaximum - p);
       minimumMaximum = Math.min(minimumMaximum, maximum);
-      if (s > 0) survivalProbability += outcome.probability;
+      if (s > 0) {
+        survivalProbability += outcome.probability;
+        survivingStability += outcome.probability * s;
+        survivingPenalty += outcome.probability * p;
+      }
       if (!this.survival)
         visitOutcome?.({
           stability: s,
@@ -218,15 +239,30 @@ export class StabilityProjection {
           probability: outcome.probability,
         });
     }
+    const survival = this.survival?.finish(
+      initialMaximum,
+      decay,
+      cleanup,
+      visitOutcome,
+    );
     return {
       stability,
       penalty,
-      floor: this.survival?.finish(initialMaximum, decay, cleanup, visitOutcome)
-        .floor ?? {
+      floor: survival?.floor ?? {
         stability: minimumStability,
         maxStability: minimumMaximum,
         survivalProbability: Math.max(0, Math.min(1, survivalProbability)),
       },
+      survivalConditioned: survival
+        ? survival.survivalConditioned
+        : survivalProbability > 0
+          ? {
+              stability: snapRoundoff(survivingStability / survivalProbability),
+              stabilityPenalty: snapRoundoff(
+                survivingPenalty / survivalProbability,
+              ),
+            }
+          : undefined,
     };
   }
 }

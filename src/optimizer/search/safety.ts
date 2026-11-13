@@ -8,6 +8,7 @@ import {
   calculateSkillGains,
   applySkill,
   calculateActionSurvivabilityFloor,
+  getSurvivalConditionedState,
 } from '../skills';
 
 import type {
@@ -27,6 +28,8 @@ export {
   shouldDeprioritizeAgainstGuaranteedSafeStabilize,
   shouldUseSurvivabilityFloorForContinuation,
   applySurvivabilityFloorToState,
+  weightContinuationBySurvival,
+  conditionContinuationOnSurvival,
   classifyTerminalState,
 };
 
@@ -80,6 +83,62 @@ function applySurvivabilityFloorToState(
     stabilityPenalty: floorPenalty,
     nativeVariables,
   });
+}
+
+function hasUncollapsedSurvivalRisk(
+  survivabilityFloor: ActionSurvivabilityFloor,
+  requiresProbabilisticSurvival: boolean,
+  displayEndsCraft: boolean,
+): survivabilityFloor is NonNullable<ActionSurvivabilityFloor> {
+  return (
+    !requiresProbabilisticSurvival &&
+    !displayEndsCraft &&
+    survivabilityFloor !== null &&
+    survivabilityFloor.stability <= 0 &&
+    survivabilityFloor.survivalProbability > 0 &&
+    survivabilityFloor.survivalProbability < 1
+  );
+}
+
+/** Only weighted candidates replace their EV resources with surviving means. */
+function conditionContinuationOnSurvival(
+  displayState: CraftingState,
+  survivabilityFloor: ActionSurvivabilityFloor,
+  requiresProbabilisticSurvival: boolean,
+  displayEndsCraft: boolean,
+): CraftingState {
+  return hasUncollapsedSurvivalRisk(
+    survivabilityFloor,
+    requiresProbabilisticSurvival,
+    displayEndsCraft,
+  )
+    ? getSurvivalConditionedState(displayState)
+    : displayState;
+}
+
+/** Price immediate floor-death at the parent, never in the child's cache value. */
+function weightContinuationBySurvival(
+  continuationScore: number,
+  displayState: CraftingState,
+  survivabilityFloor: ActionSurvivabilityFloor,
+  requiresProbabilisticSurvival: boolean,
+  displayEndsCraft: boolean,
+  scoreFinishedState: (state: CraftingState) => number,
+): number {
+  if (
+    !hasUncollapsedSurvivalRisk(
+      survivabilityFloor,
+      requiresProbabilisticSurvival,
+      displayEndsCraft,
+    )
+  ) {
+    return continuationScore;
+  }
+  const probability = survivabilityFloor.survivalProbability;
+  const terminalScore = scoreFinishedState(
+    applySurvivabilityFloorToState(displayState, survivabilityFloor),
+  );
+  return probability * continuationScore + (1 - probability) * terminalScore;
 }
 
 function shouldUseSurvivabilityFloorForContinuation(params: {

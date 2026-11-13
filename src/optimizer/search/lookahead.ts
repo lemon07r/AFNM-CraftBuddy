@@ -75,6 +75,8 @@ import {
   hasFatalTechniqueFailure,
   shouldUseSurvivabilityFloorForContinuation,
   applySurvivabilityFloorToState,
+  weightContinuationBySurvival,
+  conditionContinuationOnSurvival,
   hasGuaranteedSafeStabilizeAction,
   shouldDeprioritizeAgainstGuaranteedSafeStabilize,
   orderRecommendationsBySafety,
@@ -327,6 +329,23 @@ function runLookaheadSearch(
     }
     return baseScore;
   };
+  const scoreFloorEnd = (floorState: CraftingState): number =>
+    scoreStateWithTerminalPenalty(floorState, normalizedCurrentCondition, true);
+  const scoreCandidateContinuation = (
+    candidate: Pick<
+      SearchMoveCandidate,
+      'nextState' | 'survivabilityFloor' | 'requiresProbabilisticSurvival'
+    >,
+    continuationScore: number,
+  ): number =>
+    weightContinuationBySurvival(
+      continuationScore,
+      candidate.nextState,
+      candidate.survivabilityFloor,
+      candidate.requiresProbabilisticSurvival,
+      stateWillAutoFinish(candidate.nextState),
+      scoreFloorEnd,
+    );
   const buildSearchStateForContinuation = (
     currentState: CraftingState,
     skill: SkillDefinition,
@@ -337,6 +356,7 @@ function runLookaheadSearch(
     minimumGuaranteedContinuationStability: number = 0,
   ): {
     searchState: CraftingState;
+    presentationState: CraftingState;
     survivabilityFloor: ActionSurvivabilityFloor;
     requiresProbabilisticSurvival: boolean;
     fatalTechniqueFailure: boolean;
@@ -378,10 +398,17 @@ function runLookaheadSearch(
         minimumGuaranteedContinuationStability,
       });
 
+    const presentationState = requiresProbabilisticSurvival
+      ? applySurvivabilityFloorToState(displayState, survivabilityFloor)
+      : displayState;
     return {
-      searchState: requiresProbabilisticSurvival
-        ? applySurvivabilityFloorToState(displayState, survivabilityFloor)
-        : displayState,
+      presentationState,
+      searchState: conditionContinuationOnSurvival(
+        presentationState,
+        survivabilityFloor,
+        requiresProbabilisticSurvival,
+        stateWillAutoFinish(displayState),
+      ),
       survivabilityFloor,
       requiresProbabilisticSurvival,
       fatalTechniqueFailure,
@@ -656,11 +683,14 @@ function runLookaheadSearch(
         targetPerfection,
       );
 
-      const postMoveScore = estimatePostMoveStateScore(
-        searchState,
-        skill,
-        currentConditionAtDepth,
-        nextConditionQueueAtDepth,
+      const postMoveScore = scoreCandidateContinuation(
+        { nextState, survivabilityFloor, requiresProbabilisticSurvival },
+        estimatePostMoveStateScore(
+          searchState,
+          skill,
+          currentConditionAtDepth,
+          nextConditionQueueAtDepth,
+        ),
       );
       // Ordering-only unlock bonus — must not flow into scored values.
       const unlockOrderingBonus = estimateGoalUnlockOrderingBonus(
@@ -970,6 +1000,7 @@ function runLookaheadSearch(
           score += transition.probability * branchScore;
         }
       }
+      score = scoreCandidateContinuation(candidate, score);
       const scoreDelta = score - bestScore;
       const isClearImprovement = scoreDelta > scoreTieWindow;
       const isScoreTie =
@@ -1206,13 +1237,16 @@ function runLookaheadSearch(
         for (const candidate of orderedFallbackCandidates) {
           const skill = candidate.skill;
           const nextState = candidate.searchState;
-          const score = evaluateFutureScoreAfterSkill(
-            nextState,
-            Math.max(0, remainingDepth - 1),
-            globalDepth + 1,
-            conditionAtDepth,
-            conditionQueueAtDepth,
-            skill,
+          const score = scoreCandidateContinuation(
+            candidate,
+            evaluateFutureScoreAfterSkill(
+              nextState,
+              Math.max(0, remainingDepth - 1),
+              globalDepth + 1,
+              conditionAtDepth,
+              conditionQueueAtDepth,
+              skill,
+            ),
           );
           const scoredCandidate: SearchMoveCandidate = {
             ...candidate,
@@ -1321,6 +1355,7 @@ function runLookaheadSearch(
     depthIndex: number,
     conditionAtDepth: CraftingConditionType,
     nextConditionQueueAtDepth: CraftingConditionType[],
+    displayState: CraftingState,
   ): SkillRecommendation['followUpSkill'] | undefined {
     if (stateWillAutoFinish(stateAfterSkill)) {
       return undefined;
@@ -1359,12 +1394,12 @@ function runLookaheadSearch(
       if (cachedSkill) {
         const { expectedGains, immediateGains, effectiveCosts } =
           calculateRecommendationGains(
-            stateAfterSkill,
+            displayState,
             cachedSkill,
             config,
             followUpConditionEffects,
             applySkill(
-              stateAfterSkill,
+              displayState,
               cachedSkill,
               config,
               followUpConditionEffects,
@@ -1401,11 +1436,18 @@ function runLookaheadSearch(
     const followUpSkill = fallbackCandidate.skill;
     const { expectedGains, immediateGains, effectiveCosts } =
       calculateRecommendationGains(
-        stateAfterSkill,
+        displayState,
         followUpSkill,
         config,
         followUpConditionEffects,
-        fallbackCandidate.searchState,
+        applySkill(
+          displayState,
+          followUpSkill,
+          config,
+          followUpConditionEffects,
+          targetCompletion,
+          conditionAtDepth,
+        ),
       );
     return {
       name: followUpSkill.name,
@@ -1498,7 +1540,7 @@ function runLookaheadSearch(
           skill,
           config,
           currentConditionEffects,
-          newState,
+          candidate.nextState,
         );
       const reasoning = generateReasoning(
         skill,
@@ -1509,11 +1551,14 @@ function runLookaheadSearch(
         { endsCraft },
       );
 
-      const immediateScore = estimatePostMoveStateScore(
-        newState,
-        skill,
-        normalizedCurrentCondition,
-        initialConditionQueue,
+      const immediateScore = scoreCandidateContinuation(
+        candidate,
+        estimatePostMoveStateScore(
+          newState,
+          skill,
+          normalizedCurrentCondition,
+          initialConditionQueue,
+        ),
       );
 
       evaluatedFirstMoves.push({
@@ -1568,7 +1613,7 @@ function runLookaheadSearch(
         normalizedCurrentCondition,
       );
       if (displayState === null) continue;
-      const { searchState } = buildSearchStateForContinuation(
+      const continuation = buildSearchStateForContinuation(
         state,
         rec.skill,
         displayState,
@@ -1578,13 +1623,16 @@ function runLookaheadSearch(
         minimumGuaranteedContinuationStability,
       );
 
-      rec.score = evaluateFutureScoreAfterSkill(
-        searchState,
-        Math.max(0, depthToSearch - 1),
-        1,
-        normalizedCurrentCondition,
-        initialConditionQueue,
-        rec.skill,
+      rec.score = scoreCandidateContinuation(
+        { nextState: displayState, ...continuation },
+        evaluateFutureScoreAfterSkill(
+          continuation.searchState,
+          Math.max(0, depthToSearch - 1),
+          1,
+          normalizedCurrentCondition,
+          initialConditionQueue,
+          rec.skill,
+        ),
       );
     }
 
@@ -1654,15 +1702,16 @@ function runLookaheadSearch(
       if (displayStateAfterSkill === null) {
         continue;
       }
-      const { searchState: stateAfterSkill } = buildSearchStateForContinuation(
-        state,
-        rec.skill,
-        displayStateAfterSkill,
-        currentConditionEffects,
-        normalizedCurrentCondition,
-        hasGuaranteedSafeStabilize,
-        minimumGuaranteedContinuationStability,
-      );
+      const { searchState: stateAfterSkill, presentationState } =
+        buildSearchStateForContinuation(
+          state,
+          rec.skill,
+          displayStateAfterSkill,
+          currentConditionEffects,
+          normalizedCurrentCondition,
+          hasGuaranteedSafeStabilize,
+          minimumGuaranteedContinuationStability,
+        );
 
       const followUpConditionState = getMostLikelyConditionStateAfterSkill(
         stateAfterSkill,
@@ -1679,6 +1728,7 @@ function runLookaheadSearch(
         1,
         followUpConditionState.nextCondition,
         followUpConditionState.nextQueue,
+        presentationState,
       );
     }
   }
@@ -1895,23 +1945,25 @@ function runLookaheadSearch(
     rotationLabelsByName.get(name) ?? name;
 
   if (stateAfterFirstMoveDisplay) {
-    const { searchState: stateAfterFirstMove } =
-      buildSearchStateForContinuation(
-        state,
-        bestFirstMove,
-        stateAfterFirstMoveDisplay,
-        currentConditionEffects,
-        normalizedCurrentCondition,
-        rotationHasGuaranteedSafeStabilize,
-        rotationMinimumGuaranteedContinuationStability,
-      );
+    const {
+      searchState: stateAfterFirstMove,
+      presentationState: stateAfterFirstMoveForDisplay,
+    } = buildSearchStateForContinuation(
+      state,
+      bestFirstMove,
+      stateAfterFirstMoveDisplay,
+      currentConditionEffects,
+      normalizedCurrentCondition,
+      rotationHasGuaranteedSafeStabilize,
+      rotationMinimumGuaranteedContinuationStability,
+    );
     const firstMoveConditionState = getMostLikelyConditionStateAfterSkill(
       stateAfterFirstMove,
       normalizedCurrentCondition,
       initialConditionQueue,
       bestFirstMove,
     );
-    const { path, finalState } = findOptimalPath(
+    const { path } = findOptimalPath(
       stateAfterFirstMove,
       Math.max(0, usedDepth - 1),
       1,
@@ -1944,12 +1996,12 @@ function runLookaheadSearch(
           );
           const { expectedGains, immediateGains, effectiveCosts } =
             calculateRecommendationGains(
-              stateAfterFirstMove,
+              stateAfterFirstMoveForDisplay,
               secondSkill,
               config,
               secondConditionEffects,
               applySkill(
-                stateAfterFirstMove,
+                stateAfterFirstMoveForDisplay,
                 secondSkill,
                 config,
                 secondConditionEffects,
@@ -1969,6 +2021,63 @@ function runLookaheadSearch(
           };
         }
       }
+    }
+
+    // The path was chosen from survival-conditioned resources, so replay it
+    // from the same states: the planned end state describes the line in which
+    // the plan survives, and every listed step stays playable. The first
+    // move's own preview above keeps its EV resources.
+    let finalState = stateAfterFirstMove;
+    let displayCondition = firstMoveConditionState.nextCondition;
+    let displayQueue = firstMoveConditionState.nextQueue;
+    for (const name of path) {
+      if (
+        stateWillAutoFinish(finalState) ||
+        isTerminalState(finalState, config, displayCondition)
+      ) {
+        break;
+      }
+      const skill = config.skills.find((candidate) => candidate.name === name);
+      if (!skill) break;
+      const effects = getConditionEffectsForConfig(config, displayCondition);
+      const available = getAvailableSkills(
+        finalState,
+        config,
+        displayCondition,
+      );
+      const safeContext = getGuaranteedSafeStabilizeContext(
+        finalState,
+        available,
+        effects,
+        displayCondition,
+        true,
+      );
+      const next = applySkill(
+        finalState,
+        skill,
+        config,
+        effects,
+        targetCompletion,
+        displayCondition,
+      );
+      if (!next) break;
+      finalState = buildSearchStateForContinuation(
+        finalState,
+        skill,
+        next,
+        effects,
+        displayCondition,
+        safeContext.hasGuaranteedSafeStabilize,
+        safeContext.minimumGuaranteedContinuationStability,
+      ).searchState;
+      const nextCondition = getMostLikelyConditionStateAfterSkill(
+        finalState,
+        displayCondition,
+        displayQueue,
+        skill,
+      );
+      displayCondition = nextCondition.nextCondition;
+      displayQueue = nextCondition.nextQueue;
     }
 
     // Calculate turns remaining (estimate based on progress needed)

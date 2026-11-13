@@ -1583,8 +1583,9 @@ bounds and the separate floor helper were confirmed gaps at inspection time.
 
 ### Benchmark contracts moved by late cleanup
 
-Two fixed-work contracts changed because of the cleanup timing above, each
-checked by replaying the fixture's lines under the corrected transitions:
+These fixed-work contracts changed following the cleanup correction, each
+checked by replaying the fixture's lines under the corrected transitions and
+survival scoring:
 
 - `user-report-overcraft-endgame` now requires Gentle Stabilize. Late overdraft
   repayment lets its six-action restoration line bank 44,604 perfection;
@@ -1594,6 +1595,14 @@ checked by replaying the fixture's lines under the corrected transitions:
   stability 8, Explosive Fusion pays 10 and survives only the 75% +7 recovery
   (floor 0, 25% fatal); the support technique pays 5 and guarantees 3, then
   stabilizes and restores heat through fusion.
+- `forge-heat-runway-step-2` now requires Focus at 6,000 nodes. At stability 2,
+  Delayed Fusion survives only 75% (floor 0); its losing branch ends the craft
+  at about 21,950. Survival-weighted and conditioned on surviving stability,
+  its depth-6 score is 64,185 versus Focus's 85,160. Focus's first five moves
+  survive with certainty and bank about 85,859 at the horizon. Depth 5 hides
+  this payoff (Delayed Fusion 63,576 versus Focus 58,228), so bind the contract
+  to 6,000 nodes rather than speed. Temporary heat zero is accepted and
+  recovered through fusion, as in step-3; heat alone is not craft survival.
 
 ### Percentage conditions read running progress
 
