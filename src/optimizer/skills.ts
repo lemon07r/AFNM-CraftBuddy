@@ -2138,10 +2138,14 @@ function buildPreMasteryActionVariables(
     activeBuffs,
     masteryUpgrades,
   );
-  // i9r adds harmony against the same pre-buff base, then applies conditions.
+  // i9r adds harmony against the same pre-buff base and folds cost reductions
+  // through p7r before applying conditions.
   // Keep the memoized buffed frame immutable.
   const withHarmony =
-    harmonyMods.controlMultiplier === 1 && harmonyMods.intensityMultiplier === 1
+    harmonyMods.controlMultiplier === 1 &&
+    harmonyMods.intensityMultiplier === 1 &&
+    harmonyMods.qiCostReduction === 0 &&
+    harmonyMods.stabilityCostReduction === 0
       ? withBuffs
       : {
           ...withBuffs,
@@ -2151,25 +2155,31 @@ function buildPreMasteryActionVariables(
           intensity:
             withBuffs.intensity +
             (harmonyMods.intensityMultiplier - 1) * config.baseIntensity,
+          qiCostReduction:
+            harmonyMods.qiCostReduction !== 0
+              ? combineCostStat(
+                  true,
+                  withBuffs.qiCostReduction,
+                  harmonyMods.qiCostReduction,
+                )
+              : withBuffs.qiCostReduction,
+          stabilityCostReduction:
+            harmonyMods.stabilityCostReduction !== 0
+              ? combineCostStat(
+                  true,
+                  withBuffs.stabilityCostReduction,
+                  harmonyMods.stabilityCostReduction,
+                )
+              : withBuffs.stabilityCostReduction,
         };
   const withConditions = applyConditionEffectsToVariables(
     withHarmony,
     conditionEffects,
   );
 
-  // Crit/success remain additive; cost percentages retain their floor contract.
+  // Crit/success remain additive.
   withConditions.critchance += harmonyMods.critChanceBonus;
   withConditions.successChanceBonus += harmonyMods.successChanceBonus;
-  withConditions.poolCostPercentage = Math.floor(
-    (withConditions.poolCostPercentage / 100) *
-      (harmonyMods.poolCostPercentage / 100) *
-      100,
-  );
-  withConditions.stabilityCostPercentage = Math.floor(
-    (withConditions.stabilityCostPercentage / 100) *
-      (harmonyMods.stabilityCostPercentage / 100) *
-      100,
-  );
   return withConditions;
 }
 
@@ -2236,16 +2246,14 @@ interface PostCostStabilityFrame {
  * Calculate actual action costs after all modifiers using game order/rounding.
  *
  * Runtime order (getPoolCost / getStabilityCost):
- * - Condition `pool`/`stability` multipliers scale poolCostPercentage /
- *   stabilityCostPercentage, unrounded.
- * - Pool: add poolCostFlat (clamped at 0), then a single
- *   `Math.floor(cost * poolCostPercentage / 100)`.
- * - Stability: a single `Math.ceil(negativeDelta * stabilityCostPercentage / 100)`.
- * - The harmony cost multiplier is then applied as a *separate outer* floor,
- *   not folded into the percentage:
+ * - Ordinary and Reaction reductions share the p7r cost-stat fold, followed by
+ *   condition reductions/penalties, before the single cost floor.
+ * - Pool: add poolCostFlat (clamped at 0), then floor the scaled cost.
+ * - Stability: floor the scaled spending (ceil its negative delta).
+ * - Only Enhancing Echo applies a *separate outer* floor:
  *     pool      = Math.floor(getPoolCost(...) * harmonyPoolMultiplier)
  *     stability = Math.floor(getStabilityCost(...) * harmonyStabilityMultiplier)
- *   Folding it into the percentage instead would drift by 1 on fractional cases.
+ *   Folding Echo into the reductions would drift by 1 on fractional cases.
  */
 export function calculateEffectiveActionCosts(
   state: CraftingState,
@@ -2291,12 +2299,9 @@ export function calculateEffectiveActionCosts(
       config.craftingType,
       skill.type,
     );
-    harmonyPoolMultiplier =
-      (baseHarmonyMods.poolCostPercentage / 100) *
-      (harmonyCostMultipliers.poolCostPercentage / 100);
+    harmonyPoolMultiplier = harmonyCostMultipliers.poolCostPercentage / 100;
     harmonyStabilityMultiplier =
-      (baseHarmonyMods.stabilityCostPercentage / 100) *
-      (harmonyCostMultipliers.stabilityCostPercentage / 100);
+      harmonyCostMultipliers.stabilityCostPercentage / 100;
 
     if (hasCostAffectingBuff) {
       // Read only the buffed cost channels. The full action frame's condition
@@ -2347,6 +2352,18 @@ export function calculateEffectiveActionCosts(
           ) / Math.max(1e-10, state.stabilityCostPercentage);
       }
     }
+    if (baseHarmonyMods.qiCostReduction !== 0)
+      qiReduction = combineCostStat(
+        true,
+        qiReduction,
+        baseHarmonyMods.qiCostReduction,
+      );
+    if (baseHarmonyMods.stabilityCostReduction !== 0)
+      stabilityReduction = combineCostStat(
+        true,
+        stabilityReduction,
+        baseHarmonyMods.stabilityCostReduction,
+      );
   }
   // Condition effects multiply the cost *percentages* rather than the raw
   // costs, and are folded in before any rounding:

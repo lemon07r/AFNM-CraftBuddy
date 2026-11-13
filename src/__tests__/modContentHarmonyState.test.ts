@@ -281,7 +281,7 @@ describe('modContent harmony hydration', () => {
       recommendedTechniqueTypes: ['support'] as const,
       additionalData: {
         alchemicalReactionModifiers: {
-          stabilityCostPercentage: 75,
+          stabilityCostReduction: 25,
         },
       },
     };

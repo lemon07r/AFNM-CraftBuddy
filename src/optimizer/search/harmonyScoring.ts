@@ -65,14 +65,14 @@ function evaluateGenericHarmonyModifierQuality(
     mods.successChanceBonus !== 0,
   );
   addQuality(
-    clampQuality((100 - mods.poolCostPercentage) / 25),
+    clampQuality(mods.qiCostReduction / 25),
     1,
-    mods.poolCostPercentage !== 100,
+    mods.qiCostReduction !== 0,
   );
   addQuality(
-    clampQuality((100 - mods.stabilityCostPercentage) / 25),
+    clampQuality(mods.stabilityCostReduction / 25),
     1,
-    mods.stabilityCostPercentage !== 100,
+    mods.stabilityCostReduction !== 0,
   );
 
   if (totalWeight <= 0) {

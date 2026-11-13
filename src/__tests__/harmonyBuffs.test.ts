@@ -4,8 +4,16 @@ import type {
   HarmonyType,
   HarmonyData,
 } from '../optimizer/gameTypes';
-import type { HarmonyStatModifiers } from '../optimizer/harmony';
-import { applySkill, calculateSkillGains } from '../optimizer/skills';
+import {
+  getHarmonyStatModifiers,
+  processHarmonyEffect,
+  type HarmonyStatModifiers,
+} from '../optimizer/harmony';
+import {
+  applySkill,
+  calculateEffectiveActionCosts,
+  calculateSkillGains,
+} from '../optimizer/skills';
 import { hydrateHarmonyData } from '../modContent/harmonyState';
 import { retargetConfig, retargetSkill } from './fixtures/runtime0717';
 
@@ -220,11 +228,232 @@ describe('harmony-owned live buffs', () => {
     expect(next.buffs.has('reaction')).toBe(false);
     expect(
       next.harmonyData?.additionalData?.alchemicalReactionModifiers,
-    ).toEqual({ poolCostPercentage: 75 });
+    ).toEqual({ qiCostReduction: 25 });
     expect(calculateSkillGains(next, bothBars, config).perfection).toBe(100);
     expect(state.buffs.get('reaction')).toBe(heldBuff);
     expect(state.buffs.get('reaction')).toEqual(buff);
   });
+});
+
+const COST_REACTIONS = [
+  {
+    reduction: 'qiCostReduction',
+    cost: 'qiCost',
+    legacy: 'poolCostPercentage',
+    charges: ['refine', 'support'],
+  },
+  {
+    reduction: 'stabilityCostReduction',
+    cost: 'stabilityCost',
+    legacy: 'stabilityCostPercentage',
+    charges: ['fusion', 'support'],
+  },
+] as const;
+
+function simulatedCostReaction(
+  charges: readonly ('fusion' | 'refine' | 'support')[],
+): HarmonyData {
+  return processHarmonyEffect(
+    {
+      recommendedTechniqueTypes: [],
+      alchemicalArts: { charges: [...charges], lastCombo: [] },
+    },
+    'alchemical',
+    'refine',
+  ).harmonyData;
+}
+
+describe('Reaction cost reduction channels', () => {
+  const paymentCases = COST_REACTIONS.flatMap((reaction) =>
+    (['state', 'buff'] as const).flatMap((source) =>
+      [
+        { baseCost: 2, expectedCost: 1 },
+        { baseCost: 7, expectedCost: 4 },
+      ].map((payment) => ({ ...reaction, source, ...payment })),
+    ),
+  );
+
+  it.each(paymentCases)(
+    'folds $reduction from $source before the single floor for cost $baseCost',
+    ({ reduction, cost, charges, source, baseCost, expectedCost }) => {
+      const state = new CraftingState({
+        qi: 100,
+        stability: 50,
+        harmonyData: simulatedCostReaction(charges),
+        ...(source === 'state'
+          ? { [reduction]: 20 }
+          : {
+              buffs: new Map([
+                [
+                  'ordinary',
+                  liveBuff('Ordinary', { [reduction]: { value: 20 } }),
+                ],
+              ]),
+            }),
+      });
+      const skill = retargetSkill({
+        qiCost: 0,
+        stabilityCost: 0,
+        [cost]: baseCost,
+      });
+      const config = configFor('alchemical');
+      for (let repeat = 0; repeat < 2; repeat++) {
+        expect(
+          calculateEffectiveActionCosts(state, skill, 0, [], config)[cost],
+        ).toBe(expectedCost);
+        const next = applySkill(state, skill, config)!;
+        expect(
+          cost === 'qiCost'
+            ? state.qi - next.qi
+            : state.stability - next.stability,
+        ).toBe(expectedCost);
+      }
+    },
+  );
+
+  it.each(['technique', 'buff'] as const)(
+    'reduces a negative stability %s effect of -8 to -6',
+    (source) => {
+      const effect = { kind: 'stability', amount: { value: -8 } } as const;
+      const state = new CraftingState({
+        qi: 100,
+        stability: 50,
+        harmonyData: simulatedCostReaction(['fusion', 'support']),
+        buffs:
+          source === 'buff'
+            ? new Map([
+                [
+                  'loss',
+                  {
+                    name: 'Loss',
+                    stacks: 1,
+                    definition: {
+                      name: 'Loss',
+                      canStack: false,
+                      effects: [effect],
+                    },
+                  },
+                ],
+              ])
+            : new Map(),
+      });
+      const skill = retargetSkill({
+        qiCost: 0,
+        stabilityCost: 0,
+        effects: source === 'technique' ? [effect] : [],
+      });
+      for (let repeat = 0; repeat < 2; repeat++) {
+        expect(
+          applySkill(state, skill, configFor('alchemical'))!.stability,
+        ).toBe(44);
+      }
+    },
+  );
+
+  it.each(COST_REACTIONS)(
+    'prices hydrated and simulated $reduction reactions identically',
+    ({ reduction, cost, charges }) => {
+      const buffs = new Map([
+        ['reaction', liveBuff('Reaction', { [reduction]: { value: 25 } })],
+        ['ordinary', liveBuff('Ordinary', { [reduction]: { value: 20 } })],
+      ]);
+      const hydrated = hydrateHarmonyData({
+        isSublimeCraft: true,
+        craftingType: 'alchemical',
+        buffs,
+      });
+      const state = new CraftingState({ qi: 100, stability: 50, buffs });
+      const config = configFor('alchemical');
+      for (const baseCost of [2, 7]) {
+        const skill = retargetSkill({
+          qiCost: 0,
+          stabilityCost: 0,
+          [cost]: baseCost,
+        });
+        const simulated = state.copy({
+          harmonyData: simulatedCostReaction(charges),
+        });
+        const expected = calculateEffectiveActionCosts(
+          simulated,
+          skill,
+          0,
+          [],
+          config,
+        );
+        expect(
+          calculateEffectiveActionCosts(
+            state.copy({ harmonyData: hydrated.harmonyData }),
+            skill,
+            0,
+            [],
+            config,
+          ),
+        ).toEqual(expected);
+        expect(expected[cost]).toBe(baseCost === 2 ? 1 : 4);
+        // The ordinary live-stat path is the runtime-equivalent reference.
+        expect(
+          calculateEffectiveActionCosts(state, skill, 0, [], config),
+        ).toEqual(expected);
+      }
+    },
+  );
+
+  it.each(COST_REACTIONS)(
+    'normalizes legacy $legacy saved modifiers without leaking them into outputs',
+    ({ reduction, cost, legacy }) => {
+      const harmonyData: HarmonyData = {
+        recommendedTechniqueTypes: [],
+        alchemicalArts: { charges: [], lastCombo: [] },
+        additionalData: { alchemicalReactionModifiers: { [legacy]: 75 } },
+      };
+      const state = new CraftingState({
+        qi: 100,
+        stability: 50,
+        [reduction]: 20,
+        harmonyData,
+      });
+      const canonical = state.copy({
+        harmonyData: {
+          ...harmonyData,
+          additionalData: { alchemicalReactionModifiers: { [reduction]: 25 } },
+        },
+      });
+      const config = configFor('alchemical');
+      for (const baseCost of [2, 7]) {
+        const skill = retargetSkill({
+          qiCost: 0,
+          stabilityCost: 0,
+          [cost]: baseCost,
+        });
+        const expected = calculateEffectiveActionCosts(
+          canonical,
+          skill,
+          0,
+          [],
+          config,
+        );
+        expect(
+          calculateEffectiveActionCosts(state, skill, 0, [], config),
+        ).toEqual(expected);
+        expect(expected[cost]).toBe(baseCost === 2 ? 1 : 4);
+      }
+      const mods = getHarmonyStatModifiers(harmonyData, 'alchemical');
+      expect(mods).toEqual(
+        getHarmonyStatModifiers(canonical.harmonyData, 'alchemical'),
+      );
+      expect(mods).not.toHaveProperty(legacy);
+      const next = processHarmonyEffect(harmonyData, 'alchemical', 'support');
+      expect(
+        next.harmonyData.additionalData?.alchemicalReactionModifiers,
+      ).toEqual({
+        [reduction]: 25,
+      });
+      expect(next.statModifiers).toEqual(mods);
+      expect(harmonyData.additionalData?.alchemicalReactionModifiers).toEqual({
+        [legacy]: 75,
+      });
+    },
+  );
 });
 
 const REACTIONS: Array<{
@@ -233,7 +462,7 @@ const REACTIONS: Array<{
 }> = [
   {
     stats: { stabilityCostReduction: { value: 25 } },
-    modifiers: { stabilityCostPercentage: 75 },
+    modifiers: { stabilityCostReduction: 25 },
   },
   {
     stats: { intensity: { value: 0.25, stat: 'intensity' } },
@@ -246,7 +475,7 @@ const REACTIONS: Array<{
   { stats: { critchance: { value: 25 } }, modifiers: { critChanceBonus: 25 } },
   {
     stats: { qiCostReduction: { value: 25 } },
-    modifiers: { poolCostPercentage: 75 },
+    modifiers: { qiCostReduction: 25 },
   },
   {
     stats: { successChanceBonus: { value: 0.25 } },

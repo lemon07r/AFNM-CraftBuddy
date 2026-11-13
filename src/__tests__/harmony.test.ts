@@ -451,7 +451,7 @@ describe('Formless Way', () => {
     );
     expect(mods.controlMultiplier).toBe(1);
     expect(mods.intensityMultiplier).toBe(1);
-    expect(mods.poolCostPercentage).toBe(100);
+    expect(mods.qiCostReduction).toBe(0);
   });
 });
 
@@ -1205,4 +1205,3 @@ describe('Captivating Cadence', () => {
     expect(state2!.maxStability).toBe(57);
   });
 });
-

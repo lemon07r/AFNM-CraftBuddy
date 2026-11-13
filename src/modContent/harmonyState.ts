@@ -286,8 +286,8 @@ function getReactionModifiers(
     if (scaling.stat !== undefined) return undefined;
     if (scaling.value === 25) {
       if (stat === 'stabilityCostReduction')
-        return { stabilityCostPercentage: 75 };
-      if (stat === 'qiCostReduction') return { poolCostPercentage: 75 };
+        return { stabilityCostReduction: 25 };
+      if (stat === 'qiCostReduction') return { qiCostReduction: 25 };
       if (stat === 'critchance') return { critChanceBonus: 25 };
     }
     if (stat === 'successChanceBonus' && scaling.value === 0.25)
