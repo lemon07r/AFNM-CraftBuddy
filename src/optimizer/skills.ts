@@ -1628,6 +1628,26 @@ function needsOrderedCritBars(buffs: ActiveBuffMap): boolean {
   return getImmutableCritBuffSummary(buffs).needsOrderedBars;
 }
 
+const skillCreatesOrderedBuffCache = new WeakMap<SkillDefinition, boolean>();
+
+/** Skill definitions are immutable, like the other definition-keyed caches. */
+function skillCreatesOrderedBuff(skill: SkillDefinition): boolean {
+  const cached = skillCreatesOrderedBuffCache.get(skill);
+  if (cached !== undefined) return cached;
+  const createsOrderedBuff =
+    skill.effects?.some(
+      (effect) =>
+        effect.kind === 'createBuff' &&
+        !!(
+          effect.buff?.critCycle ||
+          effect.buff?.overcritChainGrowth ||
+          effect.buff?.triggeredEffects?.length
+        ),
+    ) ?? false;
+  skillCreatesOrderedBuffCache.set(skill, createsOrderedBuff);
+  return createsOrderedBuff;
+}
+
 /** Call only for a positive bar application. Replaces entries, never mutates a
  * tracked buff (previews pass their own map). Items have no action id. */
 function barCritInputs(
@@ -4268,10 +4288,12 @@ function applySkillTransition(
       config,
     );
 
-  // Calculate gains BEFORE applying buffs from this skill
+  // Buffs created mid-technique must affect only the applications after them.
   const orderedNumeric = hasEffectInterceptors(resolvedActiveBuffs);
   const orderedEffects =
-    (orderedNumeric || needsOrderedCritBars(resolvedActiveBuffs)) &&
+    (orderedNumeric ||
+      needsOrderedCritBars(resolvedActiveBuffs) ||
+      skillCreatesOrderedBuff(skill)) &&
     !!skill.effects?.length;
   const newBuffs = new Map(resolvedActiveBuffs);
   let buffRevision = 0;
@@ -5327,7 +5349,7 @@ function applySkillTransition(
         // Buff bar applications fire the same runtime triggers as technique
         // applications (e.g. Illume Crucible's onStabilize completion feeds
         // True Bifang Flame's blaze).
-        if (triggerBuffsPresent && amount > 0) {
+        if (canDispatchBuffTriggers && amount > 0) {
           const barAfter = runningCompletion + amount;
           runningCompletion = barAfter;
           dispatchBuffTriggers(
@@ -5352,7 +5374,7 @@ function applySkillTransition(
         if (recordBarChanges && amount !== 0) {
           buffBarContributions.push({ bar: 'perfection', amount });
         }
-        if (triggerBuffsPresent && amount > 0) {
+        if (canDispatchBuffTriggers && amount > 0) {
           const barAfter = runningPerfection + amount;
           runningPerfection = barAfter;
           dispatchBuffTriggers(
@@ -5379,7 +5401,7 @@ function applySkillTransition(
           conditionFactor,
         );
         buffStabilityDelta += amount;
-        if (triggerBuffsPresent) {
+        if (canDispatchBuffTriggers) {
           dispatchBuffTriggers(
             uninterceptedRaw < 0 ? 'stabilitySpent' : 'stabilityRestored',
             Math.abs(amount),

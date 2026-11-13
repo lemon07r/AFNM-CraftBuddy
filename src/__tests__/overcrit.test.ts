@@ -33,6 +33,11 @@ import {
 } from './fixtures/overcrit';
 
 describe('0.7.20 exact crit expectation', () => {
+  it.each([0, 50])('never crits at negative chance with overcrit=%s', (oc) => {
+    expect(calculateExpectedCritMultiplier(-10, 200, oc)).toBe(1);
+    expect(calculateExpectedCritMultiplier(-10, 200, oc)).toBe(1);
+  });
+
   it.each([0, 0.25, 50, 90, 100, 125, 200])(
     'preserves the old formula byte-for-byte without overcrit at cc=%s',
     (cc) => {
@@ -150,6 +155,126 @@ describe('0.7.20 crit transition and trigger boundaries', () => {
   });
   const transition = (state: CraftingState, skill = multi) =>
     applySkill(state, skill, retargetConfig(skill), [], 100, undefined, 100)!;
+
+  it('prices a bar with a cycle created earlier in the technique and ticks it once', () => {
+    const cycle: BuffDefinition = {
+      ...critCycle,
+      initialState: { actionsRemaining: '1' },
+    };
+    const result = transition(
+      critState({ critChance: 70 }),
+      retargetSkill({
+        effects: [
+          { kind: 'createBuff', buff: cycle, stacks: { value: 1 } },
+          { kind: 'completion', amount: { value: 100 } },
+        ],
+      }),
+    );
+    expect(result.completion).toBe(220);
+    expect(result.buffs.get('crit_cycle')?.internalState).toMatchObject({
+      actionsRemaining: 5,
+      critCycleReady: 1,
+    });
+  });
+
+  it('does not tick a new cycle for a bar applied before its creation', () => {
+    const cycle: BuffDefinition = {
+      ...critCycle,
+      initialState: { actionsRemaining: '1' },
+    };
+    const result = transition(
+      critState({ critChance: 70 }),
+      retargetSkill({
+        effects: [
+          { kind: 'completion', amount: { value: 100 } },
+          { kind: 'createBuff', buff: cycle, stacks: { value: 1 } },
+        ],
+      }),
+    );
+    expect(result.completion).toBe(170);
+    expect(result.buffs.get('crit_cycle')?.internalState).toEqual({
+      actionsRemaining: 1,
+    });
+  });
+
+  it('includes chain growth created before a technique bar', () => {
+    const growth: BuffDefinition = {
+      name: 'New growth',
+      canStack: false,
+      effects: [],
+      overcritChainGrowth: 100,
+    };
+    const result = transition(
+      critState({ critChance: 100, overcrit: 50 }),
+      retargetSkill({
+        effects: [
+          { kind: 'createBuff', buff: growth, stacks: { value: 1 } },
+          { kind: 'completion', amount: { value: 100 } },
+        ],
+      }),
+    );
+    expect(result.completion).toBe(
+      Math.floor(100 * calculateExpectedCritMultiplier(100, 200, 50, 0, 100)),
+    );
+  });
+
+  it('dispatches later buff gains to a new listener with live progress but not earlier costs', () => {
+    const listener: BuffDefinition = {
+      name: 'New listener',
+      canStack: false,
+      effects: [],
+      triggeredEffects: [
+        {
+          trigger: 'completionGained',
+          effects: [
+            { kind: 'perfection', amount: { value: 10 } },
+            {
+              kind: 'setState',
+              key: 'received',
+              value: { value: 1, eqn: 'amount' },
+            },
+            {
+              kind: 'setState',
+              key: 'percent',
+              value: { value: 1, eqn: 'percentGained' },
+            },
+          ],
+        },
+        ...(['poolSpent', 'stabilitySpent'] as const).map((trigger) => ({
+          trigger,
+          effects: [
+            {
+              kind: 'setState' as const,
+              key: trigger,
+              value: { value: 1 },
+            },
+          ],
+        })),
+      ],
+    };
+    const payout: BuffDefinition = {
+      name: 'Payout',
+      canStack: false,
+      effects: [{ kind: 'completion', amount: { value: 100 } }],
+    };
+    const result = transition(
+      critState({ buffs: new Map([['payout', held(payout)]]) }),
+      retargetSkill({
+        effects: [
+          { kind: 'completion', amount: { value: 100 } },
+          { kind: 'createBuff', buff: listener, stacks: { value: 1 } },
+        ],
+      }),
+    );
+    expect(result.completion).toBe(200);
+    expect(result.perfection).toBe(10);
+    const internal = result.buffs.get('new_listener')?.internalState;
+    expect(internal?.received).toBe(100);
+    // setState Scaling floors values above ten, including this percentage.
+    expect(internal?.percent).toBe(Math.floor(100 / 1.3));
+    expect(internal?.poolSpent).toBeUndefined();
+    expect(internal?.stabilitySpent).toBeUndefined();
+  });
 
   it.each([
     'stacks',

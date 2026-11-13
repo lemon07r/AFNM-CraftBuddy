@@ -558,7 +558,7 @@ export function calculateExpectedCritMultiplier(
   // Most search frames have no overcrit. Keep the original arithmetic and avoid
   // both chain work and memo-key allocation on that path.
   if (overcrit === 0) {
-    const chance = Math.min(critChance, 100) / 100;
+    const chance = Math.max(0, Math.min(critChance, 100)) / 100;
     const multiplier =
       (critMultiplier + Math.max(0, critChance - 100) * 3) / 100;
     return 1 - chance + chance * multiplier;
@@ -573,7 +573,7 @@ export function calculateExpectedCritMultiplier(
     critMultiplier + bonusCritMultiplier + Math.max(0, overcrit - 90) * 5;
 
   // For deterministic simulation, use expected value
-  const actualCritChance = Math.min(critChance, 100) / 100;
+  const actualCritChance = Math.max(0, Math.min(critChance, 100)) / 100;
   const critMultiplierAsRatio = effectiveCritMultiplier / 100;
 
   let expectedChain = 1;
@@ -582,7 +582,7 @@ export function calculateExpectedCritMultiplier(
       overcrit,
       Math.min(99, 90 + Math.max(0, overcritCapBonus)),
     );
-    let threshold = Math.min(critChance, 100);
+    let threshold = Math.max(0, Math.min(critChance, 100));
     let reachProbability = 1;
     for (let step = 0; step < 9; step++) {
       threshold = Math.floor((threshold * cap) / 100);
