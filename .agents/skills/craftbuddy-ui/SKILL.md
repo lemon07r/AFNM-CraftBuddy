@@ -33,6 +33,8 @@ agent-browser screenshot
 
 Harness query params (see `scripts/ui/agent-browser-harness.tsx`): `?state=` picks a fixture (for example `outcome-setup`, `outcome-autofinish`, `outcome-legacy`, `auto-ready`, `auto-stopping`, `auto-native-autouse`, `loading`), `?harmony=` selects the harmony type, `?compact=`, `?scene=gamehud` and `?viewport=WxH` set layout. Capture the changed panel states (settings, auto, loading/stop) as well as normal recommendations.
 
+For the real game typography, run `bunx --bun @electron/asar extract-file "<game>/resources/app.asar" dist-electron/AfnmNormalFont.ttf` from `tmp/game-fonts/`, and repeat for `dist-electron/AfnmFancyFont.otf`. The harness build copies these optional, gitignored fonts into its `fonts/` directory; without them it uses the theme's serif fallbacks. Body/data use `normalFont`; `fancyFont` is reserved for display headings and the primary technique name.
+
 ## Integration clues
 
 - Prefer shared styling in `src/ui/theme.ts`, `src/ui/ThemeProvider.tsx` and `src/ui/components/StyledComponents.tsx`; preserve pointer events so the overlay does not block unrelated game controls.

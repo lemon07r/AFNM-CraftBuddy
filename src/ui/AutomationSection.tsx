@@ -15,11 +15,12 @@ export function AutomationSection({
   onPolicyChange?: (policy: AutoCraftPolicy) => void;
 }) {
   return (
-    <Disclosure title="Automatic crafting">
+    <Disclosure title="Automatic crafting" meta={autoMode.statusTitle}>
       <Typography variant="body2" sx={{ color: colors.textSecondary, mb: 1 }}>
         {autoMode.statusDetail}
       </Typography>
       <ChoiceGroup
+        variant="cards"
         label="Allowed actions"
         value={autoMode.policy}
         options={AUTO_CRAFT_POLICY_OPTIONS.map((option) => ({
@@ -40,7 +41,11 @@ export function AutomationSection({
         Uses real game controls. Stop remains available at the top of the panel.
       </Typography>
       {!autoMode.armed && (
-        <ActionButton disabled={!autoMode.canArm || !onArm} onClick={onArm}>
+        <ActionButton
+          variant="contained"
+          disabled={!autoMode.canArm || !onArm}
+          onClick={onArm}
+        >
           Start automatic crafting
         </ActionButton>
       )}

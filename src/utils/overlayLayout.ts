@@ -37,7 +37,7 @@ export const OVERLAY_PANEL_MAX_WIDTH_PX = {
   // Regular mode should expand on narrow lanes, but once the lane is wider
   // than the panel's content model can use well, stop growing instead of
   // turning the overlay into a full-screen slab.
-  regular: 680,
+  regular: 560,
   compact: 320,
 } as const;
 export const OVERLAY_PANEL_BLEED_PX = {
