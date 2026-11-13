@@ -35,6 +35,7 @@ import { retargetScenarios } from './runtime0717';
 import { mechanics0719Scenarios } from './mechanics0719';
 import { companionScenarios } from './companions';
 import { returningCycleScenarios } from './returningCycle';
+import { overcritScenarios } from './overcrit';
 
 // Freeze the v4 seeded pool: adding a registry entry must not remap existing
 // random inputs. All registry entries still get the two exhaustive harmony
@@ -1885,6 +1886,7 @@ export function buildDifferentialCorpus(): DifferentialCorpus {
     ...[
       ...retargetScenarios(),
       ...returningCycleScenarios(),
+      ...overcritScenarios(),
       ...mechanics0719Scenarios(),
       ...companionScenarios(),
     ].map(

@@ -5630,15 +5630,19 @@ describe('scoreState (isolated)', () => {
     // cleanup (7 - 9 + 6.25 -> 4), enabling a longer line. Focus -> First Peak
     // instead ends at 37,115 perfection (7 - 27 -> 0).
     expect(result.recommendation!.skill.key).toBe('gentle_stabilize');
-    // Additive harmony stats trigger stable-recommendation exit at depth 5
-    // (margin 6,362 > 4,160), one pass before move six. Re-energisation ->
-    // Unstable Refine still banks more (48,616 vs 45,617 perfection); the next
-    // step's search re-plans the tail.
-    expect(result.optimalRotation?.slice(0, 4)).toEqual([
+    // Additive harmony stats plus entity-frame buff crits (E4i -> B4i/z4i)
+    // carry the 400-node line through to the craft end: 52,527 perfection at
+    // stability 0, versus 45,617 (harmony only, stopping at depth 5) and 43,912
+    // (buff crits only). Keep the exact corrected rotation.
+    expect(result.optimalRotation).toEqual([
       'Gentle Stabilize',
-      'Focus',
-      'Repurpose Qi',
-      'Unstable Refine',
+      'Delicate Refine',
+      'Delicate Refine',
+      'Gentle Re-energisation',
+      'Delayed Refine',
+      'Delicate Refine',
+      'Efficient Fusion',
+      'Golden Path: First Peak',
     ]);
     expect(result.expectedFinalState?.stability).toBe(0);
     expect(result.expectedFinalState?.perfection ?? 0).toBeGreaterThan(37115);

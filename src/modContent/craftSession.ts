@@ -35,6 +35,7 @@ export interface IntegrationDiagnostics {
   techniqueFromKnownFallbackCount: number;
   techniqueFromKnownResolverFailureCount: number;
   usingModApiScalingEvaluator: boolean;
+  /** Legacy replay/debug field. Always false: native crit helpers roll RNG. */
   usingModApiOvercritHelper: boolean;
   usingModApiCanUseActionPrecheck: boolean;
   usingModApiCapGetters: boolean;

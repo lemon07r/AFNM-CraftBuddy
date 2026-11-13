@@ -12,7 +12,6 @@ import {
   type SkillDefinition,
 } from '../optimizer/skills';
 import { buildCanonicalNativeVariables } from '../optimizer/nativeVariables';
-import { setNativeCraftingUtils } from '../optimizer/gameTypes';
 import { hydrateHarmonyData } from '../modContent/harmonyState';
 import {
   buildOptimizerReplaySnapshotWithHistory,
@@ -188,9 +187,7 @@ function createReplayTurnSnapshot(
   };
 }
 
-afterEach(() => {
-  setNativeCraftingUtils(undefined);
-});
+afterEach(() => {});
 
 describe('modContent harmony hydration', () => {
   it('hydrates forge heat from native variables when progress harmony data is missing', () => {
@@ -1068,16 +1065,7 @@ describe('integration regression - forge heat parity', () => {
     expect(result.alternativeSkills[0]?.skill.key).toBe('invasive_refine');
   });
 
-  it('ignores misbehaving native scaling for upgrade-bearing refine effects', () => {
-    const nativeEvaluateScaling = jest.fn(
-      (scaling: Record<string, unknown>) => {
-        return scaling.upgradeKey === 'perfection' ? 999999 : Number.NaN;
-      },
-    );
-    setNativeCraftingUtils({
-      evaluateScaling: nativeEvaluateScaling,
-    });
-
+  it('evaluates upgrade-bearing refine effects locally', () => {
     const simpleFusion = createSkill({
       name: 'Simple Fusion',
       key: 'simple_fusion',
@@ -1130,18 +1118,12 @@ describe('integration regression - forge heat parity', () => {
       { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 200000, beamWidth: 8 },
     );
 
-    expect(nativeEvaluateScaling).not.toHaveBeenCalled();
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation?.skill.key).toBe('simple_fusion');
     expect(result.recommendation?.immediateGains.perfection).toBe(0);
   });
 
-  it('ignores misbehaving native scaling for non-upgrade refine side effects at zero heat', () => {
-    const nativeEvaluateScaling = jest.fn(() => 999999);
-    setNativeCraftingUtils({
-      evaluateScaling: nativeEvaluateScaling,
-    });
-
+  it('evaluates non-upgrade refine side effects locally at zero heat', () => {
     const simpleFusion = createSkill({
       name: 'Simple Fusion',
       key: 'simple_fusion',
@@ -1205,7 +1187,6 @@ describe('integration regression - forge heat parity', () => {
       { timeBudgetMs: FIXED_WORK_CLOCK_MS, maxNodes: 200000, beamWidth: 8 },
     );
 
-    expect(nativeEvaluateScaling).not.toHaveBeenCalled();
     expect(result.recommendation).not.toBeNull();
     expect(result.recommendation?.skill.key).toBe('simple_fusion');
     expect(

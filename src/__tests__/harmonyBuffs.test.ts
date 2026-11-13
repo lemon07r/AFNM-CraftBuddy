@@ -106,6 +106,45 @@ describe('harmony-owned live buffs', () => {
     },
   );
 
+  it('counts Resonance crit chance once in buff bar crits', () => {
+    const payout: BuffDefinition = {
+      name: 'Payout',
+      canStack: false,
+      effects: [{ kind: 'completion', amount: { value: 100 } }],
+    };
+    const bare = new CraftingState({
+      qi: 100,
+      stability: 50,
+      critChance: 10,
+      critMultiplier: 200,
+      harmonyData: {
+        recommendedTechniqueTypes: [],
+        resonance: { resonance: 'refine', strength: 3, pendingCount: 0 },
+      },
+      buffs: new Map([
+        ['payout', { name: 'Payout', stacks: 1, definition: payout }],
+      ]),
+    });
+    const resonance = liveBuff(
+      'Resonance',
+      {
+        critchance: { value: 3, scaling: 'stacks' },
+        successChanceBonus: { value: 0.03, scaling: 'stacks' },
+      },
+      3,
+    );
+    const state = bare.copy({
+      buffs: new Map([...Array.from(bare.buffs), ['resonance', resonance]]),
+    });
+    const config = configFor('resonance');
+    const withBuff = applySkill(state, bothBars, config)!;
+    const modelled = applySkill(bare, bothBars, config)!;
+    expect(withBuff.completion).toBe(modelled.completion);
+    // Technique and payout both crit at 10 base + 9 Resonance (3 x 3 stacks)
+    // chance, doubling: 2 x 100 x (1 + 0.19). A double count would give 0.28.
+    expect(modelled.completion).toBeCloseTo(238, 9);
+  });
+
   it.each(['resonance', 'eccentricDecree', 'alchemical'] as const)(
     'keeps the live %s buff without its replacing model',
     (type) => {
